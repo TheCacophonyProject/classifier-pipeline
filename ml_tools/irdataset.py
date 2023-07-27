@@ -97,41 +97,55 @@ def load_dataset(filenames, num_labels, args):
 
 
 def get_excluded_labels():
-    return ["insect", "cat"]
+    return ["human"]
+
+
+def get_remapped_labels():
+    return {"insect": "false-positive", "cat": "possum"}
+    # return ["insect", "cat"]
 
 
 def get_dataset(base_dir, labels, **args):
-    excluded_labels = args.get("excluded_labels", [])
+    excluded_labels = args.get("excluded_labels", get_excluded_labels())
+    to_remap = args.get("remapped_labels", get_remapped_labels())
+
     global remapped_y
     remapped = {}
     keys = []
     values = []
-    excluded_labels.append("insect")
-    excluded_labels.append("cat")
+    # excluded_labels.append("insect")
+    # excluded_labels.append("cat")
     new_labels = labels.copy()
     for excluded in excluded_labels:
         if excluded in labels:
             new_labels.remove(excluded)
+    for excluded in to_remap.keys():
+        if excluded in labels:
+            new_labels.remove(excluded)
     for l in labels:
         keys.append(labels.index(l))
-        if l in excluded_labels:
+        if l not in new_labels:
             remapped[l] = -1
             values.append(-1)
             logging.info("Excluding %s", l)
         else:
             remapped[l] = [l]
             values.append(new_labels.index(l))
-
-    if "false-positive" in labels and "insect" in labels:
-        remapped["false-positive"].append("insect")
-        values[labels.index("insect")] = new_labels.index("false-positive")
-        del remapped["insect"]
-
-    if "possum" in labels and "cat" in labels:
-        remapped["possum"].append("cat")
-        values[labels.index("cat")] = new_labels.index("possum")
-
-        del remapped["cat"]
+    for k, v in to_remap.items():
+        if k in labels and v in labels:
+            remapped[v].append(k)
+            values[labels.index(k)] = new_labels.index(v)
+            del remapped[k]
+    # if "false-positive" in labels and "insect" in labels:
+    #     remapped["false-positive"].append("insect")
+    #     values[labels.index("insect")] = new_labels.index("false-positive")
+    #     del remapped["insect"]
+    #
+    # if "possum" in labels and "cat" in labels:
+    #     remapped["possum"].append("cat")
+    #     values[labels.index("cat")] = new_labels.index("possum")
+    #
+    #     del remapped["cat"]
     remapped_y = tf.lookup.StaticHashTable(
         initializer=tf.lookup.KeyValueTensorInitializer(
             keys=tf.constant(keys),
