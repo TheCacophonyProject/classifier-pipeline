@@ -2,10 +2,16 @@ import logging
 from ml_tools.kerasmodel import KerasModel, grid_search
 import pickle
 import os
-import faulthandler
 from ml_tools.logs import init_logging
 
-faulthandler.enable()
+import absl.logging
+import sys
+
+# tensorflow stealing my log handler
+root_logger = logging.getLogger()
+for handler in root_logger.handlers:
+    if isinstance(handler, logging.StreamHandler) and handler.stream == sys.stderr:
+        root_logger.removeHandler(handler)
 
 
 def remove_fp_segments(datasets, ignore_file):
@@ -33,8 +39,8 @@ def remove_fp_segments(datasets, ignore_file):
 def train_model(
     run_name, conf, hyper_params, weights=None, do_grid_search=None, ignore=None
 ):
-    """Trains a model with the given hyper parameters."""
     init_logging()
+    """Trains a model with the given hyper parameters."""
     model = KerasModel(
         train_config=conf.train,
         labels=conf.labels,

@@ -17,6 +17,51 @@ AUTOTUNE = tf.data.AUTOTUNE
 # BATCH_SIZE = 64
 
 
+def get_weighting(dataset, labels, min_weigth=0.25, max_weight=4):
+    excluded_labels = ["sheep"]
+
+    dont_weight = ["mustelid", "wallaby", "human", "penguin"]
+    dist = get_distribution(dataset, labels)
+    zeros = dist[dist == 0]
+    non_zero_labels = num_labels - len(zeros)
+
+    total = np.sum(dist)
+    weights = {}
+    for i in range(num_labels):
+        if labels[i] in dont_weight:
+            weights[i] = 1
+        if dist[i] == 0:
+            weights[i] = 0
+        else:
+            weights[i] = (1 / dist[i]) * (total / non_zero_labels)
+            # cap the weights
+            weights[i] = min(weights[i], 4)
+            weights[i] = max(weights[i], 0.25)
+        logging.info("weights for %s is %s", labels[i], weights[i])
+    return weights
+
+
+def get_distribution(dataset, num_labels, batched=True):
+    true_categories = [y for x, y in dataset]
+    dist = np.zeros((num_labels), dtype=np.float32)
+    if len(true_categories) == 0:
+        return dist
+    if batched:
+        true_categories = tf.concat(true_categories, axis=0)
+    if len(true_categories) == 0:
+        return dist
+    classes = []
+    for y in true_categories:
+        non_zero = tf.where(y).numpy()
+        classes.extend(non_zero.flatten())
+    classes = np.array(classes)
+
+    c = Counter(list(classes))
+    for i in range(num_labels):
+        dist[i] = c[i]
+    return dist
+
+
 def load_dataset(filenames, num_labels, args):
     deterministic = args.get("deterministic", False)
 
@@ -51,37 +96,40 @@ def load_dataset(filenames, num_labels, args):
     return dataset
 
 
-def get_distribution(dataset):
-    true_categories = tf.concat([y for x, y in dataset], axis=0)
-    num_labels = len(true_categories[0])
-    if len(true_categories) == 0:
-        return None
-    true_categories = np.int64(tf.argmax(true_categories, axis=1))
-    c = Counter(list(true_categories))
-    dist = np.empty((num_labels), dtype=np.float32)
-    for i in range(num_labels):
-        dist[i] = c[i]
-    return dist
+def get_excluded_labels():
+    return ["insect", "cat"]
 
 
 def get_dataset(base_dir, labels, **args):
-    num_labels = len(labels)
+    excluded_labels = args.get("excluded_labels", [])
     global remapped_y
     remapped = {}
     keys = []
     values = []
+    excluded_labels.append("insect")
+    excluded_labels.append("cat")
+    new_labels = labels.copy()
+    for excluded in excluded_labels:
+        if excluded in labels:
+            new_labels.remove(excluded)
     for l in labels:
-        remapped[l] = [l]
         keys.append(labels.index(l))
-        values.append(labels.index(l))
+        if l in excluded_labels:
+            remapped[l] = -1
+            values.append(-1)
+            logging.info("Excluding %s", l)
+        else:
+            remapped[l] = [l]
+            values.append(new_labels.index(l))
+
     if "false-positive" in labels and "insect" in labels:
         remapped["false-positive"].append("insect")
-        values[labels.index("insect")] = labels.index("false-positive")
+        values[labels.index("insect")] = new_labels.index("false-positive")
         del remapped["insect"]
 
     if "possum" in labels and "cat" in labels:
         remapped["possum"].append("cat")
-        values[labels.index("cat")] = labels.index("possum")
+        values[labels.index("cat")] = new_labels.index("possum")
 
         del remapped["cat"]
     remapped_y = tf.lookup.StaticHashTable(
@@ -92,15 +140,14 @@ def get_dataset(base_dir, labels, **args):
         default_value=tf.constant(-1),
         name="remapped_y",
     )
+    num_labels = len(new_labels)
+    logging.info("New labels are %s", new_labels)
+    for k, v in zip(keys, values):
+        logging.info("Mapping %s to %s", labels[k], new_labels[v])
+
+    # 1 / 0
     filenames = tf.io.gfile.glob(f"{base_dir}/*.tfrecord")
     dataset = load_dataset(filenames, num_labels, args)
-    if dataset is None:
-        logging.warn("No dataset for %s", filenames)
-        return None, None
-    resample_data = args.get("resample", True)
-    if resample_data:
-        logging.info("Resampling data")
-        dataset = resample(dataset, labels)
     if dataset is None:
         logging.warn("No dataset for %s", filenames)
         return None, None
@@ -111,7 +158,10 @@ def get_dataset(base_dir, labels, **args):
         )
     # tf refues to run if epoch sizes change so we must decide a costant epoch size even though with reject res
     # it will chang eeach epoch, to ensure this take this repeat data and always take epoch_size elements
-    epoch_size = len([0 for x, y in dataset])
+    dist = get_distribution(dataset, num_labels, batched=False)
+    for label, d in zip(new_labels, dist):
+        logging.info("Have %s: %s", label, d)
+    epoch_size = np.sum(dist)
     logging.info("Setting dataset size to %s", epoch_size)
     if not args.get("only_features", False):
         dataset = dataset.repeat(2)
@@ -124,51 +174,6 @@ def get_dataset(base_dir, labels, **args):
     if batch_size is not None:
         dataset = dataset.batch(batch_size)
     return dataset, remapped
-
-
-def resample(dataset, labels):
-    excluded_labels = ["sheep"]
-    num_labels = len(labels)
-    true_categories = [y for x, y in dataset]
-    if len(true_categories) == 0:
-        logging.warn("No data found")
-        return None
-    true_categories = np.int64(tf.argmax(true_categories, axis=1))
-    c = Counter(list(true_categories))
-    dist = np.empty((num_labels), dtype=np.float32)
-    target_dist = np.empty((num_labels), dtype=np.float32)
-    for i in range(num_labels):
-        if labels[i] in excluded_labels:
-            logging.info("Excluding %s for %s", c[i], labels[i])
-            dist[i] = 0
-        else:
-            dist[i] = c[i]
-            logging.info("Have %s for %s", dist[i], labels[i])
-    zeros = dist[dist == 0]
-    non_zero_labels = num_labels - len(zeros)
-    target_dist[:] = 1 / non_zero_labels
-
-    dist = dist / np.sum(dist)
-    dist_max = np.max(dist)
-    # really this is what we want but when the values become too small they never get sampled
-    # so need to try reduce the large gaps in distribution
-    # can use class weights to adjust more, or just throw out some samples
-    max_range = target_dist[0] / 2
-    for i in range(num_labels):
-        if dist[i] == 0:
-            target_dist[i] = 0
-        elif dist_max - dist[i] > (max_range * 2):
-            target_dist[i] = dist[i]
-
-        target_dist[i] = max(0, target_dist[i])
-    target_dist = target_dist / np.sum(target_dist)
-
-    rej = dataset.rejection_resample(
-        class_func=class_func,
-        target_dist=target_dist,
-    )
-    dataset = rej.map(lambda extra_label, features_and_label: features_and_label)
-    return dataset
 
 
 def class_func(features, label):

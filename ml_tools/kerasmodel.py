@@ -28,7 +28,7 @@ from ml_tools.thermaldataset import (
     get_weighting,
 )
 from ml_tools.thermaldataset import get_distribution
-from ml_tools.irdataset import get_dataset as get_ir_dataset
+from ml_tools.irdataset import get_dataset as get_ir_dataset, get_excluded_labels
 
 import tensorflow_decision_forests as tfdf
 from ml_tools import forestmodel
@@ -345,7 +345,7 @@ class KerasModel(Interpreter):
 
     def load_model(self, model_path, training=False, weights=None, data_type="thermal"):
         super().__init__(model_path, data_type)
-        logging.info("Loading %s with weight %s", model_path, weights)
+        logging.info("Loading %s with model weight %s", model_path, weights)
         dir = os.path.dirname(model_path)
         self.model = tf.keras.models.load_model(dir)
         self.model.trainable = training
@@ -469,7 +469,11 @@ class KerasModel(Interpreter):
         logging.info(
             "%s Training model for %s epochs with weights %s", run_name, epochs, weights
         )
-
+        excluded_labels = get_excluded_labels()
+        orig_labels = self.labels.copy()
+        for l in excluded_labels:
+            if l in self.labels:
+                self.labels.remove(l)
         os.makedirs(self.log_base, exist_ok=True)
         self.log_dir = os.path.join(self.log_base, run_name)
         os.makedirs(self.log_base, exist_ok=True)
@@ -489,7 +493,7 @@ class KerasModel(Interpreter):
         self.train, remapped = get_dataset(
             train_files,
             self.type,
-            self.labels,
+            orig_labels,
             batch_size=self.params.batch_size,
             image_size=self.params.output_dim[:2],
             preprocess_fn=self.preprocess_fn,
@@ -503,7 +507,7 @@ class KerasModel(Interpreter):
         self.validate, remapped = get_dataset(
             validate_files,
             self.type,
-            self.labels,
+            orig_labels,
             batch_size=self.params.batch_size,
             image_size=self.params.output_dim[:2],
             preprocess_fn=self.preprocess_fn,
@@ -515,7 +519,7 @@ class KerasModel(Interpreter):
         if rebalance:
             self.class_weights = get_weighting(self.train, self.labels)
             logging.info(
-                "%s  giving weights %s",
+                "Training on %s  with class weights %s",
                 self.labels,
                 self.class_weights,
             )
@@ -545,7 +549,7 @@ class KerasModel(Interpreter):
             self.test, _ = get_dataset(
                 test_files,
                 self.type,
-                self.labels,
+                orig_labels,
                 batch_size=self.params.batch_size,
                 image_size=self.params.output_dim[:2],
                 preprocess_fn=self.preprocess_fn,
