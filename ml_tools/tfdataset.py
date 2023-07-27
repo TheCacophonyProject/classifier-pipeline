@@ -52,42 +52,7 @@ def get_distribution(dataset, num_labels, batched=True):
     return dist
 
 
-def load_dataset(read_function, filenames, remap_lookup, num_labels, args):
-    deterministic = args.get("deterministic", False)
-
-    ignore_order = tf.data.Options()
-    ignore_order.experimental_deterministic = (
-        deterministic  # disable order, increase speed
-    )
-    dataset = tf.data.TFRecordDataset(filenames)
-    dataset = dataset.with_options(
-        ignore_order
-    )  # uses data as soon as it streams in, rather than in its original order
-
-    image_size = args["image_size"]
-    labeled = args.get("labeled", True)
-    augment = args.get("augment", False)
-    preprocess_fn = args.get("preprocess_fn")
-    one_hot = args.get("one_hot", True)
-    dataset = dataset.apply(tf.data.experimental.ignore_errors())
-    dataset = dataset.map(
-        partial(
-            read_function,
-            remap_lookup=remap_lookup,
-            num_labels=num_labels,
-            image_size=image_size,
-            labeled=labeled,
-            augment=augment,
-            preprocess_fn=preprocess_fn,
-            one_hot=one_hot,
-        ),
-        num_parallel_calls=AUTOTUNE,
-        deterministic=deterministic,
-    )
-    return dataset
-
-
-def get_dataset(read_function, base_dir, labels, **args):
+def get_dataset(load_function, base_dir, labels, **args):
     excluded_labels = args.get("excluded_labels", [])
     to_remap = args.get("remapped_labels", {})
 
@@ -132,7 +97,7 @@ def get_dataset(read_function, base_dir, labels, **args):
 
     # 1 / 0
     filenames = tf.io.gfile.glob(f"{base_dir}/*.tfrecord")
-    dataset = load_dataset(read_function, filenames, remap_lookup, num_labels, args)
+    dataset = load_function(filenames, remap_lookup, num_labels, args)
     if dataset is None:
         logging.warn("No dataset for %s", filenames)
         return None, None
@@ -159,3 +124,41 @@ def get_dataset(read_function, base_dir, labels, **args):
     if batch_size is not None:
         dataset = dataset.batch(batch_size)
     return dataset, remapped, new_labels
+
+
+def resample(dataset, labels):
+    excluded_labels = ["sheep"]
+    num_labels = len(labels)
+    true_categories = [y for x, y in dataset]
+    if len(true_categories) == 0:
+        logging.info("no data")
+        return None
+    true_categories = np.int64(tf.argmax(true_categories, axis=1))
+    c = Counter(list(true_categories))
+    dist = np.empty((num_labels), dtype=np.float32)
+    target_dist = np.empty((num_labels), dtype=np.float32)
+    for i in range(num_labels):
+        if labels[i] in excluded_labels:
+            logging.info("Excluding %s for %s", c[i], labels[i])
+            dist[i] = 0
+        else:
+            dist[i] = c[i]
+            logging.info("Have %s for %s", dist[i], labels[i])
+    zeros = dist[dist == 0]
+    non_zero_labels = num_labels - len(zeros)
+    target_dist[:] = 1 / non_zero_labels
+
+    dist = dist / np.sum(dist)
+    dist_max = np.max(dist)
+    # really this is what we want but when the values become too small they never get sampled
+    # so need to try reduce the large gaps in distribution
+    # can use class weights to adjust more, or just throw out some samples
+    max_range = target_dist[0] / 2
+    for i in range(num_labels):
+        if dist[i] == 0:
+            target_dist[i] = 0
+        elif dist_max - dist[i] > (max_range * 2):
+            target_dist[i] = dist[i]
+
+        target_dist[i] = max(0, target_dist[i])
+    target_dist = target_dist / np.sum(target_dist)

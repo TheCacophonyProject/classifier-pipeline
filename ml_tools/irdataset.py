@@ -26,6 +26,41 @@ def get_remapped():
     # return ["insect", "cat"]
 
 
+def load_dataset(filenames, remap_lookup, num_labels, args):
+    deterministic = args.get("deterministic", False)
+
+    ignore_order = tf.data.Options()
+    ignore_order.experimental_deterministic = (
+        deterministic  # disable order, increase speed
+    )
+    dataset = tf.data.TFRecordDataset(filenames)
+    dataset = dataset.with_options(
+        ignore_order
+    )  # uses data as soon as it streams in, rather than in its original order
+
+    image_size = args["image_size"]
+    labeled = args.get("labeled", True)
+    augment = args.get("augment", False)
+    preprocess_fn = args.get("preprocess_fn")
+    one_hot = args.get("one_hot", True)
+    dataset = dataset.apply(tf.data.experimental.ignore_errors())
+    dataset = dataset.map(
+        partial(
+            read_irrecord,
+            remap_lookup=remap_lookup,
+            num_labels=num_labels,
+            image_size=image_size,
+            labeled=labeled,
+            augment=augment,
+            preprocess_fn=preprocess_fn,
+            one_hot=one_hot,
+        ),
+        num_parallel_calls=AUTOTUNE,
+        deterministic=deterministic,
+    )
+    return dataset
+
+
 def read_irrecord(
     example,
     image_size,

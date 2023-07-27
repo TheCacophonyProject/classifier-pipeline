@@ -29,9 +29,8 @@ from ml_tools import thermaldataset
 #    get_dataset as get_thermal_dataset,
 #    get_weighting,
 # )
-from ml_tools.thermaldataset import get_distribution
 from ml_tools import irdataset
-from ml_tools.tfdataset import get_weighting, get_dataset as get_tf
+from ml_tools.tfdataset import get_weighting, get_distribution, get_dataset as get_tf
 import tensorflow_decision_forests as tfdf
 from ml_tools import forestmodel
 
@@ -1351,20 +1350,13 @@ def get_dataset(
     **args,
 ):
     if type == "thermal":
-        if args.get("ds_by_label", False):
-            get_ds = get_thermal_dataset_by_label
-        else:
-            get_ds = get_thermal_dataset
-        return get_tf(
-            read_irrecord,
-            pattern,
-            labels,
-            **args,
-        )
+        args["excluded_labels"] = thermaldataset.get_excluded()
+        args["remapped_labels"] = thermaldataset.get_remapped()
+        return get_tf(thermaldataset.load_dataset, pattern, labels, **args)
     else:
         args["excluded_labels"] = irdataset.get_excluded()
         args["remapped_labels"] = irdataset.get_remapped()
-    return get_tf(irdataset.read_irrecord, pattern, labels, **args)
+    return get_tf(irdataset.load_dataset, pattern, labels, **args)
 
 
 class MetaJSONEncoder(json.JSONEncoder):
