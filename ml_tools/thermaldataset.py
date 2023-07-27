@@ -470,6 +470,7 @@ def get_weighting(dataset, labels):
             weights[i] = min(weights[i], 4)
             weights[i] = max(weights[i], 0.25)
         logging.info("weights for %s is %s", labels[i], weights[i])
+    return weights
 
 
 def show_batch(image_batch, label_batch, labels):
