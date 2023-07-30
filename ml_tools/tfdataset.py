@@ -101,7 +101,7 @@ def get_dataset(load_function, base_dir, labels, **args):
     if dataset is None:
         logging.warn("No dataset for %s", filenames)
         return None, None
-    if not args.get("only_features"):
+    if not args.get("only_features") and args.get("shuffle", True):
         logging.info("shuffling data")
         dataset = dataset.shuffle(
             4096, reshuffle_each_iteration=args.get("reshuffle", True)

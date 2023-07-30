@@ -12,6 +12,7 @@ import time
 import matplotlib.pyplot as plt
 import json
 import logging
+from pathlib import Path
 
 from sklearn.metrics import confusion_matrix
 import cv2
@@ -332,10 +333,10 @@ class KerasModel(Interpreter):
 
     def load_weights(self, model_path, meta=True, training=False):
         logging.info("loading weights %s", model_path)
-        dir = os.path.dirname(model_path)
+        dir_name = os.path.dirname(model_path)
 
         if meta:
-            self.load_meta(dir)
+            self.load_meta(dir_name)
 
         if not self.model:
             self.build_model(
@@ -351,22 +352,22 @@ class KerasModel(Interpreter):
     def load_model(self, model_path, training=False, weights=None, data_type="thermal"):
         model_path = Path(model_path)
         if model_path.is_file():
-            dir = model_path.parent
+            dir_name = model_path.parent
             super().__init__(model_path, data_type)
         else:
-            dir = model_path
+            dir_name = model_path
             super().__init__(model_path / "saved_model.pb", data_type)
 
         logging.info("Loading %s with model weight %s", model_path, weights)
-        self.model = tf.keras.models.load_model(dir)
+        self.model = tf.keras.models.load_model(dir_name)
         self.model.trainable = training
-        self.load_meta(dir)
+        self.load_meta(dir_name)
         if weights is not None:
             self.model.load_weights(weights).expect_partial()
         logging.info("Loaded weight %s", weights)
 
-    def load_meta(self, dir):
-        meta = json.load(dir / "metadata.txt", "r")
+    def load_meta(self, dir_name):
+        meta = json.load((dir_name / "metadata.txt").open("r"))
         self.params = HyperParams()
         self.params.update(meta["hyperparams"])
         self.labels = meta["labels"]
@@ -1253,8 +1254,8 @@ def train_test_model(model, hparams, log_dir, writer, epochs):
 
 
 def grid_search(keras_model, epochs=1):
-    dir = keras_model.log_dir + "/hparam_tuning"
-    with tf.summary.create_file_writer(dir).as_default():
+    dir_name = keras_model.log_dir + "/hparam_tuning"
+    with tf.summary.create_file_writer(dir_name).as_default():
         hp.hparams_config(
             hparams=[
                 HP_MVM,
@@ -1330,7 +1331,7 @@ def grid_search(keras_model, epochs=1):
                                         print({h.name: hparams[h] for h in hparams})
                                         run(
                                             keras_model,
-                                            dir + "/" + run_name,
+                                            dir_name + "/" + run_name,
                                             hparams,
                                             epochs,
                                         )

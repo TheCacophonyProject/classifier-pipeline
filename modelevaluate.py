@@ -26,10 +26,120 @@ from dateutil.parser import parse as parse_date
 from sklearn.metrics import confusion_matrix
 import matplotlib.pyplot as plt
 import numpy as np
-import pathlib as Path
+from pathlib import Path
 
 crop_rectangle = tools.Rectangle(0, 0, 160, 120)
 PROB_THRESHOLD = 0.8
+
+
+def load_args():
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "-m",
+        "--model-file",
+        help="Path to model file to use, will override config model",
+    )
+    parser.add_argument("-w", "--weights", help="Weights to load into model")
+
+    parser.add_argument(
+        "-s",
+        "--dataset",
+        default="test",
+        help="Dataset to use train, validation, test ( Default)",
+    )
+    parser.add_argument(
+        "--confusion",
+        help="Confusion matrix filename, used if you want to save confusion matrix image",
+    )
+    parser.add_argument(
+        "--tracks", action="count", help="Evaluate whole track rather than samples"
+    )
+    parser.add_argument("-c", "--config-file", help="Path to config file to use")
+
+    parser.add_argument("--track-id", help="Track id to evaluate from database")
+
+    parser.add_argument("--clip-id", help="Clip id to evaluate from database")
+    parser.add_argument("-d", "--date", help="Use clips after this")
+
+    args = parser.parse_args()
+    if args.date:
+        args.date = parse_date(args.date)
+        args.date = args.date.replace(tzinfo=pytz.UTC)
+    return args
+
+
+def init_logging(timestamps=False):
+    """Set up logging for use by various classifier pipeline scripts.
+
+    Logs will go to stderr.
+    """
+
+    fmt = "%(levelname)7s %(message)s"
+    if timestamps:
+        fmt = "%(asctime)s " + fmt
+    logging.basicConfig(
+        stream=sys.stderr, level=logging.INFO, format=fmt, datefmt="%Y-%m-%d %H:%M:%S"
+    )
+
+
+def main():
+    args = load_args()
+    init_logging()
+    config = Config.load_from_file(args.config_file)
+
+    if args.model_file:
+        model_file = Path(args.model_file)
+        weights = model_file / args.weights
+
+    base_dir = config.tracks_folder
+
+    model = KerasModel(train_config=config.train)
+    model.load_model(model_file, training=False, weights=weights)
+    # model = None
+    if args.track_id or args.clip_id:
+        if args.clip_id is None:
+            logging.error("Need clip id and track id")
+            sys.exit(0)
+        db = TrackDatabase(os.path.join(config.tracks_folder, "dataset.hdf5"))
+        evaluate_db_clip(model, db, args.clip_id, args.track_id)
+        sys.exit(0)
+
+    if args.tracks:
+        # def evaluate_db_clips(model, db, classifier, config, after_date):
+
+        evaluate_db_clips(model, config, args.date, args.confusion)
+        sys.exit(0)
+    model.load_training_meta(base_dir)
+
+    files = base_dir + f"/training-data/{args.dataset}"
+    dataset, _, new_labels = get_dataset(
+        files,
+        model.type,
+        model.labels,
+        batch_size=64,
+        image_size=model.params.output_dim[:2],
+        preprocess_fn=model.preprocess_fn,
+        augment=False,
+        resample=False,
+        include_features=model.params.mvm,
+        one_hot=True,
+        deterministic=True,
+        reshuffle=False,
+    )
+    model.labels = new_labels
+    logging.info(
+        "Dataset loaded %s, using labels %s",
+        args.dataset,
+        model.labels,
+    )
+
+    if args.confusion:
+        if config.train.tfrecords:
+            model.confusion_tfrecords(dataset, args.confusion)
+        else:
+            model.confusion(dataset, args.confusion)
+    else:
+        model.evaluate(dataset)
 
 
 def evaluate_db_clips(model, config, after_date, confusion_file="tracks-confusion"):
@@ -121,149 +231,6 @@ def evaluate_db_clip(model, db, classifier, clip_id, track_id=None):
             track_id, track_data, medians, regions=regions
         )
         logging.info("Predicted %s", track_prediction.predicted_tag(model.labels))
-
-
-def load_args():
-    parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "-m",
-        "--model-file",
-        help="Path to model file to use, will override config model",
-    )
-    parser.add_argument("-w", "--weights", help="Weights to load into model")
-
-    parser.add_argument(
-        "-s",
-        "--dataset",
-        default="test",
-        help="Dataset to use train, validation, test ( Default)",
-    )
-    parser.add_argument(
-        "--confusion",
-        help="Confusion matrix filename, used if you want to save confusion matrix image",
-    )
-    parser.add_argument(
-        "--tracks", action="count", help="Evaluate whole track rather than samples"
-    )
-    parser.add_argument("-c", "--config-file", help="Path to config file to use")
-
-    parser.add_argument("--track-id", help="Track id to evaluate from database")
-
-    parser.add_argument("--clip-id", help="Clip id to evaluate from database")
-    parser.add_argument("-d", "--date", help="Use clips after this")
-
-    args = parser.parse_args()
-    if args.date:
-        args.date = parse_date(args.date)
-        args.date = args.date.replace(tzinfo=pytz.UTC)
-    return args
-
-
-def init_logging(timestamps=False):
-    """Set up logging for use by various classifier pipeline scripts.
-
-    Logs will go to stderr.
-    """
-
-    fmt = "%(levelname)7s %(message)s"
-    if timestamps:
-        fmt = "%(asctime)s " + fmt
-    logging.basicConfig(
-        stream=sys.stderr, level=logging.INFO, format=fmt, datefmt="%Y-%m-%d %H:%M:%S"
-    )
-
-
-def main():
-    args = load_args()
-    init_logging()
-    config = Config.load_from_file(args.config_file)
-
-    if args.model_file:
-        model_file = Path(args.model_file)
-        weights = model_file / args.weights
-
-    base_dir = config.tracks_folder
-
-    model = KerasModel(train_config=config.train)
-    model.load_model(model_file, training=False, weights=weights)
-    # model = None
-    if args.track_id or args.clip_id:
-        if args.clip_id is None:
-            logging.error("Need clip id and track id")
-            sys.exit(0)
-        db = TrackDatabase(os.path.join(config.tracks_folder, "dataset.hdf5"))
-        evaluate_db_clip(model, db, args.clip_id, args.track_id)
-        sys.exit(0)
-
-    if args.tracks:
-        # def evaluate_db_clips(model, db, classifier, config, after_date):
-
-        evaluate_db_clips(model, config, args.date, args.confusion)
-        sys.exit(0)
-    if config.train.tfrecords:
-        model.load_training_meta(base_dir)
-
-        files = base_dir + f"/training-data/{args.dataset}"
-        dataset, _ = get_dataset(
-            files,
-            model.type,
-            model.labels,
-            batch_size=64,
-            image_size=model.params.output_dim[:2],
-            preprocess_fn=model.preprocess_fn,
-            augment=False,
-            resample=False,
-            include_features=model.params.mvm,
-            one_hot=True,
-            deterministic=True,
-            reshuffle=False,
-        )
-        logging.info(
-            "Dataset loaded %s, using labels %s",
-            args.dataset,
-            model.labels,
-        )
-
-    else:
-        dataset = pickle.load(open(os.path.join(base_dir, args.dataset + ".dat"), "rb"))
-        logging.info("running on %s ", dataset.name)
-
-        dir = os.path.dirname(model_file)
-        meta = json.load(open(os.path.join(dir, "metadata.txt"), "r"))
-        mapped_labels = meta.get("mapped_labels")
-        label_probabilities = meta.get("label_probabilities")
-        dataset.lbl_p = label_probabilities
-        if mapped_labels:
-            dataset.regroup(mapped_labels)
-
-        logging.info(
-            "Dataset loaded %s, using labels %s, mapped labels %s",
-            dataset.name,
-            dataset.labels,
-            dataset.label_mapping,
-        )
-        logging.info("%s %s / %s", "label", "samples", "tracks")
-        for label in dataset.labels:
-            samples, tracks, _, _ = dataset.get_counts(label)
-            logging.info("%s/ %s / %s", label, samples, tracks)
-
-        logging.info("Mapped labels")
-        for label in dataset.label_mapping.keys():
-            logging.info(
-                "%s",
-                "{} {:<20}".format(
-                    label,
-                    dataset.mapped_label(label),
-                    "{}/{}/{:.1f}".format(*dataset.get_counts(label)),
-                ),
-            )
-    if args.confusion:
-        if config.train.tfrecords:
-            model.confusion_tfrecords(dataset, args.confusion)
-        else:
-            model.confusion(dataset, args.confusion)
-    else:
-        model.evaluate(dataset)
 
 
 if __name__ == "__main__":

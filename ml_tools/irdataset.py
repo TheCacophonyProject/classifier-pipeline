@@ -12,10 +12,6 @@ import json
 import sys
 from ml_tools.logs import init_logging
 
-
-seed = 1341
-tf.random.set_seed(seed)
-np.random.seed(seed)
 AUTOTUNE = tf.data.AUTOTUNE
 # IMAGE_SIZE = [256, 256]
 # BATCH_SIZE = 64
