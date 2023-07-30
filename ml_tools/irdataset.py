@@ -9,6 +9,10 @@ import logging
 from config.config import Config
 import json
 
+import sys
+from ml_tools.logs import init_logging
+
+
 seed = 1341
 tf.random.set_seed(seed)
 np.random.seed(seed)
@@ -58,6 +62,9 @@ def load_dataset(filenames, remap_lookup, num_labels, args):
         num_parallel_calls=AUTOTUNE,
         deterministic=deterministic,
     )
+
+    filter_excluded = lambda x, y: not tf.math.equal(tf.math.count_nonzero(y), 0)
+    dataset = dataset.filter(filter_excluded)
     return dataset
 
 
@@ -122,6 +129,8 @@ def decode_image(image, filtered, image_size, augment):
 
 
 def main():
+    init_logging()
+
     from .tfdataset import get_dataset
 
     config = Config.load_from_file()
@@ -132,17 +141,22 @@ def main():
     labels = meta.get("labels", [])
     datasets = []
     # weights = [0.5] * len(labels)
-    resampled_ds, remapped = get_dataset(
+    resampled_ds, remapped, _ = get_dataset(
         load_dataset,
         f"{config.tracks_folder}/training-data/test",
         labels,
         batch_size=1,
         image_size=(160, 160),
         augment=False,
+        excluded_labels=get_excluded(),
+        remapped_labels=get_remapped(),
+        deterministic=True,
+        shuffle=False,
     )
     meta["remapped"] = remapped
     with open(file, "w") as f:
         json.dump(meta, f)
+    from collections import Counter
 
     for e in range(4):
         # for x, y in resampled_ds:

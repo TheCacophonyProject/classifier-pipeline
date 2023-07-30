@@ -26,6 +26,7 @@ from dateutil.parser import parse as parse_date
 from sklearn.metrics import confusion_matrix
 import matplotlib.pyplot as plt
 import numpy as np
+import pathlib as Path
 
 crop_rectangle = tools.Rectangle(0, 0, 160, 120)
 PROB_THRESHOLD = 0.8
@@ -178,11 +179,8 @@ def main():
     config = Config.load_from_file(args.config_file)
 
     if args.model_file:
-        model_file = args.model_file
-        weights = args.weights
-    else:
-        model_file = config.classify.models[0].model_file
-        weights = config.classify.models[0].model_weights
+        model_file = Path(args.model_file)
+        weights = model_file / args.weights
 
     base_dir = config.tracks_folder
 

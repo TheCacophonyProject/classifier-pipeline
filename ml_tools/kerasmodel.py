@@ -67,6 +67,8 @@ class KerasModel(Interpreter):
         self.label_probabilities = None
         self.class_weights = None
         self.ds_by_label = True
+        self.excluded_labels = []
+        self.remapped_labels = []
 
     def load_training_meta(self, base_dir):
         file = f"{base_dir}/training-meta.json"
@@ -77,6 +79,8 @@ class KerasModel(Interpreter):
         self.type = meta.get("type", "thermal")
         self.dataset_counts = meta.get("counts")
         self.ds_by_label = meta.get("by_label", True)
+        self.excluded_labels = meta.get("excluded_labels")
+        self.remapped_labels = meta.get("remapped_labels")
 
     def shape(self):
         if self.model is None:
@@ -345,9 +349,15 @@ class KerasModel(Interpreter):
         # self.model.load_weights(dir + "/variables/variables")
 
     def load_model(self, model_path, training=False, weights=None, data_type="thermal"):
-        super().__init__(model_path, data_type)
+        model_path = Path(model_path)
+        if model_path.is_file():
+            dir = model_path.parent
+            super().__init__(model_path, data_type)
+        else:
+            dir = model_path
+            super().__init__(model_path / "saved_model.pb", data_type)
+
         logging.info("Loading %s with model weight %s", model_path, weights)
-        dir = os.path.dirname(model_path)
         self.model = tf.keras.models.load_model(dir)
         self.model.trainable = training
         self.load_meta(dir)
@@ -356,7 +366,7 @@ class KerasModel(Interpreter):
         logging.info("Loaded weight %s", weights)
 
     def load_meta(self, dir):
-        meta = json.load(open(os.path.join(dir, "metadata.txt"), "r"))
+        meta = json.load(dir / "metadata.txt", "r")
         self.params = HyperParams()
         self.params.update(meta["hyperparams"])
         self.labels = meta["labels"]
@@ -393,6 +403,8 @@ class KerasModel(Interpreter):
         model_stats["mapped_labels"] = self.mapped_labels
         model_stats["label_probabilities"] = self.label_probabilities
         model_stats["type"] = self.type
+        model_stats["remapped_labels"] = self.remapped_labels
+        model_stats["excluded_labels"] = self.excluded_labels
         if self.remapped is not None:
             model_stats["remapped"] = self.remapped
         if self.class_weights is not None:
@@ -484,6 +496,8 @@ class KerasModel(Interpreter):
             stop_on_empty_dataset=False,
             include_features=self.params.mvm,
             augment=True,
+            excluded_labels=self.excluded_labels,
+            remapped_labels=self.remapped_labels,
             # dist=self.dataset_counts["train"],
         )
         self.remapped = remapped
@@ -497,6 +511,8 @@ class KerasModel(Interpreter):
             resample=resample,
             stop_on_empty_dataset=False,
             include_features=self.params.mvm,
+            excluded_labels=self.excluded_labels,
+            remapped_labels=self.remapped_labels,
             # dist=self.dataset_counts["validation"],
         )
 
@@ -557,6 +573,8 @@ class KerasModel(Interpreter):
                 include_features=self.params.mvm,
                 reshuffle=False,
                 resample=False,
+                excluded_labels=self.excluded_labels,
+                remapped_labels=self.remapped_labels,
             )
             if self.test:
                 test_accuracy = self.model.evaluate(self.test)
