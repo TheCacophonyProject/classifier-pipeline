@@ -124,7 +124,7 @@ def main():
         include_features=model.params.mvm,
         one_hot=True,
         deterministic=True,
-        reshuffle=False,
+        shuffle=False,
     )
     model.labels = new_labels
     logging.info(

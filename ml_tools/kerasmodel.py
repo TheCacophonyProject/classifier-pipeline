@@ -483,9 +483,12 @@ class KerasModel(Interpreter):
         logging.info(
             "%s Training model for %s epochs with weights %s", run_name, epochs, weights
         )
-
+        self.excluded_labels, self.remapped_labels = get_excluded(self.type)
         train_files = os.path.join(self.data_dir, "train")
         validate_files = os.path.join(self.data_dir, "validation")
+        logging.info(
+            "Excluding %s remapping %s", self.excluded_labels, self.remapped_labels
+        )
         self.train, remapped, new_labels = get_dataset(
             train_files,
             self.type,
@@ -1362,6 +1365,13 @@ class ClearMemory(Callback):
         tf.keras.backend.clear_session()
 
 
+def get_excluded(type):
+    if type == "thermal":
+        return thermaldataset.get_excluded(), thermaldataset.get_remapped()
+    else:
+        return irdataset.get_excluded(), irdataset.get_remapped()
+
+
 def get_dataset(
     pattern,
     type,
@@ -1369,13 +1379,9 @@ def get_dataset(
     **args,
 ):
     if type == "thermal":
-        args["excluded_labels"] = thermaldataset.get_excluded()
-        args["remapped_labels"] = thermaldataset.get_remapped()
         return get_tf(thermaldataset.load_dataset, pattern, labels, **args)
     else:
-        args["excluded_labels"] = irdataset.get_excluded()
-        args["remapped_labels"] = irdataset.get_remapped()
-    return get_tf(irdataset.load_dataset, pattern, labels, **args)
+        return get_tf(irdataset.load_dataset, pattern, labels, **args)
 
 
 class MetaJSONEncoder(json.JSONEncoder):
