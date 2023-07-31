@@ -101,6 +101,8 @@ def get_dataset(load_function, base_dir, labels, **args):
     if dataset is None:
         logging.warn("No dataset for %s", filenames)
         return None, None
+
+    dataset = dataset.cache()
     if not args.get("only_features") and args.get("shuffle", True):
         logging.info("shuffling data")
         dataset = dataset.shuffle(
@@ -123,6 +125,8 @@ def get_dataset(load_function, base_dir, labels, **args):
     batch_size = args.get("batch_size", None)
     if batch_size is not None:
         dataset = dataset.batch(batch_size)
+    dataset = dataset.prefetch(buffer_size=AUTOTUNE)
+
     return dataset, remapped, new_labels
 
 
