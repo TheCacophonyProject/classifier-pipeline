@@ -465,7 +465,45 @@ class KerasModel(Interpreter):
         logging.info(
             "%s Training model for %s epochs with weights %s", run_name, epochs, weights
         )
+        # self.excluded_labels, self.remapped_labels = get_excluded(self.type)
+        train_files = os.path.join(self.data_dir, "train")
+        validate_files = os.path.join(self.data_dir, "validation")
+        # logging.info(
+        # "Excluding %s remapping %s", self.excluded_labels, self.remapped_labels
+        # )
+        self.train, remapped = get_dataset(
+            train_files,
+            self.type,
+            self.labels,
+            batch_size=self.params.batch_size,
+            image_size=self.params.output_dim[:2],
+            preprocess_fn=self.preprocess_fn,
+            resample=resample,
+            stop_on_empty_dataset=False,
+            include_features=self.params.mvm,
+            augment=True,
+            # excluded_labels=self.excluded_labels,
+            # remapped_labels=self.remapped_labels,
+            # dist=self.dataset_counts["train"],
+        )
+        self.remapped = remapped
+        self.validate, remapped = get_dataset(
+            validate_files,
+            self.type,
+            self.labels,
+            batch_size=self.params.batch_size,
+            image_size=self.params.output_dim[:2],
+            preprocess_fn=self.preprocess_fn,
+            resample=resample,
+            stop_on_empty_dataset=False,
+            include_features=self.params.mvm,
+            # excluded_labels=self.excluded_labels,
+            # remapped_labels=self.remapped_labels,
+            # dist=self.dataset_counts["validation"],
+        )
 
+        orig_labels = self.labels.copy()
+        # self.labels = new_labels
         os.makedirs(self.log_base, exist_ok=True)
         self.log_dir = os.path.join(self.log_base, run_name)
         os.makedirs(self.log_base, exist_ok=True)
@@ -480,38 +518,10 @@ class KerasModel(Interpreter):
         self.model.summary()
         if weights is not None:
             self.model.load_weights(weights)
-        train_files = os.path.join(self.data_dir, "train")
-        validate_files = os.path.join(self.data_dir, "validation")
-        self.train, remapped = get_dataset(
-            train_files,
-            self.type,
-            self.labels,
-            batch_size=self.params.batch_size,
-            image_size=self.params.output_dim[:2],
-            preprocess_fn=self.preprocess_fn,
-            resample=resample,
-            stop_on_empty_dataset=False,
-            include_features=self.params.mvm,
-            augment=True,
-            # dist=self.dataset_counts["train"],
-        )
-        self.remapped = remapped
-        self.validate, remapped = get_dataset(
-            validate_files,
-            self.type,
-            self.labels,
-            batch_size=self.params.batch_size,
-            image_size=self.params.output_dim[:2],
-            preprocess_fn=self.preprocess_fn,
-            resample=resample,
-            stop_on_empty_dataset=False,
-            include_features=self.params.mvm,
-            # dist=self.dataset_counts["validation"],
-        )
         if rebalance:
             self.class_weights = get_weighting(self.train, self.labels)
             logging.info(
-                "%s  giving weights %s",
+                "Training on %s  with class weights %s",
                 self.labels,
                 self.class_weights,
             )
@@ -541,7 +551,7 @@ class KerasModel(Interpreter):
             self.test, _ = get_dataset(
                 test_files,
                 self.type,
-                self.labels,
+                orig_labels,
                 batch_size=self.params.batch_size,
                 image_size=self.params.output_dim[:2],
                 preprocess_fn=self.preprocess_fn,
@@ -549,6 +559,8 @@ class KerasModel(Interpreter):
                 include_features=self.params.mvm,
                 reshuffle=False,
                 resample=False,
+                # excluded_labels=self.excluded_labels,
+                # remapped_labels=self.remapped_labels,
             )
             if self.test:
                 test_accuracy = self.model.evaluate(self.test)
