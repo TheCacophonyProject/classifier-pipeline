@@ -93,7 +93,9 @@ def get_dataset(load_function, base_dir, labels, **args):
     num_labels = len(new_labels)
     logging.info("New labels are %s", new_labels)
     for k, v in zip(keys, values):
-        logging.info("Mapping %s to %s", labels[k], new_labels[v])
+        logging.info(
+            "Mapping %s to %s", labels[k], new_labels[v] if v >= 0 else "nothing"
+        )
 
     # 1 / 0
     filenames = tf.io.gfile.glob(f"{base_dir}/*.tfrecord")
