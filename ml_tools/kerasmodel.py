@@ -297,6 +297,7 @@ class KerasModel(Interpreter):
             preds = tf.keras.layers.Dense(
                 len(self.labels), activation="softmax", name="prediction"
             )(x)
+            logging.error("Loading %s", self.labels)
             self.model = tf.keras.models.Model(inputs, outputs=preds)
         if retrain_from is None:
             retrain_from = self.params.retrain_layer
@@ -470,14 +471,6 @@ class KerasModel(Interpreter):
         self.log_dir = os.path.join(self.log_base, run_name)
         os.makedirs(self.log_base, exist_ok=True)
 
-        if not self.model:
-            self.build_model(
-                dense_sizes=self.params.dense_sizes,
-                retrain_from=self.params.retrain_layer,
-                dropout=self.params.dropout,
-                run_name=run_name,
-            )
-        self.model.summary()
         # self.excluded_labels, self.remapped_labels = get_excluded(self.type)
         train_files = os.path.join(self.data_dir, "train")
         validate_files = os.path.join(self.data_dir, "validation")
@@ -516,6 +509,16 @@ class KerasModel(Interpreter):
         )
 
         orig_labels = self.labels.copy()
+        if not self.model:
+            self.build_model(
+                dense_sizes=self.params.dense_sizes,
+                retrain_from=self.params.retrain_layer,
+                dropout=self.params.dropout,
+                run_name=run_name,
+            )
+        self.model.summary()
+        logging.error("Weight should be %s", orig_labels)
+        1 / 0
         # self.labels = new_labels
 
         if weights is not None:
