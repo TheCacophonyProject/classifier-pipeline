@@ -12,7 +12,6 @@ import time
 import matplotlib.pyplot as plt
 import json
 import logging
-from pathlib import Path
 
 from sklearn.metrics import confusion_matrix
 import cv2
@@ -23,15 +22,14 @@ from ml_tools.preprocess import preprocess_movement, preprocess_frame, preproces
 from ml_tools.interpreter import Interpreter
 from classify.trackprediction import TrackPrediction
 from ml_tools.hyperparams import HyperParams
-from ml_tools import thermaldataset
+from ml_tools.thermaldataset import (
+    get_resampled_by_label as get_thermal_dataset_by_label,
+    get_dataset as get_thermal_dataset,
+    get_weighting,
+)
+from ml_tools.thermaldataset import get_distribution
+from ml_tools.irdataset import get_dataset as get_ir_dataset
 
-# import (
-#    get_resampled_by_label as get_thermal_dataset_by_label,
-#    get_dataset as get_thermal_dataset,
-#    get_weighting,
-# )
-from ml_tools import irdataset
-from ml_tools.tfdataset import get_weighting, get_distribution, get_dataset as get_tf
 from ml_tools import forestmodel
 
 
@@ -64,8 +62,6 @@ class KerasModel(Interpreter):
         self.label_probabilities = None
         self.class_weights = None
         self.ds_by_label = True
-        self.excluded_labels = []
-        self.remapped_labels = []
 
     def load_training_meta(self, base_dir):
         file = f"{base_dir}/training-meta.json"
@@ -76,8 +72,6 @@ class KerasModel(Interpreter):
         self.type = meta.get("type", "thermal")
         self.dataset_counts = meta.get("counts")
         self.ds_by_label = meta.get("by_label", True)
-        self.excluded_labels = meta.get("excluded_labels")
-        self.remapped_labels = meta.get("remapped_labels")
 
     def shape(self):
         if self.model is None:
@@ -329,10 +323,10 @@ class KerasModel(Interpreter):
 
     def load_weights(self, model_path, meta=True, training=False):
         logging.info("loading weights %s", model_path)
-        dir_name = os.path.dirname(model_path)
+        dir = os.path.dirname(model_path)
 
         if meta:
-            self.load_meta(dir_name)
+            self.load_meta(dir)
 
         if not self.model:
             self.build_model(
@@ -346,24 +340,18 @@ class KerasModel(Interpreter):
         # self.model.load_weights(dir + "/variables/variables")
 
     def load_model(self, model_path, training=False, weights=None, data_type="thermal"):
-        model_path = Path(model_path)
-        if model_path.is_file():
-            dir_name = model_path.parent
-            super().__init__(model_path, data_type)
-        else:
-            dir_name = model_path
-            super().__init__(model_path / "saved_model.pb", data_type)
-
-        logging.info("Loading %s with model weight %s", model_path, weights)
-        self.model = tf.keras.models.load_model(dir_name)
+        super().__init__(model_path, data_type)
+        logging.info("Loading %s with weight %s", model_path, weights)
+        dir = os.path.dirname(model_path)
+        self.model = tf.keras.models.load_model(dir)
         self.model.trainable = training
-        self.load_meta(dir_name)
+        self.load_meta(dir)
         if weights is not None:
             self.model.load_weights(weights).expect_partial()
         logging.info("Loaded weight %s", weights)
 
-    def load_meta(self, dir_name):
-        meta = json.load((dir_name / "metadata.txt").open("r"))
+    def load_meta(self, dir):
+        meta = json.load(open(os.path.join(dir, "metadata.txt"), "r"))
         self.params = HyperParams()
         self.params.update(meta["hyperparams"])
         self.labels = meta["labels"]
@@ -400,8 +388,6 @@ class KerasModel(Interpreter):
         model_stats["mapped_labels"] = self.mapped_labels
         model_stats["label_probabilities"] = self.label_probabilities
         model_stats["type"] = self.type
-        model_stats["remapped_labels"] = self.remapped_labels
-        model_stats["excluded_labels"] = self.excluded_labels
         if self.remapped is not None:
             model_stats["remapped"] = self.remapped
         if self.class_weights is not None:
@@ -479,46 +465,7 @@ class KerasModel(Interpreter):
         logging.info(
             "%s Training model for %s epochs with weights %s", run_name, epochs, weights
         )
-        epochs = 5
-        # self.excluded_labels, self.remapped_labels = get_excluded(self.type)
-        train_files = os.path.join(self.data_dir, "train")
-        validate_files = os.path.join(self.data_dir, "validation")
-        logging.info(
-            "Excluding %s remapping %s", self.excluded_labels, self.remapped_labels
-        )
-        self.train, remapped, new_labels = get_dataset(
-            train_files,
-            self.type,
-            self.labels,
-            batch_size=self.params.batch_size,
-            image_size=self.params.output_dim[:2],
-            preprocess_fn=self.preprocess_fn,
-            resample=resample,
-            stop_on_empty_dataset=False,
-            include_features=self.params.mvm,
-            augment=True,
-            excluded_labels=self.excluded_labels,
-            remapped_labels=self.remapped_labels,
-            # dist=self.dataset_counts["train"],
-        )
-        self.remapped = remapped
-        self.validate, remapped, _ = get_dataset(
-            validate_files,
-            self.type,
-            self.labels,
-            batch_size=self.params.batch_size,
-            image_size=self.params.output_dim[:2],
-            preprocess_fn=self.preprocess_fn,
-            resample=resample,
-            stop_on_empty_dataset=False,
-            include_features=self.params.mvm,
-            excluded_labels=self.excluded_labels,
-            remapped_labels=self.remapped_labels,
-            # dist=self.dataset_counts["validation"],
-        )
 
-        orig_labels = self.labels.copy()
-        self.labels = new_labels
         os.makedirs(self.log_base, exist_ok=True)
         self.log_dir = os.path.join(self.log_base, run_name)
         os.makedirs(self.log_base, exist_ok=True)
@@ -533,10 +480,38 @@ class KerasModel(Interpreter):
         self.model.summary()
         if weights is not None:
             self.model.load_weights(weights)
+        train_files = os.path.join(self.data_dir, "train")
+        validate_files = os.path.join(self.data_dir, "validation")
+        self.train, remapped = get_dataset(
+            train_files,
+            self.type,
+            self.labels,
+            batch_size=self.params.batch_size,
+            image_size=self.params.output_dim[:2],
+            preprocess_fn=self.preprocess_fn,
+            resample=resample,
+            stop_on_empty_dataset=False,
+            include_features=self.params.mvm,
+            augment=True,
+            # dist=self.dataset_counts["train"],
+        )
+        self.remapped = remapped
+        self.validate, remapped = get_dataset(
+            validate_files,
+            self.type,
+            self.labels,
+            batch_size=self.params.batch_size,
+            image_size=self.params.output_dim[:2],
+            preprocess_fn=self.preprocess_fn,
+            resample=resample,
+            stop_on_empty_dataset=False,
+            include_features=self.params.mvm,
+            # dist=self.dataset_counts["validation"],
+        )
         if rebalance:
             self.class_weights = get_weighting(self.train, self.labels)
             logging.info(
-                "Training on %s  with class weights %s",
+                "%s  giving weights %s",
                 self.labels,
                 self.class_weights,
             )
@@ -563,10 +538,10 @@ class KerasModel(Interpreter):
         test_files = os.path.join(self.data_dir, "test")
 
         if len(test_files) > 0:
-            self.test, _, _ = get_dataset(
+            self.test, _ = get_dataset(
                 test_files,
                 self.type,
-                orig_labels,
+                self.labels,
                 batch_size=self.params.batch_size,
                 image_size=self.params.output_dim[:2],
                 preprocess_fn=self.preprocess_fn,
@@ -574,8 +549,6 @@ class KerasModel(Interpreter):
                 include_features=self.params.mvm,
                 reshuffle=False,
                 resample=False,
-                excluded_labels=self.excluded_labels,
-                remapped_labels=self.remapped_labels,
             )
             if self.test:
                 test_accuracy = self.model.evaluate(self.test)
@@ -1254,8 +1227,8 @@ def train_test_model(model, hparams, log_dir, writer, epochs):
 
 
 def grid_search(keras_model, epochs=1):
-    dir_name = keras_model.log_dir + "/hparam_tuning"
-    with tf.summary.create_file_writer(dir_name).as_default():
+    dir = keras_model.log_dir + "/hparam_tuning"
+    with tf.summary.create_file_writer(dir).as_default():
         hp.hparams_config(
             hparams=[
                 HP_MVM,
@@ -1331,7 +1304,7 @@ def grid_search(keras_model, epochs=1):
                                         print({h.name: hparams[h] for h in hparams})
                                         run(
                                             keras_model,
-                                            dir_name + "/" + run_name,
+                                            dir + "/" + run_name,
                                             hparams,
                                             epochs,
                                         )
@@ -1362,13 +1335,6 @@ class ClearMemory(Callback):
         tf.keras.backend.clear_session()
 
 
-def get_excluded(type):
-    if type == "thermal":
-        return thermaldataset.get_excluded(), thermaldataset.get_remapped()
-    else:
-        return irdataset.get_excluded(), irdataset.get_remapped()
-
-
 def get_dataset(
     pattern,
     type,
@@ -1376,9 +1342,16 @@ def get_dataset(
     **args,
 ):
     if type == "thermal":
-        return get_tf(thermaldataset.load_dataset, pattern, labels, **args)
-    else:
-        return irdataset.get_dataset(pattern, labels, **args)
+        if args.get("ds_by_label", False):
+            get_ds = get_thermal_dataset_by_label
+        else:
+            get_ds = get_thermal_dataset
+        return get_ds(
+            pattern,
+            labels,
+            **args,
+        )
+    return get_ir_dataset(pattern, labels, **args)
 
 
 class MetaJSONEncoder(json.JSONEncoder):
