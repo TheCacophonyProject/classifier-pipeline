@@ -124,7 +124,7 @@ def get_dataset(base_dir, labels, **args):
     batch_size = args.get("batch_size", None)
     if batch_size is not None:
         dataset = dataset.batch(batch_size)
-    return dataset, remapped, labels
+    return dataset, remapped
 
 
 def resample(dataset, labels):
