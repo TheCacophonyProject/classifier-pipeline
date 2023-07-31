@@ -15,7 +15,12 @@ import os
 import json
 import pickle
 from config.config import Config
-from ml_tools.kerasmodel import KerasModel, plot_confusion_matrix, get_dataset
+from ml_tools.kerasmodel import (
+    KerasModel,
+    plot_confusion_matrix,
+    get_dataset,
+    get_excluded,
+)
 from ml_tools import tools
 from ml_tools.trackdatabase import TrackDatabase
 import tensorflow as tf
@@ -110,7 +115,7 @@ def main():
         evaluate_db_clips(model, config, args.date, args.confusion)
         sys.exit(0)
     model.load_training_meta(base_dir)
-
+    excluded, remapped = get_excluded(model.type)
     files = base_dir + f"/training-data/{args.dataset}"
     dataset, _, new_labels = get_dataset(
         files,
@@ -125,6 +130,8 @@ def main():
         one_hot=True,
         deterministic=True,
         shuffle=False,
+        excluded_labels=excluded,
+        remapped_labels=remapped,
     )
     model.labels = new_labels
     logging.info(
