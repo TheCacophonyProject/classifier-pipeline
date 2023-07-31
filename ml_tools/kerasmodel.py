@@ -489,10 +489,30 @@ class KerasModel(Interpreter):
         logging.info(
             "Excluding %s remapping %s", self.excluded_labels, self.remapped_labels
         )
+
+        orig_labels = self.labels.copy()
+        for l in self.excluded_labels:
+            if l in self.labels:
+                self.labels.remove(l)
+        for l in self.remapped_labels.keys():
+            if l in self.labels:
+                self.labels.remove(l)
+        os.makedirs(self.log_base, exist_ok=True)
+        self.log_dir = os.path.join(self.log_base, run_name)
+        os.makedirs(self.log_base, exist_ok=True)
+
+        if not self.model:
+            self.build_model(
+                dense_sizes=self.params.dense_sizes,
+                retrain_from=self.params.retrain_layer,
+                dropout=self.params.dropout,
+                run_name=run_name,
+            )
+        self.model.summary()
         self.train, remapped, new_labels = get_dataset(
             train_files,
             self.type,
-            self.labels,
+            orig_labels,
             batch_size=self.params.batch_size,
             image_size=self.params.output_dim[:2],
             preprocess_fn=self.preprocess_fn,
@@ -508,7 +528,7 @@ class KerasModel(Interpreter):
         self.validate, remapped, _ = get_dataset(
             validate_files,
             self.type,
-            self.labels,
+            orig_labels,
             batch_size=self.params.batch_size,
             image_size=self.params.output_dim[:2],
             preprocess_fn=self.preprocess_fn,
@@ -520,20 +540,6 @@ class KerasModel(Interpreter):
             # dist=self.dataset_counts["validation"],
         )
 
-        orig_labels = self.labels.copy()
-        self.labels = new_labels
-        os.makedirs(self.log_base, exist_ok=True)
-        self.log_dir = os.path.join(self.log_base, run_name)
-        os.makedirs(self.log_base, exist_ok=True)
-
-        if not self.model:
-            self.build_model(
-                dense_sizes=self.params.dense_sizes,
-                retrain_from=self.params.retrain_layer,
-                dropout=self.params.dropout,
-                run_name=run_name,
-            )
-        self.model.summary()
         if weights is not None:
             self.model.load_weights(weights)
         if rebalance:
