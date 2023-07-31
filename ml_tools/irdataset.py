@@ -137,7 +137,7 @@ def main():
     labels = meta.get("labels", [])
     datasets = []
     # weights = [0.5] * len(labels)
-    resampled_ds, remapped, _ = get_dataset(
+    resampled_ds, remapped, labels = get_dataset(
         load_dataset,
         f"{config.tracks_folder}/training-data/test",
         labels,
@@ -153,13 +153,23 @@ def main():
     with open(file, "w") as f:
         json.dump(meta, f)
     from collections import Counter
+    import cv2
 
-    for e in range(4):
-        # for x, y in resampled_ds:
+    i = 0
+    for e in range(1):
+        for batch_x, batch_y in resampled_ds:
+            for x, y in zip(batch_x, batch_y):
+                lbl = np.argmax(y)
+                lbl = labels[lbl]
+                print("X is", x.shape, lbl)
+                cv2.imwrite(f"./images/{lbl}-{i}.png", x.numpy())
+                # 1 / 0
+                i += 1
         # for x_2 in x:
         #     print("max is", np.amax(x_2), x_2.shape)
         #     assert np.amax(x_2) == 255
         # show_batch(x, y, labels)
+        return
         print("epoch", e)
         true_categories = tf.concat([y for x, y in resampled_ds], axis=0)
         true_categories = np.int64(tf.argmax(true_categories, axis=1))
