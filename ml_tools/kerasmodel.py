@@ -465,6 +465,19 @@ class KerasModel(Interpreter):
         logging.info(
             "%s Training model for %s epochs with weights %s", run_name, epochs, weights
         )
+
+        os.makedirs(self.log_base, exist_ok=True)
+        self.log_dir = os.path.join(self.log_base, run_name)
+        os.makedirs(self.log_base, exist_ok=True)
+
+        if not self.model:
+            self.build_model(
+                dense_sizes=self.params.dense_sizes,
+                retrain_from=self.params.retrain_layer,
+                dropout=self.params.dropout,
+                run_name=run_name,
+            )
+        self.model.summary()
         # self.excluded_labels, self.remapped_labels = get_excluded(self.type)
         train_files = os.path.join(self.data_dir, "train")
         validate_files = os.path.join(self.data_dir, "validation")
@@ -504,18 +517,7 @@ class KerasModel(Interpreter):
 
         orig_labels = self.labels.copy()
         # self.labels = new_labels
-        os.makedirs(self.log_base, exist_ok=True)
-        self.log_dir = os.path.join(self.log_base, run_name)
-        os.makedirs(self.log_base, exist_ok=True)
 
-        if not self.model:
-            self.build_model(
-                dense_sizes=self.params.dense_sizes,
-                retrain_from=self.params.retrain_layer,
-                dropout=self.params.dropout,
-                run_name=run_name,
-            )
-        self.model.summary()
         if weights is not None:
             self.model.load_weights(weights)
         if rebalance:
