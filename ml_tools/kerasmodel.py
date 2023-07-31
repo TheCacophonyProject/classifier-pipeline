@@ -32,10 +32,6 @@ from ml_tools import thermaldataset
 # )
 from ml_tools import irdataset
 from ml_tools.tfdataset import get_weighting, get_distribution, get_dataset as get_tf
-import tensorflow_decision_forests as tfdf
-from ml_tools import forestmodel
-
-import tensorflow_decision_forests as tfdf
 from ml_tools import forestmodel
 
 
@@ -483,7 +479,8 @@ class KerasModel(Interpreter):
         logging.info(
             "%s Training model for %s epochs with weights %s", run_name, epochs, weights
         )
-        self.excluded_labels, self.remapped_labels = get_excluded(self.type)
+        epochs = 5
+        # self.excluded_labels, self.remapped_labels = get_excluded(self.type)
         train_files = os.path.join(self.data_dir, "train")
         validate_files = os.path.join(self.data_dir, "validation")
         logging.info(
@@ -1381,7 +1378,7 @@ def get_dataset(
     if type == "thermal":
         return get_tf(thermaldataset.load_dataset, pattern, labels, **args)
     else:
-        return get_tf(irdataset.load_dataset, pattern, labels, **args)
+        return irdataset.get_dataset(pattern, labels, **args)
 
 
 class MetaJSONEncoder(json.JSONEncoder):

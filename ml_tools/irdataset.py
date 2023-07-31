@@ -9,24 +9,15 @@ import logging
 from config.config import Config
 import json
 
-import sys
-from ml_tools.logs import init_logging
-
+seed = 1341
+tf.random.set_seed(seed)
+np.random.seed(seed)
 AUTOTUNE = tf.data.AUTOTUNE
 # IMAGE_SIZE = [256, 256]
 # BATCH_SIZE = 64
 
 
-def get_excluded():
-    return ["human"]
-
-
-def get_remapped():
-    return {"insect": "false-positive", "cat": "possum"}
-    # return ["insect", "cat"]
-
-
-def load_dataset(filenames, remap_lookup, num_labels, args):
+def load_dataset(filenames, num_labels, args):
     deterministic = args.get("deterministic", False)
 
     ignore_order = tf.data.Options()
@@ -46,8 +37,7 @@ def load_dataset(filenames, remap_lookup, num_labels, args):
     dataset = dataset.apply(tf.data.experimental.ignore_errors())
     dataset = dataset.map(
         partial(
-            read_irrecord,
-            remap_lookup=remap_lookup,
+            read_tfrecord,
             num_labels=num_labels,
             image_size=image_size,
             labeled=labeled,
@@ -58,21 +48,144 @@ def load_dataset(filenames, remap_lookup, num_labels, args):
         num_parallel_calls=AUTOTUNE,
         deterministic=deterministic,
     )
-
-    filter_excluded = lambda x, y: not tf.math.equal(tf.math.count_nonzero(y), 0)
-    dataset = dataset.filter(filter_excluded)
     return dataset
 
 
-def read_irrecord(
-    example,
-    image_size,
-    remap_lookup,
-    num_labels,
-    labeled,
-    augment,
-    preprocess_fn=None,
-    one_hot=True,
+def get_distribution(dataset):
+    true_categories = tf.concat([y for x, y in dataset], axis=0)
+    num_labels = len(true_categories[0])
+    if len(true_categories) == 0:
+        return None
+    true_categories = np.int64(tf.argmax(true_categories, axis=1))
+    c = Counter(list(true_categories))
+    dist = np.empty((num_labels), dtype=np.float32)
+    for i in range(num_labels):
+        dist[i] = c[i]
+    return dist
+
+
+def get_dataset(base_dir, labels, **args):
+    num_labels = len(labels)
+    global remapped_y
+    remapped = {}
+    keys = []
+    values = []
+    for l in labels:
+        remapped[l] = [l]
+        keys.append(labels.index(l))
+        values.append(labels.index(l))
+    if "false-positive" in labels and "insect" in labels:
+        remapped["false-positive"].append("insect")
+        values[labels.index("insect")] = labels.index("false-positive")
+        del remapped["insect"]
+
+    if "possum" in labels and "cat" in labels:
+        remapped["possum"].append("cat")
+        values[labels.index("cat")] = labels.index("possum")
+
+        del remapped["cat"]
+    remapped_y = tf.lookup.StaticHashTable(
+        initializer=tf.lookup.KeyValueTensorInitializer(
+            keys=tf.constant(keys),
+            values=tf.constant(values),
+        ),
+        default_value=tf.constant(-1),
+        name="remapped_y",
+    )
+    filenames = tf.io.gfile.glob(f"{base_dir}/*.tfrecord")
+    dataset = load_dataset(filenames, num_labels, args)
+    if dataset is None:
+        logging.warn("No dataset for %s", filenames)
+        return None, None
+    resample_data = args.get("resample", True)
+    if resample_data:
+        logging.info("Resampling data")
+        dataset = resample(dataset, labels)
+    if dataset is None:
+        logging.warn("No dataset for %s", filenames)
+        return None, None
+    if not args.get("only_features"):
+        logging.info("shuffling data")
+        dataset = dataset.shuffle(
+            4096, reshuffle_each_iteration=args.get("reshuffle", True)
+        )
+    # tf refues to run if epoch sizes change so we must decide a costant epoch size even though with reject res
+    # it will chang eeach epoch, to ensure this take this repeat data and always take epoch_size elements
+    epoch_size = len([0 for x, y in dataset])
+    logging.info("Setting dataset size to %s", epoch_size)
+    dataset = dataset.take(epoch_size // 10)
+    if not args.get("only_features", False):
+        dataset = dataset.repeat(2)
+    scale_epoch = args.get("scale_epoch", None)
+    if scale_epoch:
+        epoch_size = epoch_size // scale_epoch
+    dataset = dataset.take(epoch_size)
+    dataset = dataset.prefetch(buffer_size=AUTOTUNE)
+    batch_size = args.get("batch_size", None)
+    if batch_size is not None:
+        dataset = dataset.batch(batch_size)
+    return dataset, remapped, labels
+
+
+def resample(dataset, labels):
+    excluded_labels = ["sheep"]
+    num_labels = len(labels)
+    true_categories = [y for x, y in dataset]
+    if len(true_categories) == 0:
+        logging.warn("No data found")
+        return None
+    true_categories = np.int64(tf.argmax(true_categories, axis=1))
+    c = Counter(list(true_categories))
+    dist = np.empty((num_labels), dtype=np.float32)
+    target_dist = np.empty((num_labels), dtype=np.float32)
+    for i in range(num_labels):
+        if labels[i] in excluded_labels:
+            logging.info("Excluding %s for %s", c[i], labels[i])
+            dist[i] = 0
+        else:
+            dist[i] = c[i]
+            logging.info("Have %s for %s", dist[i], labels[i])
+    zeros = dist[dist == 0]
+    non_zero_labels = num_labels - len(zeros)
+    target_dist[:] = 1 / non_zero_labels
+
+    dist = dist / np.sum(dist)
+    dist_max = np.max(dist)
+    # really this is what we want but when the values become too small they never get sampled
+    # so need to try reduce the large gaps in distribution
+    # can use class weights to adjust more, or just throw out some samples
+    max_range = target_dist[0] / 2
+    for i in range(num_labels):
+        if dist[i] == 0:
+            target_dist[i] = 0
+        elif dist_max - dist[i] > (max_range * 2):
+            target_dist[i] = dist[i]
+
+        target_dist[i] = max(0, target_dist[i])
+    target_dist = target_dist / np.sum(target_dist)
+
+    rej = dataset.rejection_resample(
+        class_func=class_func,
+        target_dist=target_dist,
+    )
+    dataset = rej.map(lambda extra_label, features_and_label: features_and_label)
+    return dataset
+
+
+def class_func(features, label):
+    label = tf.argmax(label)
+    return label
+
+
+#
+def preprocess(data):
+    x = tf.stack(fields[:-1])
+    y = tf.stack(fields[-1:])
+    return tf.keras.applications.inception_v3.preprocess_input(x), y
+
+
+def read_tfrecord(
+    example, image_size, num_labels, labeled, augment, preprocess_fn=None, one_hot=True
 ):
     tfrecord_format = {
         "image/augmented": tf.io.FixedLenFeature((), tf.int64, 0),
@@ -108,7 +221,8 @@ def read_irrecord(
 
     if labeled:
         label = tf.cast(example["image/class/label"], tf.int32)
-        label = remap_lookup.lookup(label)
+        global remapped_y
+        label = remapped_y.lookup(label)
         if one_hot:
             label = tf.one_hot(label, num_labels)
         return image, label
@@ -124,11 +238,15 @@ def decode_image(image, filtered, image_size, augment):
     return image
 
 
+def class_func(features, label):
+    label = tf.argmax(label)
+    return label
+
+
+from collections import Counter
+
+
 def main():
-    init_logging()
-
-    from .tfdataset import get_dataset
-
     config = Config.load_from_file()
 
     file = f"{config.tracks_folder}/training-meta.json"
@@ -137,39 +255,23 @@ def main():
     labels = meta.get("labels", [])
     datasets = []
     # weights = [0.5] * len(labels)
-    resampled_ds, remapped, labels = get_dataset(
-        load_dataset,
+    resampled_ds, remapped = get_dataset(
         f"{config.tracks_folder}/training-data/test",
         labels,
         batch_size=1,
         image_size=(160, 160),
         augment=False,
-        excluded_labels=get_excluded(),
-        remapped_labels=get_remapped(),
-        deterministic=True,
-        shuffle=False,
     )
     meta["remapped"] = remapped
     with open(file, "w") as f:
         json.dump(meta, f)
-    from collections import Counter
-    import cv2
 
-    i = 0
-    for e in range(1):
-        for batch_x, batch_y in resampled_ds:
-            for x, y in zip(batch_x, batch_y):
-                lbl = np.argmax(y)
-                lbl = labels[lbl]
-                print("X is", x.shape, lbl)
-                cv2.imwrite(f"./images/{lbl}-{i}.png", x.numpy())
-                # 1 / 0
-                i += 1
+    for e in range(4):
+        # for x, y in resampled_ds:
         # for x_2 in x:
         #     print("max is", np.amax(x_2), x_2.shape)
         #     assert np.amax(x_2) == 255
         # show_batch(x, y, labels)
-        return
         print("epoch", e)
         true_categories = tf.concat([y for x, y in resampled_ds], axis=0)
         true_categories = np.int64(tf.argmax(true_categories, axis=1))
