@@ -7,6 +7,7 @@ Date December 2020
 Some tools to evaluate a model
 
 """
+import cv2
 import argparse
 import logging
 import pickle
@@ -32,6 +33,7 @@ from sklearn.metrics import confusion_matrix
 import matplotlib.pyplot as plt
 import numpy as np
 from pathlib import Path
+from ml_tools.preprocess import preprocess_ir
 
 crop_rectangle = tools.Rectangle(0, 0, 160, 120)
 PROB_THRESHOLD = 0.8
@@ -91,9 +93,10 @@ def main():
     args = load_args()
     init_logging()
     config = Config.load_from_file(args.config_file)
-
+    weights = None
     if args.model_file:
         model_file = Path(args.model_file)
+    if args.weights:
         weights = model_file / args.weights
 
     base_dir = config.tracks_folder
@@ -150,6 +153,7 @@ def main():
 
 
 def evaluate_db_clips(model, config, after_date, confusion_file="tracks-confusion"):
+    type = model.type
     if confusion_file is None:
         confusion_file = "tracks-confusion"
     db_file = os.path.join(config.tracks_folder, "dataset.hdf5")
@@ -176,25 +180,54 @@ def evaluate_db_clips(model, config, after_date, confusion_file="tracks-confusio
         s = samples[0]
         background = dataset.db.get_clip_background(s.clip_id)
         track_data = dataset.db.get_track(s.clip_id, s.track_id, channels=[0])
-        for f in track_data:
-            sub_back = f.region.subimage(background)
-            f.filtered = f.thermal - sub_back
-            f.resize_with_aspect(
-                (model.params.frame_size, model.params.frame_size),
-                crop_rectangle,
-                True,
+        if type == "IR":
+            for frame in track_data:
+                preprocessed = preprocess_ir(
+                    frame.copy(),
+                    (
+                        model.params.frame_size,
+                        model.params.frame_size,
+                    ),
+                    False,
+                    frame.region,
+                    model.preprocess_fn,
+                    save_info=f"{frame.region.frame_number} - {frame.region}",
+                )
+                predictions = model.model.predict(preprocessed[np.newaxis, :])
+                best_res = np.argmax(predictions[0])
+                prediction = model.labels[best_res]
+                if prediction != s.label:
+                    if prediction == "false-positive":
+                        out_dir = "animal-fp"
+                    else:
+                        out_dir = "diff-animal"
+
+                    cv2.imwrite(
+                        f"{out_dir}/{s.clip_id}-{s.track_id}-{frame.frame_number}-{s.label}-pred-{prediction}.png",
+                        frame.thermal,
+                    )
+                # 1 / 0
+
+        else:
+            for f in track_data:
+                sub_back = f.region.subimage(background)
+                f.filtered = f.thermal - sub_back
+                f.resize_with_aspect(
+                    (model.params.frame_size, model.params.frame_size),
+                    crop_rectangle,
+                    True,
+                )
+            logging.debug(
+                f"Evaluating {s.clip_id}-{s.track_id} as {s.label} with {len(samples)} samples"
             )
-        logging.debug(
-            f"Evaluating {s.clip_id}-{s.track_id} as {s.label} with {len(samples)} samples"
-        )
-        for s in samples:
-            # make relative
-            s.frame_numbers = s.frame_numbers - s.start_frame
-        prediction = model.classify_track_data(s.track_id, track_data, samples)
-        logging.debug(prediction.description())
-        actual.append(s.label)
-        predicted.append(prediction.predicted_tag())
-        probs.append(prediction.max_score)
+            for s in samples:
+                # make relative
+                s.frame_numbers = s.frame_numbers - s.start_frame
+            prediction = model.classify_track_data(s.track_id, track_data, samples)
+            logging.debug(prediction.description())
+            actual.append(s.label)
+            predicted.append(prediction.predicted_tag())
+            probs.append(prediction.max_score)
     actual = np.array(actual)
     predicted = np.array(predicted)
     probs = np.array(probs)

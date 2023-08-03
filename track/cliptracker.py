@@ -531,18 +531,22 @@ class Background(ABC):
 
 
 class CVBackground(Background):
-    def __init__(self, use_subsense=False):
+    def __init__(self, tracking_alg="mog2"):
         super().__init__()
-        self.use_subsense = use_subsense
+        self.use_subsense = False
         # knn doesnt respect learning rate, but maybe mog2 is better anyway
-        if use_subsense:
+        if tracking_alg == "subsense":
             import pybgs as bgs
 
+            self.use_subsense = True
+
             self.algorithm = bgs.SuBSENSE()
-        else:
+        elif tracking_alg == "mog2":
             self.algorithm = cv2.createBackgroundSubtractorMOG2(
                 history=1000, detectShadows=False
             )
+        else:
+            raise Exception(f"No algorihtm details found for {tracking_alg}")
             # print(self.algorithm.getBackgroundRatio(), "RATION")
             # 1 / 0
         # self.algorithm = cv2.createBackgroundSubtractorKNN(

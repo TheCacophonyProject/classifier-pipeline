@@ -221,6 +221,7 @@ class ClipLoader:
                 self.config.load.cache_to_disk,
                 verbose=self.config.verbose,
                 do_tracking=True,
+                tracking_alg="subsense",
             )
         return track_extractor
 

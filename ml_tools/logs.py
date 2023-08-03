@@ -7,7 +7,10 @@ def init_logging(timestamps=False):
 
     Logs will go to stderr.
     """
-
+    root_logger = logging.getLogger()
+    for handler in root_logger.handlers:
+        if isinstance(handler, logging.StreamHandler) and handler.stream == sys.stderr:
+            root_logger.removeHandler(handler)
     fmt = "%(process)d %(thread)s:%(levelname)7s %(message)s"
     if timestamps:
         fmt = "%(asctime)s " + fmt

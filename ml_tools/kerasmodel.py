@@ -38,6 +38,8 @@ from ml_tools import forestmodel
 import tensorflow_decision_forests as tfdf
 from ml_tools import forestmodel
 
+classify_i = 0
+
 
 class KerasModel(Interpreter):
     """Defines a deep learning model"""
@@ -808,7 +810,7 @@ class KerasModel(Interpreter):
                         clip.get_id(), track.get_id(), region.frame_number
                     )
                 )
-            logging.info(
+            logging.debug(
                 "classifying ir with preprocess %s size %s crop? %s f shape %s region %s",
                 self.preprocess_fn.__module__,
                 self.params.frame_size,
@@ -827,7 +829,7 @@ class KerasModel(Interpreter):
                 self.preprocess_fn,
                 save_info=f"{region.frame_number} - {region}",
             )
-            logging.info(
+            logging.debug(
                 "preprocessed is %s max %s min %s",
                 preprocessed.shape,
                 np.amax(preprocessed),
@@ -836,13 +838,14 @@ class KerasModel(Interpreter):
             frames_used.append(region.frame_number)
             data.append(preprocessed)
         data = np.float32(data)
-
+        global classify_i
         # GP TEST STUFF PLEASE DELETE ME LATER
         for f in data:
             image = f.copy()
             image = (image + 1) * 127.5
+
             image = np.uint8(image)
-            image = cv2.resize(image, (600, 600))
+            # image = cv2.resize(image, (600, 600))
             out = self.model.predict(np.expand_dims(f, axis=0))
             best_res = np.argmax(out[0])
             prediction = self.labels[best_res]
@@ -854,10 +857,11 @@ class KerasModel(Interpreter):
                 1,
                 (255, 0, 0),
             )
-
-            cv2.imshow("f", image)
-            cv2.moveWindow("f", 0, 0)
-            cv2.waitKey()
+            print("Clasify i is", classify_i)
+            cv2.imwrite(f"f-{classify_i}.png", image)
+            classify_i += 1
+            # cv2.moveWindow("f", 0, 0)
+        # cv2.waitKey()
         # GP TEST STUFF PLEASE DELETE ME LATER
 
         output = self.model.predict(data)

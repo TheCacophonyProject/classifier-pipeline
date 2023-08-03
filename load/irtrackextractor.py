@@ -139,6 +139,7 @@ class IRTrackExtractor(ClipTracker):
         on_trapped=None,
         update_background=True,
         trap_size="L",
+        tracking_alg="mog2",
     ):
         super().__init__(
             config,
@@ -149,6 +150,7 @@ class IRTrackExtractor(ClipTracker):
             do_tracking=do_tracking,
             scale=scale,
         )
+        self.tracking_alg = tracking_alg
         self.on_trapped = on_trapped
         self.saliency = None
         self.background = None
@@ -245,7 +247,7 @@ class IRTrackExtractor(ClipTracker):
         clip.set_model("IR")
         clip.set_video_stats(datetime.now())
         if background_alg is None:
-            self.background = CVBackground(use_subsense=False)
+            self.background = CVBackground(self.tracking_alg)
             # self.diff_background = DiffBackground(clip.background_thresh)
             if background_frame is not None:
                 # if self.scale:
@@ -391,7 +393,17 @@ class IRTrackExtractor(ClipTracker):
         :param thermal: A numpy array of shape (height, width) and type uint16
             If specified background subtraction algorithm will be used.
         """
-
+        if clip.from_metadata:
+            has_track = False
+            for track in clip.tracks:
+                if clip.current_frame in track.frame_list:
+                    has_track = True
+                    break
+            if has_track:
+                self.learning_rate = 0
+            else:
+                self.learning_rate = -1
+            # = not has_track
         start = time.time()
         saliencyMap = None
         filtered = None
@@ -424,6 +436,7 @@ class IRTrackExtractor(ClipTracker):
                 # self.background.detect_motion()
 
             filtered = self.background.compute_filtered(frame)
+
             clip.set_background(self.background.background)
         start = time.time()
 
@@ -449,17 +462,19 @@ class IRTrackExtractor(ClipTracker):
                 (int(self.res_x * self.scale), int(self.res_y * self.scale)),
                 interpolation=cv2.INTER_AREA,
             )
-        # self.debug_tracking(frame, filtered)
         num, mask, component_details = detect_objects_ir(re_f, threshold=0)
         component_details = component_details[1:]
         component_details = self.merge_components(component_details)
+
         if clip.from_metadata:
             for track in clip.tracks:
                 if clip.current_frame in track.frame_list:
                     track.add_frame_for_existing_region(
                         cur_frame,
                         threshold,
-                        clip.frame_buffer.current_frame.filtered,
+                        clip.frame_buffer.prev_frame.filtered
+                        if clip.frame_buffer.prev_frame is not None
+                        else None,
                     )
         else:
             regions = []
@@ -486,13 +501,58 @@ class IRTrackExtractor(ClipTracker):
                 if len(clip.tracks) > 0:
                     self.show_trap_info(clip, frame)
 
-    def debug_tracking(self, frame, filtered):
-        cv2.imshow("gray", frame)
+    def debug_tracking(self, frame, filtered, mask, components):
+        image = frame.copy()
+        for c in components:
+            x = c[0]
+            y = c[1]
+            w = c[2]
+            h = c[3]
+            cv2.rectangle(image, (x, y), (x + w, y + h), (0, 255, 0), 3)
+            cv2.putText(
+                image,
+                f"mass-{c[4]}",
+                (x + 10, y + 10),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                1,
+                255,
+            )
+
+        # sub = frame.copy()
+        # s
+        # print(filtered != 0)
+        # sub[mask == 0] = 0
+        # a_max = np.amax(sub)
+        # a_min = np.amin(sub)
+        # print("min here", a_min, a_max, " vs ", np.amin(frame), np.amax(frame))
+        # sub = frame.copy()
+        # sub[sub < a_min] = 0
+        # sub[sub > a_max] = 0
+        # sub = sub - a_min
+        # sub = sub / a_max
+        # sub = sub - a_min
+        # sub = frame[filtered[filtered != 0]]
+        sub = np.float64(frame) - self.background.background
+        a_m = np.amin(sub)
+        # sub[sub < 0] = 0
+        # print("A is", sub[0], a_m)
+        # sub = sub - a_m
+
+        # print("B is", sub[0], np.amin(sub))
+        # sub[sub > 255] = 255
+        sub, _ = normalize(sub, min=a_m, max=255)
+        sub = np.uint8(sub * 255)
+        sub[sub > np.median(sub)] = 255
+        cv2.imshow("gray", image)
         cv2.imshow("f", filtered)
         cv2.imshow("b", self.background.background)
+        cv2.imshow("sub", sub)
+
         cv2.moveWindow("gray", 0, 0)
         cv2.moveWindow("f", 640, 0)
+        cv2.moveWindow("sub", 0, 480)
         cv2.waitKey()
+        # 1 / 0
 
     def show_trap_info(self, clip, frame):
         image = frame.copy()

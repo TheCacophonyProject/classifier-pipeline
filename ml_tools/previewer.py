@@ -481,6 +481,8 @@ def add_track(
     scale=1,
     debug=False,
 ):
+    if region.width == 0 or region.height == 0:
+        return
     draw.rectangle(rect_points(region, v_offset, scale=scale), outline=colour)
     if track_prediction:
         add_class_results(
@@ -511,7 +513,7 @@ def add_track(
         )
 
 
-def get_font(font_size=12):
+def get_font(font_size=20):
     """gets default font."""
     if not globs._previewer_font:
         globs._previewer_font = ImageFont.truetype(
