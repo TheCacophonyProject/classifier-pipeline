@@ -226,6 +226,7 @@ class Dataset:
                 filtered += 1
                 continue
             track_header = TrackHeader.from_meta(clip_id, clip_meta, track_meta)
+            self.tracks.append(track_header)
             if self.use_segments:
                 segment_frame_spacing = int(
                     round(self.segment_spacing * track_header.frames_per_second)
@@ -294,27 +295,6 @@ class Dataset:
         bins = self.samples_by_bin.setdefault(sample.bin_id, [])
         bins.append(sample)
         self.camera_names.add(sample.camera)
-        return True
-
-    def add_tracks(self, tracks):
-        """
-        Adds list of tracks to dataset
-        :param tracks: list of TrackHeader
-        :param track_filter: optional filter
-        """
-        result = 0
-        for track in tracks:
-            if self.add_track_header(track):
-                result += 1
-        return result
-
-    def add_track_header(self, track_header):
-        if track_header.unique_id in self.tracks_by_id:
-            return False
-
-        self.tracks.append(track_header)
-        self.add_track_to_mappings(track_header)
-        self.segments.extend(track_header.segments)
         return True
 
     def filter_track(self, clip_meta, track_meta):

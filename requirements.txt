@@ -28,3 +28,5 @@ PyGObject~=3.34.0
 multiprocess
 pathos
 joblib
+#requires sudo apt-get install libopencv-dev used for ir track extraction on server
+pybgs==3.2.0.post1

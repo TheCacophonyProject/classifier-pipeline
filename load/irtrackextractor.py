@@ -465,7 +465,7 @@ class IRTrackExtractor(ClipTracker):
         num, mask, component_details = detect_objects_ir(re_f, threshold=0)
         component_details = component_details[1:]
         component_details = self.merge_components(component_details)
-
+        # self.debug_tracking(frame, filtered, mask, component_details)
         if clip.from_metadata:
             for track in clip.tracks:
                 if clip.current_frame in track.frame_list:

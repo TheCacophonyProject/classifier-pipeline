@@ -122,21 +122,44 @@ class ClipLoader:
             )
             original_thermal = []
             cropped_data = []
-            for region in track.bounds_history:
+            prev_frame = 0
+            for i, region in enumerate(track.bounds_history):
                 frame = clip.frame_buffer.get_frame(region.frame_number)
+                if frame is None:
+                    prev_end = track.end_s
+                    track.end_s = (
+                        min(prev_frame, len(clip.frame_buffer.frames))
+                        / clip.frames_per_second
+                    )
+
+                    track.bounds_history = track.bounds_history[:i]
+                    logging.warn(
+                        "Could not get frame %s from %s track %s adjusting end_s from %s to %s",
+                        region.frame_number,
+                        clip.source_file,
+                        track.get_id(),
+                        prev_end,
+                        track.end_s,
+                    )
+                    break
                 original_thermal.append(frame.thermal)
                 cropped = frame.crop_by_region(region)
                 # zero out the filtered channel
                 if not self.config.load.include_filtered_channel:
                     cropped.filtered = np.zeros(cropped.thermal.shape)
                 cropped_data.append(cropped)
-
+                prev_frame = region.frame_number
             # sample_frames = get_sample_frames(
             #     clip.ffc_frames,
             #     [bounds.mass for bounds in track.bounds_history],
             #     self.config.build.segment_min_avg_mass,
             #     cropped_data,
             # )
+            if track.start_s <= track.end_s:
+                logging.warnm(
+                    "No data for %s track %s ", clip.source_file, track.get_id()
+                )
+                return
             try:
                 self.database.add_track(
                     clip.get_id(),
