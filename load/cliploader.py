@@ -156,7 +156,7 @@ class ClipLoader:
             #     cropped_data,
             # )
             if track.start_s <= track.end_s:
-                logging.warnm(
+                logging.warn(
                     "No data for %s track %s ", clip.source_file, track.get_id()
                 )
                 return
