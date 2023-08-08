@@ -155,7 +155,7 @@ class ClipLoader:
             #     self.config.build.segment_min_avg_mass,
             #     cropped_data,
             # )
-            if track.start_s <= track.end_s:
+            if track.start_s >= track.end_s:
                 logging.warn(
                     "No data for %s track %s ", clip.source_file, track.get_id()
                 )
