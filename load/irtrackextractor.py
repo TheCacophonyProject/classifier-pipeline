@@ -386,7 +386,7 @@ class IRTrackExtractor(ClipTracker):
         rectangles = [rect[1] for rect in rectangles]
         return rectangles
 
-    def _process_frame(self, clip, frame, ffc_affected=False):
+    def _process_frame(self, clip, thermal, ffc_affected=False):
         wait = 1
         """
         Tracks objects through frame

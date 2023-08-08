@@ -22,7 +22,7 @@ def str2bool(v):
         raise argparse.ArgumentTypeError("Boolean value expected.")
 
 
-def main():
+def main(cmd_args=None):
     logging.root.removeHandler(absl.logging._absl_handler)
     absl.logging._warn_preinit_stderr = False
     parser = argparse.ArgumentParser()
@@ -67,7 +67,10 @@ def main():
         default=None,
         help="Dont keep video frames in memory for classification later, but cache them to disk (Best for large videos, but slower)",
     )
-    args = parser.parse_args()
+    if cmd_args is None:
+        args = parser.parse_args()
+    else:
+        args = parser.parse_args(cmd_args)
     config = Config.load_from_file(args.config_file)
     config.validate()
     init_logging(args.timestamps)

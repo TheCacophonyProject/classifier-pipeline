@@ -3,6 +3,8 @@ import os
 import numpy as np
 
 import shutil
+import tensorflow_decision_forests as tfdf
+
 import tensorflow as tf
 from config.config import Config
 import pickle
@@ -32,7 +34,8 @@ def convert_model(args):
     if model_dir.is_file():
         model_dir = model_dir.parent
     lite_dir = model_dir / "tflite"
-    model = tf.keras.models.load_model(args.model)
+
+    model = tf.keras.models.load_model(str(model_dir))
     model.trainable = False
 
     if args.weights:
@@ -72,7 +75,8 @@ def load_model(args):
     if model_dir.is_file():
         model_dir = model_dir.parent
     lite_dir = model_dir / "tflite"
-    model = tf.keras.models.load_model(args.model)
+    print("loading", model_dir)
+    model = tf.keras.models.load_model(str(model_dir))
     model.trainable = False
     if args.weights:
         print("using weights ", args.weights)

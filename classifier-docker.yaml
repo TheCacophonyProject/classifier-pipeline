@@ -1,0 +1,7 @@
+classify:
+  meta_to_stdout: True
+  models:
+    - id: 1
+      name : "Inc3 RF"
+      model_file: "/etc/cacophony/models/inc3/saved_model.pb"
+      thumbnail_model: True
