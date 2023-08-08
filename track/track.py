@@ -504,8 +504,8 @@ class Track:
         self,
         track_meta,
         frames_per_second,
-        tag_precedence,
-        min_confidence,
+        tag_precedence=None,
+        min_confidence=0.8,
     ):
         self.from_metadata = True
         self._id = track_meta["id"]
@@ -808,19 +808,20 @@ class Track:
         filter_mass = 0.005 * median_mass
         filter_mass = max(filter_mass, 2)
         start = 0
-        logging.debug(
+        logging.info(
             "Triming track with median % and filter mass %s", median_mass, filter_mass
         )
         while start < len(self) and mass_history[start] <= filter_mass:
             start += 1
+            logging.info("Start is %s", start)
         end = len(self) - 1
-        blanks = self.frames_since_target_seen
+
         while end > 0 and mass_history[end] <= filter_mass:
-            if blanks > 0:
-                blanks -= 1
+            logging.info("Masss is less than %s %s", filter_mass, mass_history[end])
+            if self.tracker and self.frames_since_target_seen > 0:
+                self.frames_since_target_seen -= 1
                 self.tracker._blank_frames -= 1
             end -= 1
-        self.tracker._frames_since_target_seen = 0
         if end < start:
             self.start_frame = 0
             self.bounds_history = []
@@ -967,7 +968,11 @@ class Track:
             return None
 
         tag = None
-        default_prec = tag_precedence.get("default", 100)
+        if tag_precedence is None:
+            default_prec = 100
+            tag_precedence = {}
+        else:
+            default_prec = tag_precedence.get("default", 100)
         best = None
         for track_tag in track_tags:
             ranking = cls.tag_ranking(track_tag, tag_precedence, default_prec)

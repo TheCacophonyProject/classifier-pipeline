@@ -335,7 +335,7 @@ class Clip:
             video_start_time.astimezone(Clip.local_tz).time().hour >= 2
         )
 
-    def load_metadata(self, metadata, tag_precedence):
+    def load_metadata(self, metadata, tag_precedence=None):
         self._id = metadata.get("id", 0)
         device_meta = metadata.get("Device")
         self.tags = metadata.get("Tags")
