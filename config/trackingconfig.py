@@ -27,7 +27,6 @@ from track.track import RegionTracker
 
 @attr.s
 class TrackingConfig(DefaultConfig):
-
     tracker = attr.ib()
     params = attr.ib()
     type = attr.ib()

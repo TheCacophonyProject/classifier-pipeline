@@ -65,7 +65,6 @@ def parse_params():
 
 
 def load_clips(config, args):
-
     loader = ClipLoader(config, args.reprocess)
     target = args.target
     if target is None:
@@ -96,7 +95,6 @@ def main():
 
 
 if __name__ == "__main__":
-
     # opencv sometimes uses too many threads which can reduce performance.  We are running a worker pool which makes
     # better use of multiple cores, so best to leave thread count per process reasonably low.
     # there is quite a big difference between 1 thread and 2, but after that gains are very minimal, and a lot of

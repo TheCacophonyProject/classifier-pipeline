@@ -39,7 +39,6 @@ class TrackExtractor:
         """Reads meta-data for a given cptv file."""
         source_meta_filename = os.path.splitext(filename)[0] + ".txt"
         if os.path.exists(source_meta_filename):
-
             meta_data = tools.load_clip_metadata(source_meta_filename)
 
             tags = set()
@@ -164,7 +163,6 @@ def extract_file(filename):
 
 
 def save_metadata(filename, meta_filename, clip, track_extractor, config):
-
     # record results in text file.
     metadata = clip.get_metadata()
     for i, track in enumerate(clip.tracks):

@@ -79,7 +79,6 @@ def get_resampled(
     stop_on_empty_dataset=True,
     preprocess_fn=None,
 ):
-
     num_labels = len(labels)
     global remapped_y
     datasets = []
@@ -269,5 +268,4 @@ def show_batch(image_batch, label_batch, labels):
 
 
 if __name__ == "__main__":
-
     main()

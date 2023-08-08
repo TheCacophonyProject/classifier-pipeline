@@ -18,7 +18,6 @@ class TrackChannels:
 
 @attr.s(slots=True, eq=False)
 class Frame:
-
     thermal = attr.ib()
     filtered = attr.ib()
     mask = attr.ib()

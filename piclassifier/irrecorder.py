@@ -55,7 +55,6 @@ class IRRecorder(Recorder):
             if movement_detected:
                 self.write_until = self.frames + self.min_frames
             elif self.has_minimum():
-
                 self.stop_recording(cptv_frame.received_at)
                 return
 
@@ -68,7 +67,6 @@ class IRRecorder(Recorder):
     def start_recording(
         self, background_frame, preview_frames, temp_thresh, frame_time
     ):
-
         start = time.time()
         if self.recording:
             logging.warn("Already recording, stop recording first")

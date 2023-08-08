@@ -14,7 +14,6 @@ import pickle
 
 
 def save_job(queue, dataset, folder, labels_dir):
-
     i = 0
     while True:
         i += 1

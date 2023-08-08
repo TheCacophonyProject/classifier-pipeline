@@ -35,7 +35,6 @@ def send_cptv(filename, socket):
 
 
 def send_h5py(filename, clip_id, socket):
-
     db = h5py.File(filename, mode="r")
     clips = db["clips"]
     if clip_id:

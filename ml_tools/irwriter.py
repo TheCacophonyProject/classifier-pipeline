@@ -206,7 +206,6 @@ def create_tf_records(
     writers = []
     for label in labels:
         for i in range(num_shards):
-
             writers.append(
                 tf.io.TFRecordWriter(
                     str(
