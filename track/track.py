@@ -507,6 +507,7 @@ class Track:
         tag_precedence=None,
         min_confidence=0.8,
     ):
+        self.tracker_version = track_meta.get("tracker_version", "unknown")
         self.from_metadata = True
         self._id = track_meta["id"]
         extra_info = track_meta

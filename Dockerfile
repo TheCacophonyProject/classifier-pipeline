@@ -4,11 +4,14 @@ RUN apt-get update && apt-get install ffmpeg -y
 
 
 COPY . .
-
+RUN rm classifier.yaml
 RUN apt-get update
 RUN apt install build-essential libdbus-glib-1-dev libgirepository1.0-dev -y
 RUN apt-get install -y tzdata libcairo2-dev libjpeg-dev python-cairo libhdf5-dev
 RUN sed "s/tensorflow~=*/#tensorflow~=/" requirements.txt -i
+RUN apt-get install libopencv-dev -y
+RUN pip3 install --upgrade pip
+RUN pip3 install cmake
 RUN pip3 install -r requirements.txt
 
 

@@ -127,7 +127,8 @@ def extract_file(filename, retrack=False):
             config.tracking,
             cache_to_disk,
             verbose=config.verbose,
-            keep_frames=False if previewer is None else True,
+            keep_frames=True,
+            # False if previewer is None else True,
             tracking_alg="subsense",
         )
 

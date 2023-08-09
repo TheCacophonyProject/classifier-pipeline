@@ -386,24 +386,13 @@ class IRTrackExtractor(ClipTracker):
         rectangles = [rect[1] for rect in rectangles]
         return rectangles
 
-    def _process_frame(self, clip, thermal, ffc_affected=False):
+    def _process_frame(self, clip, frame, ffc_affected=False):
         wait = 1
         """
         Tracks objects through frame
         :param thermal: A numpy array of shape (height, width) and type uint16
             If specified background subtraction algorithm will be used.
         """
-        if clip.from_metadata:
-            has_track = False
-            for track in clip.tracks:
-                if clip.current_frame in track.frame_list:
-                    has_track = True
-                    break
-            if has_track:
-                self.learning_rate = 0
-            else:
-                self.learning_rate = -1
-            # = not has_track
         start = time.time()
         saliencyMap = None
         filtered = None
