@@ -9,6 +9,8 @@ install:
 - sudo apt -y install ffmpeg
 - sudo apt-get -y install libgirepository1.0-dev python3-dbus
 - python -m pip install --upgrade pip
+- sudo apt-get install libopencv-dev -y
+- pip install cmake
 - sudo apt install -y build-essential libdbus-glib-1-dev libgirepository1.0-dev
 - pip install -r requirements.txt
 before_script:
