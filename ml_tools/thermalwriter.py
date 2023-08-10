@@ -51,7 +51,7 @@ crop_rectangle = tools.Rectangle(0, 0, 640, 480)
 from functools import lru_cache
 
 
-def create_tf_example(data, image_dir, sample, labels, filename):
+def create_tf_example(data, image_dir, sample, labels, filename, num_frames):
     """Converts image and annotations to a tf.Example proto.
 
     Args:
@@ -82,7 +82,7 @@ def create_tf_example(data, image_dir, sample, labels, filename):
     Raises:
       ValueError: if the image pointed to by data['filename'] is not a valid JPEG
     """
-    average_dim = [r.area for r in sample.regions]
+    average_dim = [r.area for r in sample.track_bounds]
     average_dim = int(round(np.mean(average_dim) ** 0.5))
     features = data[1]
     data = data[0]
@@ -90,7 +90,7 @@ def create_tf_example(data, image_dir, sample, labels, filename):
     filtereds = list(data[1])
     image_id = sample.unique_track_id
     image_height, image_width = thermals[0].shape
-    while len(thermals) < 25:
+    while len(thermals) < num_frames:
         # ensure 25 frames even if 0s
         thermals.append(np.zeros((thermals[0].shape)))
         filtereds.append(np.zeros((filtereds[0].shape)))
@@ -144,7 +144,6 @@ def create_tf_records(
     samples = dataset.samples
     # keys = list(samples.keys())
     np.random.shuffle(samples)
-
     dataset.load_db()
     dataset.set_read_only(True)
     db = dataset.db
@@ -187,8 +186,9 @@ def create_tf_records(
 
             for data, sample in loaded:
                 try:
+                    logging.info("Writing out data")
                     tf_example, num_annotations_skipped = create_tf_example(
-                        data, output_path, sample, labels, ""
+                        data, output_path, sample, labels, "", dataset.segment_length
                     )
                     total_num_annotations_skipped += num_annotations_skipped
                     l_i = labels.index(sample.label)
@@ -248,7 +248,7 @@ def get_data(sample, db):
         thermals = []  # np.empty(len(frames), dtype=object)
         filtered = []  # np.empty(len(frames), dtype=object)
         for i, frame in enumerate(track_frames):
-            if frame.frame_number not in sample.frame_numbers:
+            if frame.frame_number not in sample.frame_indices:
                 continue
             frame.float_arrays()
             frame.filtered = frame.thermal - frame.region.subimage(background)
@@ -273,5 +273,5 @@ def get_data(sample, db):
         filtered = np.array(filtered)
     except:
         logging.error("Cant get segment %s", sample, exc_info=True)
-        return None
+        return None, None
     return (thermals, filtered), features

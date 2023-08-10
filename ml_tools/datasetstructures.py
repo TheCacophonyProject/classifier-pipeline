@@ -107,7 +107,9 @@ class TrackHeader:
         ffc_frames=None,
         sample_frames_indices=None,
         skipped_frames=None,
+        station_id=None,
     ):
+        self.station_id = station_id
         self.res_x = np.uint8(res_x)
         self.res_y = np.uint8(res_y)
         self.filtered_stats = {"segment_mass": 0}
@@ -316,6 +318,8 @@ class TrackHeader:
             start_time=self.start_time,
             segment_type=segment_type,
             max_segments=max_segments,
+            location=self.location,
+            station_id=self.station_id,
         )
 
     @property
@@ -326,7 +330,7 @@ class TrackHeader:
     @property
     def bin_id(self):
         """Unique name of this track."""
-        return "{}-{}".format(self.clip_id, self.track_id)
+        return "{}-{}".format(self.clip_id, self.location_id)
 
     @property
     def weight(self):
@@ -347,6 +351,7 @@ class TrackHeader:
         location = clip_meta.get("location")
         num_frames = track_meta["frames"]
         camera = clip_meta["device"]
+        station_id = clip_meta.get("station_id")
         frames_per_second = clip_meta.get("frames_per_second", FRAMES_PER_SECOND)
         # get the reference levels from clip_meta and load them into the track.
         track_start_frame = track_meta["start_frame"]
@@ -398,6 +403,7 @@ class TrackHeader:
             ffc_frames=ffc_frames,
             sample_frames_indices=sample_frames,
             skipped_frames=skipped_frames,
+            station_id=station_id,
         )
         return header
 
@@ -645,7 +651,11 @@ class SegmentHeader(Sample):
         top_mass=False,
         start_time=None,
         camera=None,
+        location=None,
+        station_id=None,
     ):
+        self.location = location
+        self.station_id = station_id
         self.movement_data = movement_data
         self.top_mass = top_mass
         self.best_mass = best_mass
@@ -722,7 +732,7 @@ class SegmentHeader(Sample):
     @property
     def bin_id(self):
         """Unique name of this segments track."""
-        return self.clip_id
+        return f"{self.clip_id}-{self.location}"
 
     def __str__(self):
         return "{0} label {1} offset:{2} weight:{3:.1f}".format(
@@ -834,6 +844,8 @@ def get_segments(
     start_time=None,
     segment_type=SegmentType.ALL_RANDOM,
     max_segments=None,
+    location=None,
+    station_id=None,
 ):
     if segment_type == SegmentType.ALL_RANDOM_NOMIN:
         segment_min_mass = None
@@ -991,6 +1003,8 @@ def get_segments(
                 movement_data=movement_data,
                 camera=camera,
                 start_time=start_time,
+                location=location,
+                station_id=station_id,
             )
             segments.append(segment)
     return segments, filtered_stats

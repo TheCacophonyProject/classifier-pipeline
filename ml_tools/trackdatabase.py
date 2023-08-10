@@ -191,8 +191,15 @@ class TrackDatabase:
                 if clip.device:
                     group_attrs["device"] = clip.device
                 group_attrs["frames_per_second"] = clip.frames_per_second
-                if clip.location and clip.location.get("coordinates") is not None:
-                    group_attrs["location"] = clip.location["coordinates"]
+                if clip.location:
+                    if "coordinates" in clip.location:
+                        loc = clip.location["coordinates"]
+                    else:
+                        loc = (clip.location["lat"], clip.location["lng"])
+
+                    group_attrs["location"] = loc
+                if clip.station_id:
+                    group_attrs["station_id"] = clip.station_id
                 if clip.tags:
                     clip_tags = []
                     for track in clip.tags:
