@@ -456,7 +456,7 @@ class TrackDatabase:
             if "clips" in f:
                 clip = f["clips"][str(clip_id)]
             else:
-                clip = f
+                clip = f["tracks"]
             for track_id in clip:
                 if track_id in special_datasets:
                     continue

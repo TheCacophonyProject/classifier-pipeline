@@ -203,15 +203,10 @@ class Dataset:
         logging.info("Loading clips")
         for db_clip in self.dataset_dir.glob("**/*.hdf5"):
             self.load_clip(db_clip)
-        clip_ids = self.db.get_all_clip_ids(before_date, after_date, label)
-        if shuffle:
-            np.random.shuffle(clip_ids)
-        for clip_id in clip_ids:
-            self.load_clip(clip_id)
             counter += 1
             if counter % 50 == 0:
                 logging.debug("Dataset loaded %s / %s", counter, len(clip_ids))
-        return [counter, len(clip_ids)]
+        return [counter, counter]
 
     def load_clip(self, db_clip):
         db = TrackDatabase(db_clip)
@@ -301,7 +296,6 @@ class Dataset:
         if self.banned_clips and source in self.banned_clips:
             self.filtered_stats["banned"] += 1
             return True
-        print("human tag is", track_meta)
         if "human_tag" not in track_meta:
             self.filtered_stats["notags"] += 1
             return True
@@ -312,10 +306,7 @@ class Dataset:
         track_tags = track_meta.get("human_tags")
 
         if track_tags is not None:
-            print(track_tags)
-            excluded_tags = [
-                tag[0] for tag in track_tags and tag[0] in self.excluded_tags
-            ]
+            excluded_tags = [tag for tag in track_tags if tag in self.excluded_tags]
             if len(excluded_tags) > 0:
                 self.filtered_stats["tag_names"] |= set(excluded_tags)
 
@@ -323,7 +314,8 @@ class Dataset:
                 return True
         # always let the false-positives through as we need them even though they would normally
         # be filtered out.
-        if "bounds_history" not in track_meta or len(track_meta["bounds_history"]) == 0:
+        print(track_meta)
+        if "positions" not in track_meta or len(track_meta["positions"]) == 0:
             self.filtered_stats["no_data"] += 1
             return True
 
