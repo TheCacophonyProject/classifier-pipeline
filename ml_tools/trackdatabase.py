@@ -418,7 +418,7 @@ class TrackDatabase:
                 return clip["background_frame"][:]
         return None
 
-    def get_clip_meta(self, clip_id):
+    def get_clip_meta(self, clip_id=None):
         """
         Gets metadata for given clip
         :param clip_id:
@@ -426,7 +426,10 @@ class TrackDatabase:
         """
 
         with HDF5Manager(self.database) as f:
-            dataset = f["clips"][str(clip_id)]
+            if "clips" in f:
+                dataset = f["clips"][str(clip_id)]
+            else:
+                dataset = f
             result = hdf5_attributes_dictionary(dataset)
             result["tracks"] = len(dataset)
             tag_frames = dataset.get("tag_frames")
@@ -442,7 +445,7 @@ class TrackDatabase:
                         result["tag_frames"]["tag_regions"][key] = value
         return result
 
-    def get_clip_tracks(self, clip_id):
+    def get_clip_tracks(self, clip_id=None):
         """
         Gets metadata for given clip
         :param clip_id:
@@ -450,7 +453,10 @@ class TrackDatabase:
         """
         tracks = []
         with HDF5Manager(self.database) as f:
-            clip = f["clips"][str(clip_id)]
+            if "clips" in f:
+                clip = f["clips"][str(clip_id)]
+            else:
+                clip = f
             for track_id in clip:
                 if track_id in special_datasets:
                     continue

@@ -19,6 +19,8 @@ from ml_tools import tools
 from track.region import Region
 import json
 
+from pathlib import Path
+
 
 class Dataset:
     """
@@ -28,19 +30,15 @@ class Dataset:
 
     def __init__(
         self,
-        db_file,
+        dataset_dir,
         name="Dataset",
         config=None,
         use_predictions=False,
         consecutive_segments=False,
         labels=[],
     ):
+        self.dataset_dir = Path(dataset_dir)
         self.consecutive_segments = consecutive_segments
-        # self.camera_bins = {}
-        # database holding track data
-        self.db_file = db_file
-        self.db = None
-        self.load_db()
         self.label_mapping = None
         # name of this dataset
         self.name = name
@@ -107,13 +105,6 @@ class Dataset:
         }
         self.lbl_p = None
         self.numpy_data = None
-
-    def load_db(self):
-        self.db = TrackDatabase(self.db_file)
-
-    def set_read_only(self, read_only):
-        if self.db is not None:
-            self.db.set_read_only(read_only)
 
     @property
     def sample_count(self):
@@ -207,8 +198,11 @@ class Dataset:
         Loads track headers from track database with optional filter
         :return: [number of tracks added, total tracks].
         """
+
         counter = 0
         logging.info("Loading clips")
+        for db_clip in self.dataset_dir.glob("**/*.hdf5"):
+            self.load_clip(db_clip)
         clip_ids = self.db.get_all_clip_ids(before_date, after_date, label)
         if shuffle:
             np.random.shuffle(clip_ids)
@@ -219,9 +213,11 @@ class Dataset:
                 logging.debug("Dataset loaded %s / %s", counter, len(clip_ids))
         return [counter, len(clip_ids)]
 
-    def load_clip(self, clip_id):
-        clip_meta = self.db.get_clip_meta(clip_id)
-        tracks = self.db.get_clip_tracks(clip_id)
+    def load_clip(self, db_clip):
+        db = TrackDatabase(db_clip)
+
+        clip_meta = db.get_clip_meta()
+        tracks = db.get_clip_tracks()
         filtered = 0
         for track_meta in tracks:
             if self.filter_track(clip_meta, track_meta):
@@ -301,36 +297,24 @@ class Dataset:
 
     def filter_track(self, clip_meta, track_meta):
         # some clips are banned for various reasons4
-        source = os.path.basename(clip_meta["filename"])
+        clip_id = clip_meta["clip_id"]
         if self.banned_clips and source in self.banned_clips:
             self.filtered_stats["banned"] += 1
             return True
-        if "tag" not in track_meta:
+        print("human tag is", track_meta)
+        if "human_tag" not in track_meta:
             self.filtered_stats["notags"] += 1
             return True
-        if track_meta["tag"] not in self.included_labels:
+        if track_meta["human_tag"] not in self.included_labels:
             self.filtered_stats["tags"] += 1
             self.filtered_stats["tag_names"].add(track_meta["tag"])
             return True
-        track_tags = track_meta.get("track_tags")
-        if track_tags is not None:
-            try:
-                track_tags = json.loads(track_tags)
-            except:
-                logging.error(
-                    "Error loading track tags json for %s clip %s track %s",
-                    track_tags,
-                    clip_meta.get("id"),
-                    track_meta.get("id"),
-                )
-                self.filtered_stats["bad_track_json"] += 1
+        track_tags = track_meta.get("human_tags")
 
-                return True
+        if track_tags is not None:
+            print(track_tags)
             excluded_tags = [
-                tag["what"]
-                for tag in track_tags
-                if not tag.get("automatic", False)
-                and tag.get("what") in self.excluded_tags
+                tag[0] for tag in track_tags and tag[0] in self.excluded_tags
             ]
             if len(excluded_tags) > 0:
                 self.filtered_stats["tag_names"] |= set(excluded_tags)

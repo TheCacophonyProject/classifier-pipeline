@@ -75,7 +75,7 @@ def parse_args():
         action="count",
         help="Balance labels so that they have are distributed as defined in config",
     )
-
+    parser.add_argument("data_dir", help="Directory of hdf5 files")
     args = parser.parse_args()
     if args.date:
         if args.date == "None":
@@ -372,9 +372,11 @@ def main():
     if test_clips is None:
         test_clips = []
     logging.info("# of test clips are %s", len(test_clips))
-    db_file = os.path.join(config.tracks_folder, "dataset.hdf5")
     dataset = Dataset(
-        db_file, "dataset", config, consecutive_segments=args.consecutive_segments
+        args.data_dir,
+        "dataset",
+        config,
+        consecutive_segments=args.consecutive_segments,
     )
 
     tracks_loaded, total_tracks = dataset.load_clips()
