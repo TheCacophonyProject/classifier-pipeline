@@ -388,6 +388,9 @@ class TrackDatabase:
 
     def dataset_track(self, dataset, track_id):
         result = hdf5_attributes_dictionary(dataset)
+        regions = dataset.get("regions")[:]
+        print("Regions are ", regions)
+        results["regions"] = regions
         preds = dataset.get("model_predictions")
         if preds is not None:
             result["model_predictions"] = {}
