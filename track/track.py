@@ -820,7 +820,7 @@ class Track:
         while end > 0 and mass_history[end] <= filter_mass:
             logging.info("Masss is less than %s %s", filter_mass, mass_history[end])
             if self.tracker and self.frames_since_target_seen > 0:
-                self.frames_since_target_seen -= 1
+                self.tracker._frames_since_target_seen -= 1
                 self.tracker._blank_frames -= 1
             end -= 1
         if end < start:
