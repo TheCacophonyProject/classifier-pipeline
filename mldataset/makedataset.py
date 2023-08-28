@@ -113,6 +113,10 @@ class ClipLoader:
         out_file = out_dir / f"{r_id}.hdf5"
         if out_file.exists():
             logging.warning("Already loaded %s", filename)
+            # going to add some missing fierlds
+            with h5py.File(out_file, "a") as f:
+                if f.attrs.get("device_id") is None:
+                    f.attrs["device_id"] = metadata["deviceId"]
             return
         if len(metadata.get("Tracks")) == 0:
             logging.error("No tracks found for %s", filename)
