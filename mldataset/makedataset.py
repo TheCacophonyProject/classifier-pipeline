@@ -299,7 +299,7 @@ class ClipLoader:
                         if region.frame_number is None:
                             if "frameTime" in r:
                                 if i == 0:
-                                    region.frame_number = r["frameTime"] * 9
+                                    region.frame_number = round(r["frameTime"] * 9)
                                 else:
                                     region.frame_number = prev_region.frame_number + 1
                         prev_region = region
