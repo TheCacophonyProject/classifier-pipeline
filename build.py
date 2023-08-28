@@ -440,7 +440,7 @@ def main():
             print("  {} filtered {}".format(key, value))
 
     print()
-    show_tracks_breakdown(dataset)
+    show_clips_breakdown(dataset)
     print()
     show_samples_breakdown(dataset)
     print()

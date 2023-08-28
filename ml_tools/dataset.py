@@ -210,8 +210,13 @@ class Dataset:
 
     def load_clip(self, db_clip):
         db = TrackDatabase(db_clip)
-        clip_meta = db.get_clip_meta()
-        tracks = db.get_clip_tracks()
+        try:
+            clip_meta = db.get_clip_meta()
+            tracks = db.get_clip_tracks()
+        except:
+            logging.error("Could not load %s", db_clip, exc_info=True)
+            return 1
+
         filtered = 0
         for track_meta in tracks:
             if self.filter_track(clip_meta, track_meta):
