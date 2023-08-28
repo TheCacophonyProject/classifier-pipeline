@@ -303,7 +303,7 @@ class Dataset:
             return True
         if track_meta["human_tag"] not in self.included_labels:
             self.filtered_stats["tags"] += 1
-            self.filtered_stats["tag_names"].add(track_meta["tag"])
+            self.filtered_stats["tag_names"].add(track_meta["human_tag"])
             return True
         track_tags = track_meta.get("human_tags")
 
