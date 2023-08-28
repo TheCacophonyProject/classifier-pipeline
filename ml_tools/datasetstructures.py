@@ -366,8 +366,8 @@ class TrackHeader:
         station_id = clip_meta.get("station_id")
         frames_per_second = clip_meta.get("frames_per_second", FRAMES_PER_SECOND)
         # get the reference levels from clip_meta and load them into the track.
-        track_start_frame = track_meta["start_frame"]
-        track_end_frame = track_meta["end_frame"]
+        track_start_frame = int(round(track_meta["start_frame"]))
+        track_end_frame = int(round(track_meta["end_frame"]))
         num_frames = track_end_frame - track_start_frame + 1
         duration = num_frames / frames_per_second
         frame_temp_median = np.float32(
