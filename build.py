@@ -128,7 +128,43 @@ def show_cameras_breakdown(dataset):
         samples_by_camera[sample.camera].append(sample)
 
     for camera, samples in samples_by_camera.items():
-        print("{:<20} {}".format(camera, len(samples)))
+        print(
+            "Camera: {:<20} {}".format(
+                "None" if camera is None else camera, len(samples)
+            )
+        )
+
+
+def show_bins_breakdown(dataset):
+    print("Stations breakdown")
+    samples_by_bins = {}
+    for sample in dataset.samples:
+        if sample.bin_id not in samples_by_bins:
+            samples_by_bins[sample.bin_id] = []
+        samples_by_bins[sample.bin_id].append(sample)
+
+    for bin_id, samples in samples_by_bins.items():
+        print(
+            "Bin Id: {:<20} {}".format(
+                "None" if bin_id is None else bin_id, len(samples)
+            )
+        )
+
+
+def show_stations_breakdown(dataset):
+    print("Stations breakdown")
+    samples_by_camera = {}
+    for sample in dataset.samples:
+        if sample.station_id not in samples_by_camera:
+            samples_by_camera[sample.station_id] = []
+        samples_by_camera[sample.station_id].append(sample)
+
+    for camera, samples in samples_by_camera.items():
+        print(
+            "StationId: {:<20} {}".format(
+                "None" if camera is None else camera, len(samples)
+            )
+        )
 
 
 def show_samples_breakdown(dataset):
@@ -274,7 +310,7 @@ def get_test_set_camera(dataset, test_clips, after_date):
         for sample in dataset.samples
         if sample.clip_id in test_clips
         or after_date is not None
-        and sample.start_time.replace(tzinfo=pytz.utc) > after_date
+        and sample.rec_time.replace(tzinfo=pytz.utc) > after_date
     ]
     for sample in test_samples:
         dataset.remove_sample(sample)
@@ -282,14 +318,14 @@ def get_test_set_camera(dataset, test_clips, after_date):
     return test_c
 
 
-def split_randomly(db_file, dataset, config, args, test_clips=[], balance_bins=True):
+def split_randomly(dataset, config, args, test_clips=[], balance_bins=True):
     # split data randomly such that a clip is only in one dataset
     # have tried many ways to split i.e. location and cameras found this is simplest
     # and the results are the same
-    train = Dataset(db_file, "train", config)
+    train = Dataset(dataset.dataset_dir, "train", config)
     train.enable_augmentation = True
-    validation = Dataset(db_file, "validation", config)
-    test = Dataset(db_file, "test", config)
+    validation = Dataset(dataset.dataset_dir, "validation", config)
+    test = Dataset(dataset.dataset_dir, "test", config)
     test_c = get_test_set_camera(dataset, test_clips, args.date)
     test_cameras = [test_c]
     validate_cameras = []
@@ -398,8 +434,12 @@ def main():
     print()
     show_cameras_breakdown(dataset)
     print()
+    show_stations_breakdown(dataset)
+    print()
+    show_bins_breakdown(dataset)
+    print()
     print("Splitting data set into train / validation")
-    datasets = split_randomly(db_file, dataset, config, args, test_clips)
+    datasets = split_randomly(dataset, config, args, test_clips)
     validate_datasets(datasets, test_clips, args.date)
 
     print_counts(dataset, *datasets)

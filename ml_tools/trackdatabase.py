@@ -15,7 +15,6 @@ import numpy as np
 from dateutil.parser import parse as parse_date
 from .frame import Frame, TrackChannels
 import json
-from dateutil.parser import parse as parse_date
 
 import numpy as np
 from track.region import Region
@@ -389,8 +388,7 @@ class TrackDatabase:
     def dataset_track(self, dataset, track_id):
         result = hdf5_attributes_dictionary(dataset)
         regions = dataset.get("regions")[:]
-        print("Regions are ", regions)
-        results["regions"] = regions
+        result["regions"] = regions
         preds = dataset.get("model_predictions")
         if preds is not None:
             result["model_predictions"] = {}
@@ -415,10 +413,10 @@ class TrackDatabase:
         return None
 
     def get_clip_background(self, clip_id):
-        with HDF5Manager(self.database) as f:
-            clip = f["clips"][str(clip_id)]
-            if "background_frame" in clip:
-                return clip["background_frame"][:]
+        with HDF5Manager(self.database) as clip:
+            frames = clip["frames"]
+            if "background" in frames:
+                return frames["background"][:]
         return None
 
     def get_clip_meta(self, clip_id=None):
@@ -513,9 +511,9 @@ class TrackDatabase:
         track_id,
         start_frame=None,
         end_frame=None,
-        original=False,
         frame_numbers=None,
         channels=None,
+        crop=False,
     ):
         """
         Fetches a track data from database with optional slicing.
@@ -525,98 +523,38 @@ class TrackDatabase:
         :param end_frame: last frame of slice to return (exclusive).
         :return: a list of numpy arrays of shape [channels, height, width] and of type np.int16
         """
-        with HDF5Manager(self.database) as f:
-            clips = f["clips"]
-            clip_node = clips[str(clip_id)]
-            track_node = clip_node[str(track_id)]
+        with HDF5Manager(self.database) as clip_node:
+            tracks = clip_node["tracks"]
+            track_node = tracks[str(track_id)]
 
-            bounds = track_node.attrs["bounds_history"]
-            if start_frame is None:
-                start_frame = 0
-            if end_frame is None:
-                end_frame = track_node.attrs["frames"]
+            bounds = track_node["regions"]
             track_start = track_node.attrs.get("start_frame")
+            if start_frame is None:
+                start_frame = track_start
+            if end_frame is None:
+                end_frame = track_node.attrs["end_frame"] + 1
             bad_frames = track_node.attrs.get("skipepd_frames", [])
             result = []
-            if original:
-                track_node = clip_node["original_frames"]
-            else:
-                if "cropped" in track_node:
-                    track_node = track_node["cropped"]
 
             if frame_numbers is None:
                 frame_iter = range(start_frame, end_frame)
             else:
                 frame_iter = iter(frame_numbers)
-
+            frames = clip_node["frames"]["thermals"][:]
             for frame_number in frame_iter:
-                if original:
-                    region = Region.region_from_array(bounds[frame_number])
-                    region.frame_number = frame_number + track_start
-                    frame = track_node[str(frame_number + track_start)][:, :]
-                    result.append(
-                        Frame.from_channels(
-                            [frame],
-                            [TrackChannels.thermal],
-                            frame_number + track_start,
-                            region=region,
-                        )
+                region = Region.region_from_array(bounds[frame_number - track_start])
+                assert region.frame_number == frame_number
+                region.frame_number = frame_number
+                frame = frames[frame_number]
+                frame = region.subimage(frame)
+                result.append(
+                    Frame.from_channels(
+                        [frame],
+                        [TrackChannels.thermal],
+                        frame_number,
+                        region=region,
                     )
-                else:
-                    if frame_number in bad_frames:
-                        continue
-                    region = Region.region_from_array(bounds[frame_number])
-                    if channels is None:
-                        try:
-                            frame = track_node[str(frame_number)][:, :, :]
-                            if frame.shape[0] < 5:
-                                frame_channels = [
-                                    TrackChannels.thermal,
-                                    TrackChannels.filtered,
-                                ]
-                                if frame.shape[0] == 3:
-                                    frame_channels.append(TrackChannels.mask)
-                                f = Frame.from_channels(
-                                    frame,
-                                    frame_channels,
-                                    frame_number + track_start,
-                                    region=region,
-                                )
-                            else:
-                                f = Frame.from_array(
-                                    frame,
-                                    frame_number + track_start,
-                                    flow_clipped=True,
-                                    region=region,
-                                )
-                            result.append(f)
-                        except:
-                            logging.debug(
-                                "trying to get clip %s track %s frame %s",
-                                clip_id,
-                                track_id,
-                                frame_number + track_start,
-                                exc_info=True,
-                            )
-                    else:
-                        try:
-                            frame = track_node[str(frame_number)][channels, :, :]
-                            result.append(
-                                Frame.from_channels(
-                                    frame,
-                                    channels,
-                                    frame_number + track_start,
-                                    region=region,
-                                )
-                            )
-                        except:
-                            logging.debug(
-                                "trying to get clip %s track %s frame %s",
-                                clip_id,
-                                track_id,
-                                frame_number,
-                                exc_info=True,
-                            )
+                )
 
         return result
 

@@ -46,6 +46,7 @@ from ml_tools.imageprocessing import normalize
 from ml_tools.forestmodel import forest_features
 from ml_tools import imageprocessing
 from ml_tools.frame import TrackChannels
+from ml_tools.trackdatabase import TrackDatabase
 
 crop_rectangle = tools.Rectangle(0, 0, 640, 480)
 from functools import lru_cache
@@ -144,9 +145,6 @@ def create_tf_records(
     samples = dataset.samples
     # keys = list(samples.keys())
     np.random.shuffle(samples)
-    dataset.load_db()
-    dataset.set_read_only(True)
-    db = dataset.db
     total_num_annotations_skipped = 0
     num_labels = len(labels)
     # pool = multiprocessing.Pool(4)
@@ -175,7 +173,7 @@ def create_tf_records(
             samples = samples[load_first:]
             loaded = []
             for sample in local_set:
-                data, features = get_data(sample, db)
+                data, features = get_data(sample)
                 # features = forest_features(db, sample.clip_id, sample.track_id)
                 if data is None:
                     continue
@@ -223,10 +221,7 @@ def get_track_data(clip_id, track_id, db):
     background = db.get_clip_background(clip_id)
 
     track_frames = db.get_track(
-        clip_id,
-        track_id,
-        original=False,
-        channels=[TrackChannels.thermal],
+        clip_id, track_id, channels=[TrackChannels.thermal], crop=True
     )
     clip_meta = db.get_clip_meta(clip_id)
     frame_temp_median = clip_meta["frame_temp_median"]
@@ -237,24 +232,26 @@ def get_track_data(clip_id, track_id, db):
     return background, track_frames, features, frame_temp_median
 
 
-def get_data(sample, db):
+def get_data(sample):
     # prepare the sample data for saving
     crop_rectangle = tools.Rectangle(2, 2, 160 - 2 * 2, 140 - 2 * 2)
     try:
         background, track_frames, features, frame_temp_median = get_track_data(
-            sample.clip_id, sample.track_id, db
+            sample.clip_id, sample.track_id, TrackDatabase(sample.source_file)
         )
 
         thermals = []  # np.empty(len(frames), dtype=object)
         filtered = []  # np.empty(len(frames), dtype=object)
-        for i, frame in enumerate(track_frames):
-            if frame.frame_number not in sample.frame_indices:
-                continue
+        by_frame_number = {}
+        for f, median in zip(track_frames, frame_temp_median):
+            by_frame_number[f.frame_number] = (f, median)
+        for frame_number in sample.frame_indices:
+            frame, temp_median = by_frame_number[frame_number]
+            frame = frame.copy()
             frame.float_arrays()
             frame.filtered = frame.thermal - frame.region.subimage(background)
-            temp = frame_temp_median[i]
             frame.resize_with_aspect((32, 32), crop_rectangle, keep_edge=True)
-            frame.thermal -= temp
+            frame.thermal -= temp_median
             np.clip(frame.thermal, a_min=0, a_max=None, out=frame.thermal)
 
             frame.thermal, stats = imageprocessing.normalize(frame.thermal, new_max=255)
@@ -264,11 +261,28 @@ def get_data(sample, db):
             frame.filtered, stats = imageprocessing.normalize(
                 frame.filtered, new_max=255
             )
+            # DEBUG TESTING
+            # import cv2
+            #
+            # image = np.uint8(frame.filtered)
+            # image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+            # print("lbl", sample.label)
+            # cv2.putText(
+            #     image,
+            #     sample.label,
+            #     (10, 10),
+            #     cv2.FONT_HERSHEY_SIMPLEX,
+            #     0.2,
+            #     255,
+            # )
+            # cv2.imshow("TT", image)
+            # cv2.waitKey()
+
             if not stats[0]:
                 frame.filtered = np.zeros((frame.filtered.shape))
-
             filtered.append(frame.filtered)
             thermals.append(frame.thermal)
+
         thermals = np.array(thermals)
         filtered = np.array(filtered)
     except:

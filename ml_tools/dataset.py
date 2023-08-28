@@ -210,7 +210,6 @@ class Dataset:
 
     def load_clip(self, db_clip):
         db = TrackDatabase(db_clip)
-
         clip_meta = db.get_clip_meta()
         tracks = db.get_clip_tracks()
         filtered = 0
@@ -218,7 +217,9 @@ class Dataset:
             if self.filter_track(clip_meta, track_meta):
                 filtered += 1
                 continue
-            track_header = TrackHeader.from_meta(clip_id, clip_meta, track_meta)
+            track_header = TrackHeader.from_meta(
+                db_clip, clip_meta["clip_id"], clip_meta, track_meta
+            )
             self.tracks.append(track_header)
             if self.use_segments:
                 segment_frame_spacing = int(
@@ -238,6 +239,7 @@ class Dataset:
                 for segment in track_header.segments:
                     self.add_clip_sample_mappings(segment)
             else:
+                track_header.calculate_sample_frames()
                 sample_frames = track_header.get_sample_frames()
                 skip_x = None
                 if self.type == "IR":
@@ -314,13 +316,14 @@ class Dataset:
                 return True
         # always let the false-positives through as we need them even though they would normally
         # be filtered out.
-        print(track_meta)
-        if "positions" not in track_meta or len(track_meta["positions"]) == 0:
+
+        if "regions" not in track_meta or len(track_meta["regions"]) == 0:
             self.filtered_stats["no_data"] += 1
             return True
 
-        if track_meta["tag"] == "false-positive":
-            return False
+        # dont think we need this gp 28/08/2023
+        # if track_meta["human_tag"] == "false-positive":
+        # return False
 
         # for some reason we get some records with a None confidence?
         if track_meta.get("confidence", 1.0) <= 0.6:
