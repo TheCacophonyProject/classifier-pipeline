@@ -243,12 +243,26 @@ def get_data(sample):
         thermals = []  # np.empty(len(frames), dtype=object)
         filtered = []  # np.empty(len(frames), dtype=object)
         by_frame_number = {}
+        max_diff = 0
+        min_diff = 0
         for f, median in zip(track_frames, frame_temp_median):
             by_frame_number[f.frame_number] = (f, median)
+            f.float_arrays()
+            diff_frame = f.thermal - f.region.subimage(background)
+            new_max = np.amax(diff_frame)
+            new_min = np.amin(diff_frame)
+            if new_min < min_diff:
+                min_diff = new_min
+            if new_max > max_diff:
+                max_diff = new_max
+
+        # normalize by maximum difference between background and tracked region
+        # probably only need to use difference on the frames used for this record
+        # also min_diff maybe could just be set to 0 and clip values below 0,
+        # these represent pixels whcih are cooler than the background
         for frame_number in sample.frame_indices:
             frame, temp_median = by_frame_number[frame_number]
             frame = frame.copy()
-            frame.float_arrays()
             frame.filtered = frame.thermal - frame.region.subimage(background)
             frame.resize_with_aspect((32, 32), crop_rectangle, keep_edge=True)
             frame.thermal -= temp_median
@@ -258,28 +272,20 @@ def get_data(sample):
             if not stats[0]:
                 frame.thermal = np.zeros((frame.thermal.shape))
                 # continue
-            frame.filtered, stats = imageprocessing.normalize(
-                frame.filtered, new_max=255
-            )
-            # DEBUG TESTING
-            # import cv2
-            #
-            # image = np.uint8(frame.filtered)
-            # image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-            # print("lbl", sample.label)
-            # cv2.putText(
-            #     image,
-            #     sample.label,
-            #     (10, 10),
-            #     cv2.FONT_HERSHEY_SIMPLEX,
-            #     0.2,
-            #     255,
+            # f2 = frame.filtered.copy()
+            # frame.filtered, stats = imageprocessing.normalize(
+            #     frame.filtered, new_max=255
             # )
-            # cv2.imshow("TT", image)
-            # cv2.waitKey()
+            # np.clip(frame.filtered, a_min=min_diff, a_max=None, out=frame.filtered)
+
+            frame.filtered, stats = imageprocessing.normalize(
+                frame.filtered, min=min_diff, max=max_diff, new_max=255
+            )
 
             if not stats[0]:
                 frame.filtered = np.zeros((frame.filtered.shape))
+            f2 = np.uint8(frame.filtered)
+
             filtered.append(frame.filtered)
             thermals.append(frame.thermal)
 

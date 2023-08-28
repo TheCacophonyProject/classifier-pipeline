@@ -296,6 +296,7 @@ def split_label(dataset, label, existing_test_count=0, max_samples=None):
                 track_limit = num_test_tracks
                 label_count = 0
                 tracks = set()
+                break
             else:
                 break
 
