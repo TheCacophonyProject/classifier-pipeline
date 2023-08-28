@@ -113,6 +113,7 @@ class TrackHeader:
         station_id=None,
         rec_time=None,
         source_file=None,
+        camera=None,
     ):
         self.source_file = source_file
         self.rec_time = rec_time
@@ -134,7 +135,7 @@ class TrackHeader:
         self.duration = duration
 
         self.location = np.float16(location)
-
+        self.camera = camera
         # thermal reference point for each frame.
         self.frame_temp_median = np.uint16(frame_temp_median)
         # tracking frame movements for each frame, array of tuples (x-vel, y-vel)
@@ -331,6 +332,7 @@ class TrackHeader:
             station_id=self.station_id,
             rec_time=self.rec_time,
             source_file=self.source_file,
+            camera=self.camera,
         )
 
     @property
@@ -359,7 +361,7 @@ class TrackHeader:
         rec_time = dateutil.parser.parse(clip_meta["start_time"])
         # end_time = dateutil.parser.parse(track_meta["end_time"])
         location = clip_meta.get("location")
-        camera = None
+        camera = clip_meta.get("device_id")
         # clip_meta["device"]
         station_id = clip_meta.get("station_id")
         frames_per_second = clip_meta.get("frames_per_second", FRAMES_PER_SECOND)
@@ -408,6 +410,7 @@ class TrackHeader:
             station_id=station_id,
             rec_time=rec_time,
             source_file=source_file,
+            camera=camera,
         )
         return header
 
@@ -986,7 +989,6 @@ def get_segments(
                 frames = np.concatenate([frames, extra_frames])
             frames.sort()
             relative_frames = frames - start_frame
-            print("chosen", len(frames), " from ", len(whole_indices))
             mass_slice = mass_history[relative_frames]
             segment_mass = np.sum(mass_slice)
             segment_avg_mass = segment_mass / len(mass_slice)

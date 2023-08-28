@@ -99,6 +99,17 @@ def parse_args():
     return args
 
 
+def show_clips_breakdown(dataset):
+    print("Clips breakdown:")
+    samples = dataset.samples
+
+    for label in dataset.labels:
+        lbl_samples = dataset.samples_by_label.get(label, [])
+        clips = [s.clip_id for s in lbl_samples]
+        clips = set(clips)
+        print("  {:<20} {} clips".format(label, len(clips)))
+
+
 def show_tracks_breakdown(dataset):
     print("Tracks breakdown:")
     samples = dataset.samples
@@ -107,7 +118,6 @@ def show_tracks_breakdown(dataset):
         lbl_samples = dataset.samples_by_label.get(label, [])
         tracks = [s.unique_track_id for s in lbl_samples]
         tracks = set(tracks)
-        print("labels are", label)
         print("  {:<20} {} tracks".format(label, len(tracks)))
 
 
@@ -270,7 +280,7 @@ def split_label(dataset, label, existing_test_count=0, max_samples=None):
                 tracks.add(sample.track_id)
                 label_count += 1
 
-            sample.camera = "{}-{}".format(sample.camera, camera_type)
+            # sample.camera = "{}-{}".format(sample.camera, camera_type)
             add_to.add_sample(sample)
         samples_by_bin[sample_bin] = []
         last_index = i
@@ -295,7 +305,7 @@ def split_label(dataset, label, existing_test_count=0, max_samples=None):
     for i, sample_bin in enumerate(sample_bins):
         samples = samples_by_bin[sample_bin]
         for sample in samples:
-            sample.camera = "{}-{}".format(sample.camera, camera_type)
+            # sample.camera = "{}-{}".format(sample.camera, camera_type)
             train_c.add_sample(sample)
             added += 1
         samples_by_bin[sample_bin] = []
@@ -383,7 +393,8 @@ def validate_datasets(datasets, test_clips, date):
             assert track.start_time < date
 
     for i, dataset in enumerate(datasets):
-        clips = set([sample.clip_id for sample in dataset.samples])
+        clips = set([sample.bin_id for sample in dataset.samples])
+        print("checkins", clips)
         if test_clips is not None and dataset.name != "test":
             assert (
                 len(clips.intersection(set(test_clips))) == 0
@@ -393,7 +404,7 @@ def validate_datasets(datasets, test_clips, date):
         for other in datasets[(i + 1) :]:
             if dataset.name == other.name:
                 continue
-            other_clips = set([sample.clip_id for sample in other.samples])
+            other_clips = set([sample.bin_id for sample in other.samples])
             # other_tracks = set([track.track_id for track in other.tracks])
 
             assert clips != other_clips, "clips should only be in one set"
@@ -441,7 +452,20 @@ def main():
     print("Splitting data set into train / validation")
     datasets = split_randomly(dataset, config, args, test_clips)
     validate_datasets(datasets, test_clips, args.date)
+    for d in datasets:
+        print(d.name)
+        # show_samples_breakdown(d)
+        show_clips_breakdown(d)
 
+        samples = d.samples
+
+        clips = [s.source_file.name for s in samples]
+        clips = set(clips)
+        print(clips)
+        # print("  {:<20} {} clips".format(label, len(clips)))
+
+        print("")
+    return
     print_counts(dataset, *datasets)
     print("split data")
     base_dir = config.tracks_folder
