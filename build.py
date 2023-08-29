@@ -224,6 +224,9 @@ def split_label(dataset, label, existing_test_count=0, max_samples=None):
     # split a label from dataset such that vlaidation is 15% or MIN_TRACKS
     # dont split these by location and camera
     samples = dataset.samples_by_label.get(label, [])
+    # dont want to choose again
+    for s in samples:
+        dataset.remove_sample(s)
     if max_samples is not None:
         samples = np.random.choice(
             samples, min(len(samples), max_samples), replace=False
