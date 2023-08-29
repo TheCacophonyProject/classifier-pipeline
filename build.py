@@ -27,7 +27,8 @@ MAX_TEST_SAMPLES = 1
 
 MIN_SAMPLES = 1
 MIN_TRACKS = 1
-LOW_SAMPLES_LABELS = ["bird", "cat", "possum"]
+# LOW_SAMPLES_LABELS = ["bird", "cat", "possum"]
+LOW_SAMPLES_LABELS = []
 
 
 def load_config(config_file):
@@ -306,7 +307,7 @@ def split_label(dataset, label, existing_test_count=0, max_samples=None):
                 track_limit = num_test_tracks
                 label_count = 0
                 tracks = set()
-                break
+                # break
             else:
                 break
 
