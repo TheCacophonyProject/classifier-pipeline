@@ -109,7 +109,7 @@ def get_track_thumb_stats(clip, track):
     return stats, max_mass, max_median_diff, min_median_diff, max_contour
 
 
-def get_thumbanil_info(clip, track):
+def get_thumbnail_info(clip, track):
     (
         stats,
         max_mass,
