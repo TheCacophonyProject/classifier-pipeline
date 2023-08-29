@@ -405,13 +405,11 @@ def validate_datasets(datasets, test_clips, date):
             assert track.start_time < date
 
     for i, dataset in enumerate(datasets):
-        clips = set(
-            [
-                sample.bin_id
-                for sample in dataset.samples
-                if sample.label not in dontsplit
-            ]
+        dont_check = set(
+            [sample.bin_id for sample in dataset.samples if sample.label in dontsplit]
         )
+        clips = set([sample.bin_id for sample in dataset.samples])
+        clips = clips - dont_check
         print(dataset.name, "checkins", clips)
         if test_clips is not None and dataset.name != "test":
             assert (
@@ -422,13 +420,15 @@ def validate_datasets(datasets, test_clips, date):
         for other in datasets[(i + 1) :]:
             if dataset.name == other.name:
                 continue
-            other_clips = set(
+            dont_check = set(
                 [
                     sample.bin_id
-                    for sample in other.samples
-                    if sample.label not in dontsplit
+                    for sample in dataset.samples
+                    if sample.label in dontsplit
                 ]
             )
+            other_clips = set([sample.bin_id for sample in other.samples])
+            other_clips = other_clips - dont_check
             # other_tracks = set([track.track_id for track in other.tracks])
             print("Checking against", other.name, other_clips)
 
