@@ -216,8 +216,12 @@ def print_counts(dataset, train, validation, test):
     print()
 
 
+dontsplit = ["penguin", "wallaby"]
+
+
 def split_label(dataset, label, existing_test_count=0, max_samples=None):
     # split a label from dataset such that vlaidation is 15% or MIN_TRACKS
+    # dont split these by location and camera
     samples = dataset.samples_by_label.get(label, [])
     if max_samples is not None:
         samples = np.random.choice(
@@ -227,11 +231,17 @@ def split_label(dataset, label, existing_test_count=0, max_samples=None):
     total_tracks = set()
     for sample in samples:
         total_tracks.add(sample.track_id)
-        if sample.bin_id not in samples_by_bin:
-            samples_by_bin[sample.bin_id] = []
-        samples_by_bin[sample.bin_id].append(sample)
+        if label in dontsplit:
+            if sample.clip_id not in samples_by_bin:
+                samples_by_bin[sample.clip_id] = []
+            samples_by_bin[sample.clip_id].append(sample)
+
+        else:
+            if sample.bin_id not in samples_by_bin:
+                samples_by_bin[sample.bin_id] = []
+            samples_by_bin[sample.bin_id].append(sample)
     total_tracks = len(total_tracks)
-    sample_bins = [sample.bin_id for sample in samples]
+    sample_bins = list(samples_by_bin.keys())
     if len(sample_bins) == 0:
         return None, None, None
 
@@ -394,8 +404,14 @@ def validate_datasets(datasets, test_clips, date):
             assert track.start_time < date
 
     for i, dataset in enumerate(datasets):
-        clips = set([sample.bin_id for sample in dataset.samples])
-        print("checkins", clips)
+        clips = set(
+            [
+                sample.bin_id
+                for sample in dataset.samples
+                if sample.label not in dontsplit
+            ]
+        )
+        print(dataset.name, "checkins", clips)
         if test_clips is not None and dataset.name != "test":
             assert (
                 len(clips.intersection(set(test_clips))) == 0
@@ -405,10 +421,20 @@ def validate_datasets(datasets, test_clips, date):
         for other in datasets[(i + 1) :]:
             if dataset.name == other.name:
                 continue
-            other_clips = set([sample.bin_id for sample in other.samples])
+            other_clips = set(
+                [
+                    sample.bin_id
+                    for sample in other.samples
+                    if sample.label not in dontsplit
+                ]
+            )
             # other_tracks = set([track.track_id for track in other.tracks])
+            print("Checking against", other.name, other_clips)
 
-            assert clips != other_clips, "clips should only be in one set"
+            assert (
+                len(clips.intersection(set(other_clips))) == 0
+            ), "bins should only be in one set"
+            # assert clips != other_clips, "clips should only be in one set"
 
 
 def main():
