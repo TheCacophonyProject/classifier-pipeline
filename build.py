@@ -224,33 +224,35 @@ def split_label(dataset, label, existing_test_count=0, max_samples=None):
     # split a label from dataset such that vlaidation is 15% or MIN_TRACKS
     # dont split these by location and camera
     samples = dataset.samples_by_label.get(label, [])
-    # dont want to choose again
-    for s in samples:
-        dataset.remove_sample(s)
-    if max_samples is not None:
-        samples = np.random.choice(
-            samples, min(len(samples), max_samples), replace=False
-        )
-    samples_by_bin = {}
-    total_tracks = set()
-    for sample in samples:
-        total_tracks.add(sample.track_id)
-        if label in dontsplit:
-            if sample.clip_id not in samples_by_bin:
-                samples_by_bin[sample.clip_id] = []
-            samples_by_bin[sample.clip_id].append(sample)
-
-        else:
-            if sample.bin_id not in samples_by_bin:
-                samples_by_bin[sample.bin_id] = []
-            samples_by_bin[sample.bin_id].append(sample)
-    total_tracks = len(total_tracks)
-    sample_bins = list(samples_by_bin.keys())
+    sample_bins = set([sample.bin_id for sample in samples])
     if len(sample_bins) == 0:
         return None, None, None
 
-    # sample_bins duplicates
-    sample_bins = list(set(sample_bins))
+    if max_samples is not None:
+        sample_bins = np.random.choice(
+            sample_bins, min(len(sample_bins), max_samples), replace=False
+        )
+    sample_count = 0
+    total_tracks = set()
+    for bin in sample_bins:
+        samples = dataset.samples_by_bin[bin]
+        sample_count += len(samples)
+        for s in samples:
+            total_tracks.add(s.track_id)
+        # dont want to choose again
+
+        # if label in dontsplit:
+        #     if sample.clip_id not in samples_by_bin:
+        #         samples_by_bin[sample.clip_id] = []
+        #     samples_by_bin[sample.clip_id].append(sample)
+        #
+        # else:
+        #     if sample.bin_id not in samples_by_bin:
+        #         samples_by_bin[sample.bin_id] = []
+        #     samples_by_bin[sample.bin_id].append(sample)
+    total_tracks = len(total_tracks)
+
+    sample_bins = list(sample_bins)
 
     random.shuffle(sample_bins)
     train_c = Camera("{}-Train".format(label))
@@ -261,14 +263,13 @@ def split_label(dataset, label, existing_test_count=0, max_samples=None):
     add_to = validate_c
     last_index = 0
     label_count = 0
-    total = len(samples)
     min_t = MIN_SAMPLES
 
     if label in LOW_SAMPLES_LABELS:
         min_t = 10
-    num_validate_samples = max(total * 0.15, min_t)
+    num_validate_samples = max(sample_count * 0.15, min_t)
     num_test_samples = (
-        min(MAX_TEST_SAMPLES, max(total * 0.05, min_t)) - existing_test_count
+        min(MAX_TEST_SAMPLES, max(sample_count * 0.05, min_t)) - existing_test_count
     )
     # should have test covered by test set
 
@@ -285,10 +286,10 @@ def split_label(dataset, label, existing_test_count=0, max_samples=None):
     sample_limit = num_validate_samples
     tracks = set()
     print(
-        f"{label} - looking for val {num_validate_tracks} tracks out of {total_tracks} tracks and {num_validate_samples} samples from a total of {total} samples  with {num_test_tracks} test tracks and {num_test_samples} test samples"
+        f"{label} - looking for val {num_validate_tracks} tracks out of {total_tracks} tracks and {num_validate_samples} samples from a total of {sample_count} samples  with {num_test_tracks} test tracks and {num_test_samples} test samples"
     )
     for i, sample_bin in enumerate(sample_bins):
-        samples = samples_by_bin[sample_bin]
+        samples = dataset.samples_by_bin[sample_bin]
         for sample in samples:
             if sample.label == label:
                 tracks.add(sample.track_id)
@@ -296,7 +297,8 @@ def split_label(dataset, label, existing_test_count=0, max_samples=None):
 
             # sample.camera = "{}-{}".format(sample.camera, camera_type)
             add_to.add_sample(sample)
-        samples_by_bin[sample_bin] = []
+            dataset.remove_sample(sample)
+
         last_index = i
         track_count = len(tracks)
         if label_count >= sample_limit and track_count >= track_limit:
@@ -318,12 +320,12 @@ def split_label(dataset, label, existing_test_count=0, max_samples=None):
     camera_type = "train"
     added = 0
     for i, sample_bin in enumerate(sample_bins):
-        samples = samples_by_bin[sample_bin]
+        samples = dataset.samples_by_bin[sample_bin]
         for sample in samples:
             # sample.camera = "{}-{}".format(sample.camera, camera_type)
             train_c.add_sample(sample)
             added += 1
-        samples_by_bin[sample_bin] = []
+            dataset.remove_sample(sample)
     return train_c, validate_c, test_c
 
 
