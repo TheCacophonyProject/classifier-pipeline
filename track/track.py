@@ -827,7 +827,8 @@ class Track:
             self.bounds_history = []
             self.vel_x = []
             self.vel_y = []
-            self.tracker._blank_frames = 0
+            if self.tracker:
+                self.tracker._blank_frames = 0
         else:
             self.start_frame += start
             self.bounds_history = self.bounds_history[start : end + 1]
