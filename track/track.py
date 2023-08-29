@@ -814,7 +814,6 @@ class Track:
         )
         while start < len(self) and mass_history[start] <= filter_mass:
             start += 1
-            logging.info("Start is %s", start)
         end = len(self) - 1
 
         while end > 0 and mass_history[end] <= filter_mass:
@@ -823,7 +822,6 @@ class Track:
                 self.tracker._blank_frames -= 1
             end -= 1
         if end < start:
-            self.start_frame = 0
             self.bounds_history = []
             self.vel_x = []
             self.vel_y = []
@@ -872,6 +870,9 @@ class Track:
         return frames_overlapped / len(self)
 
     def set_end_s(self, fps):
+        if len(self) == 0:
+            self.end_s = self.start_s
+            return
         self.end_s = (self.end_frame + 1) / fps
 
     def predicted_velocity(self):
@@ -889,7 +890,7 @@ class Track:
     @property
     def end_frame(self):
         if len(self.bounds_history) == 0:
-            return 0
+            return self.start_frame
         return self.bounds_history[-1].frame_number
 
     @property
@@ -920,7 +921,10 @@ class Track:
 
     def start_and_end_in_secs(self):
         if self.end_s is None:
-            self.end_s = (self.end_frame + 1) / self.fps
+            if len(self) == 0:
+                self.end_s = self.start_s
+            else:
+                self.end_s = (self.end_frame + 1) / self.fps
 
         return (self.start_s, self.end_s)
 
