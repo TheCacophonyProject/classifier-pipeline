@@ -251,14 +251,14 @@ def split_label(dataset, label, existing_test_count=0, max_samples=None):
     # if not dontsplit:
     for s in sample_bins:
         print("For bin ", s, " have ", len(dataset.samples_by_bin[s]))
-    1 / 0
     sample_count = 0
     total_tracks = set()
     for bin in sample_bins:
         samples = samples_by_bin[bin]
-        sample_count += len(samples)
         for s in samples:
-            total_tracks.add(s.track_id)
+            if s.label == label:
+                sample_count += 1
+                total_tracks.add(s.track_id)
         # dont want to choose again
 
         # if label in dontsplit:
