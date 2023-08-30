@@ -227,7 +227,7 @@ def split_label(dataset, label, existing_test_count=0, max_samples=None):
     samples = dataset.samples_by_label.get(label, [])
     sample_bins = set([sample.bin_id for sample in samples])
 
-    if len(sample_bins) < 4 or len(sample) < 100:
+    if len(sample_bins) < 4 or len(samples) < 100:
         global dontsplit
         dontsplit.append(label)
 
