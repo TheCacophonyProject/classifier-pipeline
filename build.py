@@ -314,8 +314,9 @@ def split_label(dataset, label, existing_test_count=0, max_samples=None):
 
             # sample.camera = "{}-{}".format(sample.camera, camera_type)
             add_to.add_sample(sample)
-            dataset.remove_sample(sample)
-
+            if label in dontsplit:
+                dataset.samples_by_bin[sample.bin_id].remove(sample)
+        samples_by_bin[sample_bin] = []
         last_index = i
         track_count = len(tracks)
         if label_count >= sample_limit and track_count >= track_limit:
@@ -342,7 +343,11 @@ def split_label(dataset, label, existing_test_count=0, max_samples=None):
             # sample.camera = "{}-{}".format(sample.camera, camera_type)
             train_c.add_sample(sample)
             added += 1
-            dataset.remove_sample(sample)
+
+            if label in dontsplit:
+                dataset.samples_by_bin[sample.bin_id].remove(sample)
+
+        samples_by_bin[sample_bin] = []
     return train_c, validate_c, test_c
 
 
