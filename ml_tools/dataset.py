@@ -306,7 +306,7 @@ class Dataset:
         if "human_tag" not in track_meta:
             self.filtered_stats["notags"] += 1
             return True
-        if track_meta["human_tag"] not in self.included_labels:
+        if track_meta["human_tag"] in self.excluded_tags:
             self.filtered_stats["tags"] += 1
             self.filtered_stats["tag_names"].add(track_meta["human_tag"])
             return True
