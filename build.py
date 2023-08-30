@@ -459,7 +459,23 @@ def validate_datasets(datasets, test_clips, date):
             other_clips = other_clips - dont_check
             # other_tracks = set([track.track_id for track in other.tracks])
             print("Checking against", other.name, other_clips)
-
+            intersection = clips.intersection(set(other_clips))
+            print("Intersectoin is", intersection)
+            for bin in intersection:
+                a = dataset.samples_by_bin[bin]
+                b = other.samples_by_bin[bin]
+                print(
+                    "FOr ",
+                    bin,
+                    " have ",
+                    a.clip_id,
+                    " lbl: ",
+                    a.label,
+                    " OTHER ",
+                    b.clip_id,
+                    "lbl: ",
+                    b.label,
+                )
             assert (
                 len(clips.intersection(set(other_clips))) == 0
             ), "bins should only be in one set"
