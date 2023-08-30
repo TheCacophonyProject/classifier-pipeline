@@ -462,20 +462,15 @@ def validate_datasets(datasets, test_clips, date):
             intersection = clips.intersection(set(other_clips))
             print("Intersectoin is", intersection)
             for bin in intersection:
+                print("FOR BIN", bin)
                 a = dataset.samples_by_bin[bin]
+                for s in a:
+                    print(" IN ", dataset.name, " have ", s.clip_id, " lbl: ", s.label)
+
                 b = other.samples_by_bin[bin]
-                print(
-                    "FOr ",
-                    bin,
-                    " have ",
-                    a.clip_id,
-                    " lbl: ",
-                    a.label,
-                    " OTHER ",
-                    b.clip_id,
-                    "lbl: ",
-                    b.label,
-                )
+                for s in b:
+                    print(" IN ", other.name, " have ", s.clip_id, " lbl: ", s.label)
+
             assert (
                 len(clips.intersection(set(other_clips))) == 0
             ), "bins should only be in one set"
