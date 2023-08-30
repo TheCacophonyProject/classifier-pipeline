@@ -239,7 +239,7 @@ def split_label(dataset, label, existing_test_count=0, max_samples=None):
             if s.clip_id in sample_bins:
                 if s.clip_id not in samples_by_bin:
                     samples_by_bin[s.clip_id] = []
-                    samples_by_bin[s.clip_id].append(s)
+                samples_by_bin[s.clip_id].append(s)
     else:
         samples_by_bin = dataset.samples_by_bin
     if len(sample_bins) == 0:
@@ -375,7 +375,18 @@ def split_randomly(dataset, config, args, test_clips=[], balance_bins=True):
             continue
         if min_label is None or label_count < min_label[1]:
             min_label = (label, label_count)
-    for label in dataset.labels:
+
+    lbl_order = sorted(
+        dataset.labels, key=lambda lbl: len(dataset.samples_by_label.get(label, []))
+    )
+
+    # for label in dataset.labels:
+    #     if label in dontsplut:
+    #         samples_by_mass = sorted(s, key=lambda s: s.region.mass, reverse=True)
+    #
+    #     samples = dataset.samples_by_label.get(label, [])
+    print("lbl order is ", lbl_order)
+    for label in lbl_order:
         existing_test_count = len(test.samples_by_label.get(label, []))
         train_c, validate_c, test_c = split_label(
             dataset,
