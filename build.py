@@ -225,9 +225,11 @@ def split_label(dataset, label, existing_test_count=0, max_samples=None):
     # dont split these by location and camera
     print("Splitting", label)
     samples = dataset.samples_by_label.get(label, [])
-    if len(samples) < 100:
+    sample_bins = set([sample.bin_id for sample in samples])
+
+    if len(sample_bins) < 4 or len(sample) < 100:
         global dontsplit
-        # dontsplit.append(label)
+        dontsplit.append(label)
 
     if label in dontsplit:
         sample_bins = set([sample.clip_id for sample in samples])
@@ -240,7 +242,6 @@ def split_label(dataset, label, existing_test_count=0, max_samples=None):
                     samples_by_bin[s.clip_id].append(s)
     else:
         samples_by_bin = dataset.samples_by_bin
-        sample_bins = set([sample.bin_id for sample in samples])
     if len(sample_bins) == 0:
         return None, None, None
 
@@ -249,27 +250,11 @@ def split_label(dataset, label, existing_test_count=0, max_samples=None):
             sample_bins, min(len(sample_bins), max_samples), replace=False
         )
     # if not dontsplit:
-    for s in sample_bins:
-        print("For bin ", s, " have ", len(dataset.samples_by_bin[s]))
-    sample_count = 0
-    total_tracks = set()
-    for bin in sample_bins:
-        samples = samples_by_bin[bin]
-        for s in samples:
-            if s.label == label:
-                sample_count += 1
-                total_tracks.add(s.track_id)
-        # dont want to choose again
-
-        # if label in dontsplit:
-        #     if sample.clip_id not in samples_by_bin:
-        #         samples_by_bin[sample.clip_id] = []
-        #     samples_by_bin[sample.clip_id].append(sample)
-        #
-        # else:
-        #     if sample.bin_id not in samples_by_bin:
-        #         samples_by_bin[sample.bin_id] = []
-        #     samples_by_bin[sample.bin_id].append(sample)
+    if label not in dontsplit:
+        for s in sample_bins:
+            print("For bin ", s, " have ", len(dataset.samples_by_bin[s]))
+    sample_count = len(samples)
+    total_tracks = set([s.track_id for s in samples])
     total_tracks = len(total_tracks)
 
     sample_bins = list(sample_bins)

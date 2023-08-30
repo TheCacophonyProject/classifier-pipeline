@@ -225,8 +225,6 @@ class Dataset:
             track_header = TrackHeader.from_meta(
                 db_clip, clip_meta["clip_id"], clip_meta, track_meta
             )
-            if track_header.label != "bird":
-                continue
             self.tracks.append(track_header)
             if self.use_segments:
                 segment_frame_spacing = int(
