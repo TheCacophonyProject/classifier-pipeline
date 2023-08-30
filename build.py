@@ -344,8 +344,9 @@ def split_label(dataset, label, existing_test_count=0, max_samples=None):
             # sample.camera = "{}-{}".format(sample.camera, camera_type)
             train_c.add_sample(sample)
             added += 1
-            if sample in dataset.samples_by_bin[sample.bin_id]:
-                dataset.samples_by_bin[sample.bin_id].remove(sample)
+            if label in dontsplit and sample.bin_id in dataset.samples_by_bin:
+                if sample in dataset.samples_by_bin[sample.bin_id]:
+                    dataset.samples_by_bin[sample.bin_id].remove(sample)
 
         samples_by_bin[sample_bin] = []
     return train_c, validate_c, test_c
