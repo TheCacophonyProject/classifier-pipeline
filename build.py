@@ -314,7 +314,7 @@ def split_label(dataset, label, existing_test_count=0, max_samples=None):
 
             # sample.camera = "{}-{}".format(sample.camera, camera_type)
             add_to.add_sample(sample)
-            if label in dontsplit:
+            if label in dontsplit and sample.bin_id in dataset.samples_by_bin:
                 dataset.samples_by_bin[sample.bin_id].remove(sample)
         samples_by_bin[sample_bin] = []
         last_index = i
@@ -344,7 +344,7 @@ def split_label(dataset, label, existing_test_count=0, max_samples=None):
             train_c.add_sample(sample)
             added += 1
 
-            if label in dontsplit:
+            if label in dontsplit and sample.bin_id in dataset.samples_by_bin:
                 dataset.samples_by_bin[sample.bin_id].remove(sample)
 
         samples_by_bin[sample_bin] = []
