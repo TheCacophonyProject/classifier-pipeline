@@ -227,7 +227,7 @@ def split_label(dataset, label, existing_test_count=0, max_samples=None):
     samples = dataset.samples_by_label.get(label, [])
     if len(samples) < 100:
         global dontsplit
-        dontsplit.append(label)
+        # dontsplit.append(label)
 
     if label in dontsplit:
         sample_bins = set([sample.clip_id for sample in samples])
@@ -248,7 +248,10 @@ def split_label(dataset, label, existing_test_count=0, max_samples=None):
         sample_bins = np.random.choice(
             sample_bins, min(len(sample_bins), max_samples), replace=False
         )
-
+    # if not dontsplit:
+    for s in sample_bins:
+        print("For bin ", s, " have ", len(dataset.samples_by_bin[s]))
+    1 / 0
     sample_count = 0
     total_tracks = set()
     for bin in sample_bins:
