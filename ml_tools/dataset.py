@@ -270,7 +270,7 @@ class Dataset:
         return result
 
     def filter_sample(self, sample):
-        if sample.label not in self.included_labels:
+        if sample.label in self.excluded_tags:
             self.filtered_stats["tags"] += 1
             return True
 
