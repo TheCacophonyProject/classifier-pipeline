@@ -359,10 +359,11 @@ def split_label(
             train_c.add_sample(sample)
             added += 1
 
-            if label not in dontsplit:
+            if label in dontsplit:
                 dataset.remove_sample(sample)
-        while len(samples) > 0:
-            dataset.remove_sample(samples[0])
+        if label not in dontsplit:
+            while len(samples) > 0:
+                dataset.remove_sample(samples[0])
 
         samples_by_bin[sample_bin] = []
     return train_c, validate_c, test_c
