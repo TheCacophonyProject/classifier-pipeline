@@ -497,11 +497,7 @@ def validate_datasets(datasets, test_bins, date):
             if dataset.name == other.name:
                 continue
             dont_check = set(
-                [
-                    sample.bin_id
-                    for sample in dataset.samples
-                    if sample.label in dontsplit
-                ]
+                [sample.bin_id for sample in other.samples if sample.label in dontsplit]
             )
             other_bins = set([sample.bin_id for sample in other.samples])
             other_bins = other_bins - dont_check

@@ -570,8 +570,11 @@ class Dataset:
 
     def remove_sample(self, sample):
         self.samples.remove(sample)
-        if sample.bin_id in self.samples_by_bin:
+        try:
+            # not nessesarily there if splitting by clip hack
             self.samples_by_bin[sample.bin_id].remove(sample)
+        except:
+            pass
         self.samples_by_label[sample.label].remove(sample)
 
     def fetch_track(
