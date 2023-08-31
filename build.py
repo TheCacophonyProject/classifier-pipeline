@@ -233,9 +233,10 @@ def split_label(
     # split a label from dataset such that vlaidation is 15% or MIN_TRACKS
     # dont split these by location and camera
     logging.info(
-        "Splitting %s have counts %s already have in validation %s and in test %s",
+        "Splitting %s have counts %s already have in train %s validation %s and in test %s",
         label,
         counts,
+        train_count,
         validation_count,
         test_count,
     )
