@@ -242,7 +242,7 @@ def split_label(
     samples = dataset.samples_by_label.get(label, [])
     sample_bins = set([sample.bin_id for sample in samples])
 
-    if len(sample_bins) < 4 or len(counts[0]) < 100:
+    if len(sample_bins) < 4 or counts[0] < 100:
         global dontsplit
         dontsplit.append(label)
 
@@ -308,35 +308,43 @@ def split_label(
     logging.info(
         f"{label} - looking for val {num_validate_tracks} tracks out of {total_tracks} tracks and {num_validate_samples} samples from a total of {sample_count} samples  with {num_test_tracks} test tracks and {num_test_samples} test samples"
     )
-    for i, sample_bin in enumerate(sample_bins):
-        samples = samples_by_bin[sample_bin]
-        for sample in samples:
-            if sample.label == label:
-                tracks.add(sample.track_id)
-                label_count += 1
+    # if sample_limit < 0 and track_limit < 0:
+    #     add_to = test_c
+    #     camera_type = "test"
+    #     sample_limit = num_test_samples
+    #     track_limit = num_test_tracks
+    #     label_count = 0
+    #     tracks = set()
+    if sample_limit > 0 and track_limit > 0:
+        for i, sample_bin in enumerate(sample_bins):
+            samples = samples_by_bin[sample_bin]
+            for sample in samples:
+                if sample.label == label:
+                    tracks.add(sample.track_id)
+                    label_count += 1
 
-            # sample.camera = "{}-{}".format(sample.camera, camera_type)
-            add_to.add_sample(sample)
-            if label in dontsplit and sample.bin_id in dataset.samples_by_bin:
-                if sample in dataset.samples_by_bin[sample.bin_id]:
-                    dataset.samples_by_bin[sample.bin_id].remove(sample)
-        samples_by_bin[sample_bin] = []
-        last_index = i
-        track_count = len(tracks)
-        if label_count >= sample_limit and track_count >= track_limit:
-            # 100 more for test
-            if add_to == validate_c:
-                add_to = test_c
-                camera_type = "test"
-                if num_test_samples <= 0:
+                # sample.camera = "{}-{}".format(sample.camera, camera_type)
+                add_to.add_sample(sample)
+                if label in dontsplit:
+                    dataset.remove_sample(sample)
+
+            samples_by_bin[sample_bin] = []
+            last_index = i
+            track_count = len(tracks)
+            if label_count >= sample_limit and track_count >= track_limit:
+                # 100 more for test
+                if add_to == validate_c:
+                    add_to = test_c
+                    camera_type = "test"
+                    if num_test_samples <= 0:
+                        break
+                    sample_limit = num_test_samples
+                    track_limit = num_test_tracks
+                    label_count = 0
+                    tracks = set()
                     break
-                sample_limit = num_test_samples
-                track_limit = num_test_tracks
-                label_count = 0
-                tracks = set()
-                break
-            else:
-                break
+                else:
+                    break
 
     sample_bins = sample_bins[last_index + 1 :]
     camera_type = "train"
@@ -347,9 +355,8 @@ def split_label(
             # sample.camera = "{}-{}".format(sample.camera, camera_type)
             train_c.add_sample(sample)
             added += 1
-            if label in dontsplit and sample.bin_id in dataset.samples_by_bin:
-                if sample in dataset.samples_by_bin[sample.bin_id]:
-                    dataset.samples_by_bin[sample.bin_id].remove(sample)
+            if label in dontsplit:
+                dataset.remove_sample(sample)
 
         samples_by_bin[sample_bin] = []
     return train_c, validate_c, test_c
@@ -393,7 +400,6 @@ def split_randomly(dataset, config, args, test_clips=[], balance_bins=True):
     lbl_order = sorted(
         dataset.labels,
         key=lambda lbl: len(dataset.samples_by_label.get(label, [])),
-        reverse=True,
     )
     lbl_counts = {}
     for lbl in dataset.labels:
@@ -463,7 +469,7 @@ def add_camera_samples(
     # dataset.balance_bins()
 
 
-def validate_datasets(datasets, test_clips, date):
+def validate_datasets(datasets, test_bins, date):
     # check that clips are only in one dataset
     # that only test set has clips after date
     # that test set is the only dataset with test_clips
@@ -476,14 +482,16 @@ def validate_datasets(datasets, test_clips, date):
         dont_check = set(
             [sample.bin_id for sample in dataset.samples if sample.label in dontsplit]
         )
-        clips = set([sample.bin_id for sample in dataset.samples])
-        clips = clips - dont_check
-        print(dataset.name, "checkins", clips)
-        if test_clips is not None and dataset.name != "test":
+        bins = set([sample.bin_id for sample in dataset.samples])
+        clips = set([sample.clip_id for sample in dataset.samples])
+
+        bins = bins - dont_check
+        print(dataset.name, "checkins", bins)
+        if test_bins is not None and dataset.name != "test":
             assert (
-                len(clips.intersection(set(test_clips))) == 0
-            ), "test clips should only be in test set"
-        if len(clips) == 0:
+                len(bins.intersection(set(test_bins))) == 0
+            ), "test bins should only be in test set"
+        if len(bins) == 0:
             continue
         for other in datasets[(i + 1) :]:
             if dataset.name == other.name:
@@ -495,11 +503,13 @@ def validate_datasets(datasets, test_clips, date):
                     if sample.label in dontsplit
                 ]
             )
-            other_clips = set([sample.bin_id for sample in other.samples])
-            other_clips = other_clips - dont_check
+            other_bins = set([sample.bin_id for sample in other.samples])
+            other_bins = other_bins - dont_check
+            other_clips = set([sample.clip_id for sample in other.samples])
+
             # other_tracks = set([track.track_id for track in other.tracks])
-            print("Checking against", other.name, other_clips)
-            intersection = clips.intersection(set(other_clips))
+            print("Checking against", other.name, other_bins)
+            intersection = bins.intersection(set(other_bins))
             print("Intersectoin is", intersection)
             for bin in intersection:
                 print("FOR BIN", bin)
@@ -512,9 +522,13 @@ def validate_datasets(datasets, test_clips, date):
                     print(" IN ", other.name, " have ", s.clip_id, " lbl: ", s.label)
 
             assert (
-                len(clips.intersection(set(other_clips))) == 0
+                len(bins.intersection(set(other_bins))) == 0
             ), "bins should only be in one set"
             # assert clips != other_clips, "clips should only be in one set"
+
+            assert (
+                len(clips.intersection(set(other_clips))) == 0
+            ), "clips should only be in one set"
 
 
 def main():
@@ -563,6 +577,8 @@ def main():
         print(d.name)
         # show_samples_breakdown(d)
         show_clips_breakdown(d)
+        show_tracks_breakdown(d)
+        show_samples_breakdown(d)
 
         samples = d.samples
 
