@@ -435,16 +435,15 @@ def split_randomly(dataset, config, args, test_clips=[], balance_bins=True):
             existing_test_count=existing_test_count,
             # max_samples=min_label[1],
         )
-        # if train_c is not None:
-        #     train_cameras.append(train_c)
-        # if validate_c is not None:
-        #     validate_cameras.append(validate_c)
-        # if test_c is not None:
-        #     test_cameras.append(test_c)
+        if train_c is not None:
+            add_camera_samples(dataset.labels, train, [train_c], train_counts)
+        if validate_c is not None:
+            add_camera_samples(
+                dataset.labels, validation, [validate_c], validation_counts
+            )
+        if test_c is not None:
+            add_camera_samples(dataset.labels, test, [test_c], test_counts)
 
-        add_camera_samples(dataset.labels, train, [train_c], train_counts)
-        add_camera_samples(dataset.labels, validation, [validate_c], validation_counts)
-        add_camera_samples(dataset.labels, test, [test_c], test_counts)
     if balance_bins:
         train.balance_bins()
         validation.balance_bins()
