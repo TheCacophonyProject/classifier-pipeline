@@ -570,7 +570,8 @@ class Dataset:
 
     def remove_sample(self, sample):
         self.samples.remove(sample)
-        self.samples_by_bin[sample.bin_id].remove(sample)
+        if sample.bin_id in self.samples_by_bin:
+            self.samples_by_bin[sample.bin_id].remove(sample)
         self.samples_by_label[sample.label].remove(sample)
 
     def fetch_track(
