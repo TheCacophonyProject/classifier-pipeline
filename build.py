@@ -220,14 +220,29 @@ def print_counts(dataset, train, validation, test):
 dontsplit = ["penguin", "wallaby"]
 
 
-def split_label(dataset, label, existing_test_count=0, max_samples=None):
+def split_label(
+    dataset,
+    label,
+    counts,
+    train_count,
+    validation_count,
+    test_count,
+    existing_test_count=0,
+    max_samples=None,
+):
     # split a label from dataset such that vlaidation is 15% or MIN_TRACKS
     # dont split these by location and camera
-    print("Splitting", label)
+    logging.info(
+        "Splitting %s have counts %s already have in validation %s and in test %s",
+        label,
+        counts,
+        validation_count,
+        test_count,
+    )
     samples = dataset.samples_by_label.get(label, [])
     sample_bins = set([sample.bin_id for sample in samples])
 
-    if len(sample_bins) < 4 or len(samples) < 100:
+    if len(sample_bins) < 4 or len(counts[0]) < 100:
         global dontsplit
         dontsplit.append(label)
 
@@ -250,12 +265,12 @@ def split_label(dataset, label, existing_test_count=0, max_samples=None):
             sample_bins, min(len(sample_bins), max_samples), replace=False
         )
     # if not dontsplit:
-    if label not in dontsplit:
-        for s in sample_bins:
-            print("For bin ", s, " have ", len(dataset.samples_by_bin[s]))
-    sample_count = len(samples)
-    total_tracks = set([s.track_id for s in samples])
-    total_tracks = len(total_tracks)
+    # if label not in dontsplit:
+    #     for s in sample_bins:
+    #         print("For bin ", s, " have ", len(dataset.samples_by_bin[s]))
+    sample_count = counts[1]
+    # total_tracks = set([s.track_id for s in samples])
+    total_tracks = counts[0]
 
     sample_bins = list(sample_bins)
 
@@ -272,9 +287,9 @@ def split_label(dataset, label, existing_test_count=0, max_samples=None):
 
     if label in LOW_SAMPLES_LABELS:
         min_t = 10
-    num_validate_samples = max(sample_count * 0.15, min_t)
+    num_validate_samples = max(sample_count * 0.15, min_t) - validation_count[1]
     num_test_samples = (
-        min(MAX_TEST_SAMPLES, max(sample_count * 0.05, min_t)) - existing_test_count
+        min(MAX_TEST_SAMPLES, max(sample_count * 0.05, min_t)) - test_count[1]
     )
     # should have test covered by test set
 
@@ -283,14 +298,14 @@ def split_label(dataset, label, existing_test_count=0, max_samples=None):
     if label in LOW_SAMPLES_LABELS:
         min_t = 10
 
-    num_validate_tracks = max(total_tracks * 0.15, min_t)
+    num_validate_tracks = max(total_tracks * 0.15, min_t) - validation_count[0]
     num_test_tracks = (
-        min(MAX_TEST_TRACKS, max(total_tracks * 0.05, min_t)) - existing_test_count
+        min(MAX_TEST_TRACKS, max(total_tracks * 0.05, min_t)) - test_count[0]
     )
     track_limit = num_validate_tracks
     sample_limit = num_validate_samples
     tracks = set()
-    print(
+    logging.info(
         f"{label} - looking for val {num_validate_tracks} tracks out of {total_tracks} tracks and {num_validate_samples} samples from a total of {sample_count} samples  with {num_test_tracks} test tracks and {num_test_samples} test samples"
     )
     for i, sample_bin in enumerate(sample_bins):
@@ -375,35 +390,53 @@ def split_randomly(dataset, config, args, test_clips=[], balance_bins=True):
             continue
         if min_label is None or label_count < min_label[1]:
             min_label = (label, label_count)
-
     lbl_order = sorted(
-        dataset.labels, key=lambda lbl: len(dataset.samples_by_label.get(label, []))
+        dataset.labels,
+        key=lambda lbl: len(dataset.samples_by_label.get(label, [])),
+        reverse=True,
     )
-
+    lbl_counts = {}
+    for lbl in dataset.labels:
+        samples = dataset.samples_by_label.get(lbl, [])
+        tracks = set([s.track_id for s in samples])
+        lbl_counts[lbl] = (len(tracks), len(samples))
+    print("lbl counts are", lbl_counts)
     # for label in dataset.labels:
     #     if label in dontsplut:
     #         samples_by_mass = sorted(s, key=lambda s: s.region.mass, reverse=True)
     #
     #     samples = dataset.samples_by_label.get(label, [])
     print("lbl order is ", lbl_order)
+    train_counts = {}
+    validation_counts = {}
+    test_counts = {}
     for label in lbl_order:
         existing_test_count = len(test.samples_by_label.get(label, []))
         train_c, validate_c, test_c = split_label(
             dataset,
             label,
+            counts=lbl_counts[label],
+            train_count=train_counts.get(label, (0, 0)),
+            validation_count=validation_counts.get(label, (0, 0)),
+            test_count=test_counts.get(label, (0, 0)),
             existing_test_count=existing_test_count,
             # max_samples=min_label[1],
         )
-        if train_c is not None:
-            train_cameras.append(train_c)
-        if validate_c is not None:
-            validate_cameras.append(validate_c)
-        if test_c is not None:
-            test_cameras.append(test_c)
+        # if train_c is not None:
+        #     train_cameras.append(train_c)
+        # if validate_c is not None:
+        #     validate_cameras.append(validate_c)
+        # if test_c is not None:
+        #     test_cameras.append(test_c)
 
-    add_camera_samples(dataset.labels, train, train_cameras, balance_bins)
-    add_camera_samples(dataset.labels, validation, validate_cameras, balance_bins)
-    add_camera_samples(dataset.labels, test, test_cameras, balance_bins)
+        add_camera_samples(dataset.labels, train, [train_c], train_counts)
+        add_camera_samples(dataset.labels, validation, [validate_c], validation_counts)
+        add_camera_samples(dataset.labels, test, [test_c], test_counts)
+    if balance_bins:
+        train.balance_bins()
+        validation.balance_bins()
+        test.balance_bins()
+
     return train, validation, test
 
 
@@ -411,16 +444,23 @@ def add_camera_samples(
     labels,
     dataset,
     cameras,
-    balance_bins=None,
+    counts,
 ):
     # add camera tracks to the daaset and calculate segments and bins
     all_samples = []
     for label in labels:
+        if label not in counts:
+            counts[label] = (0, 0)
         for camera in cameras:
             samples = camera.label_to_samples.get(label, {}).values()
+            track_count = len(set([s.track_id for s in samples]))
+            counts[label] = (
+                counts[label][0] + track_count,
+                counts[label][1] + len(samples),
+            )
             all_samples.extend(list(samples))
     dataset.add_samples(all_samples)
-    dataset.balance_bins()
+    # dataset.balance_bins()
 
 
 def validate_datasets(datasets, test_clips, date):
