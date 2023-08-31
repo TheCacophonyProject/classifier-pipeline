@@ -325,9 +325,12 @@ def split_label(
 
                 # sample.camera = "{}-{}".format(sample.camera, camera_type)
                 add_to.add_sample(sample)
+
                 if label in dontsplit:
                     dataset.remove_sample(sample)
-
+            if label not in dontsplit:
+                while len(samples) > 0:
+                    dataset.remove_sample(samples[0])
             samples_by_bin[sample_bin] = []
             last_index = i
             track_count = len(tracks)
@@ -355,8 +358,11 @@ def split_label(
             # sample.camera = "{}-{}".format(sample.camera, camera_type)
             train_c.add_sample(sample)
             added += 1
-            if label in dontsplit:
+
+            if label not in dontsplit:
                 dataset.remove_sample(sample)
+        while len(samples) > 0:
+            dataset.remove_sample(samples[0])
 
         samples_by_bin[sample_bin] = []
     return train_c, validate_c, test_c
@@ -399,7 +405,7 @@ def split_randomly(dataset, config, args, test_clips=[], balance_bins=True):
             min_label = (label, label_count)
     lbl_order = sorted(
         dataset.labels,
-        key=lambda lbl: len(dataset.samples_by_label.get(label, [])),
+        key=lambda lbl: len(dataset.samples_by_label.get(lbl, [])),
     )
     lbl_counts = {}
     for lbl in dataset.labels:
