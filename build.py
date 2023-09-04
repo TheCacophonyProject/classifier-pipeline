@@ -422,6 +422,10 @@ def split_randomly(dataset, config, args, test_clips=[], balance_bins=True):
         lbl_order.append("wallaby")
         lbl_order.remove("wallaby")
         lbl_order.insert(0, "wallaby")
+    if "pest" in lbl_order:
+        # make sure its last
+        lbl_order.remove("pest")
+        lbl_order.append("pest")
 
     lbl_counts = {}
     for lbl in dataset.labels:
@@ -458,6 +462,8 @@ def split_randomly(dataset, config, args, test_clips=[], balance_bins=True):
             )
         if test_c is not None:
             add_camera_samples(dataset.labels, test, [test_c], test_counts)
+        logging.info("Train counts %s", train_counts)
+        logging.info("VAL counts %s", validation_counts)
 
     if balance_bins:
         train.balance_bins()
