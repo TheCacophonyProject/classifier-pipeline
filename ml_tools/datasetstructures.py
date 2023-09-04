@@ -32,7 +32,7 @@ class SegmentType(Enum):
     ALL_RANDOM_NOMIN = 7
 
 
-class Sample(ABC):
+class BaseSample(ABC):
     @property
     @abstractmethod
     def track_bounds(cls):
@@ -80,6 +80,16 @@ class Sample(ABC):
     def mass(cls):
         """Get mass for this sample"""
         ...
+
+
+class Sample(BaseSample):
+    def __init__(self, label):
+        self.original_label = label
+        self.remapped_label = label
+
+    @property
+    def label(self):
+        return self.remapped_label
 
 
 EDGE = 1
@@ -574,6 +584,8 @@ class FrameSample(Sample):
         station_id=None,
         rec_time=None,
     ):
+        super().__init__(label)
+
         self.rec_time = rec_time
         self.station_id = station_id
         self.id = FrameSample._frame_id
@@ -581,7 +593,6 @@ class FrameSample(Sample):
         self.clip_id = clip_id
         self.track_id = track_id
         self.frame_number = frame_num
-        self.label = label
         self.temp_median = temp_median
         self.velocity = velocity
         self.region = region
@@ -674,6 +685,8 @@ class SegmentHeader(Sample):
         rec_time=None,
         source_file=None,
     ):
+        super().__init__(label)
+
         self.rec_time = rec_time
         self.location = location
         self.station_id = station_id
@@ -692,7 +705,6 @@ class SegmentHeader(Sample):
         # for i, frame in enumerate(frame_indices):
         #     self.track_bounds[frame] = regions[i]
         #     self.frame_temp_median[frame] = frame_temp_median[i]
-        self.label = label
         # first frame of this segment referenced by start of track
         self.start_frame = start_frame
         # length of segment in frames

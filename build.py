@@ -105,10 +105,19 @@ def show_clips_breakdown(dataset):
     samples = dataset.samples
 
     for label in dataset.labels:
+        print(label)
         lbl_samples = dataset.samples_by_label.get(label, [])
-        clips = [s.clip_id for s in lbl_samples]
-        clips = set(clips)
-        print("  {:<20} {} clips".format(label, len(clips)))
+        if dataset.label_mapping:
+            actual_labels = {}
+            for s in lbl_samples:
+                actual_labels.setdefault(s.original_label, set()).add(s.clip_id)
+            for actual, clips in actual_labels.items():
+                print("  {:<20} {} clips".format(actual, len(clips)))
+
+        else:
+            clips = [s.clip_id for s in lbl_samples]
+            clips = set(clips)
+            print("  {:<20} {} clips".format(label, len(clips)))
 
 
 def show_tracks_breakdown(dataset):
@@ -409,6 +418,11 @@ def split_randomly(dataset, config, args, test_clips=[], balance_bins=True):
         dataset.labels,
         key=lambda lbl: len(dataset.samples_by_label.get(lbl, [])),
     )
+    if "wallaby" in lbl_order:
+        lbl_order.append("wallaby")
+        lbl_order.remove("wallaby")
+        lbl_order.insert(0, "wallaby")
+
     lbl_counts = {}
     for lbl in dataset.labels:
         samples = dataset.samples_by_label.get(lbl, [])
@@ -534,22 +548,71 @@ def validate_datasets(datasets, test_bins, date):
             ), "clips should only be in one set"
 
 
+land_birds = [
+    "pukeko",
+    "california quail",
+    "brown quail",
+    "black swan",
+    "quail",
+    "pheasant",
+]
+
+
+def get_mappings(label_paths):
+    regroup = {}
+    for l, path in label_paths.items():
+        if l in land_birds:
+            regroup[l] = l
+            continue
+        split_path = path.split(".")
+        if len(split_path) == 1:
+            regroup[l] = l
+        elif path.startswith("all.mammal"):
+            if len(split_path) == 4:
+                regroup[l] = split_path[-2]
+            else:
+                regroup[l] = l
+        else:
+            # print("l", l, " has ", path)
+            parent = split_path[-2]
+            # print("Parent is", parent, path)
+            if parent == "kiwi" or split_path[-1] == "kiwi":
+                regroup[l] = "kiwi"
+            elif parent == "other":
+                regroup[l] = l
+
+            else:
+                if "bird." in path:
+                    regroup[l] = "bird"
+
+                elif len(split_path) > 2:
+                    regroup[l] = split_path[-3]
+                else:
+                    regroup[l] = split_path[-1]
+
+    return regroup
+
+
 def main():
     init_logging()
     args = parse_args()
     config = load_config(args.config_file)
     logging.info("Building for type %s", config.train.type)
+    with open("label_paths.json", "r") as f:
+        label_paths = json.load(f)
+
     test_clips = config.build.test_clips()
     if test_clips is None:
         test_clips = []
     logging.info("# of test clips are %s", len(test_clips))
+    label_mapping = get_mappings(label_paths)
     dataset = Dataset(
         args.data_dir,
         "dataset",
         config,
         consecutive_segments=args.consecutive_segments,
+        label_mapping=label_mapping,
     )
-
     tracks_loaded, total_tracks = dataset.load_clips()
     # return
     dataset.labels.sort()

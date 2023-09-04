@@ -36,10 +36,11 @@ class Dataset:
         use_predictions=False,
         consecutive_segments=False,
         labels=[],
+        label_mapping=None,
     ):
         self.dataset_dir = Path(dataset_dir)
         self.consecutive_segments = consecutive_segments
-        self.label_mapping = None
+        self.label_mapping = label_mapping
         # name of this dataset
         self.name = name
         # list of our tracks
@@ -56,7 +57,6 @@ class Dataset:
 
         # list of label names
         self.labels = labels
-        self.label_mapping = None
 
         self.enable_augmentation = False
         self.label_caps = {}
@@ -109,18 +109,6 @@ class Dataset:
     @property
     def sample_count(self):
         return len(self.samples)
-
-    #
-    # def samples(self):
-    #     if self.use_segments:
-    #         return self.segments
-    #     return self.frame_samples
-
-    def set_samples(self, samples):
-        self.samples = samples
-
-    def set_samples_for(self, label, samples):
-        self.samples_by_label[label] = samples
 
     def get_label_caps(self, labels, remapped=False):
         counts = []
@@ -279,11 +267,13 @@ class Dataset:
         return False
 
     def add_clip_sample_mappings(self, sample):
+        if self.label_mapping:
+            sample.remapped_label = self.label_mapping.get(
+                sample.original_label, sample.original_label
+            )
         if self.filter_sample(sample):
             return False
         self.samples.append(sample)
-        if self.label_mapping and sample.label in self.label_mapping:
-            sample.label = self.mapped_label(sample.label)
 
         if sample.label not in self.labels:
             self.labels.append(sample.label)
@@ -500,26 +490,22 @@ class Dataset:
         """
         regroups the dataset so multiple animals can be under a single label
         """
-        self.label_mapping = {}
-        counts = []
+        self.label_mapping = groups
         samples_by_bin = {}
-        samples = []
-        for mapped_label, labels in groups.items():
+        samples_by_label = {}
+
+        for lbl, remapped_lbl in groups.items():
             count = 0
-            for label in labels:
-                lbl_samples = self.samples_for(label)
-                count += len(lbl_samples)
-                samples.extend(lbl_samples)
-                self.label_mapping[label] = mapped_label
-                for sample in lbl_samples:
-                    samples_by_bin[sample.bin_id] = sample
-            counts.append(count)
+            samples = self.samples_by_label[lbl]
+            for s in samples:
+                s.remapped_label = remapped_lbl
+                samples_by_bin.setdefault(s.bin_id, []).append(s)
+            samples_by_label.setdefault(remapped_lbl, []).extend(samples)
 
         self.labels = list(groups.keys())
         self.labels.sort()
         self.samples_by_bin = samples_by_bin
-        self.set_samples(samples)
-        # self.samples_by_id == {}
+        self.samples_by_label = samples_by_label
 
         if shuffle:
             np.random.shuffle(self.samples)
