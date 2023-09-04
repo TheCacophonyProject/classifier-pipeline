@@ -399,10 +399,16 @@ def split_randomly(dataset, config, args, test_clips=[], balance_bins=True):
     # split data randomly such that a clip is only in one dataset
     # have tried many ways to split i.e. location and cameras found this is simplest
     # and the results are the same
-    train = Dataset(dataset.dataset_dir, "train", config)
+    train = Dataset(
+        dataset.dataset_dir, "train", config, label_mapping=dataset.label_mapping
+    )
     train.enable_augmentation = True
-    validation = Dataset(dataset.dataset_dir, "validation", config)
-    test = Dataset(dataset.dataset_dir, "test", config)
+    validation = Dataset(
+        dataset.dataset_dir, "validation", config, label_mapping=dataset.label_mapping
+    )
+    test = Dataset(
+        dataset.dataset_dir, "test", config, label_mapping=dataset.label_mapping
+    )
     test_c = get_test_set_camera(dataset, test_clips, args.date)
     test_cameras = [test_c]
     validate_cameras = []
@@ -561,6 +567,8 @@ land_birds = [
     "black swan",
     "quail",
     "pheasant",
+    "penguin",
+    "duck",
 ]
 
 
