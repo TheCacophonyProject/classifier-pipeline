@@ -252,7 +252,7 @@ def split_label(
     samples = dataset.samples_by_label.get(label, [])
     sample_bins = set([sample.bin_id for sample in samples])
 
-    if len(sample_bins) < 4 or counts[0] < 100:
+    if counts[2] < 4 or counts[0] < 100:
         global dontsplit
         dontsplit.append(label)
 
@@ -437,7 +437,9 @@ def split_randomly(dataset, config, args, test_clips=[], balance_bins=True):
     for lbl in dataset.labels:
         samples = dataset.samples_by_label.get(lbl, [])
         tracks = set([s.track_id for s in samples])
-        lbl_counts[lbl] = (len(tracks), len(samples))
+        bins = set([s.bin_id for s in samples])
+
+        lbl_counts[lbl] = (len(tracks), len(samples), len(bins))
     print("lbl counts are", lbl_counts)
     # for label in dataset.labels:
     #     if label in dontsplut:
