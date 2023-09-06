@@ -350,6 +350,12 @@ class Dataset:
     def label_cdf(self, label):
         return self.sample_label_cdf.get(label, [])
 
+    def get_samples_by_source(self):
+        samples_by_source = {}
+        for s in self.samples:
+            samples_by_source.setdefault(s.source_file, []).append(s)
+        return samples_by_source
+
     def get_sample(self, cap=None, replace=True, label=None, random=True):
         """Returns a random frames from weighted list."""
         if label:
