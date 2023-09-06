@@ -148,31 +148,11 @@ class Dataset:
         bins = 0
         weight = 0
         samples_count = 0
-        if self.label_mapping:
-            for key, value in self.label_mapping.items():
-                if key == label or value == label:
-                    label_tracks = self.tracks_by_label.get(key, [])
-                    tracks += len(label_tracks)
-                    samples_count += len(self.samples_by_label.get(key, []))
-                    # segments += sum(len(track.segments) for track in label_tracks)
-                    # frames += sum(
-                    #     len(track.get_sample_frames())
-                    #     for track in label_tracks
-                    #     if track.sample_frames is not None
-                    # )
-
-                if key == label or value == label:
-                    label_tracks = []
-                    segments = self.segments_by_label.get(key, [])
-                    tracks += len(set([segment.track_id for segment in segments]))
-                    segments_count += len(segments)
-                    frames += sum([segment.frames for segment in segments])
-        else:
-            samples = self.samples_by_label.get(label, [])
-            tracks = len(set([sample.track_id for sample in samples]))
-            weight = self.get_label_weight(label)
-            bins = len(set([sample.bin_id for sample in samples]))
-            samples_count = len(samples)
+        samples = self.samples_by_label.get(label, [])
+        tracks = len(set([sample.track_id for sample in samples]))
+        weight = self.get_label_weight(label)
+        bins = len(set([sample.bin_id for sample in samples]))
+        samples_count = len(samples)
         return samples_count, tracks, bins, weight
 
     def load_clips(

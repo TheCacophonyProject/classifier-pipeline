@@ -54,6 +54,7 @@ def parse_args():
         type=float,
         help="Percentage of training set to add extra augmentations of",
     )
+    parser.add_argument("--split-file", help="Json file defining a split")
 
     parser.add_argument("-c", "--config-file", help="Path to config file to use")
     parser.add_argument("-d", "--date", help="Use clips after this")
@@ -395,6 +396,33 @@ def get_test_set_camera(dataset, test_clips, after_date):
     return test_c
 
 
+def split_by_file(dataset, config, split_file):
+    with open(split_file, "r") as f:
+        split = json.load(f)
+
+    samples_by_source = {}
+    for s in dataset.samples:
+        samples_by_source.setdefault(s.source_file.name, []).append(s)
+    datasets = []
+    for name in ["train", "validation", "test"]:
+        split_dataset = Dataset(
+            dataset.dataset_dir, name, config, label_mapping=dataset.label_mapping
+        )
+        if name == "train":
+            split_dataset.enable_augmentation = True
+
+        split_files = split.get(name, [])
+        for f in split_files:
+            samples = samples_by_source.get(f)
+            if samples is None:
+                logging.warn("No source file %s found for %s", f, name)
+                continue
+            split_dataset.add_samples(samples)
+
+        datasets.append(split_dataset)
+    return datasets
+
+
 def split_randomly(dataset, config, args, test_clips=[], balance_bins=True):
     # split data randomly such that a clip is only in one dataset
     # have tried many ways to split i.e. location and cameras found this is simplest
@@ -653,24 +681,27 @@ def main():
     show_bins_breakdown(dataset)
     print()
     print("Splitting data set into train / validation")
-    datasets = split_randomly(dataset, config, args, test_clips)
+    if args.split_file:
+        datasets = split_by_file(dataset, config, args.split_file)
+    else:
+        datasets = split_randomly(dataset, config, args, test_clips)
     validate_datasets(datasets, test_clips, args.date)
-    for d in datasets:
-        print(d.name)
-        # show_samples_breakdown(d)
-        show_clips_breakdown(d)
-        show_tracks_breakdown(d)
-        show_samples_breakdown(d)
-
-        samples = d.samples
-
-        clips = [s.source_file.name for s in samples]
-        clips = set(clips)
-        print(clips)
-        # print("  {:<20} {} clips".format(label, len(clips)))
-
-        print("")
-    return
+    # for d in datasets:
+    #     print(d.name)
+    #     # show_samples_breakdown(d)
+    #     show_clips_breakdown(d)
+    #     show_tracks_breakdown(d)
+    #     show_samples_breakdown(d)
+    #
+    #     samples = d.samples
+    #
+    #     clips = [s.source_file.name for s in samples]
+    #     clips = set(clips)
+    #     print(clips)
+    #     # print("  {:<20} {} clips".format(label, len(clips)))
+    #
+    #     print("")
+    # return
     print_counts(dataset, *datasets)
     print("split data")
     base_dir = config.tracks_folder
