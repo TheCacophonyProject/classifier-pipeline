@@ -281,8 +281,10 @@ class Dataset:
             return True
         if "human_tag" not in track_meta:
             self.filtered_stats["notags"] += 1
+            logging.info("no tags")
             return True
         if track_meta["human_tag"] in self.excluded_tags:
+            logging.info("Is excluded %s", track_meta["human_tag"])
             self.filtered_stats["tags"] += 1
             self.filtered_stats["tag_names"].add(track_meta["human_tag"])
             return True
@@ -294,12 +296,14 @@ class Dataset:
                 self.filtered_stats["tag_names"] |= set(excluded_tags)
 
                 self.filtered_stats["tags"] += 1
+                logging.info("Is excluded %s", set(excluded_tags))
                 return True
         # always let the false-positives through as we need them even though they would normally
         # be filtered out.
 
         if "regions" not in track_meta or len(track_meta["regions"]) == 0:
             self.filtered_stats["no_data"] += 1
+            logging.info("No region data")
             return True
 
         # dont think we need this gp 28/08/2023
@@ -309,6 +313,7 @@ class Dataset:
         # for some reason we get some records with a None confidence?
         if track_meta.get("confidence", 1.0) <= 0.6:
             self.filtered_stats["confidence"] += 1
+            logging.info("Low confidence")
             return True
 
         # remove tracks of trapped animals
@@ -317,6 +322,7 @@ class Dataset:
             or "trap" in clip_meta.get("trap", "").lower()
         ):
             self.filtered_stats["trap"] += 1
+            logging.info("Filtered because in trap")
             return True
 
         return False

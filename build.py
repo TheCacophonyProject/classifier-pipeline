@@ -660,9 +660,7 @@ def main():
         consecutive_segments=args.consecutive_segments,
         label_mapping=label_mapping,
     )
-    tracks_loaded, total_tracks = dataset.load_clips(
-        dont_filter_segment=args.split_file is not None
-    )
+    tracks_loaded, total_tracks = dataset.load_clips(dont_filter_segment=True)
     # return
     dataset.labels.sort()
     print(
