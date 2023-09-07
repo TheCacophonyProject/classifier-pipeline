@@ -691,21 +691,21 @@ def main():
     else:
         datasets = split_randomly(dataset, config, args, test_clips)
     validate_datasets(datasets, test_clips, args.date)
-    # for d in datasets:
-    #     print(d.name)
-    #     # show_samples_breakdown(d)
-    #     show_clips_breakdown(d)
-    #     show_tracks_breakdown(d)
-    #     show_samples_breakdown(d)
-    #
-    #     samples = d.samples
-    #
-    #     clips = [s.source_file.name for s in samples]
-    #     clips = set(clips)
-    #     print(clips)
-    #     # print("  {:<20} {} clips".format(label, len(clips)))
-    #
-    #     print("")
+    splits = {}
+    for d in datasets:
+        print(d.name)
+        # show_samples_breakdown(d)
+        show_clips_breakdown(d)
+        show_tracks_breakdown(d)
+        show_samples_breakdown(d)
+
+        samples = d.samples
+
+        clips = [(s.source_file.name, f"{s.station_id}") for s in samples]
+        # clips = set(clips)
+        splits[d.name] = clips
+    with open("datasplit.json", "w") as f:
+        json.dump(splits, f)
     # return
     print_counts(dataset, *datasets)
     print("split data")

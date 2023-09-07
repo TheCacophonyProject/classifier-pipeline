@@ -485,25 +485,15 @@ class TrackDatabase:
         frame_numbers=None,
         channels=None,
     ):
-        frames = []
-        with HDF5Manager(self.database) as f:
-            clip = f["clips"][str(clip_id)]
-            if "original_frames" not in clip:
-                return None
-            frames_node = clip["original_frames"]
-            if frame_numbers is None:
-                frame_numbers = []
-                for f_i in frames_node:
-                    frame_numbers.append(int(f_i))
-                frame_numbers.sort()
-            frame_iter = iter(frame_numbers)
-
-            for frame_number in frame_iter:
-                frame = frames_node[str(frame_number)][:, :]
-                frames.append(
-                    Frame.from_channels([frame], [TrackChannels.thermal], frame_number)
-                )
-        return frames
+        # frames = []
+        with HDF5Manager(self.database) as clip_node:
+            raw_frames = clip_node["frames"]["thermals"][:]
+            return raw_frames
+        #     for frame_number, frame in enumerate(raw_frames):
+        #         frames.append(
+        #             Frame.from_channels([frame], [TrackChannels.thermal], frame_number)
+        #         )
+        # return frames
 
     def get_track(
         self,

@@ -288,6 +288,10 @@ def get_data(clip_samples):
     clip_id = clip_samples[0].clip_id
     try:
         background = db.get_clip_background(clip_id)
+        if background is None:
+            frame_data = db.get_clip(clip_id)
+            background = np.median(frame_data, axis=0)
+            del frame_data
         clip_meta = db.get_clip_meta(clip_id)
         frame_temp_median = clip_meta["frame_temp_median"]
 
