@@ -186,7 +186,7 @@ class Dataset:
             tracks = db.get_clip_tracks()
         except:
             logging.error("Could not load %s", db_clip, exc_info=True)
-            return 1
+            return 0
 
         filtered = 0
         added = 0
@@ -230,7 +230,7 @@ class Dataset:
                         and sample.mass <= track_header.upper_mass
                     ):
                         self.add_clip_sample_mappings(sample)
-        return filtered
+        return added
 
     def add_samples(self, samples):
         """
