@@ -171,7 +171,9 @@ class Dataset:
         counter = 0
         logging.info("Loading clips")
         for db_clip in self.dataset_dir.glob("**/*.hdf5"):
-            self.load_clip(db_clip, dont_filter_segment)
+            tracks_added = self.load_clip(db_clip, dont_filter_segment)
+            if tracks_added == 0:
+                logging.info("No tracks added for %s", db_clip)
             counter += 1
             if counter % 50 == 0:
                 logging.debug("Dataset loaded %s", counter)
@@ -187,10 +189,12 @@ class Dataset:
             return 1
 
         filtered = 0
+        added = 0
         for track_meta in tracks:
             if self.filter_track(clip_meta, track_meta):
                 filtered += 1
                 continue
+            added += 1
             track_header = TrackHeader.from_meta(
                 db_clip, clip_meta["clip_id"], clip_meta, track_meta
             )
