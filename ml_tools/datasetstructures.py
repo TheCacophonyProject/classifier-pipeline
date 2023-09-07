@@ -313,6 +313,7 @@ class TrackHeader:
         use_important=False,
         repeats=1,
         max_segments=None,
+        dont_filter=False,
     ):
         min_frames = segment_width
         if self.label == "vehicle" or self.label == "human":
@@ -343,6 +344,7 @@ class TrackHeader:
             rec_time=self.rec_time,
             source_file=self.source_file,
             camera=self.camera,
+            dont_filter=dont_filter,
         )
 
     @property
@@ -684,9 +686,10 @@ class SegmentHeader(Sample):
         station_id=None,
         rec_time=None,
         source_file=None,
+        filtered=False,
     ):
         super().__init__(label)
-
+        self.filtered = filtered
         self.rec_time = rec_time
         self.location = location
         self.station_id = station_id
@@ -885,6 +888,7 @@ def get_segments(
     camera=None,
     rec_time=None,
     source_file=None,
+    dont_filter=False,
 ):
     if segment_type == SegmentType.ALL_RANDOM_NOMIN:
         segment_min_mass = None
@@ -1004,13 +1008,17 @@ def get_segments(
             mass_slice = mass_history[relative_frames]
             segment_mass = np.sum(mass_slice)
             segment_avg_mass = segment_mass / len(mass_slice)
+            filtered = False
             if (
                 not ignore_mass
                 and segment_min_mass
                 and segment_avg_mass < segment_min_mass
             ):
-                filtered_stats["segment_mass"] += 1
-                continue
+                if dont_filter:
+                    filtered = True
+                else:
+                    filtered_stats["segment_mass"] += 1
+                    continue
             if segment_avg_mass < 50:
                 segment_weight_factor = 0.75
             elif segment_avg_mass < 100:
@@ -1044,6 +1052,7 @@ def get_segments(
                 station_id=station_id,
                 rec_time=rec_time,
                 source_file=source_file,
+                filtered=filtered,
             )
             segments.append(segment)
     return segments, filtered_stats

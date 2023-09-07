@@ -161,6 +161,7 @@ class Dataset:
         before_date=None,
         after_date=None,
         label=None,
+        dont_filter_segment=False,
     ):
         """
         Loads track headers from track database with optional filter
@@ -170,13 +171,13 @@ class Dataset:
         counter = 0
         logging.info("Loading clips")
         for db_clip in self.dataset_dir.glob("**/*.hdf5"):
-            self.load_clip(db_clip)
+            self.load_clip(db_clip, dont_filter_segment)
             counter += 1
             if counter % 50 == 0:
                 logging.debug("Dataset loaded %s", counter)
         return [counter, counter]
 
-    def load_clip(self, db_clip):
+    def load_clip(self, db_clip, dont_filter_segment=False):
         db = TrackDatabase(db_clip)
         try:
             clip_meta = db.get_clip_meta()
@@ -205,6 +206,7 @@ class Dataset:
                     self.segment_type,
                     self.segment_min_avg_mass,
                     max_segments=self.max_segments,
+                    dont_filter=dont_filter_segment,
                 )
                 self.filtered_stats["segment_mass"] += track_header.filtered_stats[
                     "segment_mass"

@@ -417,6 +417,9 @@ def split_by_file(dataset, config, split_file):
             if samples is None:
                 logging.warn("No source file %s found for %s", f, name)
                 continue
+            if name != "test":
+                print("Getting segments that aren't filtered", name)
+                samples = [s for s in samples if not s.filtered]
             split_dataset.add_samples(samples)
 
         datasets.append(split_dataset)
@@ -657,7 +660,9 @@ def main():
         consecutive_segments=args.consecutive_segments,
         label_mapping=label_mapping,
     )
-    tracks_loaded, total_tracks = dataset.load_clips()
+    tracks_loaded, total_tracks = dataset.load_clips(
+        dont_filter_segment=args.split_file is not None
+    )
     # return
     dataset.labels.sort()
     print(
