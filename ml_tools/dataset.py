@@ -215,6 +215,9 @@ class Dataset:
                 self.filtered_stats["segment_mass"] += track_header.filtered_stats[
                     "segment_mass"
                 ]
+                assert (
+                    len(track_header.segments) > 0
+                ), f"{db_clip} - {track_header.track_id} has no segments"
                 for segment in track_header.segments:
                     self.add_clip_sample_mappings(segment)
             else:

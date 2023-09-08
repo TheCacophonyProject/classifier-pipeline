@@ -400,7 +400,24 @@ class TrackHeader:
             r = Region.region_from_array(bounds)
             regions[r.frame_number] = r
             f_i += 1
+        if track_start_frame != regions[0].frame_number:
+            logging.warn(
+                "Have wrong region or start frame for %s clip %s track %s adjusting regions first region %s becomes %s",
+                source_file,
+                clip_id,
+                track_meta["id"],
+                regions[0].frame_number,
+                track_start_frame,
+            )
 
+            region_list = list(regions.values())
+            regions = {}
+            frame_number = track_start_frame
+            for r in region_list:
+                r = Region.region_from_array(bounds)
+                r.frame_number = frame_number
+                frame_number += 1
+                regions[r.frame_number] = r
         header = TrackHeader(
             clip_id=int(clip_id),
             track_id=int(track_meta["id"]),
@@ -890,6 +907,8 @@ def get_segments(
     source_file=None,
     dont_filter=False,
 ):
+    # just for creating dataset
+    ignore_mass = True
     if segment_type == SegmentType.ALL_RANDOM_NOMIN:
         segment_min_mass = None
     if min_frames is None:
@@ -970,10 +989,12 @@ def get_segments(
             # random_frames and not random_sections:
             np.random.shuffle(frame_indices)
         for i in range(segment_count):
-            if (len(frame_indices) < segment_width and len(segments) > 1) or len(
-                frame_indices
-            ) < (segment_width / 4.0):
-                break
+            # always get atleast one segmnet
+            if i > 0:
+                if (len(frame_indices) < segment_width and len(segments) > 1) or len(
+                    frame_indices
+                ) < (segment_width / 4.0):
+                    break
 
             if segment_type == SegmentType.ALL_SECTIONS:
                 # random frames from section 2.2 * segment_width
