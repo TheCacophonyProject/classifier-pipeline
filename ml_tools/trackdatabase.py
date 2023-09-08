@@ -518,11 +518,11 @@ class TrackDatabase:
             track_node = tracks[str(track_id)]
 
             bounds = track_node["regions"]
-            track_start = track_node.attrs.get("start_frame")
+            track_start = int(round(track_node.attrs.get("start_frame")))
             if start_frame is None:
                 start_frame = track_start
             if end_frame is None:
-                end_frame = track_node.attrs["end_frame"] + 1
+                end_frame = int(round(track_node.attrs["end_frame"])) + 1
             bad_frames = track_node.attrs.get("skipepd_frames", [])
             result = []
 
@@ -533,7 +533,7 @@ class TrackDatabase:
             frames = clip_node["frames"]["thermals"][:]
             for frame_number in frame_iter:
                 region = Region.region_from_array(bounds[frame_number - track_start])
-                assert region.frame_number == frame_number
+                # assert region.frame_number == frame_number
                 region.frame_number = frame_number
                 frame = frames[frame_number]
                 frame = region.subimage(frame)

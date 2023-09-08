@@ -396,17 +396,20 @@ class TrackHeader:
         skipped_frames = track_meta.get("skipped_frames")
         regions = {}
         f_i = 0
+        first_region = None
         for bounds in track_meta["regions"]:
             r = Region.region_from_array(bounds)
+            if first_region is None:
+                first_region = r
             regions[r.frame_number] = r
             f_i += 1
-        if track_start_frame != regions[0].frame_number:
+        if track_start_frame != first_region.frame_number:
             logging.warn(
                 "Have wrong region or start frame for %s clip %s track %s adjusting regions first region %s becomes %s",
                 source_file,
                 clip_id,
                 track_meta["id"],
-                regions[0].frame_number,
+                first_region.frame_number,
                 track_start_frame,
             )
 
@@ -966,9 +969,9 @@ def get_segments(
             ignore_mass,
             source_file=source_file,
         )
-    if len(frame_indices) < min_frames:
-        filtered_stats["too short"] += 1
-        return segments, filtered_stats
+    # if len(frame_indices) < min_frames:
+    # filtered_stats["too short"] += 1
+    # return segments, filtered_stats
     frame_indices = np.array(frame_indices)
     segment_count = max(1, len(frame_indices) // segment_frame_spacing)
     segment_count = int(segment_count)

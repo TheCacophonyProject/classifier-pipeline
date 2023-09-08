@@ -260,8 +260,9 @@ class Dataset:
             sample.remapped_label = self.label_mapping.get(
                 sample.original_label, sample.original_label
             )
-        if self.filter_sample(sample):
-            return False
+            # do this earlier
+        # if self.filter_sample(sample):
+        # return False
         self.samples.append(sample)
 
         if sample.label not in self.labels:
