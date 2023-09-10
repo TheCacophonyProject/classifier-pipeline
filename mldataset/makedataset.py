@@ -177,6 +177,8 @@ class ClipLoader:
                                 dtype=frame.pix.dtype,
                             )
                             back_node[:, :] = frame.pix
+                            # pre tracker verison 10 there was a bug where back frame was counted in region frame number
+                            #  so frame 0 is actually the background frame, no tracks shouild ever start at 0
                             if tracker_version < 10:
                                 region_adjust = -1
                                 logging.info("Adjusting regions by %s", region_adjust)
@@ -311,6 +313,7 @@ class ClipLoader:
                         # new_f = region.frame_number + region_adjust
                         prev_frame = region.frame_number
                         region.frame_number = region.frame_number + region_adjust
+                        assert region.frame_number >= 0
                         regions.append(region.to_array())
                         if start is None:
                             start = region.frame_number
