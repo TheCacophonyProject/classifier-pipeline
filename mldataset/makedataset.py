@@ -32,7 +32,7 @@ from pathlib import Path
 import h5py
 from cptv import CPTVReader
 import yaml
-from piclassifier.motiondetector import is_affected_by_ffc
+from load.cliptrackextractor import is_affected_by_ffc
 from track.track import Track
 from track.region import Region
 
@@ -111,13 +111,15 @@ class ClipLoader:
         metadata = tools.load_clip_metadata(metadata_file)
         r_id = metadata["id"]
         out_file = out_dir / f"{r_id}.hdf5"
-        if out_file.exists():
+        tracker_version = metadata.get("tracker_version")
+        logging.info("Tracker version is %s", tracker_version)
+        if out_file.exists() and tracker_version > 9:
             logging.warning("Already loaded %s", filename)
             # going to add some missing fierlds
-            with h5py.File(out_file, "a") as f:
-                if f.attrs.get("device_id") is None:
-                    f.attrs["device_id"] = metadata["deviceId"]
-            return
+            # with h5py.File(out_file, "a") as f:
+            #     if f.attrs.get("device_id") is None:
+            #         f.attrs["device_id"] = metadata["deviceId"]
+            # return
         if len(metadata.get("Tracks")) == 0:
             logging.error("No tracks found for %s", filename)
             return
@@ -164,6 +166,7 @@ class ClipLoader:
                     cropped_stats = ClipStats()
                     num_frames = 0
                     cptv_frames = []
+                    region_adjust = 0
                     for frame in reader:
                         if frame.background_frame:
                             back_node = frames.create_dataset(
@@ -174,15 +177,18 @@ class ClipLoader:
                                 dtype=frame.pix.dtype,
                             )
                             back_node[:, :] = frame.pix
+                            if tracker_version < 10:
+                                region_adjust = -1
+                                logging.info("Adjusting regions by %s", region_adjust)
                             continue
                         ffc = is_affected_by_ffc(frame)
                         if ffc:
                             ffc_frames.append(num_frames)
+
                         cptv_frames.append(frame.pix)
                         stats.add_frame(frame.pix)
                         cropped_stats.add_frame(clip.crop_rectangle.subimage(frame.pix))
                         num_frames += 1
-
                     cptv_frames = np.uint16(cptv_frames)
                     thermal_node = frames.create_dataset(
                         "thermals",
@@ -283,7 +289,7 @@ class ClipLoader:
                     start = None
                     end = None
 
-                    prev_region = None
+                    prev_frame = None
                     regions = []
                     for i, r in enumerate(track.get("positions")):
                         if isinstance(r, list):
@@ -293,7 +299,7 @@ class ClipLoader:
                                     frame_number = round(r[0] * FPS)
                                     region.frame_number = frame_number
                                 else:
-                                    region.frame_number = prev_region.frame_number + 1
+                                    region.frame_number = prev_frame + 1
                         else:
                             region = Region.region_from_json(r)
                         if region.frame_number is None:
@@ -301,14 +307,17 @@ class ClipLoader:
                                 if i == 0:
                                     region.frame_number = round(r["frameTime"] * 9)
                                 else:
-                                    region.frame_number = prev_region.frame_number + 1
-                        prev_region = region
+                                    region.frame_number = prev_frame + 1
+                        # new_f = region.frame_number + region_adjust
+                        prev_frame = region.frame_number
+                        region.frame_number = region.frame_number + region_adjust
                         regions.append(region.to_array())
                         if start is None:
                             start = region.frame_number
                         end = region.frame_number
                     node_attrs["start_frame"] = start
                     node_attrs["end_frame"] = min(num_frames, end)
+
                     region_array = np.uint16(regions)
                     regions = track_group.create_dataset(
                         "regions",

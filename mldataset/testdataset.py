@@ -74,8 +74,8 @@ def makecsv(dir):
 
 def main():
     args = parse_params()
-    makecsv(args.target)
-    return
+    # makecsv(args.target)
+    # return
     f = h5py.File(args.target, "r")
     clip_attrs = f.attrs
     print(
@@ -186,7 +186,7 @@ def main():
                 2,
                 cv2.LINE_AA,
             )
-
+        wait = 100
         for t in tracks:
             for r in t.regions:
                 if r[4] == frame_i:
@@ -224,15 +224,15 @@ def main():
                         2,
                         cv2.LINE_AA,
                     )
-
+                    wait = 0
         cv2.imshow("thermal", frame)
         cv2.imshow("filtered", filtered)
         cv2.moveWindow("thermal", 0, 0)
         cv2.moveWindow("filtered", width * 5, 0)
-        cv2.waitKey(
-            1000 // 9,
-        )
+        cv2.waitKey(wait)
         frame_i += 1
+    print("DONE")
+    cv2.waitKey(0)
 
 
 def norm_image(image):
