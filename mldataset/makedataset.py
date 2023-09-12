@@ -134,6 +134,8 @@ class ClipLoader:
                 createdAt = parse(tag["createdAt"])
 
                 if createdAt < OLD_TRACKER:
+                    if track_version is None:
+                        tracker_version = 9
                     tracker_version = max(tracker_version, 9)
                 else:
                     tracker_version = 10
@@ -143,8 +145,8 @@ class ClipLoader:
             "tracker_version"
         ):
             print("Error with versions", filename)
-            metadata["tracker_version"] = 10
-            print("Updating")
+            metadata["tracker_version"] = tracker_version
+            print("Updating", tracker_version)
             with metadata_file.open("w") as f:
                 json.dump(metadata, f, indent=4)
 
