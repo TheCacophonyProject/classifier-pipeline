@@ -84,6 +84,9 @@ class ClipLoader:
                 if os.path.splitext(name)[1] in [".cptv"]:
                     full_path = os.path.join(folder_path, name)
                     file_paths.append(full_path)
+        if Path(root).is_file():
+            file_paths.append(root)
+
         # allows us know the order of processing
         file_paths.sort()
         for file_path in file_paths:
@@ -140,6 +143,11 @@ class ClipLoader:
             "tracker_version"
         ):
             print("Error with versions", filename)
+            metadata["tracker_version"] = 10
+            print("Updating")
+            with metadata_file.open("w") as f:
+                json.dump(metadata, f, indent=4)
+
         return
         tracker_version = metadata.get("tracker_version")
         logging.info("Tracker version is %s", tracker_version)
