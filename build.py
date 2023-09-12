@@ -103,7 +103,6 @@ def parse_args():
 
 def show_clips_breakdown(dataset):
     print("Clips breakdown:")
-    samples = dataset.samples
 
     for label in dataset.labels:
         print(label)
@@ -123,7 +122,6 @@ def show_clips_breakdown(dataset):
 
 def show_tracks_breakdown(dataset):
     print("Tracks breakdown:")
-    samples = dataset.samples
 
     for label in dataset.labels:
         lbl_samples = dataset.samples_by_label.get(label, [])
@@ -143,7 +141,7 @@ def show_cameras_tracks(dataset):
 def show_cameras_breakdown(dataset):
     print("Cameras breakdown")
     samples_by_camera = {}
-    for sample in dataset.samples:
+    for sample in dataset.samples_by_id.values():
         if sample.camera not in samples_by_camera:
             samples_by_camera[sample.camera] = []
         samples_by_camera[sample.camera].append(sample)
@@ -159,7 +157,7 @@ def show_cameras_breakdown(dataset):
 def show_bins_breakdown(dataset):
     print("Stations breakdown")
     samples_by_bins = {}
-    for sample in dataset.samples:
+    for sample in dataset.samples_by_id.values():
         if sample.bin_id not in samples_by_bins:
             samples_by_bins[sample.bin_id] = []
         samples_by_bins[sample.bin_id].append(sample)
@@ -175,7 +173,7 @@ def show_bins_breakdown(dataset):
 def show_stations_breakdown(dataset):
     print("Stations breakdown")
     samples_by_camera = {}
-    for sample in dataset.samples:
+    for sample in dataset.samples_by_id.values():
         if sample.station_id not in samples_by_camera:
             samples_by_camera[sample.station_id] = []
         samples_by_camera[sample.station_id].append(sample)
@@ -261,7 +259,7 @@ def split_label(
         sample_bins = set([sample.clip_id for sample in samples])
         print(label, " Splitting by clip")
         samples_by_bin = {}
-        for s in dataset.samples:
+        for s in dataset.samples_by_id.values():
             if s.clip_id in sample_bins:
                 if s.clip_id not in samples_by_bin:
                     samples_by_bin[s.clip_id] = []
@@ -386,7 +384,7 @@ def get_test_set_camera(dataset, test_clips, after_date):
     test_c = Camera("Test-Set-Camera")
     test_samples = [
         sample
-        for sample in dataset.samples
+        for sample in dataset.samples_by_id.values()
         if sample.clip_id in test_clips
         or after_date is not None
         and sample.rec_time.replace(tzinfo=pytz.utc) > after_date
@@ -402,7 +400,7 @@ def split_by_file(dataset, config, split_file):
         split = json.load(f)
 
     samples_by_source = {}
-    for s in dataset.samples:
+    for s in dataset.samples_by_id.values():
         samples_by_source.setdefault(s.source_file.name, []).append(s)
     datasets = []
     for name in ["train", "validation", "test"]:
@@ -505,10 +503,10 @@ def split_randomly(dataset, config, args, test_clips=[], balance_bins=True):
         logging.info("Train counts %s", train_counts)
         logging.info("VAL counts %s", validation_counts)
 
-    if balance_bins:
-        train.balance_bins()
-        validation.balance_bins()
-        test.balance_bins()
+    # if balance_bins:
+    #     train.balance_bins()
+    #     validation.balance_bins()
+    #     test.balance_bins()
 
     return train, validation, test
 
@@ -547,10 +545,14 @@ def validate_datasets(datasets, test_bins, date):
 
     for i, dataset in enumerate(datasets):
         dont_check = set(
-            [sample.bin_id for sample in dataset.samples if sample.label in dontsplit]
+            [
+                sample.bin_id
+                for sample in dataset.samples_by_id.values()
+                if sample.label in dontsplit
+            ]
         )
-        bins = set([sample.bin_id for sample in dataset.samples])
-        clips = set([sample.clip_id for sample in dataset.samples])
+        bins = set([sample.bin_id for sample in dataset.samples_by_id.values()])
+        clips = set([sample.clip_id for sample in dataset.samples_by_id.values()])
 
         bins = bins - dont_check
         print(dataset.name, "checkins", bins)
@@ -564,11 +566,17 @@ def validate_datasets(datasets, test_bins, date):
             if dataset.name == other.name:
                 continue
             dont_check = set(
-                [sample.bin_id for sample in other.samples if sample.label in dontsplit]
+                [
+                    sample.bin_id
+                    for sample in other.samples_by_id.values()
+                    if sample.label in dontsplit
+                ]
             )
-            other_bins = set([sample.bin_id for sample in other.samples])
+            other_bins = set([sample.bin_id for sample in other.samples_by_id.values()])
             other_bins = other_bins - dont_check
-            other_clips = set([sample.clip_id for sample in other.samples])
+            other_clips = set(
+                [sample.clip_id for sample in other.samples_by_id.values()]
+            )
 
             # other_tracks = set([track.track_id for track in other.tracks])
             print("Checking against", other.name, other_bins)
@@ -666,7 +674,7 @@ def main():
     dataset.labels.sort()
     print(
         "Loaded {}/{} tracks, found {:.1f}k samples".format(
-            tracks_loaded, total_tracks, len(dataset.samples) / 1000
+            tracks_loaded, total_tracks, len(dataset.samples_by_id) / 1000
         )
     )
     for key, value in dataset.filtered_stats.items():
@@ -690,8 +698,8 @@ def main():
     else:
         datasets = split_randomly(dataset, config, args, test_clips)
     validate_datasets(datasets, test_clips, args.date)
-    print("After split still have ", len(dataset.samples))
-    for s in dataset.samples:
+    print("After split still have ", len(dataset.samples_by_id))
+    for s in dataset.samples_by_id.values():
         print(s.source_file)
     splits = {}
     for d in datasets:
@@ -701,9 +709,17 @@ def main():
         show_tracks_breakdown(d)
         show_samples_breakdown(d)
 
-        samples = d.samples
-
-        clips = [(s.source_file.name, f"{s.station_id}") for s in samples]
+        samples_by_source = d.get_samples_by_source()
+        clips = []
+        for source, samples in samples_by_source.items():
+            tags = set([s.label for s in samples])
+            clips.append(
+                {
+                    "source": source.name,
+                    "station_id": "{}".format(samples[0].station_id),
+                    "tags": list(tags),
+                }
+            )
         # clips = set(clips)
         splits[d.name] = clips
     with open("datasplit.json", "w") as f:

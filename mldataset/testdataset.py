@@ -42,7 +42,7 @@ def makecsv(dir):
     track_counts = {}
     with open("file-desc.csv", "w") as csvout:
         writer = csv.writer(csvout)
-        writer.writerow(["file", "human tags"])
+        writer.writerow(["file", "human tags", "extra human tags"])
         for dbName in dbFiles:
             human_tags = set()
             f = h5py.File(dbName, "r")

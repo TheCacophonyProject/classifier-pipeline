@@ -46,7 +46,7 @@ class Dataset:
         # list of our tracks
         self.samples_by_label = {}
         self.samples_by_bin = {}
-        self.samples = []
+        self.samples_by_id = {}
         self.sample_cdf = []
         self.tracks = []
         self.tracks_by_label = {}
@@ -108,7 +108,7 @@ class Dataset:
 
     @property
     def sample_count(self):
-        return len(self.samples)
+        return len(self.samples_by_id)
 
     def get_label_caps(self, labels, remapped=False):
         counts = []
@@ -263,7 +263,7 @@ class Dataset:
             # do this earlier
         # if self.filter_sample(sample):
         # return False
-        self.samples.append(sample)
+        self.samples_by_id[sample.id] = sample
 
         if sample.label not in self.labels:
             self.labels.append(sample.label)
@@ -285,7 +285,6 @@ class Dataset:
             return True
         if "human_tag" not in track_meta:
             self.filtered_stats["notags"] += 1
-            logging.info("no tags")
             return True
         if track_meta["human_tag"] in self.excluded_tags:
             logging.info("Is excluded %s", track_meta["human_tag"])
@@ -368,48 +367,49 @@ class Dataset:
 
     def get_samples_by_source(self):
         samples_by_source = {}
-        for s in self.samples:
+        for s in self.samples_by_id.values():
             samples_by_source.setdefault(s.source_file, []).append(s)
         return samples_by_source
 
-    def get_sample(self, cap=None, replace=True, label=None, random=True):
-        """Returns a random frames from weighted list."""
-        if label:
-            samples = self.samples_for(label, remapped=True)
-            cdf = self.label_cdf(label)
-        else:
-            samples = self.samples()
-            cdf = self.cdf()
-        if not samples:
-            return None
-        if cap is None:
-            return samples
-        if random:
-            return np.random.choice(samples, cap, replace=replace, p=cdf)
-        else:
-            cap = min(cap, len(samples))
-            return samples[:cap]
-
-    def balance_bins(self, max_bin_weight=None):
-        """
-        Adjusts weights so that bins with a number number of segments aren't sampled so frequently.
-        :param max_bin_weight: bins with more weight than this number will be scaled back to this weight.
-        """
-
-        for bin_name, samples in self.samples_by_bin.items():
-            bin_weight = sum(sample.sample_weight for sample in samples)
-            if bin_weight == 0:
-                continue
-            if max_bin_weight is None:
-                scale_factor = 1 / bin_weight
-                # means each bin has equal possiblity
-            elif bin_weight > max_bin_weight:
-                scale_factor = max_bin_weight / bin_weight
-            else:
-                scale_factor = 1
-            for sample in samples:
-                sample.weight = np.float16(sample.sample_weight * scale_factor)
-        self.rebuild_cdf()
+    #
+    # def get_sample(self, cap=None, replace=True, label=None, random=True):
+    #     """Returns a random frames from weighted list."""
+    #     if label:
+    #         samples = self.samples_for(label, remapped=True)
+    #         cdf = self.label_cdf(label)
+    #     else:
+    #         samples = self.samples()
+    #         cdf = self.cdf()
+    #     if not samples:
+    #         return None
+    #     if cap is None:
+    #         return samples
+    #     if random:
+    #         return np.random.choice(samples, cap, replace=replace, p=cdf)
+    #     else:
+    #         cap = min(cap, len(samples))
+    #         return samples[:cap]
+    #
+    # def balance_bins(self, max_bin_weight=None):
+    #     """
+    #     Adjusts weights so that bins with a number number of segments aren't sampled so frequently.
+    #     :param max_bin_weight: bins with more weight than this number will be scaled back to this weight.
+    #     """
+    #
+    #     for bin_name, samples in self.samples_by_bin.items():
+    #         bin_weight = sum(sample.sample_weight for sample in samples)
+    #         if bin_weight == 0:
+    #             continue
+    #         if max_bin_weight is None:
+    #             scale_factor = 1 / bin_weight
+    #             # means each bin has equal possiblity
+    #         elif bin_weight > max_bin_weight:
+    #             scale_factor = max_bin_weight / bin_weight
+    #         else:
+    #             scale_factor = 1
+    #         for sample in samples:
+    #             sample.weight = np.float16(sample.sample_weight * scale_factor)
+    #     self.rebuild_cdf()
 
     def remove_label(self, label_to_remove):
         """
@@ -429,55 +429,56 @@ class Dataset:
             return self.label_mapping.get(label, label)
         return label
 
-    def rebuild_cdf(self, lbl_p=None):
-        """Calculates the CDF used for fast random sampling for frames and
-        segments, if balance labels is set each label has an equal chance of
-        being chosen
-        """
-        if lbl_p is None:
-            lbl_p = self.lbl_p
-
-        self.sample_cdf = []
-        total = 0
-        self.sample_label_cdf = {}
-
-        for sample in self.samples:
-            sample_weight = sample.sample_weight
-            if lbl_p and sample.label in lbl_p:
-                sample_weight *= lbl_p[sample.label]
-            total += sample_weight
-
-            self.sample_cdf.append(sample_weight)
-
-            cdf = self.sample_label_cdf.setdefault(sample.label, [])
-            cdf.append(sample.sample_weight)
-
-        if len(self.sample_cdf) > 0:
-            self.sample_cdf = [x / total for x in self.sample_cdf]
-
-        for key, cdf in self.sample_label_cdf.items():
-            total = sum(cdf)
-            self.sample_label_cdf[key] = [x / total for x in cdf]
-
-        if self.label_mapping:
-            mapped_cdf = {}
-            labels = list(self.label_mapping.keys())
-            labels.sort()
-            for label in labels:
-                if label not in self.sample_label_cdf:
-                    continue
-                label_cdf = self.sample_label_cdf[label]
-                new_label = self.label_mapping[label]
-                if lbl_p and label in lbl_p:
-                    label_cdf = np.float64(label_cdf)
-                    label_cdf *= lbl_p[label]
-                cdf = mapped_cdf.setdefault(new_label, [])
-                cdf.extend(label_cdf)
-
-            for key, cdf in mapped_cdf.items():
-                total = sum(cdf)
-                mapped_cdf[key] = [x / total for x in cdf]
-            self.sample_label_cdf = mapped_cdf
+    #
+    # def rebuild_cdf(self, lbl_p=None):
+    #     """Calculates the CDF used for fast random sampling for frames and
+    #     segments, if balance labels is set each label has an equal chance of
+    #     being chosen
+    #     """
+    #     if lbl_p is None:
+    #         lbl_p = self.lbl_p
+    #
+    #     self.sample_cdf = []
+    #     total = 0
+    #     self.sample_label_cdf = {}
+    #
+    #     for sample in self.samples:
+    #         sample_weight = sample.sample_weight
+    #         if lbl_p and sample.label in lbl_p:
+    #             sample_weight *= lbl_p[sample.label]
+    #         total += sample_weight
+    #
+    #         self.sample_cdf.append(sample_weight)
+    #
+    #         cdf = self.sample_label_cdf.setdefault(sample.label, [])
+    #         cdf.append(sample.sample_weight)
+    #
+    #     if len(self.sample_cdf) > 0:
+    #         self.sample_cdf = [x / total for x in self.sample_cdf]
+    #
+    #     for key, cdf in self.sample_label_cdf.items():
+    #         total = sum(cdf)
+    #         self.sample_label_cdf[key] = [x / total for x in cdf]
+    #
+    #     if self.label_mapping:
+    #         mapped_cdf = {}
+    #         labels = list(self.label_mapping.keys())
+    #         labels.sort()
+    #         for label in labels:
+    #             if label not in self.sample_label_cdf:
+    #                 continue
+    #             label_cdf = self.sample_label_cdf[label]
+    #             new_label = self.label_mapping[label]
+    #             if lbl_p and label in lbl_p:
+    #                 label_cdf = np.float64(label_cdf)
+    #                 label_cdf *= lbl_p[label]
+    #             cdf = mapped_cdf.setdefault(new_label, [])
+    #             cdf.extend(label_cdf)
+    #
+    #         for key, cdf in mapped_cdf.items():
+    #             total = sum(cdf)
+    #             mapped_cdf[key] = [x / total for x in cdf]
+    #         self.sample_label_cdf = mapped_cdf
 
     def get_label_weight(self, label):
         """Returns the total weight for all segments of given label."""
@@ -508,56 +509,57 @@ class Dataset:
         self.labels.sort()
         self.samples_by_bin = samples_by_bin
         self.samples_by_label = samples_by_label
-
-        if shuffle:
-            np.random.shuffle(self.samples)
-        self.rebuild_cdf()
+        #
+        # if shuffle:
+        #     np.random.shuffle(self.samples)
+        # self.rebuild_cdf()
 
     def has_data(self):
-        return len(self.samples) > 0
+        return len(self.samples_by_id) > 0
 
-    def recalculate_segments(self, segment_type=SegmentType.ALL_RANDOM):
-        self.samples_by_bin.clear()
-        self.samples_by_label.clear()
-        del self.samples[:]
-        del self.samples
-        self.samples = []
-        self.samples_by_label = {}
-        self.samples_by_bin = {}
-        logging.info("%s generating segments  type %s", self.name, segment_type)
-        start = time.time()
-        empty_tracks = []
-        filtered_stats = 0
-
-        for track in self.tracks:
-            segment_frame_spacing = int(
-                round(self.segment_spacing * track.frames_per_second)
-            )
-            segment_width = self.segment_length
-            track.calculate_segments(
-                segment_frame_spacing,
-                segment_width,
-                segment_type,
-                segment_min_mass=segment_min_avg_mass,
-            )
-            filtered_stats = filtered_stats + track.filtered_stats["segment_mass"]
-            if len(track.segments) == 0:
-                empty_tracks.append(track)
-                continue
-            for sample in track.segments:
-                self.add_clip_sample_mappings(sample)
-
-        self.rebuild_cdf()
-        logging.info(
-            "%s #segments %s filtered stats are %s took  %s",
-            self.name,
-            len(self.samples),
-            filtered_stats,
-            time.time() - start,
-        )
+    #
+    # def recalculate_segments(self, segment_type=SegmentType.ALL_RANDOM):
+    #     self.samples_by_bin.clear()
+    #     self.samples_by_label.clear()
+    #     del self.samples[:]
+    #     del self.samples
+    #     self.samples = []
+    #     self.samples_by_label = {}
+    #     self.samples_by_bin = {}
+    #     logging.info("%s generating segments  type %s", self.name, segment_type)
+    #     start = time.time()
+    #     empty_tracks = []
+    #     filtered_stats = 0
+    #
+    #     for track in self.tracks:
+    #         segment_frame_spacing = int(
+    #             round(self.segment_spacing * track.frames_per_second)
+    #         )
+    #         segment_width = self.segment_length
+    #         track.calculate_segments(
+    #             segment_frame_spacing,
+    #             segment_width,
+    #             segment_type,
+    #             segment_min_mass=segment_min_avg_mass,
+    #         )
+    #         filtered_stats = filtered_stats + track.filtered_stats["segment_mass"]
+    #         if len(track.segments) == 0:
+    #             empty_tracks.append(track)
+    #             continue
+    #         for sample in track.segments:
+    #             self.add_clip_sample_mappings(sample)
+    #
+    #     self.rebuild_cdf()
+    #     logging.info(
+    #         "%s #segments %s filtered stats are %s took  %s",
+    #         self.name,
+    #         len(self.samples),
+    #         filtered_stats,
+    #         time.time() - start,
+    #     )
 
     def remove_sample(self, sample):
-        self.samples.remove(sample)
+        del self.samples_by_id[sample.id]
         try:
             # not nessesarily there if splitting by clip hack
             self.samples_by_bin[sample.bin_id].remove(sample)
