@@ -114,7 +114,16 @@ class ClipLoader:
         r_id = metadata["id"]
         out_file = out_dir / f"{r_id}.hdf5"
         tracks = metadata.get("Tracks")
-        tracker_version = None
+        tracker_version = 10
+        has_background = False
+        with open(filename, "rb") as f:
+            reader = CPTVReader(f)
+            for frame in reader:
+                if frame.background_frame is True:
+                    has_background = True
+                break
+        if not has_background:
+            return
         for t in tracks:
             tags = t.get("tags", [])
             tags = [tag for tag in tags if tag.get("automatic")]
@@ -124,9 +133,7 @@ class ClipLoader:
                 if createdAt < OLD_TRACKER:
                     tracker_version = 9
                 # print("Created at is", tag["createdAt"])
-        if tracker_version is not None and tracker_version != metadata.get(
-            "tracker_version"
-        ):
+        if tracker_version != metadata.get("tracker_version"):
             print("Error with versions", filenae)
         return
         tracker_version = metadata.get("tracker_version")
