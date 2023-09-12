@@ -926,7 +926,7 @@ def get_segments(
             region.frame_number
             for region in regions
             if (ignore_mass or region.mass > 0)
-            and region.frame_number not in ffc_frames
+            # and region.frame_number not in ffc_frames
             and (skipped_frames is None or region.frame_number not in skipped_frames)
             and not region.blank
         ]

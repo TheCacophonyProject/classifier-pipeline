@@ -360,7 +360,8 @@ def split_label(
                 else:
                     break
 
-    sample_bins = sample_bins[last_index + 1 :]
+    # sample_bins = sample_bins[last_index + 1 :]
+    # clearining anyway
     camera_type = "train"
     added = 0
     for i, sample_bin in enumerate(sample_bins):
@@ -689,6 +690,9 @@ def main():
     else:
         datasets = split_randomly(dataset, config, args, test_clips)
     validate_datasets(datasets, test_clips, args.date)
+    print("After split still have ", len(dataset.samples))
+    for s in dataset.samples:
+        print(s.source_file)
     splits = {}
     for d in datasets:
         print(d.name)
@@ -704,7 +708,7 @@ def main():
         splits[d.name] = clips
     with open("datasplit.json", "w") as f:
         json.dump(splits, f)
-    # return
+    return
     print_counts(dataset, *datasets)
     print("split data")
     base_dir = config.tracks_folder
