@@ -6,12 +6,9 @@ python:
 - '3.9'
 install:
 - sudo apt-get update
-- sudo apt -y install ffmpeg
-- sudo apt-get -y install libgirepository1.0-dev python3-dbus
 - python -m pip install --upgrade pip
-- sudo apt-get install libopencv-dev -y
 - pip install cmake
-- sudo apt install -y build-essential libdbus-glib-1-dev libgirepository1.0-dev
+- sudo apt install -y python3-dbus ffmpeg build-essential libdbus-glib-1-dev libgirepository1.0-dev tzdata libcairo2-dev libjpeg-dev python-cairo libhdf5-dev libopencv-dev cmake
 - pip install -r requirements.txt
 before_script:
 - pip install black --upgrade
