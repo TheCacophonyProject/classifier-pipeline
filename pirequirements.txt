@@ -8,11 +8,11 @@ numpy==1.23.1
 scipy==1.9.3
 python-dateutil
 scikit-learn==1.1.3
-tables==3.4
+tables==3.8.0
 h5py==3.8.0
 pyyaml==6.0
 pillow==9.2.0
-attrs==19.1
+attrs==19.2.0
 filelock==3.0.12
 Astral==1.10.1
 timezonefinder==4.1.0
