@@ -113,7 +113,10 @@ class ClipLoader:
             logging.error("No meta data found for %s", metadata_file)
             return
 
-        metadata = tools.load_clip_metadata(metadata_file)
+        # metadata = tools.load_clip_metadata(metadata_file)
+        with open(metadata_file, "r") as t:
+            # add in some metadata stats
+            metadata = json.load(t)
         r_id = metadata["id"]
         out_file = out_dir / f"{r_id}.hdf5"
         tracks = metadata.get("Tracks")
@@ -134,7 +137,7 @@ class ClipLoader:
                 createdAt = parse(tag["createdAt"])
 
                 if createdAt < OLD_TRACKER:
-                    if track_version is None:
+                    if tracker_version is None:
                         tracker_version = 9
                     tracker_version = max(tracker_version, 9)
                 else:
