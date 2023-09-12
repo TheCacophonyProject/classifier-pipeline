@@ -35,10 +35,8 @@ import yaml
 from load.cliptrackextractor import is_affected_by_ffc
 from track.track import Track
 from track.region import Region
-from dateutil.parser import parse
 
 FPS = 9
-OLD_TRACKER = parse("2021-06-01 17:02:30.592 +1200")
 
 
 def process_job(loader, queue, out_dir, config):
@@ -84,9 +82,6 @@ class ClipLoader:
                 if os.path.splitext(name)[1] in [".cptv"]:
                     full_path = os.path.join(folder_path, name)
                     file_paths.append(full_path)
-        if Path(root).is_file():
-            file_paths.append(root)
-
         # allows us know the order of processing
         file_paths.sort()
         for file_path in file_paths:
@@ -107,53 +102,15 @@ class ClipLoader:
     def process_file(self, filename, out_dir, config):
         start = time.time()
         filename = Path(filename)
-        # logging.info(f"processing %s", filename)
+        logging.info(f"processing %s", filename)
         metadata_file = filename.with_suffix(".txt")
         if not metadata_file.exists():
             logging.error("No meta data found for %s", metadata_file)
             return
 
-        # metadata = tools.load_clip_metadata(metadata_file)
-        with open(metadata_file, "r") as t:
-            # add in some metadata stats
-            metadata = json.load(t)
+        metadata = tools.load_clip_metadata(metadata_file)
         r_id = metadata["id"]
         out_file = out_dir / f"{r_id}.hdf5"
-        tracks = metadata.get("Tracks")
-        tracker_version = None
-        has_background = False
-        with open(filename, "rb") as f:
-            reader = CPTVReader(f)
-            for frame in reader:
-                if frame.background_frame is True:
-                    has_background = True
-                break
-        if not has_background:
-            return
-        for t in tracks:
-            tags = t.get("tags", [])
-            tags = [tag for tag in tags if tag.get("automatic")]
-            for tag in tags:
-                createdAt = parse(tag["createdAt"])
-
-                if createdAt < OLD_TRACKER:
-                    if tracker_version is None:
-                        tracker_version = 9
-                    tracker_version = max(tracker_version, 9)
-                else:
-                    tracker_version = 10
-
-                # print("Created at is", tag["createdAt"])
-        if tracker_version is not None and tracker_version != metadata.get(
-            "tracker_version"
-        ):
-            print("Error with versions", filename)
-            metadata["tracker_version"] = tracker_version
-            print("Updating", tracker_version)
-            with metadata_file.open("w") as f:
-                json.dump(metadata, f, indent=4)
-
-        return
         tracker_version = metadata.get("tracker_version")
         logging.info("Tracker version is %s", tracker_version)
         if out_file.exists() and tracker_version > 9:
