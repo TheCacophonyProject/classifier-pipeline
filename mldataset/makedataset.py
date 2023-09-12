@@ -35,8 +35,10 @@ import yaml
 from load.cliptrackextractor import is_affected_by_ffc
 from track.track import Track
 from track.region import Region
+from dateutil.parser import parse
 
 FPS = 9
+OLD_TRACKER = parse("2021-06-01 17:02:30.592 +1200")
 
 
 def process_job(loader, queue, out_dir, config):
@@ -102,7 +104,7 @@ class ClipLoader:
     def process_file(self, filename, out_dir, config):
         start = time.time()
         filename = Path(filename)
-        logging.info(f"processing %s", filename)
+        # logging.info(f"processing %s", filename)
         metadata_file = filename.with_suffix(".txt")
         if not metadata_file.exists():
             logging.error("No meta data found for %s", metadata_file)
@@ -111,6 +113,22 @@ class ClipLoader:
         metadata = tools.load_clip_metadata(metadata_file)
         r_id = metadata["id"]
         out_file = out_dir / f"{r_id}.hdf5"
+        tracks = metadata.get("Tracks")
+        tracker_version = None
+        for t in tracks:
+            tags = t.get("tags", [])
+            tags = [tag for tag in tags if tag.get("automatic")]
+            for tag in tags:
+                createdAt = parse(tag["createdAt"])
+
+                if createdAt < OLD_TRACKER:
+                    tracker_version = 9
+                # print("Created at is", tag["createdAt"])
+        if tracker_version is not None and tracker_version != metadata.get(
+            "tracker_version"
+        ):
+            print("Error with versions", filenae)
+        return
         tracker_version = metadata.get("tracker_version")
         logging.info("Tracker version is %s", tracker_version)
         if out_file.exists() and tracker_version > 9:
