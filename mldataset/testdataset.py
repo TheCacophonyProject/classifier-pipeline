@@ -42,14 +42,14 @@ def makecsv(dir):
     track_counts = {}
     with open("file-desc.csv", "w") as csvout:
         writer = csv.writer(csvout)
-        writer.writerow(["file", "human tags", "extra human tags"])
+        writer.writerow(["file", "track id", "human tags", "extra human tags"])
         for dbName in dbFiles:
-            human_tags = set()
             f = h5py.File(dbName, "r")
             tracks = f["tracks"]
             track_ids = tracks.keys()
-            extra_tags = set()
             for track_id in track_ids:
+                human_tags = set()
+                extra_tags = set()
                 attrs = tracks[track_id].attrs
                 if "human_tag" not in attrs:
                     continue
@@ -63,6 +63,7 @@ def makecsv(dir):
                     track_counts[tag] += 1
                 else:
                     track_counts[tag] = 1
+                writer.writerow([dbName, track_id, human_tags, extra_tags])
             human_tags = list(human_tags)
             human_tags.sort()
             for t in human_tags:
@@ -70,7 +71,6 @@ def makecsv(dir):
                     rec_counts[t] += 1
                 else:
                     rec_counts[t] = 1
-            writer.writerow([dbName, human_tags, extra_tags])
 
     print("REC Counts", rec_counts)
     print("Track Counts", track_counts)
