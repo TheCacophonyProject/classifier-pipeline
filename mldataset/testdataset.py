@@ -47,6 +47,9 @@ def makecsv(dir):
             f = h5py.File(dbName, "r")
             tracks = f["tracks"]
             track_ids = tracks.keys()
+            if len(track_ids) == 0:
+                writer.writerow([dbName, None, None, None])
+
             for track_id in track_ids:
                 human_tags = set()
                 extra_tags = set()
