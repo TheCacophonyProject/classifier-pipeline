@@ -422,7 +422,10 @@ def split_by_file(dataset, config, split_file, base_dir):
             file = base_dir / f["source"]
             if file.exists():
                 # print("File exists", file)
-                split_dataset.load_clip(file, dont_filter_segment=True)
+                try:
+                    split_dataset.load_clip(file, dont_filter_segment=True)
+                except:
+                    logging.error("Could not load %s", file, exc_info=True)
             else:
                 # pass
                 logging.warn("No source file %s found for %s", f, name)
