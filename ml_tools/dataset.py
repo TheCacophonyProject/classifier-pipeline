@@ -280,7 +280,6 @@ class Dataset:
             self.filtered_stats["notags"] += 1
             return True
         if track_meta["human_tag"] in self.excluded_tags:
-            logging.info("Is excluded %s", track_meta["human_tag"])
             self.filtered_stats["tags"] += 1
             self.filtered_stats["tag_names"].add(track_meta["human_tag"])
             return True
@@ -292,7 +291,6 @@ class Dataset:
                 self.filtered_stats["tag_names"] |= set(excluded_tags)
 
                 self.filtered_stats["tags"] += 1
-                logging.info("Is excluded %s", set(excluded_tags))
                 return True
         # always let the false-positives through as we need them even though they would normally
         # be filtered out.
