@@ -408,6 +408,7 @@ def split_by_file(dataset, config, split_file, base_dir):
         samples_by_source.setdefault(s.source_file.name, []).append(s)
     datasets = []
     for name in ["train", "validation", "test"]:
+        logging.info("Loading %s", name)
         split_dataset = Dataset(
             dataset.dataset_dir, name, config, label_mapping=dataset.label_mapping
         )

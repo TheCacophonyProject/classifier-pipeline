@@ -938,6 +938,9 @@ def get_segments(
             and region.width > 0
             and region.height > 0
         ]
+        if len(frame_indices) == 0:
+            logging.warn("Nothing to load for %s - %s", clip_id, track_id)
+            return [], filtered_stats
         if segment_min_mass is not None:
             if len(frame_indices) > 0:
                 segment_min_mass = min(
