@@ -140,6 +140,7 @@ def process_job(queue, labels, base_dir, num_frames):
     writer = tf.io.TFRecordWriter(str(base_dir / name), options=options)
     i = 0
     saved = 0
+    files = 0
     while True:
         i += 1
         samples = queue.get()
@@ -156,6 +157,7 @@ def process_job(queue, labels, base_dir, num_frames):
                     labels,
                     num_frames,
                 )
+                files += 1
                 del samples
                 if saved > 10000:
                     logging.info("Closing old writer")
@@ -165,9 +167,10 @@ def process_job(queue, labels, base_dir, num_frames):
                     logging.info("Opening %s", name)
                     saved = 0
                     writer = tf.io.TFRecordWriter(str(base_dir / name), options=options)
-                if i % 10 == 0:
-                    logging.info("Clear gc")
+                if i % 100 == 0:
+                    logging.info("Saved %s ", files)
                     gc.collect()
+                    writer.flush()
         except:
             logging.error("Process_job error %s", samples[0].source_file, exc_info=True)
 
