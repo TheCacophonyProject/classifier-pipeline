@@ -70,8 +70,10 @@ class Region(Rectangle):
 
     @classmethod
     def region_from_array(cls, region_bounds):
-        width = region_bounds[2] - region_bounds[0]
-        height = region_bounds[3] - region_bounds[1]
+        width = int(region_bounds[2]) - region_bounds[0]
+        height = int(region_bounds[3]) - region_bounds[1]
+        height = np.uint8(max(height, 0))
+        width = np.uint8(max(width, 0))
         frame_number = None
         if len(region_bounds) > 4:
             frame_number = region_bounds[4]
