@@ -106,6 +106,9 @@ class Dataset:
         self.lbl_p = None
         self.numpy_data = None
 
+        self.ignore_mass = True
+        self.skip_ffc = True
+
     @property
     def sample_count(self):
         return len(self.samples_by_id)
@@ -211,6 +214,8 @@ class Dataset:
                     self.segment_min_avg_mass,
                     max_segments=self.max_segments,
                     dont_filter=dont_filter_segment,
+                    ignore_mass=self.ignore_mass,
+                    skip_ffc=self.skip_ffc,
                 )
                 self.filtered_stats["segment_mass"] += track_header.filtered_stats[
                     "segment_mass"
@@ -222,7 +227,7 @@ class Dataset:
                     self.add_clip_sample_mappings(segment)
             else:
                 track_header.calculate_sample_frames()
-                sample_frames = track_header.get_sample_frames()
+                sample_frames = track_header.get_sample_frames(self.min_frame_mass)
                 skip_x = None
                 if self.type == "IR":
                     skip_last = int(len(sample_frames) * 0.1)
@@ -246,23 +251,11 @@ class Dataset:
                 result += 1
         return result
 
-    def filter_sample(self, sample):
-        if sample.label in self.excluded_tags:
-            self.filtered_stats["tags"] += 1
-            return True
-
-        if self.min_frame_mass and sample.mass < self.min_frame_mass:
-            return True
-        return False
-
     def add_clip_sample_mappings(self, sample):
         if self.label_mapping:
             sample.remapped_label = self.label_mapping.get(
                 sample.original_label, sample.original_label
             )
-            # do this earlier
-        # if self.filter_sample(sample):
-        # return False
         self.samples_by_id[sample.id] = sample
 
         if sample.label not in self.labels:

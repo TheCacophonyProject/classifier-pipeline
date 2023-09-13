@@ -22,6 +22,8 @@ from ml_tools.thermalwriter import create_tf_records as create_thermal_records
 
 import numpy as np
 
+from pathlib import Path
+
 MAX_TEST_TRACKS = 1
 MAX_TEST_SAMPLES = 1
 
@@ -96,7 +98,8 @@ def parse_args():
         MIN_SAMPLES = args.min_samples
         MIN_TRACKS = args.min_samples
         # args.date = datetime.datetime.now() - datetime.timedelta(days=30)
-
+    if args.data_dir is not None:
+        args.data_dir = Path(args.data_dir)
     logging.info("Loading training set up to %s", args.date)
     return args
 
@@ -395,7 +398,8 @@ def get_test_set_camera(dataset, test_clips, after_date):
     return test_c
 
 
-def split_by_file(dataset, config, split_file):
+def split_by_file(dataset, config, split_file, base_dir):
+    base_dir = Path(base_dir)
     with open(split_file, "r") as f:
         split = json.load(f)
 
@@ -409,18 +413,19 @@ def split_by_file(dataset, config, split_file):
         )
         if name == "train":
             split_dataset.enable_augmentation = True
-
+        elif name == "test":
+            split_dataset.skip_ffc = False
         split_files = split.get(name, [])
         for f in split_files:
-            samples = samples_by_source.get(f)
-            if samples is None:
+            # print("loading", base_dir / f["source"])
+            # continue
+            file = base_dir / f["source"]
+            if file.exists():
+                # print("File exists", file)
+                split_dataset.load_clip(file, dont_filter_segment=True)
+            else:
+                # pass
                 logging.warn("No source file %s found for %s", f, name)
-                continue
-            if name != "test":
-                print("Getting segments that aren't filtered", name)
-                samples = [s for s in samples if not s.filtered]
-            split_dataset.add_samples(samples)
-
         datasets.append(split_dataset)
     return datasets
 
@@ -656,7 +661,6 @@ def main():
     logging.info("Building for type %s", config.train.type)
     with open("label_paths.json", "r") as f:
         label_paths = json.load(f)
-
     test_clips = config.build.test_clips()
     if test_clips is None:
         test_clips = []
@@ -669,62 +673,64 @@ def main():
         consecutive_segments=args.consecutive_segments,
         label_mapping=label_mapping,
     )
-    tracks_loaded, total_tracks = dataset.load_clips(dont_filter_segment=True)
-    # return
-    dataset.labels.sort()
-    print(
-        "Loaded {}/{} tracks, found {:.1f}k samples".format(
-            tracks_loaded, total_tracks, len(dataset.samples_by_id) / 1000
-        )
-    )
-    for key, value in dataset.filtered_stats.items():
-        if value != 0:
-            print("  {} filtered {}".format(key, value))
-
-    print()
-    show_clips_breakdown(dataset)
-    print()
-    show_samples_breakdown(dataset)
-    print()
-    show_cameras_breakdown(dataset)
-    print()
-    show_stations_breakdown(dataset)
-    print()
-    show_bins_breakdown(dataset)
-    print()
-    print("Splitting data set into train / validation")
     if args.split_file:
-        datasets = split_by_file(dataset, config, args.split_file)
+        datasets = split_by_file(dataset, config, args.split_file, args.data_dir)
     else:
-        datasets = split_randomly(dataset, config, args, test_clips)
-    validate_datasets(datasets, test_clips, args.date)
-    print("After split still have ", len(dataset.samples_by_id))
-    for s in dataset.samples_by_id.values():
-        print(s.source_file)
-    splits = {}
-    for d in datasets:
-        print(d.name)
-        # show_samples_breakdown(d)
-        show_clips_breakdown(d)
-        show_tracks_breakdown(d)
-        show_samples_breakdown(d)
-
-        samples_by_source = d.get_samples_by_source()
-        clips = []
-        for source, samples in samples_by_source.items():
-            tags = set([s.label for s in samples])
-            clips.append(
-                {
-                    "source": source.name,
-                    "station_id": "{}".format(samples[0].station_id),
-                    "tags": list(tags),
-                }
+        tracks_loaded, total_tracks = dataset.load_clips(dont_filter_segment=True)
+        # return
+        dataset.labels.sort()
+        print(
+            "Loaded {}/{} tracks, found {:.1f}k samples".format(
+                tracks_loaded, total_tracks, len(dataset.samples_by_id) / 1000
             )
-        # clips = set(clips)
-        splits[d.name] = clips
-    with open("datasplit.json", "w") as f:
-        json.dump(splits, f)
-    return
+        )
+        for key, value in dataset.filtered_stats.items():
+            if value != 0:
+                print("  {} filtered {}".format(key, value))
+
+        print()
+        show_clips_breakdown(dataset)
+        print()
+        show_samples_breakdown(dataset)
+        print()
+        show_cameras_breakdown(dataset)
+        print()
+        show_stations_breakdown(dataset)
+        print()
+        show_bins_breakdown(dataset)
+        print()
+        print("Splitting data set into train / validation")
+
+        datasets = split_randomly(dataset, config, args, test_clips)
+        # validate_datasets(datasets, test_clips, args.date)
+        # print("After split still have ", len(dataset.samples_by_id))
+        # for s in dataset.samples_by_id.values():
+        # print(s.source_file)
+        # splits = {}
+        # for d in datasets:
+        #     print(d.name)
+        #     # show_samples_breakdown(d)
+        #     show_clips_breakdown(d)
+        #     show_tracks_breakdown(d)
+        #     show_samples_breakdown(d)
+        #
+        #     samples_by_source = d.get_samples_by_source()
+        #     clips = []
+        #     for source, samples in samples_by_source.items():
+        #         tags = set([s.label for s in samples])
+        #         clips.append(
+        #             {
+        #                 "source": source.name,
+        #                 "station_id": "{}".format(samples[0].station_id),
+        #                 "tags": list(tags),
+        #             }
+        #         )
+        #     # clips = set(clips)
+        #     splits[d.name] = clips
+        # with open("datasplit.json", "w") as f:
+        #     json.dump(splits, f)
+        # return
+
     print_counts(dataset, *datasets)
     print("split data")
     base_dir = config.tracks_folder

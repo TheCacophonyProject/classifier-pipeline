@@ -229,7 +229,7 @@ class TrackHeader:
         else:
             self.sample_frames.append(sample)
 
-    def calculate_sample_frames(self):
+    def calculate_sample_frames(self, min_mass=None):
         frame_numbers = list(self.regions_by_frame.keys())
         frame_numbers = [
             frame
@@ -242,6 +242,8 @@ class TrackHeader:
         for frame_num, frame_temp in zip(frame_numbers, self.frame_temp_median):
             region = self.regions_by_frame[frame_num]
             if region.mass == 0 or region.blank:
+                continue
+            if min_mass is not None and region.mass < min_mass:
                 continue
             f = FrameSample(
                 self.clip_id,
@@ -314,6 +316,8 @@ class TrackHeader:
         repeats=1,
         max_segments=None,
         dont_filter=False,
+        ignore_mass=False,
+        skip_ffc=True,
     ):
         min_frames = segment_width
         if self.label == "vehicle" or self.label == "human":
@@ -345,6 +349,8 @@ class TrackHeader:
             source_file=self.source_file,
             camera=self.camera,
             dont_filter=dont_filter,
+            ignore_mass=ignore_mass,
+            skip_ffc=skip_ffc,
         )
 
     @property
@@ -909,9 +915,8 @@ def get_segments(
     rec_time=None,
     source_file=None,
     dont_filter=False,
+    skip_ffc=True,
 ):
-    # just for creating dataset
-    ignore_mass = True
     if segment_type == SegmentType.ALL_RANDOM_NOMIN:
         segment_min_mass = None
     if min_frames is None:
@@ -922,15 +927,17 @@ def get_segments(
     if sample_frames is not None:
         frame_indices = [frame.frame_number for frame in sample_frames]
     else:
+        has_no_mass = np.sum(mass_history) == 0
         frame_indices = [
             region.frame_number
             for region in regions
-            if (ignore_mass or region.mass > 0)
-            # and region.frame_number not in ffc_frames
+            if (has_no_mass or region.mass > 0)
+            and (skip_ffc and region.frame_number not in ffc_frames)
             and (skipped_frames is None or region.frame_number not in skipped_frames)
             and not region.blank
+            and region.width > 0
+            and region.height > 0
         ]
-
         if segment_min_mass is not None:
             if len(frame_indices) > 0:
                 segment_min_mass = min(
@@ -1043,20 +1050,17 @@ def get_segments(
                 else:
                     filtered_stats["segment_mass"] += 1
                     continue
+
+            temp_slice = frame_temp_median[relative_frames]
+            region_slice = regions[relative_frames]
+            movement_data = None
             if segment_avg_mass < 50:
                 segment_weight_factor = 0.75
             elif segment_avg_mass < 100:
                 segment_weight_factor = 1
             else:
                 segment_weight_factor = 1.2
-            # if we want to use movement_data
-            # movement_data = get_movement_data(
-            #     self.track_bounds[frames],
-            #     mass_history[frames],
-            # )
-            temp_slice = frame_temp_median[relative_frames]
-            region_slice = regions[relative_frames]
-            movement_data = None
+
             for z, f in enumerate(frames):
                 assert region_slice[z].frame_number == f
             segment = SegmentHeader(

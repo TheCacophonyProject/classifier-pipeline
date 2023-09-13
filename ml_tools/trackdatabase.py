@@ -67,11 +67,11 @@ class TrackDatabase:
         """
 
         self.database = database_filename
-        if not os.path.exists(database_filename):
-            logging.info("Creating new database %s", database_filename)
-            f = h5py.File(database_filename, "w")
-            f.create_group("clips")
-            f.close()
+        # if not os.path.exists(database_filename):
+        #     logging.info("Creating new database %s", database_filename)
+        #     f = h5py.File(database_filename, "w")
+        #     f.create_group("clips")
+        #     f.close()
         HDF5Manager.READ_ONLY = read_only
 
     def set_read_only(self, read_only):

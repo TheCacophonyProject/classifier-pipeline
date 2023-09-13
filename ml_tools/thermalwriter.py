@@ -97,8 +97,10 @@ def create_tf_example(sample, data, features, labels, num_frames):
     filtereds = np.array(filtereds)
     thermal_key = hashlib.sha256(thermals).hexdigest()
     filtered_key = hashlib.sha256(filtereds).hexdigest()
-
+    avg_mass = int(round(sample.mass / len(sample.frame_numbers)))
     feature_dict = {
+        "image/filtered": tfrecord_util.int64_feature(1 if sample.filtered else 0),
+        "image/avg_mass": tfrecord_util.int64_feature(avg_mass),
         "image/avg_dim": tfrecord_util.int64_feature(average_dim),
         "image/height": tfrecord_util.int64_feature(image_height),
         "image/width": tfrecord_util.int64_feature(image_width),
@@ -155,7 +157,7 @@ def process_job(queue, labels, base_dir, num_frames):
                     num_frames,
                 )
                 del samples
-                if saved > 500:
+                if saved > 10000:
                     logging.info("Closing old writer")
                     writer.close()
                     writer_i += 1
@@ -193,7 +195,9 @@ def create_tf_records(
     num_labels = len(labels)
     # pool = multiprocessing.Pool(4)
     logging.info(
-        "writing to output path: %s for %s samples", output_path, len(dataset.samples)
+        "writing to output path: %s for %s samples",
+        output_path,
+        len(dataset.samples_by_id),
     )
     writers = []
     lbl_counts = [0] * num_labels
@@ -230,7 +234,7 @@ def create_tf_records(
                 for process in processes:
                     process.terminate()
                 exit()
-        logging.info("Saved %s", len(dataset.samples))
+        logging.info("Saved %s", len(dataset.samples_by_id))
 
     except:
         logging.error("Error saving track info", exc_info=True)
