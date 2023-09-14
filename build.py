@@ -209,14 +209,14 @@ def print_cameras(train, validation, test):
     print()
 
 
-def print_counts(dataset, train, validation, test):
+def print_counts(train, validation, test):
     print("Counts per class:")
     print("-" * 90)
     print("{:<20} {:<21} {:<21} {:<21}".format("Class", "Train", "Validation", "Test"))
     print("-" * 90)
     print("Samples / Tracks/ Bins/ weight")
     # display the dataset summary
-    for label in dataset.labels:
+    for label in train.labels:
         print(
             "{:<20} {:<20} {:<20} {:<20}".format(
                 label,
@@ -240,6 +240,7 @@ def split_label(
     test_count,
     existing_test_count=0,
     max_samples=None,
+    use_test=True,
 ):
     # split a label from dataset such that vlaidation is 15% or MIN_TRACKS
     # dont split these by location and camera
@@ -289,7 +290,7 @@ def split_label(
     random.shuffle(sample_bins)
     train_c = Camera("{}-Train".format(label))
     validate_c = Camera("{}-Val".format(label))
-    test_c = Camera("{}-Test".format(label))
+    test_c = Camera("{}-Test".format(label)) if use_test else None
 
     camera_type = "validate"
     add_to = validate_c
@@ -357,7 +358,8 @@ def split_label(
                     track_limit = num_test_tracks
                     label_count = 0
                     tracks = set()
-                    break
+                    if use_test is False:
+                        break
                 else:
                     break
 
@@ -428,13 +430,21 @@ def split_by_file(dataset, config, split_file, base_dir):
                 except:
                     logging.error("Could not load %s", file, exc_info=True)
             else:
-                # pass
-                logging.warn("No source file %s found for %s", f, name)
+                pass
+                # logging.warn("No source file %s found for %s", f, name)
         datasets.append(split_dataset)
+    print("Pre split")
+
+    print()
+    print_counts(*datasets)
+    train, val, test = split_randomly(datasets[0], config, None, use_test=False)
+    datasets = [train, val, datasets[2]]
     return datasets
 
 
-def split_randomly(dataset, config, args, test_clips=[], balance_bins=True):
+def split_randomly(
+    dataset, config, date, test_clips=[], balance_bins=True, use_test=True
+):
     # split data randomly such that a clip is only in one dataset
     # have tried many ways to split i.e. location and cameras found this is simplest
     # and the results are the same
@@ -445,11 +455,13 @@ def split_randomly(dataset, config, args, test_clips=[], balance_bins=True):
     validation = Dataset(
         dataset.dataset_dir, "validation", config, label_mapping=dataset.label_mapping
     )
-    test = Dataset(
-        dataset.dataset_dir, "test", config, label_mapping=dataset.label_mapping
-    )
-    test_c = get_test_set_camera(dataset, test_clips, args.date)
-    test_cameras = [test_c]
+    test = None
+    if use_test:
+        test_c = get_test_set_camera(dataset, test_clips, args.date)
+        test_cameras = [test_c]
+        test = Dataset(
+            dataset.dataset_dir, "test", config, label_mapping=dataset.label_mapping
+        )
     validate_cameras = []
     train_cameras = []
     min_label = None
@@ -489,8 +501,9 @@ def split_randomly(dataset, config, args, test_clips=[], balance_bins=True):
     train_counts = {}
     validation_counts = {}
     test_counts = {}
+    existing_test_count = 0
     for label in lbl_order:
-        existing_test_count = len(test.samples_by_label.get(label, []))
+        # existing_test_count = len(test.samples_by_label.get(label, []))
         train_c, validate_c, test_c = split_label(
             dataset,
             label,
@@ -499,6 +512,7 @@ def split_randomly(dataset, config, args, test_clips=[], balance_bins=True):
             validation_count=validation_counts.get(label, (0, 0)),
             test_count=test_counts.get(label, (0, 0)),
             existing_test_count=existing_test_count,
+            use_test=use_test,
             # max_samples=min_label[1],
         )
         if train_c is not None:
@@ -679,6 +693,14 @@ def main():
     )
     if args.split_file:
         datasets = split_by_file(dataset, config, args.split_file, args.data_dir)
+        labels = set()
+        for dataset in datasets:
+            labels.update(dataset.labels)
+        labels = list(labels)
+        labels.sort()
+        print("UPdating labels to ", labels)
+        for dataset in datasets:
+            dataset.labels = labels
     else:
         tracks_loaded, total_tracks = dataset.load_clips(dont_filter_segment=True)
         # return
@@ -735,7 +757,7 @@ def main():
         #     json.dump(splits, f)
         # return
 
-    print_counts(dataset, *datasets)
+    print_counts(*datasets)
     print("split data")
     base_dir = config.tracks_folder
     record_dir = os.path.join(base_dir, "training-data/")
@@ -775,7 +797,7 @@ def main():
                     new_samples.append(new)
                 train_set.add_samples(new_samples)
         print("Count post augmentation")
-        print_counts(dataset, *datasets)
+        print_counts(*datasets)
     for dataset in datasets:
         dir = os.path.join(record_dir, dataset.name)
         create_tf_records(dataset, dir, datasets[0].labels, threshold, num_shards=100)
