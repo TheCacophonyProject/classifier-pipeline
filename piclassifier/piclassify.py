@@ -243,16 +243,19 @@ def get_processor(process_queue, config, thermal_config, headers):
 
 
 def handle_headers(connection):
-    headers = ""
+    headers = b""
     left_over = None
     while True:
-        data = connection.recv(4096).decode()
+        data = connection.recv(4096)
         headers += data
-        done = headers.find("\n\n")
+        done = headers.find(b"\n\n")
         if done > -1:
+            left_over = headers[done + 2 :]
             headers = headers[:done]
-            left_over = headers[done + 2 :].encode()
+            if left_over[:5].decode("utf-8") == "clear":
+                left_over = left_over[5:]
             break
+    headers = headers.decode()
     return HeaderInfo.parse_header(headers), left_over
 
 
@@ -383,7 +386,7 @@ def handle_connection(connection, config, thermal_config_file, process_queue):
             try:
                 message = data[:5].decode("utf-8")
                 if message == "clear":
-                    logging.info("processing error from camera")
+                    logging.info("processing error from camera")     # TODO Check if this is handled properly.
                     process_queue.put(STOP_SIGNAL)
                     break
             except:
