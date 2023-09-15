@@ -55,7 +55,7 @@ def get_distribution(dataset, num_labels, batched=True):
 def get_dataset(load_function, base_dir, labels, **args):
     excluded_labels = args.get("excluded_labels", [])
     to_remap = args.get("remapped_labels", {})
-
+    logging.info("Excluding %s", excluded_labels)
     remapped = {}
     keys = []
     values = []
@@ -129,7 +129,7 @@ def get_dataset(load_function, base_dir, labels, **args):
         dataset = dataset.batch(batch_size)
     dataset = dataset.prefetch(buffer_size=AUTOTUNE)
 
-    return dataset, remapped, new_labels
+    return dataset, remapped, new_labels, epoch_size
 
 
 def resample(dataset, labels):

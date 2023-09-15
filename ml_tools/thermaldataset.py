@@ -31,15 +31,13 @@ def get_remapped():
     return {"insect": "false-positive"}
 
 
-def load_dataset(filenames, remap_lookup, labels, args):
+def load_dataset(filenames, remap_lookup, num_labels, args):
     deterministic = args.get("deterministic", False)
-
     ignore_order = tf.data.Options()
     ignore_order.experimental_deterministic = (
         deterministic  # disable order, increase speed
     )
     dataset = tf.data.TFRecordDataset(filenames)
-
     dataset = dataset.with_options(
         ignore_order
     )  # uses data as soon as it streams in, rather than in its original order
@@ -58,7 +56,7 @@ def load_dataset(filenames, remap_lookup, labels, args):
             read_tfrecord,
             image_size=image_size,
             remap_lookup=remap_lookup,
-            num_labels=len(new_labels),
+            num_labels=num_labels,
             labeled=labeled,
             augment=augment,
             preprocess_fn=preprocess_fn,
@@ -78,8 +76,7 @@ def load_dataset(filenames, remap_lookup, labels, args):
 
     filter_excluded = lambda x, y: not tf.math.equal(tf.math.count_nonzero(y), 0)
     dataset = dataset.filter(filter_excluded)
-
-    return dataset, remapped, new_labels
+    return dataset
 
 
 def read_tfrecord(
@@ -214,6 +211,8 @@ from collections import Counter
 def main():
     init_logging()
     config = Config.load_from_file()
+    from .tfdataset import get_dataset, get_distribution
+
     # file = "/home/gp/cacophony/classifier-data/thermal-training/cp-training/training-meta.json"
     file = f"{config.tracks_folder}/training-meta.json"
     with open(file, "r") as f:
@@ -221,19 +220,21 @@ def main():
     labels = meta.get("labels", [])
     datasets = []
 
-    resampled_ds, remapped, labels = get_dataset(
+    resampled_ds, remapped, labels, epoch_size = get_dataset(
         # dir,
-        f"{config.tracks_folder}/training-data/validation",
+        load_dataset,
+        f"{config.tracks_folder}/training-data/train",
         labels,
         batch_size=32,
         image_size=(160, 160),
         # augment=True,
         # preprocess_fn=tf.keras.applications.inception_v3.preprocess_input,
         resample=False,
-        include_features=True,
+        include_features=False,
     )
-    # print(get_distribution(resampled_ds))
-    #
+    print("Ecpoh size is", epoch_size)
+    print(get_distribution(resampled_ds, len(labels)))
+    return
     #
     for e in range(2):
         print("epoch", e)

@@ -511,7 +511,7 @@ class KerasModel(Interpreter):
                 run_name=run_name,
             )
         self.model.summary()
-        self.train, remapped, new_labels = get_dataset(
+        self.train, remapped, new_labels, epoch_size = get_dataset(
             train_files,
             self.type,
             orig_labels,
@@ -527,7 +527,7 @@ class KerasModel(Interpreter):
             # dist=self.dataset_counts["train"],
         )
         self.remapped = remapped
-        self.validate, remapped, _ = get_dataset(
+        self.validate, remapped, _, _ = get_dataset(
             validate_files,
             self.type,
             orig_labels,
@@ -574,7 +574,7 @@ class KerasModel(Interpreter):
         test_files = os.path.join(self.data_dir, "test")
 
         if len(test_files) > 0:
-            self.test, _, _ = get_dataset(
+            self.test, _, _, _ = get_dataset(
                 test_files,
                 self.type,
                 orig_labels,
