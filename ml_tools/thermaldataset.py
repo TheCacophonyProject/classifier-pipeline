@@ -24,11 +24,30 @@ fp = None
 
 
 def get_excluded():
-    return []
+    return [
+        "goat",
+        "lizard",
+        "not identifiable",
+        "other",
+        "pest",
+        "pig",
+        "sealion",
+        "sheep",
+    ]
 
 
 def get_remapped():
-    return {"insect": "false-positive"}
+    return {
+        "allbirds": "bird",
+        "black swan": "bird",
+        "brown quail": "bird",
+        "california quail": "bird",
+        "duck": "bird",
+        "insect": "false-positive",
+        "pheasant": "bird",
+        "pukeko": "bird",
+        "quail": "bird",
+    }
 
 
 def load_dataset(filenames, remap_lookup, num_labels, args):
@@ -231,6 +250,8 @@ def main():
         # preprocess_fn=tf.keras.applications.inception_v3.preprocess_input,
         resample=False,
         include_features=False,
+        remapped_labels=get_remapped(),
+        excluded_labels=get_excluded(),
     )
     print("Ecpoh size is", epoch_size)
     print(get_distribution(resampled_ds, len(labels)))
