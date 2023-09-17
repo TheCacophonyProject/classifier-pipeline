@@ -252,7 +252,7 @@ def handle_headers(connection):
         if done > -1:
             left_over = headers[done + 2 :]
             headers = headers[:done]
-            if left_over[:5].decode("utf-8") == "clear":
+            if left_over[:5] == b"clear":
                 left_over = left_over[5:]
             break
     headers = headers.decode()
@@ -384,8 +384,8 @@ def handle_connection(connection, config, thermal_config_file, process_queue):
                 process_queue.put(STOP_SIGNAL)
                 break
             try:
-                message = data[:5].decode("utf-8")
-                if message == "clear":
+                message = data[:5]
+                if message == b"clear":
                     logging.info("processing error from camera")     # TODO Check if this is handled properly.
                     process_queue.put(STOP_SIGNAL)
                     break
