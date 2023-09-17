@@ -261,6 +261,8 @@ def calculate_mass(filtered, threshold):
 
 def calculate_variance(filtered, prev_filtered):
     """Calculates variance of filtered frame with previous frame"""
+    if filtered.size == 0:
+        return 0
     if prev_filtered is None:
         return
     delta_frame = np.abs(filtered - prev_filtered)
