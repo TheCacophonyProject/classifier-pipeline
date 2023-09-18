@@ -256,6 +256,7 @@ class PiClassifier(Processor):
                 on_trapped=on_track_trapped,
                 update_background=False,
                 trap_size=thermal_config.device_setup.trap_size,
+                check_trapped=True,
             )
             self.tracking_config = self.track_extractor.config
 

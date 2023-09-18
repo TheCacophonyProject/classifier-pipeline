@@ -140,6 +140,7 @@ class IRTrackExtractor(ClipTracker):
         update_background=True,
         trap_size="L",
         tracking_alg="mog2",
+        check_trapped=False,
     ):
         super().__init__(
             config,
@@ -150,6 +151,7 @@ class IRTrackExtractor(ClipTracker):
             do_tracking=do_tracking,
             scale=scale,
         )
+        self.check_trapped = check_trapped
         self.tracking_alg = tracking_alg
         self.on_trapped = on_trapped
         self.saliency = None
@@ -476,15 +478,16 @@ class IRTrackExtractor(ClipTracker):
             for track in clip.active_tracks:
                 if track.trap_reported:
                     continue
-                self.inside_trap_top(track, self.scale)
-                if track.in_trap:
-                    filtered = self.filter_track(clip, track, track.get_stats())
-                    if not filtered:
-                        track.trigger_frame = cur_frame.frame_number
-                        # fire trapping event
-                        if self.on_trapped is not None:
-                            track.trap_reported = True
-                            self.on_trapped(track)
+                if self.check_trapped:
+                    self.inside_trap_top(track, self.scale)
+                    if track.in_trap:
+                        filtered = self.filter_track(clip, track, track.get_stats())
+                        if not filtered:
+                            track.trigger_frame = cur_frame.frame_number
+                            # fire trapping event
+                            if self.on_trapped is not None:
+                                track.trap_reported = True
+                                self.on_trapped(track)
             clip.region_history.append(regions)
             if DEBUG_TRAP:
                 if len(clip.tracks) > 0:
