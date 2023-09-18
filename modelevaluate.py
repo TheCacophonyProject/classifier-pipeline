@@ -120,7 +120,7 @@ def main():
     model.load_training_meta(base_dir)
     excluded, remapped = get_excluded(model.type)
     files = base_dir + f"/training-data/{args.dataset}"
-    dataset, _, new_labels = get_dataset(
+    dataset, _, new_labels, _ = get_dataset(
         files,
         model.type,
         model.labels,

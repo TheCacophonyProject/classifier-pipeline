@@ -196,13 +196,23 @@ class KerasModel(Interpreter):
                 ),
                 None,
             )
+        elif pretrained_model == "nasnet":
+            print("Input is", input_shape)
+            return (
+                tf.keras.applications.nasnet.NASNetLarge(
+                    weights=weights, include_top=False, input_shape=input_shape
+                ),
+                tf.keras.applications.nasnet.preprocess_input,
+            )
+
         raise Exception("Could not find model" + pretrained_model)
 
     def get_preprocess_fn(self):
         pretrained_model = self.params.model_name
         if pretrained_model == "resnet":
             return tf.keras.applications.resnet.preprocess_input
-
+        elif pretrained_model == "nasnet":
+            return tf.keras.applications.nasnet.preprocess_input
         elif pretrained_model == "resnetv2":
             return tf.keras.applications.resnet_v2.preprocess_input
 

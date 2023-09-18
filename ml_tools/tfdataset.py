@@ -3,6 +3,7 @@ import tensorflow as tf
 from functools import partial
 import numpy as np
 import logging
+import random
 
 AUTOTUNE = tf.data.AUTOTUNE
 
@@ -99,12 +100,14 @@ def get_dataset(load_function, base_dir, labels, **args):
 
     # 1 / 0
     filenames = tf.io.gfile.glob(f"{base_dir}/*.tfrecord")
+    if not args.get("deterministic"):
+        random.shuffle(filenames)
     dataset = load_function(filenames, remap_lookup, num_labels, args)
     if dataset is None:
         logging.warn("No dataset for %s", filenames)
         return None, None
 
-    dataset = dataset.cache()
+    # dataset = dataset.cache()
     if not args.get("only_features") and args.get("shuffle", True):
         logging.info("shuffling data")
         dataset = dataset.shuffle(

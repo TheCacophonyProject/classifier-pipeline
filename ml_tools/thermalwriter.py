@@ -228,7 +228,7 @@ def create_tf_records(
             job_queue.put((samples_by_source[source_file]))
             added += 1
             while job_queue.qsize() > num_processes * 3:
-                logging.info("Sleeping for %s", 100)
+                logging.info("Sleeping for %s", 10)
                 # give it a change to catch up
                 time.sleep(10)
 

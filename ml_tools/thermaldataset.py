@@ -56,7 +56,9 @@ def load_dataset(filenames, remap_lookup, num_labels, args):
     ignore_order.experimental_deterministic = (
         deterministic  # disable order, increase speed
     )
-    dataset = tf.data.TFRecordDataset(filenames, compression_type="GZIP")
+    dataset = tf.data.TFRecordDataset(
+        filenames, compression_type="GZIP", num_parallel_reads=4
+    )
     dataset = dataset.with_options(
         ignore_order
     )  # uses data as soon as it streams in, rather than in its original order
