@@ -24,6 +24,7 @@ from ml_tools.interpreter import Interpreter
 from classify.trackprediction import TrackPrediction
 from ml_tools.hyperparams import HyperParams
 from ml_tools import thermaldataset
+from ml_tools.resnet.wr_resnet import WRResNet
 
 # import (
 #    get_resampled_by_label as get_thermal_dataset_by_label,
@@ -197,15 +198,15 @@ class KerasModel(Interpreter):
                 None,
             )
         elif pretrained_model == "nasnet":
-            print("Input is", input_shape)
             return (
                 tf.keras.applications.nasnet.NASNetLarge(
                     weights=weights, include_top=False, input_shape=input_shape
                 ),
                 tf.keras.applications.nasnet.preprocess_input,
             )
-
-        raise Exception("Could not find model" + pretrained_model)
+        elif pretrained_model == "wr-resnet":
+            return WRResNet(input_shape), None
+        raise Exception("Could not find model " + pretrained_model)
 
     def get_preprocess_fn(self):
         pretrained_model = self.params.model_name
