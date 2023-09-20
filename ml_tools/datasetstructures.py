@@ -12,6 +12,7 @@ from ml_tools.frame import Frame, TrackChannels
 from ml_tools import imageprocessing
 import datetime
 from enum import Enum
+import attr
 
 FRAMES_PER_SECOND = 9
 
@@ -98,6 +99,27 @@ res_x = 120
 res_y = 160
 
 
+@attr.s
+class ClipHeader:
+    clip_id = attr.ib()
+    location = attr.ib()
+    station_id = attr.ib()
+    rec_time = attr.ib()
+    source_file = attr.ib()
+    frames_per_second = attr.ib()
+    camera = attr.ib()
+    events = attr.ib()
+    trap = attr.ib()
+    tracks = attr.ib()
+    ffc_frames = attr.ib()
+
+    def get_samples(self):
+        samples = []
+        for t in self.tracks:
+            samples.extend(t.samples)
+        return samples
+
+
 class TrackHeader:
     """Header for track."""
 
@@ -107,16 +129,9 @@ class TrackHeader:
         track_id,
         label,
         num_frames,
-        duration,
-        location,
         regions,
-        frame_temp_median,
-        frames_per_second,
-        predictions,
-        correct_prediction,
         start_frame,
-        res_x=CPTV_FILE_WIDTH,
-        res_y=CPTV_FILE_HEIGHT,
+        frame_temp_median=None,
         ffc_frames=None,
         sample_frames_indices=None,
         skipped_frames=None,
@@ -124,30 +139,24 @@ class TrackHeader:
         rec_time=None,
         source_file=None,
         camera=None,
+        confidence=None,
+        human_tags=None,
     ):
+        self.clip_id = clip_id
         self.source_file = source_file
-        self.rec_time = rec_time
-        self.station_id = station_id
-        self.res_x = np.uint8(res_x)
-        self.res_y = np.uint8(res_y)
+        self.human_tags = human_tags
+        self.confidence = confidence
         self.filtered_stats = {"segment_mass": 0}
         # reference to clip this segment came from
-        self.clip_id = clip_id
         # reference to track this segment came from
         self.track_id = track_id
-        # list of segments that belong to this track
-        self.segments = []
         # label for this track
         self.label = label
         # date and time of the start of the track
         self.start_frame = np.uint16(start_frame)
-        # duration in seconds
-        self.duration = duration
 
-        self.location = np.float16(location)
-        self.camera = camera
         # thermal reference point for each frame.
-        self.frame_temp_median = np.uint16(frame_temp_median)
+        # self.frame_temp_median = np.uint16(frame_temp_median)
         # tracking frame movements for each frame, array of tuples (x-vel, y-vel)
         self.frame_velocity = None
         # original tracking bounds
@@ -155,48 +164,18 @@ class TrackHeader:
         # what fraction of pixels are from out of bounds
         self.frame_crop = None
         self.num_frames = num_frames
-        self.frames_per_second = frames_per_second
         self.important_predicted = 0
         mass_history = [region.mass for region in self.regions_by_frame.values()]
         self.lower_mass = np.uint16(np.percentile(mass_history, q=25))
         self.upper_mass = np.uint16(np.percentile(mass_history, q=75))
         self.median_mass = np.uint16(np.median(mass_history))
         self.mean_mass = np.uint16(np.mean(mass_history))
-        self.ffc_frames = np.uint16(ffc_frames)
         self.skipped_frames = skipped_frames
-        self.sample_frames = []
-        sample_frames_indices is None
-
-        # do we need to do this always...
-        # frame_numbers = list(self.regions_by_frame.keys())
-        # frame_numbers = [
-        #     frame
-        #     for frame in frame_numbers
-        #     if (skipped_frames is None or frame not in skipped_frames)
-        #     and (ffc_frames is None or frame not in ffc_frames)
-        # ]
-        # frame_numbers.sort()
-        #
-        # for frame_num, frame_temp in zip(frame_numbers, self.frame_temp_median):
-        #     region = self.regions_by_frame[frame_num]
-        #     if region.mass == 0 or region.blank:
-        #         continue
-        #     f = FrameSample(
-        #         self.clip_id,
-        #         self.track_id,
-        #         region.frame_number,
-        #         self.label,
-        #         frame_temp,
-        #         None,
-        #         region,
-        #         weight=1,
-        #         camera=self.station_id,
-        #         source_file=self.source_file,
-        #     )
-        #     self.sample_frames.append(f)
+        self.samples = []
 
     @property
     def bounds_history(self):
+        sample_frames_indices is None
         regions = list(self.regions_by_frame.values())
         regions = sorted(regions, key=lambda r: r.frame_number)
         return regions
@@ -223,65 +202,64 @@ class TrackHeader:
 
         return json.dumps(meta_dict, indent=3, cls=tools.CustomJSONEncoder)
 
-    def add_sample(self, sample, use_segments):
-        if use_segments:
-            self.segments.append(sample)
-        else:
-            self.sample_frames.append(sample)
+    def add_sample(self, sample):
+        self.samples.append(sample)
 
-    def calculate_sample_frames(self, min_mass=None):
+    def calculate_sample_frames(
+        self, min_mass=None, max_mass=None, ffc_frames=None, skip_last=None
+    ):
         frame_numbers = list(self.regions_by_frame.keys())
+        if skip_last is not None:
+            skip_x = int(len(frame_numbers) * skip_last)
+            frame_numbers = frame_numbers[:-skip_x]
         frame_numbers = [
             frame
             for frame in frame_numbers
-            if (self.skipped_frames is None or frame not in self.skipped_frames)
-            and (self.ffc_frames is None or frame not in self.ffc_frames)
+            if (ffc_frames is None or frame not in ffc_frames)
         ]
         frame_numbers.sort()
 
-        for frame_num, frame_temp in zip(frame_numbers, self.frame_temp_median):
+        for frame_num in frame_numbers:
             region = self.regions_by_frame[frame_num]
             if region.mass == 0 or region.blank:
                 continue
             if min_mass is not None and region.mass < min_mass:
+                continue
+            if max_mass is not None and region.mass > max_mass:
                 continue
             f = FrameSample(
                 self.clip_id,
                 self.track_id,
                 region.frame_number,
                 self.label,
-                frame_temp,
                 None,
                 region,
-                weight=1,
-                camera=self.station_id,
                 source_file=self.source_file,
-                rec_time=self.rec_time,
+                weight=1,
             )
-            self.sample_frames.append(f)
+            self.samples.append(f)
 
-    def get_sample_frames(self):
-        return self.sample_frames
+    def remove_sample(self, f):
+        self.samples.remove(f)
 
-    def remove_sample_frame(self, f):
-        self.sample_frames.remove(f)
-
-    def get_sample_frame(self, i=0, remove=False):
-        if len(self.sample_frames) == 0:
-            return None
-        f = self.sample_frames[i]
-
-        if remove:
-            del self.sample_frames[i]
-        return f
+    #
+    # def get_sample_frame(self, i=0, remove=False):
+    #     if len(self.sample_frames) == 0:
+    #         return None
+    #     f = self.sample_frames[i]
+    #
+    #     if remove:
+    #         del self.sample_frames[i]
+    #     return f
 
     @property
     def frame_weight(self):
         return 1 / self.num_sample_frames
 
-    @property
-    def num_sample_frames(self):
-        return len(self.sample_frames)
+    #
+    # @property
+    # def num_samples(self):
+    #     return len(self.sample_frames)
 
     def calculate_frame_crop(self):
         # frames are always square, but bounding rect may not be, so to see how much we clipped I need to create a square
@@ -325,7 +303,7 @@ class TrackHeader:
 
         # in python3.7+ can just take the values and it guarantees order it was added to dict
         regions = self.bounds_history
-        self.segments, self.filtered_stats = get_segments(
+        self.samples, self.filtered_stats = get_segments(
             self.clip_id,
             self.track_id,
             self.start_frame,
@@ -387,7 +365,6 @@ class TrackHeader:
         track_start_frame = int(round(track_meta["start_frame"]))
         track_end_frame = int(round(track_meta["end_frame"]))
         num_frames = track_end_frame - track_start_frame + 1
-        duration = num_frames / frames_per_second
         frame_temp_median = np.float32(
             clip_meta["frame_temp_median"][
                 track_start_frame : num_frames + track_start_frame
@@ -432,7 +409,6 @@ class TrackHeader:
             track_id=int(track_meta["id"]),
             label=track_meta["human_tag"],
             num_frames=num_frames,
-            duration=duration,
             location=location,
             regions=regions,
             frame_temp_median=frame_temp_median,
@@ -602,30 +578,22 @@ class FrameSample(Sample):
         track_id,
         frame_num,
         label,
-        temp_median,
         velocity,
         region,
         weight,
-        camera,
+        source_file,
         augment=False,
-        source_file=None,
-        station_id=None,
-        rec_time=None,
     ):
         super().__init__(label)
-
-        self.rec_time = rec_time
-        self.station_id = station_id
+        self.clip_id = clip_id
         self.id = FrameSample._frame_id
         FrameSample._frame_id += 1
-        self.clip_id = clip_id
+
         self.track_id = track_id
         self.frame_number = frame_num
-        self.temp_median = temp_median
         self.velocity = velocity
         self.region = region
         self.weight = weight
-        self.camera = camera
         self.augment = augment
         self._source_file = source_file
 

@@ -12,19 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-r"""Convert raw COCO 2017 dataset to TFRecord.
-
-Example usage:
-    python create_coco_tf_record.py --logtostderr \
-      --image_dir="${TRAIN_IMAGE_DIR}" \
-      --image_info_file="${TRAIN_IMAGE_INFO_FILE}" \
-      --object_annotations_file="${TRAIN_ANNOTATIONS_FILE}" \
-      --caption_annotations_file="${CAPTION_ANNOTATIONS_FILE}" \
-      --output_file_prefix="${OUTPUT_DIR/FILE_PREFIX}" \
-      --num_shards=100
-"""
 from PIL import Image
 from pathlib import Path
+from multiprocessing import Process, Queue
 
 import collections
 import hashlib
@@ -32,7 +22,7 @@ import io
 import json
 import multiprocessing
 import os
-
+import time
 from absl import app
 from absl import flags
 from absl import logging
@@ -51,7 +41,7 @@ import math
 crop_rectangle = tools.Rectangle(0, 0, 640 - 1, 480 - 1)
 
 
-def create_tf_example(frame, image_dir, sample, labels, filename):
+def create_tf_example(sample, thermal, filtered, labels):
     """Converts image and annotations to a tf.Example proto.
 
     Args:
@@ -82,9 +72,9 @@ def create_tf_example(frame, image_dir, sample, labels, filename):
     Raises:
       ValueError: if the image pointed to by data['filename'] is not a valid JPEG
     """
-    image_height, image_width = frame.thermal.shape
+    image_height, image_width = thermal.shape
 
-    image = Image.fromarray(np.uint8(frame.thermal))
+    image = Image.fromarray(np.uint8(thermal))
 
     image_id = sample.unique_id
 
@@ -94,7 +84,7 @@ def create_tf_example(frame, image_dir, sample, labels, filename):
     encoded_thermal = encoded_jpg_io.getvalue()
     thermal_key = hashlib.sha256(encoded_thermal).hexdigest()
 
-    image = Image.fromarray(np.uint8(frame.filtered))
+    image = Image.fromarray(np.uint8(filtered))
 
     encoded_jpg_io = io.BytesIO()
     image.save(encoded_jpg_io, format="PNG", quality=100, subsampling=0)
@@ -113,7 +103,9 @@ def create_tf_example(frame, image_dir, sample, labels, filename):
         "image/augmented": tfrecord_util.int64_feature(sample.augment),
         "image/height": tfrecord_util.int64_feature(image_height),
         "image/width": tfrecord_util.int64_feature(image_width),
-        "image/filename": tfrecord_util.bytes_feature(filename.encode("utf8")),
+        "image/filename": tfrecord_util.bytes_feature(
+            str(sample.source_file).encode("utf8")
+        ),
         "image/source_id": tfrecord_util.bytes_feature(str(image_id).encode("utf8")),
         "image/thermalkey/sha256": tfrecord_util.bytes_feature(
             thermal_key.encode("utf8")
@@ -179,7 +171,110 @@ def create_tf_example(frame, image_dir, sample, labels, filename):
     #         }
     #     )
     example = tf.train.Example(features=tf.train.Features(feature=feature_dict))
-    return example, 0
+    return example
+
+
+def process_job(queue, labels, base_dir, back_thresh):
+    import gc
+
+    pid = os.getpid()
+
+    writer_i = 1
+    name = f"{writer_i}-{pid}.tfrecord"
+
+    options = tf.io.TFRecordOptions(compression_type="GZIP")
+    writer = tf.io.TFRecordWriter(str(base_dir / name), options=options)
+    i = 0
+    saved = 0
+    files = 0
+    while True:
+        i += 1
+        samples = queue.get()
+        try:
+            if samples == "DONE":
+                writer.close()
+                break
+            else:
+                if len(samples) == 0:
+                    continue
+                saved += save_data(samples, writer, labels, back_thresh)
+                files += 1
+                del samples
+                if saved > 10000:
+                    logging.info("Closing old writer")
+                    writer.close()
+                    writer_i += 1
+                    name = f"{writer_i}-{pid}.tfrecord"
+                    logging.info("Opening %s", name)
+                    saved = 0
+                    writer = tf.io.TFRecordWriter(str(base_dir / name), options=options)
+                if i % 100 == 0:
+                    logging.info("Saved %s ", files)
+                    gc.collect()
+                    writer.flush()
+        except:
+            logging.error("Process_job error %s", samples[0].source_file, exc_info=True)
+
+
+def get_data(samples, back_thresh):
+    vidcap = cv2.VideoCapture(str(samples[0].source_file))
+    frames = {}
+    backgorund = None
+    frame_num = 0
+    print("Loading ", str(samples[0].source_file))
+    while True:
+        success, image = vidcap.read()
+        is_background_frame = False
+        if not success:
+            break
+        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        if backgorund is None:
+            is_background_frame = np.all(image[:, :, 0] == image[:, :, 1]) and np.all(
+                image[:, :, 1] == image[:, :, 2]
+            )
+            background = np.uint8(gray)
+        if not is_background_frame:
+            frames[frame_num] = gray
+            frame_num += 1
+            # append(gray)
+    data = []
+    for sample in samples:
+        frame = frames[sample.region.frame_number]
+        gray_sub = sample.region.subimage(frame)
+        back_sub = sample.region.subimage(background)
+        filtered = get_diff_back_filtered(back_sub, gray_sub, back_thresh)
+        gray_sub, stats = normalize(gray_sub, new_max=255)
+        if not stats[0]:
+            continue
+        filtered, stats = normalize(filtered, new_max=255)
+        cv2.imwrite(f"{sample.id}-{sample.track_id}-{sample.label}.png", gray_sub)
+        if not stats[0]:
+            continue
+        data.append((sample, gray_sub, filtered))
+
+    return data
+
+
+def save_data(samples, writer, labels, back_thresh):
+    sample_data = get_data(samples, back_thresh)
+    if sample_data is None:
+        return 0
+    saved = 0
+    try:
+        for sample, thermal, filtered in sample_data:
+            tf_example = create_tf_example(
+                sample,
+                thermal,
+                filtered,
+                labels,
+            )
+            writer.write(tf_example.SerializeToString())
+            saved += 1
+    except:
+        logging.error(
+            "Could not save data for %s", samples[0].source_file, exc_info=True
+        )
+    return saved
 
 
 def create_tf_records(
@@ -192,138 +287,46 @@ def create_tf_records(
             if child.is_file():
                 child.unlink()
     output_path.mkdir(parents=True, exist_ok=True)
-    samples = dataset.samples
-    np.random.shuffle(samples)
+    samples_by_source = dataset.get_samples_by_source()
+    source_files = list(samples_by_source.keys())
+    np.random.shuffle(source_files)
 
-    dataset.load_db()
-    db = dataset.db
-    total_num_annotations_skipped = 0
     num_labels = len(dataset.labels)
-    logging.info("writing to output path: %s for %s samples", output_path, len(samples))
-    lbl_counts = [0] * num_labels
-
-    writers = []
-    for i in range(num_shards):
-        writers.append(
-            tf.io.TFRecordWriter(
-                str(output_path / (f"%05d-of-%05d.tfrecord" % (i, num_shards)))
-            )
-        )
-    load_first = 200
+    logging.info(
+        "writing to output path: %s for %s samples", output_path, len(samples_by_source)
+    )
+    num_processes = 1
     try:
-        count = 0
-        while len(samples) > 0:
-            local_set = samples[:load_first]
-            samples = samples[load_first:]
-            loaded = []
+        job_queue = Queue()
+        processes = []
+        for i in range(num_processes):
+            p = Process(
+                target=process_job,
+                args=(job_queue, labels, output_path, back_thresh),
+            )
+            processes.append(p)
+            p.start()
+            added = 0
+        for source_file in source_files:
+            job_queue.put((samples_by_source[source_file]))
+            added += 1
+            while job_queue.qsize() > num_processes * 3:
+                logging.info("Sleeping for %s", 10)
+                # give it a change to catch up
+                time.sleep(10)
 
-            for sample in local_set:
-                try:
-                    f = get_data(db, sample, cropped, back_thresh)
-                    if f is None:
-                        continue
-                    loaded.append((f, sample))
-                except Exception as e:
-                    logging.error("Got exception", exc_info=True)
+        logging.info("Processing %d", job_queue.qsize())
+        for i in range(len(processes)):
+            job_queue.put(("DONE"))
+        for process in processes:
+            try:
+                process.join()
+            except KeyboardInterrupt:
+                logging.info("KeyboardInterrupt, terminating.")
+                for process in processes:
+                    process.terminate()
+                exit()
+        logging.info("Saved %s", len(dataset.samples_by_id))
 
-            loaded = np.array(loaded)
-            np.random.shuffle(loaded)
-            for data, sample in loaded:
-                try:
-                    tf_example, num_annotations_skipped = create_tf_example(
-                        data,
-                        output_path,
-                        sample,
-                        dataset.labels,
-                        sample.unique_track_id,
-                    )
-                    l_i = labels.index(sample.label)
-
-                    total_num_annotations_skipped += num_annotations_skipped
-                    writer = writers[count % num_shards]
-                    writer.write(tf_example.SerializeToString())
-                    count += 1
-                    lbl_counts[l_i] += 1
-
-                    if count % 100 == 0:
-                        logging.info("saved %s", count)
-                except Exception as e:
-                    logging.error("Error saving ", exc_info=True)
-            # break
     except:
         logging.error("Error saving track info", exc_info=True)
-    for writer in writers:
-        writer.close()
-
-    logging.info(
-        "Finished writing, skipped %d annotations.", total_num_annotations_skipped
-    )
-
-
-def get_data(db, sample, cropped, back_thresh):
-    background = db.get_clip_background(sample.clip_id)
-    try:
-        f = db.get_clip(
-            sample.clip_id,
-            [sample.frame_number],
-        )[0]
-    except Exception as e:
-        logging.error(
-            "Error gettin clip %s %s",
-            sample.clip_id,
-            sample,
-            exc_info=True,
-        )
-        return None
-    prev = f.thermal.copy()
-    prev = sample.region.subimage(prev)
-    if cropped:
-        if sample.augment:
-            frame_height, frame_width = f.thermal.shape
-            percent_offset = 0.02
-            height_range = int(math.ceil(percent_offset * sample.region.height) / 2.0)
-            width_range = int(math.ceil(percent_offset * sample.region.width) / 2.0)
-            top_offset = random.randint(-height_range, height_range)
-            height_offset = random.randint(-height_range, height_range)
-            left_offset = random.randint(-width_range, width_range)
-            width_offset = random.randint(-width_range, width_range)
-            sample.region.left += left_offset
-            sample.region.top += top_offset
-            sample.region.width += width_offset
-            sample.region.height += height_offset
-            sample.region.crop(crop_rectangle)
-        region = sample.region.copy()
-        f.crop_by_region(region, out=f)
-        background = region.subimage(background)
-    f.mask = f.filtered
-    f.filtered = get_diff_back_filtered(background, f.thermal, back_thresh)
-
-    assert f.thermal.shape == f.filtered.shape
-    f.normalize()
-
-    if sample.augment:
-        degrees = random.randint(-45, 45)
-
-        # degrees = int(chance * 40) - 20
-        brightness_adjust = random.randint(-20, 20)
-
-        contrast_adjust = random.random() * 0.4 + 1 - 0.4 / 2.0
-        # contrast_adjust *=
-        f.float_arrays()
-        f.brightness_adjust(brightness_adjust)
-        f.contrast_adjust(contrast_adjust)
-        f.filtered = np.fliplr(f.filtered)
-        f.thermal = np.fliplr(f.thermal)
-        f.filtered = rotate(f.filtered, degrees)
-        f.thermal = rotate(f.thermal, degrees)
-        np.clip(f.filtered, a_min=0, a_max=255, out=f.filtered)
-        np.clip(f.thermal, a_min=0, a_max=255, out=f.thermal)
-        #
-        # cv2.imshow("prev", np.uint8(prev))
-        #
-        # cv2.imshow("aug", np.uint8(f.thermal))
-        # cv2.moveWindow(f"prev", 0, 0)
-        # cv2.moveWindow(f"aug", 0, 500)
-        # cv2.waitKey(3000)
-    # f.no
-    return f

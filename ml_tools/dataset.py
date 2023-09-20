@@ -15,10 +15,11 @@ import numpy as np
 import gc
 from ml_tools.datasetstructures import TrackHeader, TrackingSample, SegmentType
 from ml_tools.trackdatabase import TrackDatabase
+from ml_tools.rawdb import RawDatabase
 from ml_tools import tools
 from track.region import Region
 import json
-
+from config.loadconfig import LoadConfig
 from pathlib import Path
 
 
@@ -44,16 +45,10 @@ class Dataset:
         # name of this dataset
         self.name = name
         # list of our tracks
-        self.samples_by_label = {}
         self.samples_by_bin = {}
+        self.samples = []
         self.samples_by_id = {}
-        self.sample_cdf = []
-        self.tracks = []
-        self.tracks_by_label = {}
-        self.tracks_by_bin = {}
-        self.tracks_by_id = {}
-        self.camera_names = set()
-        # self.cameras_by_id = {}
+        self.clips = []
 
         # list of label names
         self.labels = labels
@@ -62,6 +57,7 @@ class Dataset:
         self.label_caps = {}
         self.use_segments = True
         if config:
+            self.tag_precedence = config.load.tag_precedence
             self.type = config.train.type
             if config.train.type == "IR":
                 self.use_segments = False
@@ -80,8 +76,8 @@ class Dataset:
             self.filter_by_lq = config.build.filter_by_lq
             self.segment_type = SegmentType.ALL_RANDOM
             self.max_segments = config.build.max_segments
-
         else:
+            self.tag_precedence = LoadConfig.DEFAULT_GROUPS
             self.filter_by_lq = True
             # number of seconds each segment should be
             self.segment_length = 25
@@ -173,7 +169,7 @@ class Dataset:
 
         counter = 0
         logging.info("Loading clips")
-        for db_clip in self.dataset_dir.glob("**/*.hdf5"):
+        for db_clip in self.dataset_dir.glob("**/*.mp4"):
             tracks_added = self.load_clip(db_clip, dont_filter_segment)
             if tracks_added == 0:
                 logging.info("No tracks added for %s", db_clip)
@@ -183,25 +179,22 @@ class Dataset:
         return [counter, counter]
 
     def load_clip(self, db_clip, dont_filter_segment=False):
-        db = TrackDatabase(db_clip)
+        db = RawDatabase(db_clip)
         try:
-            clip_meta = db.get_clip_meta()
-            tracks = db.get_clip_tracks()
+            clip_header = db.get_clip_tracks(self.tag_precedence)
         except:
             logging.error("Could not load %s", db_clip, exc_info=True)
             return 0
-
+        if clip_header is None or self.filter_clip(clip_header):
+            return 0
         filtered = 0
         added = 0
-        for track_meta in tracks:
-            if self.filter_track(clip_meta, track_meta):
-                filtered += 1
-                continue
+        clip_header.tracks = [
+            track for track in clip_header.tracks if not self.filter_track(track)
+        ]
+        self.clips.append(clip_header)
+        for track_header in clip_header.tracks:
             added += 1
-            track_header = TrackHeader.from_meta(
-                db_clip, clip_meta["clip_id"], clip_meta, track_meta
-            )
-            self.tracks.append(track_header)
             if self.use_segments:
                 segment_frame_spacing = int(
                     round(self.segment_spacing * track_header.frames_per_second)
@@ -221,21 +214,21 @@ class Dataset:
                     "segment_mass"
                 ]
 
-                for segment in track_header.segments:
-                    self.add_clip_sample_mappings(segment)
             else:
-                track_header.calculate_sample_frames()
-                sample_frames = track_header.get_sample_frames(self.min_frame_mass)
-                skip_x = None
+                skip_last = None
                 if self.type == "IR":
-                    skip_last = int(len(sample_frames) * 0.1)
-                    sample_frames = sample_frames[:-skip_last]
-                for sample in sample_frames:
-                    if not self.filter_by_lq or (
-                        sample.mass >= track_header.lower_mass
-                        and sample.mass <= track_header.upper_mass
-                    ):
-                        self.add_clip_sample_mappings(sample)
+                    # a lot of ir clips have bad tracking near end so just reduce track length
+                    skip_last = 0.1
+                track_header.calculate_sample_frames(
+                    min_mass=None if not self.filter_by_lq else track_header.lower_mass,
+                    max_mass=None if not self.filter_by_lq else track_header.upper_mass,
+                    ffc_frames=clip_header.ffc_frames,
+                    skip_last=skip_last,
+                )
+                if track_header.label not in self.labels:
+                    self.labels.append(track_header.label)
+            for sample in track_header.samples:
+                self.add_clip_sample_mappings(sample)
         return added
 
     def add_samples(self, samples):
@@ -249,42 +242,46 @@ class Dataset:
                 result += 1
         return result
 
+    @property
+    def samples_by_label(self):
+        samples_by_label = {}
+        for clip in self.clips:
+            for track in clip.tracks:
+                if track.label not in samples_by_label:
+                    samples_by_label[track.label] = []
+                samples_by_label[track.label].extend(track.samples)
+        return samples_by_label
+
     def add_clip_sample_mappings(self, sample):
+        self.samples_by_id[sample.id] = sample
+        self.samples.append(sample)
+
         if self.label_mapping:
             sample.remapped_label = self.label_mapping.get(
                 sample.original_label, sample.original_label
             )
-        self.samples_by_id[sample.id] = sample
 
         if sample.label not in self.labels:
             self.labels.append(sample.label)
 
-        if sample.label not in self.samples_by_label:
-            self.samples_by_label[sample.label] = []
-        self.samples_by_label[sample.label].append(sample)
-
         bins = self.samples_by_bin.setdefault(sample.bin_id, [])
         bins.append(sample)
-        self.camera_names.add(sample.camera)
         return True
 
-    def filter_track(self, clip_meta, track_meta):
+    def filter_track(self, track_header):
         # some clips are banned for various reasons4
-        clip_id = clip_meta["clip_id"]
-        if self.banned_clips and source in self.banned_clips:
-            self.filtered_stats["banned"] += 1
-            return True
-        if "human_tag" not in track_meta:
+        if track_header.label is None:
             self.filtered_stats["notags"] += 1
             return True
-        if track_meta["human_tag"] in self.excluded_tags:
+        if track_header.label in self.excluded_tags:
             self.filtered_stats["tags"] += 1
             self.filtered_stats["tag_names"].add(track_meta["human_tag"])
             return True
-        track_tags = track_meta.get("human_tags")
 
-        if track_tags is not None:
-            excluded_tags = [tag for tag in track_tags if tag in self.excluded_tags]
+        if track_header.human_tags is not None:
+            excluded_tags = [
+                tag for tag in track_header.human_tags if tag in self.excluded_tags
+            ]
             if len(excluded_tags) > 0:
                 self.filtered_stats["tag_names"] |= set(excluded_tags)
 
@@ -293,7 +290,10 @@ class Dataset:
         # always let the false-positives through as we need them even though they would normally
         # be filtered out.
 
-        if "regions" not in track_meta or len(track_meta["regions"]) == 0:
+        if (
+            track_header.regions_by_frame is None
+            or len(track_header.regions_by_frame) == 0
+        ):
             self.filtered_stats["no_data"] += 1
             logging.info("No region data")
             return True
@@ -303,20 +303,19 @@ class Dataset:
         # return False
 
         # for some reason we get some records with a None confidence?
-        if track_meta.get("confidence", 1.0) <= 0.6:
+        if track_header.confidence <= 0.6:
             self.filtered_stats["confidence"] += 1
             logging.info("Low confidence")
             return True
 
+        return False
+
+    def filter_clip(self, clip):
         # remove tracks of trapped animals
-        if (
-            "trap" in clip_meta.get("event", "").lower()
-            or "trap" in clip_meta.get("trap", "").lower()
-        ):
+        if "trap" in clip.events.lower() or "trap" in clip.trap.lower():
             self.filtered_stats["trap"] += 1
             logging.info("Filtered because in trap")
             return True
-
         return False
 
     def epoch_samples(
@@ -554,7 +553,6 @@ class Dataset:
             self.samples_by_bin[sample.bin_id].remove(sample)
         except:
             pass
-        self.samples_by_label[sample.label].remove(sample)
 
     def fetch_track(
         self,

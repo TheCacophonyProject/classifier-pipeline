@@ -144,10 +144,12 @@ def show_cameras_tracks(dataset):
 def show_cameras_breakdown(dataset):
     print("Cameras breakdown")
     samples_by_camera = {}
-    for sample in dataset.samples_by_id.values():
-        if sample.camera not in samples_by_camera:
-            samples_by_camera[sample.camera] = []
-        samples_by_camera[sample.camera].append(sample)
+    for clip in dataset.clips:
+        if clip.camera not in samples_by_camera:
+            samples_by_camera[clip.camera] = []
+
+        for track in clip.tracks:
+            samples_by_camera[clip.camera].extend(track.samples)
 
     for camera, samples in samples_by_camera.items():
         print(
@@ -160,10 +162,12 @@ def show_cameras_breakdown(dataset):
 def show_bins_breakdown(dataset):
     print("Stations breakdown")
     samples_by_bins = {}
-    for sample in dataset.samples_by_id.values():
-        if sample.bin_id not in samples_by_bins:
-            samples_by_bins[sample.bin_id] = []
-        samples_by_bins[sample.bin_id].append(sample)
+    for clip in dataset.clips:
+        for t in clip.tracks:
+            for sample in t.samples:
+                if sample.bin_id not in samples_by_bins:
+                    samples_by_bins[sample.bin_id] = []
+                samples_by_bins[sample.bin_id].append(sample)
 
     for bin_id, samples in samples_by_bins.items():
         print(
@@ -175,16 +179,18 @@ def show_bins_breakdown(dataset):
 
 def show_stations_breakdown(dataset):
     print("Stations breakdown")
-    samples_by_camera = {}
-    for sample in dataset.samples_by_id.values():
-        if sample.station_id not in samples_by_camera:
-            samples_by_camera[sample.station_id] = []
-        samples_by_camera[sample.station_id].append(sample)
+    samples_by_station = {}
+    for clip in dataset.clips:
+        if clip.location not in samples_by_station:
+            samples_by_station[clip.location] = []
 
-    for camera, samples in samples_by_camera.items():
+        for track in clip.tracks:
+            samples_by_station[clip.location].extend(track.samples)
+
+    for station, samples in samples_by_station.items():
         print(
             "StationId: {:<20} {}".format(
-                "None" if camera is None else camera, len(samples)
+                "None" if station is None else station, len(samples)
             )
         )
 
@@ -252,6 +258,7 @@ def split_label(
         validation_count,
         test_count,
     )
+
     samples = dataset.samples_by_label.get(label, [])
     sample_bins = set([sample.bin_id for sample in samples])
 
@@ -263,11 +270,9 @@ def split_label(
         sample_bins = set([sample.clip_id for sample in samples])
         print(label, " Splitting by clip")
         samples_by_bin = {}
-        for s in dataset.samples_by_id.values():
-            if s.clip_id in sample_bins:
-                if s.clip_id not in samples_by_bin:
-                    samples_by_bin[s.clip_id] = []
-                samples_by_bin[s.clip_id].append(s)
+        for clip in dataset.clips:
+            if clip.clip_id in sample_bins:
+                samples_by_bin[clip.clip_id] = clip.get_samples()
     else:
         samples_by_bin = dataset.samples_by_bin
     if len(sample_bins) == 0:
@@ -288,9 +293,9 @@ def split_label(
     sample_bins = list(sample_bins)
 
     random.shuffle(sample_bins)
-    train_c = Camera("{}-Train".format(label))
-    validate_c = Camera("{}-Val".format(label))
-    test_c = Camera("{}-Test".format(label)) if use_test else None
+    train_c = []
+    validate_c = []
+    test_c = [] if use_test else None
 
     camera_type = "validate"
     add_to = validate_c
@@ -337,7 +342,7 @@ def split_label(
                     label_count += 1
 
                 # sample.camera = "{}-{}".format(sample.camera, camera_type)
-                add_to.add_sample(sample)
+                add_to.append(sample)
 
                 if label in dontsplit:
                     dataset.remove_sample(sample)
@@ -371,7 +376,7 @@ def split_label(
         samples = samples_by_bin[sample_bin]
         for sample in samples:
             # sample.camera = "{}-{}".format(sample.camera, camera_type)
-            train_c.add_sample(sample)
+            train_c.append(sample)
             added += 1
 
             if label in dontsplit:
@@ -387,16 +392,19 @@ def split_label(
 def get_test_set_camera(dataset, test_clips, after_date):
     # load test set camera from tst_clip ids and all clips after a date
     test_c = Camera("Test-Set-Camera")
-    test_samples = [
+    print("after date is", after_date)
+    test_clips = [
         sample
-        for sample in dataset.samples_by_id.values()
-        if sample.clip_id in test_clips
+        for clip in dataset.clips
+        if clip.clip_id in test_clips
         or after_date is not None
-        and sample.rec_time.replace(tzinfo=pytz.utc) > after_date
+        and clip.rec_time.replace(tzinfo=pytz.utc) > after_date
     ]
-    for sample in test_samples:
-        dataset.remove_sample(sample)
-        test_c.add_sample(sample)
+    for clip in test_clips:
+        for track in clip.tracks:
+            for sample in track.samples:
+                dataset.remove_sample(sample)
+                test_c.add_sample(sample)
     return test_c
 
 
@@ -457,7 +465,7 @@ def split_randomly(
     )
     test = None
     if use_test:
-        test_c = get_test_set_camera(dataset, test_clips, args.date)
+        test_c = get_test_set_camera(dataset, test_clips, date)
         test_cameras = [test_c]
         test = Dataset(
             dataset.dataset_dir, "test", config, label_mapping=dataset.label_mapping
@@ -516,13 +524,11 @@ def split_randomly(
             # max_samples=min_label[1],
         )
         if train_c is not None:
-            add_camera_samples(dataset.labels, train, [train_c], train_counts)
+            add_samples(dataset.labels, train, train_c, train_counts)
         if validate_c is not None:
-            add_camera_samples(
-                dataset.labels, validation, [validate_c], validation_counts
-            )
+            add_samples(dataset.labels, validation, validate_c, validation_counts)
         if test_c is not None:
-            add_camera_samples(dataset.labels, test, [test_c], test_counts)
+            add_samples(dataset.labels, test, test_c, test_counts)
         logging.info("Train counts %s", train_counts)
         logging.info("VAL counts %s", validation_counts)
 
@@ -534,27 +540,26 @@ def split_randomly(
     return train, validation, test
 
 
-def add_camera_samples(
+def add_samples(
     labels,
     dataset,
-    cameras,
+    samples,
     counts,
 ):
-    # add camera tracks to the daaset and calculate segments and bins
-    all_samples = []
-    for label in labels:
-        if label not in counts:
-            counts[label] = (0, 0)
-        for camera in cameras:
-            samples = camera.label_to_samples.get(label, {}).values()
-            track_count = len(set([s.track_id for s in samples]))
-            counts[label] = (
-                counts[label][0] + track_count,
-                counts[label][1] + len(samples),
-            )
-            all_samples.extend(list(samples))
-    dataset.add_samples(all_samples)
-    # dataset.balance_bins()
+    by_labels = {}
+    counts = {}
+    for s in samples:
+        if s.label not in by_labels:
+            by_labels[s.label] = []
+        by_labels[s.label].append(s)
+
+    for label, samples in by_labels.items():
+        track_count = len(set([s.track_id for s in samples]))
+        counts[label] = (
+            track_count,
+            len(samples),
+        )
+    dataset.add_samples(samples)
 
 
 def validate_datasets(datasets, test_bins, date):
@@ -703,11 +708,11 @@ def main():
             dataset.labels = labels
     else:
         tracks_loaded, total_tracks = dataset.load_clips(dont_filter_segment=True)
-        # return
+
         dataset.labels.sort()
         print(
             "Loaded {}/{} tracks, found {:.1f}k samples".format(
-                tracks_loaded, total_tracks, len(dataset.samples_by_id) / 1000
+                tracks_loaded, total_tracks, len(dataset.clips) / 1000
             )
         )
         for key, value in dataset.filtered_stats.items():
@@ -727,7 +732,7 @@ def main():
         print()
         print("Splitting data set into train / validation")
 
-        datasets = split_randomly(dataset, config, args, test_clips)
+        datasets = split_randomly(dataset, config, args.date, test_clips)
         # validate_datasets(datasets, test_clips, args.date)
         # print("After split still have ", len(dataset.samples_by_id))
         # for s in dataset.samples_by_id.values():

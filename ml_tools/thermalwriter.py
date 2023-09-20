@@ -202,7 +202,6 @@ def create_tf_records(
         output_path,
         len(dataset.samples_by_id),
     )
-    writers = []
     lbl_counts = [0] * num_labels
     # lbl_counts[l] = 0
     logging.info("labels are %s", labels)
