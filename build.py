@@ -16,9 +16,10 @@ from ml_tools.logs import init_logging
 from config.config import Config
 from ml_tools.dataset import Dataset
 from ml_tools.datasetstructures import Camera
+from ml_tools.tfwriter import create_tf_records
+from ml_tools.irwriter import save_data as save_ir_data
+from ml_tools.thermalwriter import save_data as save_thermal_data
 
-from ml_tools.irwriter import create_tf_records as create_ir_records
-from ml_tools.thermalwriter import create_tf_records as create_thermal_records
 
 import numpy as np
 
@@ -57,6 +58,9 @@ def parse_args():
         help="Percentage of training set to add extra augmentations of",
     )
     parser.add_argument("--split-file", help="Json file defining a split")
+    parser.add_argument(
+        "--ext", default=".hdf5", help="Extension of files to load .mp4,.cptv,.hdf5"
+    )
 
     parser.add_argument("-c", "--config-file", help="Path to config file to use")
     parser.add_argument("-d", "--date", help="Use clips after this")
@@ -700,8 +704,8 @@ def main():
         config,
         consecutive_segments=args.consecutive_segments,
         label_mapping=label_mapping,
-        raw=False,
-        ext=".hdf5",
+        raw=False if args.ext == ".hdf5" else True,
+        ext=args.ext,
     )
     if args.split_file:
         datasets = split_by_file(dataset, config, args.split_file, args.data_dir)
@@ -774,15 +778,14 @@ def main():
     base_dir = config.tracks_folder
     record_dir = os.path.join(base_dir, "training-data/")
     dataset_counts = {}
-    create_tf_records = create_thermal_records
+    # create_tf_records = create_thermal_records
     if config.train.type == "IR":
         threshold = (
             config.tracking[config.train.type]
             .motion.threshold_for_model(config.train.type)
             .background_thresh
         )
-
-        create_tf_records = create_ir_records
+        # create_tf_records = create_ir_records
     else:
         threshold = None
 
@@ -812,7 +815,24 @@ def main():
         print_counts(*datasets)
     for dataset in datasets:
         dir = os.path.join(record_dir, dataset.name)
-        create_tf_records(dataset, dir, datasets[0].labels, threshold, num_shards=100)
+        if config.train.type == "IR":
+            create_tf_records(
+                dataset,
+                dir,
+                datasets[0].labels,
+                save_ir_data,
+                {"back_thresh": threshold},
+                num_shards=100,
+            )
+        else:
+            create_tf_records(
+                dataset,
+                dir,
+                datasets[0].labels,
+                save_thermal_data,
+                {"num_frames": dataset.segment_length},
+                num_shards=100,
+            )
         counts = {}
         for label in dataset.labels:
             count = len(dataset.samples_by_label.get(label, []))

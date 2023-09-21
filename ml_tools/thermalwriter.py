@@ -128,130 +128,6 @@ def create_tf_example(sample, data, features, labels, num_frames):
     return example
 
 
-def process_job(queue, labels, base_dir, num_frames):
-    import gc
-
-    pid = os.getpid()
-
-    writer_i = 1
-    name = f"{writer_i}-{pid}.tfrecord"
-
-    options = tf.io.TFRecordOptions(compression_type="GZIP")
-    writer = tf.io.TFRecordWriter(str(base_dir / name), options=options)
-    i = 0
-    saved = 0
-    files = 0
-    while True:
-        i += 1
-        samples = queue.get()
-        try:
-            if samples == "DONE":
-                writer.close()
-                break
-            else:
-                if len(samples) == 0:
-                    continue
-                saved += save_data(
-                    samples,
-                    writer,
-                    labels,
-                    num_frames,
-                )
-                files += 1
-                del samples
-                if saved > 10000:
-                    logging.info("Closing old writer")
-                    writer.close()
-                    writer_i += 1
-                    name = f"{writer_i}-{pid}.tfrecord"
-                    logging.info("Opening %s", name)
-                    saved = 0
-                    writer = tf.io.TFRecordWriter(str(base_dir / name), options=options)
-                if i % 100 == 0:
-                    logging.info("Saved %s ", files)
-                    gc.collect()
-                    writer.flush()
-        except:
-            logging.error("Process_job error %s", samples[0].source_file, exc_info=True)
-
-
-def create_tf_records(
-    dataset,
-    output_path,
-    labels,
-    back_thresh,
-    num_shards=1,
-    cropped=True,
-):
-    output_path = Path(output_path)
-    if output_path.is_dir():
-        logging.info("Clearing dir %s", output_path)
-        for child in output_path.glob("*"):
-            if child.is_file():
-                child.unlink()
-    output_path.mkdir(parents=True, exist_ok=True)
-    samples_by_source = dataset.get_samples_by_source()
-
-    source_files = list(samples_by_source.keys())
-    np.random.shuffle(source_files)
-    total_num_annotations_skipped = 0
-    num_labels = len(labels)
-    # pool = multiprocessing.Pool(4)
-    logging.info(
-        "writing to output path: %s for %s samples",
-        output_path,
-        len(dataset.samples_by_id),
-    )
-    lbl_counts = [0] * num_labels
-    # lbl_counts[l] = 0
-    logging.info("labels are %s", labels)
-
-    num_processes = 8
-    try:
-        job_queue = Queue()
-        processes = []
-        for i in range(num_processes):
-            p = Process(
-                target=process_job,
-                args=(
-                    job_queue,
-                    labels,
-                    output_path,
-                    dataset.segment_length,
-                ),
-            )
-            processes.append(p)
-            p.start()
-        added = 0
-        for source_file in source_files:
-            job_queue.put((samples_by_source[source_file]))
-            added += 1
-            while job_queue.qsize() > num_processes * 3:
-                logging.info("Sleeping for %s", 10)
-                # give it a change to catch up
-                time.sleep(10)
-
-        logging.info("Processing %d", job_queue.qsize())
-        for i in range(len(processes)):
-            job_queue.put(("DONE"))
-        for process in processes:
-            try:
-                process.join()
-            except KeyboardInterrupt:
-                logging.info("KeyboardInterrupt, terminating.")
-                for process in processes:
-                    process.terminate()
-                exit()
-        logging.info("Saved %s", len(dataset.samples_by_id))
-
-    except:
-        logging.error("Error saving track info", exc_info=True)
-
-    logging.info(
-        "Finished writing, skipped %d annotations.", total_num_annotations_skipped
-    )
-
-
 # @lru_cache(maxsize=1000)
 # only going to get called once now per track
 def get_track_data(clip_id, track_id, db):
@@ -269,7 +145,7 @@ def get_track_data(clip_id, track_id, db):
     return background, track_frames, features, frame_temp_median
 
 
-def save_data(samples, writer, labels, num_frames):
+def save_data(samples, writer, labels, extra_args):
     sample_data = get_data(samples)
     if sample_data is None:
         return 0
@@ -277,7 +153,7 @@ def save_data(samples, writer, labels, num_frames):
     try:
         for data in sample_data:
             tf_example = create_tf_example(
-                data[0], data[1], data[2], labels, num_frames
+                data[0], data[1], data[2], labels, extra_args["num_frames"]
             )
             writer.write(tf_example.SerializeToString())
             saved += 1
