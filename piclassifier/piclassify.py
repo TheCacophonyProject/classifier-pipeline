@@ -286,6 +286,8 @@ def ir_camera(config, thermal_config_file, process_queue):
         )
         processor = get_processor(process_queue, config, thermal_config, headers)
         processor.start()
+        drop_frame = 0
+        dropped = 0
         while True:
             returned, frame = cap.read()
             if not processor.is_alive():
@@ -301,7 +303,26 @@ def ir_camera(config, thermal_config_file, process_queue):
             frames += 1
             if frames == 1:
                 log_event("camera-connected", {"type": IRTrackExtractor.TYPE})
-            process_queue.put((frame, time.time()))
+            if drop_frame is not None and (frames - start_dropping) % drop_frame == 0:
+                logging.info("Dropping frame due to slow processing")
+                dropped += 1
+            else:
+                process_queue.put((frame, time.time()))
+            qsize = process_queue.qsize()
+            logging.info("Q size is %s", qsize)
+            if qsize > headers.fps * 5 and frames > (start_dropping + drop_frame):
+                1 / 0
+                # drop every 9th frame
+                if drop_frame is None:
+                    drop_frame = 9
+                else:
+                    drop_frame = drop_frame - 1
+                # drop first frame
+                start_dropping = frames + 1
+                logging.info("Dropping every %s frame as qsize %s", drop_frame, qsize)
+            elif qsize < headers.fps * 4:
+                drop_frame = None
+                start_dropping = None
     finally:
         time.sleep(5)
         processor.terminate()

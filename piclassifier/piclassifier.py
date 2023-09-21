@@ -235,7 +235,7 @@ class PiClassifier(Processor):
         self.bluetooth_beacons = thermal_config.motion.bluetooth_beacons
         self.preview_frames = thermal_config.recorder.preview_secs * headers.fps
 
-        self.fps_timer = SlidingWindow((headers.fps), np.float32)
+        self.fps_timer = SlidingWindow((headers.fps * 3), np.float32)
         self.preview_type = preview_type
         self.max_keep_frames = None if preview_type else 0
         if thermal_config.recorder.disable_recordings:
@@ -760,15 +760,16 @@ class PiClassifier(Processor):
             and self.frame_num % PiClassifier.DEBUG_EVERY == 0
         ):
             average = np.mean(self.fps_timer.get_frames())
-
+            mem = process_mem()
             logging.info(
-                "tracking %s %% process %s %%  identify %s %% rec %s %% fps %s/sec  cpu %s memory %s behind by %s seconds",
+                "tracking %s %% process %s %%  identify %s %% rec %s %% fps %s/sec process  system cpu %s process memory %s%% system memory %s behind by %s seconds",
                 round(100 * self.tracking_time / self.total_time, 3),
                 round(100 * self.process_time / self.total_time, 3),
                 round(100 * self.identify_time / self.total_time, 3),
                 round(100 * self.rec_time / self.total_time, 3),
                 round(1 / average),
                 psutil.cpu_percent(),
+                mem,
                 psutil.virtual_memory()[2],
                 time.time() - received_at,
             )
@@ -871,3 +872,9 @@ def on_recording_stopping(filename):
 
         with open(meta_name, "w") as f:
             json.dump(meta_data, f, indent=4, cls=CustomJSONEncoder)
+
+
+def process_mem():
+    # return the memory usage in percentage like top
+    process = psutil.Process(os.getppid())
+    return process.memory_percent()
