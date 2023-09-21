@@ -18,6 +18,7 @@ import json
 
 import numpy as np
 from track.region import Region
+from ml_tools.datasetstructures import TrackHeader, ClipHeader
 
 special_datasets = [
     "tag_frames",
@@ -385,19 +386,26 @@ class TrackDatabase:
 
         return result
 
-    def dataset_track(self, dataset, track_id):
+    def dataset_track(self, dataset, clip_id, track_id):
         result = hdf5_attributes_dictionary(dataset)
         regions = dataset.get("regions")[:]
-        result["regions"] = regions
-        preds = dataset.get("model_predictions")
-        if preds is not None:
-            result["model_predictions"] = {}
-            for model in preds:
-                model_preds = hdf5_attributes_dictionary(preds[model])
-                result["model_predictions"][model] = model_preds
-        result["id"] = track_id
-
-        return result
+        regions_by_frame = {}
+        for r in regions:
+            r = Region.region_from_array(r)
+            regions_by_frame[r.frame_number] = r
+        header = TrackHeader(
+            clip_id=clip_id,
+            track_id=int(track_id),
+            label=result.get("human_tag"),
+            num_frames=len(regions),
+            regions=regions_by_frame,
+            start_frame=result["start_frame"],
+            confidence=result.get("human_tag_confidence"),
+            human_tags=result.get("human_tags"),
+            source_file=self.database,
+            # frame_temp_median=frame_temp_median,
+        )
+        return header
 
     def get_track_predictions(self, clip_id, track_id):
         """
@@ -432,19 +440,21 @@ class TrackDatabase:
             else:
                 dataset = f
             result = hdf5_attributes_dictionary(dataset)
-            result["tracks"] = len(dataset)
-            tag_frames = dataset.get("tag_frames")
-            if tag_frames:
-                result["tag_frames"] = {}
-                for key, value in tag_frames.attrs.items():
-                    result["tag_frames"][key] = value
-
-                tag_regions = tag_frames.get("tag_regions")
-                if tag_regions is not None:
-                    result["tag_frames"]["tag_regions"] = {}
-                    for key, value in tag_regions.attrs.items():
-                        result["tag_frames"]["tag_regions"][key] = value
-        return result
+            clip_header = ClipHeader(
+                clip_id=int(result["clip_id"]),
+                station_id=result.get("station_id"),
+                source_file=self.database,
+                location=result.get("station_id"),
+                camera=result.get("device_id"),
+                frames_per_second=9,
+                events=result.get("event", ""),
+                trap=result.get("trap", ""),
+                tracks=[],
+                ffc_frames=result.get("ffc_frames"),
+                rec_time=None,
+                frame_temp_median=result.get("frame_temp_median"),
+            )
+        return clip_header
 
     def get_clip_tracks(self, clip_id=None):
         """
@@ -453,6 +463,7 @@ class TrackDatabase:
         :return:
         """
         tracks = []
+        clip_header = self.get_clip_meta()
         with HDF5Manager(self.database) as f:
             if "clips" in f:
                 clip = f["clips"][str(clip_id)]
@@ -461,9 +472,11 @@ class TrackDatabase:
             for track_id in clip:
                 if track_id in special_datasets:
                     continue
-                track = self.dataset_track(clip[track_id], track_id)
-                tracks.append(track)
-        return tracks
+                track = self.dataset_track(
+                    clip[track_id], clip_header.clip_id, track_id
+                )
+                clip_header.tracks.append(track)
+        return clip_header
 
     def get_tag(self, clip_id, track_id):
         with HDF5Manager(self.database) as f:

@@ -246,8 +246,6 @@ def create_tf_records(
 
     except:
         logging.error("Error saving track info", exc_info=True)
-    for writer in writers:
-        writer.close()
 
     logging.info(
         "Finished writing, skipped %d annotations.", total_num_annotations_skipped
@@ -304,8 +302,8 @@ def get_data(clip_samples):
             frame_data = db.get_clip(clip_id)
             background = np.median(frame_data, axis=0)
             del frame_data
-        clip_meta = db.get_clip_meta(clip_id)
-        frame_temp_median = clip_meta["frame_temp_median"]
+        clip_meta = db.get_clip_meta()
+        frame_temp_median = clip_meta.frame_temp_median
 
         # group samples by track_id
         samples_by_track = {}

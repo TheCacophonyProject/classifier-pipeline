@@ -117,10 +117,13 @@ class ClipLoader:
         if out_file.exists() and tracker_version > 9:
             logging.warning("Already loaded %s", filename)
             # going to add some missing fierlds
-            # with h5py.File(out_file, "a") as f:
-            #     if f.attrs.get("device_id") is None:
-            #         f.attrs["device_id"] = metadata["deviceId"]
-            # return
+            with h5py.File(out_file, "a") as f:
+                if f.attrs.get("rec_time") is None:
+                    with open(filename, "rb") as cptv:
+                        reader = CPTVReader(cptv)
+                        video_start_time = reader.timestamp.astimezone(Clip.local_tz)
+                    f.attrs["rec_time"] = video_start_time.isoformat()
+            return
         if len(metadata.get("Tracks")) == 0:
             logging.error("No tracks found for %s", filename)
             return
@@ -160,7 +163,7 @@ class ClipLoader:
 
                     video_start_time = reader.timestamp.astimezone(Clip.local_tz)
                     clip.set_video_stats(video_start_time)
-
+                    print("Adding rec time", video_start_time)
                     frames = clip_node.create_group("frames")
                     ffc_frames = []
                     stats = ClipStats()
@@ -206,6 +209,7 @@ class ClipLoader:
                     cropped_stats.completed()
                     group_attrs = clip_node.attrs
                     group_attrs["clip_id"] = r_id
+                    group_attrs["rec_time"] = video_start_time.isoformat()
                     group_attrs["num_frames"] = np.uint16(num_frames)
                     group_attrs["ffc_frames"] = np.uint16(ffc_frames)
                     group_attrs["device_id"] = metadata["deviceId"]

@@ -457,18 +457,33 @@ def split_randomly(
     # have tried many ways to split i.e. location and cameras found this is simplest
     # and the results are the same
     train = Dataset(
-        dataset.dataset_dir, "train", config, label_mapping=dataset.label_mapping
+        dataset.dataset_dir,
+        "train",
+        config,
+        label_mapping=dataset.label_mapping,
+        raw=dataset.raw,
+        ext=dataset.ext,
     )
     train.enable_augmentation = True
     validation = Dataset(
-        dataset.dataset_dir, "validation", config, label_mapping=dataset.label_mapping
+        dataset.dataset_dir,
+        "validation",
+        config,
+        label_mapping=dataset.label_mapping,
+        raw=dataset.raw,
+        ext=dataset.ext,
     )
     test = None
     if use_test:
         test_c = get_test_set_camera(dataset, test_clips, date)
         test_cameras = [test_c]
         test = Dataset(
-            dataset.dataset_dir, "test", config, label_mapping=dataset.label_mapping
+            dataset.dataset_dir,
+            "test",
+            config,
+            label_mapping=dataset.label_mapping,
+            raw=dataset.raw,
+            ext=dataset.ext,
         )
     validate_cameras = []
     train_cameras = []
@@ -499,13 +514,8 @@ def split_randomly(
         bins = set([s.bin_id for s in samples])
 
         lbl_counts[lbl] = (len(tracks), len(samples), len(bins))
-    print("lbl counts are", lbl_counts)
-    # for label in dataset.labels:
-    #     if label in dontsplut:
-    #         samples_by_mass = sorted(s, key=lambda s: s.region.mass, reverse=True)
-    #
-    #     samples = dataset.samples_by_label.get(label, [])
-    print("lbl order is ", lbl_order)
+
+    logging.debug("lbl order is %s", lbl_order)
     train_counts = {}
     validation_counts = {}
     test_counts = {}
@@ -529,13 +539,8 @@ def split_randomly(
             add_samples(dataset.labels, validation, validate_c, validation_counts)
         if test_c is not None:
             add_samples(dataset.labels, test, test_c, test_counts)
-        logging.info("Train counts %s", train_counts)
-        logging.info("VAL counts %s", validation_counts)
-
-    # if balance_bins:
-    #     train.balance_bins()
-    #     validation.balance_bins()
-    #     test.balance_bins()
+        logging.debug("Train counts %s", train_counts)
+        logging.debug("val counts %s", validation_counts)
 
     return train, validation, test
 
@@ -695,6 +700,8 @@ def main():
         config,
         consecutive_segments=args.consecutive_segments,
         label_mapping=label_mapping,
+        raw=False,
+        ext=".hdf5",
     )
     if args.split_file:
         datasets = split_by_file(dataset, config, args.split_file, args.data_dir)

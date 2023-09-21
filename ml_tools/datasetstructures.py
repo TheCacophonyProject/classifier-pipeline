@@ -112,6 +112,7 @@ class ClipHeader:
     trap = attr.ib()
     tracks = attr.ib()
     ffc_frames = attr.ib()
+    frame_temp_median = attr.ib(default=None)
 
     def get_samples(self):
         samples = []
@@ -131,7 +132,6 @@ class TrackHeader:
         num_frames,
         regions,
         start_frame,
-        frame_temp_median=None,
         ffc_frames=None,
         sample_frames_indices=None,
         skipped_frames=None,
@@ -175,7 +175,6 @@ class TrackHeader:
 
     @property
     def bounds_history(self):
-        sample_frames_indices is None
         regions = list(self.regions_by_frame.values())
         regions = sorted(regions, key=lambda r: r.frame_number)
         return regions
@@ -296,6 +295,8 @@ class TrackHeader:
         dont_filter=False,
         ignore_mass=False,
         skip_ffc=True,
+        ffc_frames=None,
+        location=None,
     ):
         min_frames = segment_width
         if self.label == "vehicle" or self.label == "human":
@@ -311,21 +312,20 @@ class TrackHeader:
             segment_width,
             label=self.label,
             regions=np.array(regions),
-            frame_temp_median=self.frame_temp_median,
             segment_min_mass=segment_min_mass,
             sample_frames=self.sample_frames if use_important else None,
-            ffc_frames=self.ffc_frames,
+            ffc_frames=ffc_frames,
             lower_mass=self.lower_mass,
             repeats=repeats,
             min_frames=min_frames,
             skipped_frames=self.skipped_frames,
             segment_type=segment_type,
             max_segments=max_segments,
-            location=self.location,
-            station_id=self.station_id,
-            rec_time=self.rec_time,
+            location=None,
+            station_id=None,
+            rec_time=None,
             source_file=self.source_file,
-            camera=self.camera,
+            camera=None,
             dont_filter=dont_filter,
             ignore_mass=ignore_mass,
             skip_ffc=skip_ffc,
@@ -669,7 +669,6 @@ class SegmentHeader(Sample):
         mass,
         label,
         regions,
-        frame_temp_median,
         frame_indices=None,
         movement_data=None,
         best_mass=False,
@@ -698,11 +697,7 @@ class SegmentHeader(Sample):
         self.frame_numbers = np.uint16(frame_indices)
         self.start_time = start_time
         self.regions = regions
-        self.frame_temp_median = np.uint16(frame_temp_median)
-        # for i, frame in enumerate(frame_indices):
-        #     self.track_bounds[frame] = regions[i]
-        #     self.frame_temp_median[frame] = frame_temp_median[i]
-        # first frame of this segment referenced by start of track
+
         self.start_frame = start_frame
         # length of segment in frames
         self.frames = np.uint16(frames)
@@ -864,7 +859,6 @@ def get_segments(
     segment_frame_spacing,
     segment_width,
     regions,
-    frame_temp_median,
     label=None,
     segment_min_mass=None,
     sample_frames=None,
@@ -885,6 +879,7 @@ def get_segments(
     dont_filter=False,
     skip_ffc=True,
 ):
+    print("Getting segments with ffc", ffc_frames)
     if segment_type == SegmentType.ALL_RANDOM_NOMIN:
         segment_min_mass = None
     if min_frames is None:
@@ -934,7 +929,6 @@ def get_segments(
             clip_id,
             track_id,
             label,
-            frame_temp_median,
             camera,
             segment_width,
             segment_frame_spacing,
@@ -1022,7 +1016,7 @@ def get_segments(
                     filtered_stats["segment_mass"] += 1
                     continue
 
-            temp_slice = frame_temp_median[relative_frames]
+            # temp_slice = frame_temp_median[relative_frames]
             region_slice = regions[relative_frames]
             movement_data = None
             if segment_avg_mass < 50:
@@ -1043,7 +1037,6 @@ def get_segments(
                 mass=segment_mass,
                 label=label,
                 regions=region_slice,
-                frame_temp_median=temp_slice,
                 frame_indices=frames,
                 movement_data=movement_data,
                 camera=camera,
@@ -1061,7 +1054,6 @@ def get_top_mass_segments(
     clip_id,
     track_id,
     label,
-    frame_temp_median,
     camera,
     segment_width,
     segment_frame_spacing,
@@ -1117,7 +1109,6 @@ def get_top_mass_segments(
             mass=segment_info[1],
             label=label,
             regions=regions[frames],
-            frame_temp_median=frame_temp_median[frames],
             frame_indices=frames + start_frame,
             movement_data=movement_data,
             best_mass=best_mass,

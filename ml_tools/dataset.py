@@ -38,7 +38,13 @@ class Dataset:
         consecutive_segments=False,
         labels=[],
         label_mapping=None,
+        raw=True,
+        ext=".cptv",
     ):
+        self.ext = ext
+        self.raw = raw
+        if self.raw and self.ext == ".cptv":
+            raise Exception("Raw CPTV not implemented yet")
         self.dataset_dir = Path(dataset_dir)
         self.consecutive_segments = consecutive_segments
         self.label_mapping = label_mapping
@@ -169,7 +175,7 @@ class Dataset:
 
         counter = 0
         logging.info("Loading clips")
-        for db_clip in self.dataset_dir.glob("**/*.mp4"):
+        for db_clip in self.dataset_dir.glob(f"**/*{self.ext}"):
             tracks_added = self.load_clip(db_clip, dont_filter_segment)
             if tracks_added == 0:
                 logging.info("No tracks added for %s", db_clip)
@@ -179,7 +185,10 @@ class Dataset:
         return [counter, counter]
 
     def load_clip(self, db_clip, dont_filter_segment=False):
-        db = RawDatabase(db_clip)
+        if self.raw:
+            db = RawDatabase(db_clip)
+        else:
+            db = TrackDatabase(db_clip)
         try:
             clip_header = db.get_clip_tracks(self.tag_precedence)
         except:
@@ -197,7 +206,7 @@ class Dataset:
             added += 1
             if self.use_segments:
                 segment_frame_spacing = int(
-                    round(self.segment_spacing * track_header.frames_per_second)
+                    round(self.segment_spacing * clip_header.frames_per_second)
                 )
                 segment_width = self.segment_length
                 track_header.calculate_segments(
@@ -209,6 +218,7 @@ class Dataset:
                     dont_filter=dont_filter_segment,
                     ignore_mass=self.ignore_mass,
                     skip_ffc=self.skip_ffc,
+                    ffc_frames=clip_header.ffc_frames,
                 )
                 self.filtered_stats["segment_mass"] += track_header.filtered_stats[
                     "segment_mass"
@@ -245,11 +255,10 @@ class Dataset:
     @property
     def samples_by_label(self):
         samples_by_label = {}
-        for clip in self.clips:
-            for track in clip.tracks:
-                if track.label not in samples_by_label:
-                    samples_by_label[track.label] = []
-                samples_by_label[track.label].extend(track.samples)
+        for sample in self.samples:
+            if sample.label not in samples_by_label:
+                samples_by_label[sample.label] = []
+            samples_by_label[sample.label].append(sample)
         return samples_by_label
 
     def add_clip_sample_mappings(self, sample):
