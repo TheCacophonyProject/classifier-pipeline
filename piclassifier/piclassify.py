@@ -286,8 +286,9 @@ def ir_camera(config, thermal_config_file, process_queue):
         )
         processor = get_processor(process_queue, config, thermal_config, headers)
         processor.start()
-        drop_frame = 0
+        drop_frame = None
         dropped = 0
+        start_dropping = None
         while True:
             returned, frame = cap.read()
             if not processor.is_alive():
@@ -310,8 +311,9 @@ def ir_camera(config, thermal_config_file, process_queue):
                 process_queue.put((frame, time.time()))
             qsize = process_queue.qsize()
             logging.info("Q size is %s", qsize)
-            if qsize > headers.fps * 5 and frames > (start_dropping + drop_frame):
-                1 / 0
+            if qsize > headers.fps * 4 and (
+                drop_frame is None or frames > (start_dropping + drop_frame)
+            ):
                 # drop every 9th frame
                 if drop_frame is None:
                     drop_frame = 9
@@ -320,7 +322,7 @@ def ir_camera(config, thermal_config_file, process_queue):
                 # drop first frame
                 start_dropping = frames + 1
                 logging.info("Dropping every %s frame as qsize %s", drop_frame, qsize)
-            elif qsize < headers.fps * 4:
+            elif qsize < headers.fps * 3:
                 drop_frame = None
                 start_dropping = None
     finally:
