@@ -66,6 +66,18 @@ def load_dataset(filenames, remap_lookup, num_labels, args):
     return dataset
 
 
+data_augmentation = tf.keras.Sequential(
+    [
+        tf.keras.layers.RandomFlip("horizontal"),
+        tf.keras.layers.RandomRotation(0.1, fill_mode="nearest", fill_value=0),
+        tf.keras.layers.RandomZoom(0.1),
+        tf.keras.layers.RandomBrightness(0.2),
+        tf.keras.layers.RandomContrast(0.1),
+    ]
+)
+
+
+@tf.function
 def read_irrecord(
     example,
     image_size,
@@ -85,15 +97,6 @@ def read_irrecord(
         "image/class/label": tf.io.FixedLenFeature((), tf.int64, -1),
     }
 
-    data_augmentation = tf.keras.Sequential(
-        [
-            tf.keras.layers.RandomFlip("horizontal"),
-            tf.keras.layers.RandomRotation(0.1, fill_mode="nearest", fill_value=0),
-            tf.keras.layers.RandomZoom(0.1),
-            tf.keras.layers.RandomBrightness(0.2),
-            tf.keras.layers.RandomContrast(0.1),
-        ]
-    )
     example = tf.io.parse_single_example(example, tfrecord_format)
     image = decode_image(
         example["image/thermalencoded"],
@@ -104,7 +107,7 @@ def read_irrecord(
     augmented = tf.cast(example["image/augmented"], tf.bool)
 
     if not augmented and augment:
-        image = data_augmentation(image)
+        image = data_augmentation(image, training=True)
     if preprocess_fn is not None:
         image = preprocess_fn(image)
 
