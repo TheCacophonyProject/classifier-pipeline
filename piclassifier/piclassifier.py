@@ -196,7 +196,7 @@ class PiClassifier(Processor):
     """Classifies frames from leptond"""
 
     NUM_CONCURRENT_TRACKS = 1
-    DEBUG_EVERY = 20
+    DEBUG_EVERY = 10
     MAX_CONSEC = 1
     # after every MAX_CONSEC frames skip this many frames
     # this gives the cpu a break
@@ -763,10 +763,10 @@ class PiClassifier(Processor):
             mem = process_mem()
             logging.info(
                 "tracking %s %% process %s %%  identify %s %% rec %s %% fps %s/sec process  system cpu %s process memory %s%% system memory %s behind by %s seconds",
-                round(100 * self.tracking_time / self.total_time, 3),
-                round(100 * self.process_time / self.total_time, 3),
-                round(100 * self.identify_time / self.total_time, 3),
-                round(100 * self.rec_time / self.total_time, 3),
+                round(self.tracking_time, 3),
+                round(self.process_time, 3),
+                round(self.identify_time, 3),
+                round(self.rec_time, 3),
                 round(1 / average),
                 psutil.cpu_percent(),
                 mem,
