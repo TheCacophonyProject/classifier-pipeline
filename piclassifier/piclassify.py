@@ -148,7 +148,9 @@ def parse_file(file, config, thermal_config_file, preview_type):
 
 
 def parse_ir(file, config, thermal_config_file, preview_type):
-    thermal_config = ThermalConfig.load_from_file(thermal_config_file, "IR")
+    thermal_config = ThermalConfig.load_from_file(
+        thermal_config_file, IRTrackExtractor.TYPE
+    )
     from piclassifier import irmotiondetector
 
     irmotiondetector.MIN_FRAMES = 0
@@ -166,7 +168,7 @@ def parse_ir(file, config, thermal_config_file, preview_type):
                 res_y=res_y,
                 fps=10,
                 brand=None,
-                model="IR",
+                model=IRTrackExtractor.TYPE,
                 frame_size=res_y * res_x,
                 pixel_bits=8,
                 serial="",
@@ -275,7 +277,7 @@ def ir_camera(config, thermal_config_file, process_queue):
             res_y=int(res_y),
             fps=FPS,
             brand=None,
-            model="IR",
+            model=IRTrackExtractor.TYPE,
             frame_size=res_y * res_x,
             pixel_bits=8,
             serial="",
