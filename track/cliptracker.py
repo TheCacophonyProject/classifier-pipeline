@@ -463,8 +463,19 @@ class ClipTracker(ABC):
 
 
 class Background(ABC):
+    TRIGGER_FRAMES = 2
+
     def __init__(self):
         self.rescaled = None
+        self.prev_triggered = False
+        self.triggered = 0
+        self.movement_detected = False
+        self.kernel_trigger = np.ones(
+            (15, 15), "uint8"
+        )  # kernel for erosion when not recording
+        self.kernel_recording = np.ones(
+            (10, 10), "uint8"
+        )  # kernel for erosion when recording
 
     @abstractmethod
     def set_background(self, background, frames=1):
@@ -497,35 +508,74 @@ class Background(ABC):
     def frames(self):
         return self._frames
 
+    def get_kernel(self):
+        if self.movement_detected:
+            return self.kernel_recording
+        else:
+            return self.kernel_trigger
+
+    def detect_motion(self):
+        fg = self.compute_filtered(None)
+        erosion_image = cv2.erode(fg, self.get_kernel())
+        erosion_pixels = len(erosion_image[erosion_image > 0])
+
+        self.prev_triggered = erosion_pixels > 0
+        if erosion_pixels > 0:
+            self.triggered += 1
+            self.triggered = min(self.triggered, 2)
+        else:
+            self.triggered -= 1
+            self.triggered = max(self.triggered, 0)
+        self.movement_detected = self.triggered >= Background.TRIGGER_FRAMES
+        return self.movement_detected
+
 
 class CVBackground(Background):
-    def __init__(self):
+    def __init__(self, use_subsense=False):
         super().__init__()
-        # seems to be better than MOG2
-        self.algorithm = cv2.createBackgroundSubtractorKNN(
-            history=500, detectShadows=False
-        )
-        self.algorithm.setDist2Threshold(200)
-        # i think this is more sensitive than default 400
-        # works better on hedgehog videos
-        self.algorithm.setkNNSamples(3)
+        self.use_subsense = use_subsense
+        # knn doesnt respect learning rate, but maybe mog2 is better anyway
+        if use_subsense:
+            import pybgs as bgs
+
+            self.algorithm = bgs.SuBSENSE()
+        else:
+            self.algorithm = cv2.createBackgroundSubtractorMOG2(
+                history=1000, detectShadows=False
+            )
+            # print(self.algorithm.getBackgroundRatio(), "RATION")
+            # 1 / 0
+        # self.algorithm = cv2.createBackgroundSubtractorKNN(
+        #     history=1000, detectShadows=False
+        # )
         self._frames = 0
         self._background = None
 
     def set_background(self, background, frames=1):
         # seems to be better to do x times rather than just set background
-        # self._background = self.algorithm.apply(background, learningRate=1.0)
-        for _ in range(frames):
-            self.update_background(background)
-        return
+        if self.use_subsense:
+            for _ in range(10):
+                # doesnt have a learning rate
+                self.update_background(background, learning_rate=1)
+        else:
+            self.update_background(background, learning_rate=1)
 
-    def update_background(self, thermal, filtered=None):
-        self._background = self.algorithm.apply(thermal)
+            # return
+
+    def update_background(self, thermal, filtered=None, learning_rate=-1):
+        if self.use_subsense:
+            self._background = self.algorithm.apply(thermal)
+        else:
+            self._background = self.algorithm.apply(thermal, None, learning_rate)
+
         self._frames += 1
 
     @property
     def background(self):
-        return self.algorithm.getBackgroundImage()
+        if self.use_subsense:
+            return self.algorithm.getBackgroundModel()
+        else:
+            return self.algorithm.getBackgroundImage()
 
     def compute_filtered(self, thermal):
         return self._background
@@ -554,7 +604,7 @@ class DiffBackground(Background):
         self._background += new_thermal
         self._frames += 1
 
-    def compute_filtered(self, thermal):
+    def compute_filtered(self, thermal=None):
         filtered = get_diff_back_filtered(
             self.background,
             thermal,

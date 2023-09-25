@@ -148,7 +148,12 @@ def parse_file(file, config, thermal_config_file, preview_type):
 
 
 def parse_ir(file, config, thermal_config_file, preview_type):
-    thermal_config = ThermalConfig.load_from_file(thermal_config_file, "IR")
+    thermal_config = ThermalConfig.load_from_file(
+        thermal_config_file, IRTrackExtractor.TYPE
+    )
+    from piclassifier import irmotiondetector
+
+    irmotiondetector.MIN_FRAMES = 0
     count = 0
     vidcap = cv2.VideoCapture(file)
     while True:
@@ -163,7 +168,7 @@ def parse_ir(file, config, thermal_config_file, preview_type):
                 res_y=res_y,
                 fps=10,
                 brand=None,
-                model="IR",
+                model=IRTrackExtractor.TYPE,
                 frame_size=res_y * res_x,
                 pixel_bits=8,
                 serial="",
@@ -179,8 +184,10 @@ def parse_ir(file, config, thermal_config_file, preview_type):
                 preview_type,
             )
             gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-
             pi_classifier.motion_detector._background._background = np.float32(gray)
+            pi_classifier.motion_detector._background.update_background(
+                gray, learning_rate=1
+            )
             pi_classifier.motion_detector._background._frames = 1000
             count += 1
             # assume this has been run over 1000 frames
@@ -273,7 +280,7 @@ def ir_camera(config, thermal_config_file, process_queue):
             res_y=int(res_y),
             fps=FPS,
             brand=None,
-            model="IR",
+            model=IRTrackExtractor.TYPE,
             frame_size=res_y * res_x,
             pixel_bits=8,
             serial="",
@@ -284,6 +291,9 @@ def ir_camera(config, thermal_config_file, process_queue):
         )
         processor = get_processor(process_queue, config, thermal_config, headers)
         processor.start()
+        drop_frame = None
+        dropped = 0
+        start_dropping = None
         while True:
             returned, frame = cap.read()
             if not processor.is_alive():
@@ -299,7 +309,26 @@ def ir_camera(config, thermal_config_file, process_queue):
             frames += 1
             if frames == 1:
                 log_event("camera-connected", {"type": IRTrackExtractor.TYPE})
-            process_queue.put((frame, time.time()))
+            if drop_frame is not None and (frames - start_dropping) % drop_frame == 0:
+                logging.info("Dropping frame due to slow processing")
+                dropped += 1
+            else:
+                process_queue.put((frame, time.time()))
+            qsize = process_queue.qsize()
+            if qsize > headers.fps * 4 and (
+                drop_frame is None or frames > (start_dropping + drop_frame)
+            ):
+                # drop every 9th frame
+                if drop_frame is None:
+                    drop_frame = 9
+                else:
+                    drop_frame = drop_frame - 1
+                # drop first frame
+                start_dropping = frames + 1
+                logging.info("Dropping every %s frame as qsize %s", drop_frame, qsize)
+            elif qsize < headers.fps * 3:
+                drop_frame = None
+                start_dropping = None
     finally:
         time.sleep(5)
         processor.terminate()

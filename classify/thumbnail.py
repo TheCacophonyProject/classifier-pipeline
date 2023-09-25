@@ -141,7 +141,7 @@ def score(stat, max_mass, max_median_diff, min_median_diff, max_contour):
     pts = stat.contours / max_contour
     pts = pts * 50
 
-    centroid_mid = tools.eucl_distance(region.centroid, region.mid) ** 0.5
+    centroid_mid = tools.eucl_distance_sq(region.centroid, region.mid) ** 0.5
     centroid_mid *= 2
     # this will be probably between 1-10 could be worth * 1.5
     # median diff out of 50
@@ -190,7 +190,7 @@ def display_track(h_data, id):
                 or region.bottom >= 119
                 or region.right >= 159
             )
-            centroid_mid = tools.eucl_distance(region.centroid, region.mid) ** 0.5
+            centroid_mid = tools.eucl_distance_sq(region.centroid, region.mid) ** 0.5
             title = f"#{region.frame_number} - centroid {round(centroid_mid)} - {is_along_border}\n"
             title += f" cts {stat.contours}"
             title += f" mass {region.mass}"

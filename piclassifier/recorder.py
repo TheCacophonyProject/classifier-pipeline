@@ -119,7 +119,7 @@ class Recorder(ABC):
             final_name,
             self.frames,
             self.rec_time,
-            self.rec_time / self.frames,
+            self.rec_time / self.frames if self.frames > 0 else 0,
         )
         self.rec_time = 0
         self.write_until = 0

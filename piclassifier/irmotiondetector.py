@@ -53,6 +53,7 @@ class RollingBackground(Background):
 
 WINDOW_SIZE = 50
 MIN_FRAMES = 10 * 10  # 10 * 10  # 10seconds
+
 THRESHOLD = 12
 # maybe put to 12
 TRIGGER_FRAMES = 2
@@ -75,6 +76,7 @@ class IRMotionDetector(MotionDetector):
         self.movement_detected = False
         self.triggered = 0
         self.show = False
+        self.prev_triggered = False
 
     def disconnected(self):
         self.rgb_window.reset()
@@ -107,44 +109,44 @@ class IRMotionDetector(MotionDetector):
             self.rgb_window.add(frame)
             gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
             self.gray_window.add(gray)
-
+            #
             if self.gray_window.oldest is None:
                 return False
-
-            self._background.update_background(gray)
+            learning_rate = 0 if self.movement_detected else -1
+            self._background.update_background(gray, learning_rate=learning_rate)
             if self.num_frames > MIN_FRAMES:
                 # Filter and get diff from background
                 delta = cv2.absdiff(
                     self.gray_window.oldest, gray
                 )  # Get delta from current frame and background
-                threshold = cv2.threshold(delta, THRESHOLD, 255, cv2.THRESH_BINARY)[1]
 
+                threshold = cv2.threshold(delta, THRESHOLD, 255, cv2.THRESH_BINARY)[1]
+                #
                 erosion_image = cv2.erode(threshold, self.get_kernel())
+                diff_erosion_pixels = len(erosion_image[erosion_image > 0])
+                erosion_image = cv2.erode(
+                    self._background.compute_filtered(None), self.get_kernel()
+                )
                 erosion_pixels = len(erosion_image[erosion_image > 0])
+
+                # assert erosion_pixels == self._background.detect_motion()
+                # if any have no pixels lets stop motion detection, wiht not updating
+                # background when motion is detected if the background actually changes
+                # this could cause a problem, this should catch that
+                if self.movement_detected:
+                    erosion_pixels = min(diff_erosion_pixels, erosion_pixels)
                 # to do find a value that suites the number of pixesl we want to move
                 # Calculate if there was motion in the current frame
                 # TODO Chenage how much ioldests added to the triggered depending on how big the motion is
+                self.prev_triggered = erosion_pixels > 0
                 if erosion_pixels > 0:
                     self.triggered += 1
                     self.triggered = min(self.triggered, 30)
-                    # logging.info(
-                    #     "Got erosion pixel %s triggered %s",
-                    #     self.num_frames,
-                    #     self.triggered,
-                    # )
                 else:
-                    # if self.triggered > 0:
-                    #     logging.info(
-                    #         "Lost erosion %s triggered %s",
-                    #         self.num_frames,
-                    #         self.triggered - 1,
-                    #     )
-
                     self.triggered -= 1
                     self.triggered = max(self.triggered, 0)
-
                 # Check if motion has started or ended
-                if not self.movement_detected and self.triggered > TRIGGER_FRAMES:
+                if not self.movement_detected and self.triggered >= TRIGGER_FRAMES:
                     self.movement_detected = True
 
                 elif self.movement_detected and self.triggered <= 0:

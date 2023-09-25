@@ -42,8 +42,6 @@ SKIP_SIGNAL = "skip"
 track_extractor = None
 clip = None
 
-import cv2
-
 
 class NeuralInterpreter(Interpreter):
     TYPE = "Neural"
@@ -237,7 +235,7 @@ class PiClassifier(Processor):
         self.bluetooth_beacons = thermal_config.motion.bluetooth_beacons
         self.preview_frames = thermal_config.recorder.preview_secs * headers.fps
 
-        self.fps_timer = SlidingWindow((headers.fps), np.float32)
+        self.fps_timer = SlidingWindow((headers.fps * 3), np.float32)
         self.preview_type = preview_type
         self.max_keep_frames = None if preview_type else 0
         if thermal_config.recorder.disable_recordings:
@@ -245,7 +243,7 @@ class PiClassifier(Processor):
                 thermal_config, headers, on_recording_stopping
             )
 
-        if headers.model == "IR":
+        if headers.model == IRTrackExtractor.TYPE:
             logging.info("Running on IR")
             PiClassifier.SKIP_FRAMES = 3
             self.track_extractor = IRTrackExtractor(
@@ -261,7 +259,7 @@ class PiClassifier(Processor):
             )
             self.tracking_config = self.track_extractor.config
 
-            self.type = "IR"
+            self.type = IRTrackExtractor.TYPE
             if not thermal_config.recorder.disable_recordings:
                 self.recorder = IRRecorder(
                     thermal_config, headers, on_recording_stopping
@@ -418,12 +416,15 @@ class PiClassifier(Processor):
         clip = self.clip
         self.clip.video_start_time = datetime.now()
         self.clip.num_preview_frames = self.preview_frames
+
         self.clip.set_res(self.res_x, self.res_y)
         self.clip.set_frame_buffer(
             self.tracking_config.high_quality_optical_flow,
             self.config.classify.cache_to_disk,
             self.config.use_opt_flow,
-            keep_frames=self.max_keep_frames > 0,
+            keep_frames=self.max_keep_frames > 0
+            if self.max_keep_frames is not None
+            else True,
             max_frames=self.max_keep_frames,
         )
         edge_pixels = self.tracking_config.edge_pixels
@@ -432,12 +433,18 @@ class PiClassifier(Processor):
         self.clip._background_calculated()
         # no need to retrack all of preview
         background_frames = None
-        track_frames = self.type != "IR"
+        track_frames = -1
+        retrack_back = True
+        if self.type == IRTrackExtractor.TYPE:
+            track_frames = 5
+            retrack_back = False
+            # background is calculated in motion, so already 5 frames ahead
         self.track_extractor.start_tracking(
             self.clip,
             preview_frames,
             track_frames=track_frames,
             background_alg=self.motion_detector._background,
+            retrack_back=retrack_back,
             # background_frame=clip.background,
             # background_frames=background_frames,
         )
@@ -757,15 +764,16 @@ class PiClassifier(Processor):
             and self.frame_num % PiClassifier.DEBUG_EVERY == 0
         ):
             average = np.mean(self.fps_timer.get_frames())
-
+            mem = process_mem()
             logging.info(
-                "tracking %s %% process %s %%  identify %s %% rec %s %% fps %s/sec  cpu %s memory %s behind by %s seconds",
+                "tracking %s %% process %s %%  identify %s %% rec %s %% fps %s/sec process  system cpu %s process memory %s%% system memory %s behind by %s seconds",
                 round(100 * self.tracking_time / self.total_time, 3),
                 round(100 * self.process_time / self.total_time, 3),
                 round(100 * self.identify_time / self.total_time, 3),
                 round(100 * self.rec_time / self.total_time, 3),
                 round(1 / average),
                 psutil.cpu_percent(),
+                mem,
                 psutil.virtual_memory()[2],
                 time.time() - received_at,
             )
@@ -868,3 +876,9 @@ def on_recording_stopping(filename):
 
         with open(meta_name, "w") as f:
             json.dump(meta_data, f, indent=4, cls=CustomJSONEncoder)
+
+
+def process_mem():
+    # return the memory usage in percentage like top
+    process = psutil.Process(os.getppid())
+    return process.memory_percent()

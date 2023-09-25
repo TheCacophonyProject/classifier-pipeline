@@ -29,7 +29,7 @@ from cptv import CPTVReader
 import cv2
 
 from .clip import Clip
-from ml_tools.tools import Rectangle
+from ml_tools.tools import Rectangle, eucl_distance_sq
 from track.region import Region
 from track.track import Track
 from ml_tools.imageprocessing import (
@@ -158,6 +158,7 @@ class IRTrackExtractor(ClipTracker):
         self.update_background = update_background
         self.trap_size = trap_size
         self.left_bottom, self.right_bottom = get_trap_lines(self.trap_size)
+        self.learning_rate = -1
 
     def parse_clip(self, clip, process_background=False):
         """
@@ -230,11 +231,14 @@ class IRTrackExtractor(ClipTracker):
         self,
         clip,
         frames=None,
-        track_frames=True,
+        track_frames=-1,
         background_alg=None,
         background_frame=None,
         background_frames=1,
+        retrack_back=True,
     ):
+        # track frames is the number of frames to track from supplied frames (most recent first)
+        # -1 means all, 0 means none, 1 means just last frame etc
         self.res_x = clip.res_x
         self.res_y = clip.res_y
         if DO_SALIENCY:
@@ -242,7 +246,7 @@ class IRTrackExtractor(ClipTracker):
         clip.set_model("IR")
         clip.set_video_stats(datetime.now())
         if background_alg is None:
-            self.background = CVBackground()
+            self.background = CVBackground(use_subsense=False)
             # self.diff_background = DiffBackground(clip.background_thresh)
             if background_frame is not None:
                 # if self.scale:
@@ -252,6 +256,7 @@ class IRTrackExtractor(ClipTracker):
                 #         (int(self.res_x * self.scale), int(self.res_y * self.scale)),
                 #         interpolation=cv2.INTER_AREA,
                 #     )
+
                 self.background.set_background(background_frame, background_frames)
                 # self.diff_background.set_background(background, background_frames)
         else:
@@ -259,9 +264,18 @@ class IRTrackExtractor(ClipTracker):
         self.init_saliency()
         if frames is not None:
             do_tracking = self.do_tracking
-            self.do_tracking = self.do_tracking and track_frames
-            for frame in frames:
+            update_background = self.update_background
+            remaining = len(frames)
+            for i, frame in enumerate(frames):
+                self.do_tracking = do_tracking and (
+                    (track_frames == -1) or (remaining <= track_frames)
+                )
+                self.learning_rate = 0
+                self.update_background = self.do_tracking and retrack_back
                 self.process_frame(clip, frame)
+                remaining -= 1
+            self.learning_rate = -1
+            self.update_background = update_background
             self.do_tracking = do_tracking
 
     def init_saliency(self):
@@ -305,7 +319,7 @@ class IRTrackExtractor(ClipTracker):
     # keep merging until no more merges are possible, tihs works paticularly well from the IR videos where
     # the filtered image is quite fragmented
     def merge_components(self, rectangles):
-        min_mass = 10
+        min_mass = 10 * 4
         min_size = 16
         MAX_GAP = 40
         if self.scale:
@@ -317,63 +331,58 @@ class IRTrackExtractor(ClipTracker):
             for r in rectangles
             if r[4] > min_mass or (r[2] > min_size and r[3] > min_size)
         ]
-        rectangles = sorted(rectangles, key=lambda s: s[4], reverse=False)
-
-        # filter out regions with small mass  and samll width / height
-        #  numbers may need adjusting
+        rectangles = sorted(rectangles, key=lambda s: s[4], reverse=True)
+        # only merge on original rectangle not on resized
+        for i in range(len(rectangles)):
+            rectangles[i] = (rectangles[i], rectangles[i].copy())
         rect_i = 0
         rectangles = list(rectangles)
         while rect_i < len(rectangles):
-            rect = rectangles[rect_i]
+            rect, merged_r = rectangles[rect_i]
             merged = False
             mid_x = rect[2] / 2.0 + rect[0]
             mid_y = rect[3] / 2.0 + rect[1]
             index = 0
             while index < len(rectangles):
-                r_2 = rectangles[index]
+                within = False
+                r_2 = rectangles[index][0]
                 if r_2[0] == rect[0]:
                     index += 1
                     continue
+
                 r_mid_x = r_2[2] / 2.0 + r_2[0]
                 r_mid_y = r_2[3] / 2.0 + r_2[1]
                 distance = (mid_x - r_mid_x) ** 2 + (r_mid_y - mid_y) ** 2
                 distance = distance**0.5
 
-                # widest = max(rect[2], rect[3])
-                # hack short cut just take line from mid points as shortest distance subtract biggest width or hieght from each
-                distance = (
-                    distance - max(rect[2], rect[3]) / 2.0 - max(r_2[2], r_2[3]) / 2.0
-                )
-                within = r_2[0] > rect[0] and (r_2[0] + r_2[2]) <= (rect[0] + rect[2])
-                within = (
-                    within
-                    and r_2[1] > rect[1]
-                    and (r_2[1] + r_2[3]) <= (rect[1] + rect[3])
-                )
-
+                if r_2[2] + rect[2] > max(r_2[0] + r_2[2], rect[2] + rect[0]) - min(
+                    r_2[0], rect[0]
+                ):
+                    within = r_2[3] + rect[3] > max(
+                        r_2[1] + r_2[3], rect[1] + rect[3]
+                    ) - min(r_2[1], rect[1])
+                distance = rect_distance(rect, r_2)
                 if distance < MAX_GAP or within:
-                    cur_right = rect[0] + rect[2]
-                    cur_bottom = rect[0] + rect[2]
+                    cur_right = merged_r[0] + merged_r[2]
+                    cur_bottom = merged_r[0] + merged_r[2]
 
-                    rect[0] = min(rect[0], r_2[0])
-                    rect[1] = min(rect[1], r_2[1])
-                    rect[2] = max(cur_right, r_2[0] + r_2[2])
-                    rect[3] = max(rect[1] + rect[3], r_2[1] + r_2[3])
-                    rect[2] -= rect[0]
-                    rect[3] -= rect[1]
-                    rect[4] += r_2[4]
-
-                    # print("second merged ", rect)
+                    merged_r[0] = min(merged_r[0], r_2[0])
+                    merged_r[1] = min(merged_r[1], r_2[1])
+                    merged_r[2] = max(cur_right, r_2[0] + r_2[2])
+                    merged_r[3] = max(merged_r[1] + merged_r[3], r_2[1] + r_2[3])
+                    merged_r[2] -= merged_r[0]
+                    merged_r[3] -= merged_r[1]
+                    merged_r[4] += r_2[4]
                     merged = True
                     # break
                     del rectangles[index]
                 else:
                     index += 1
-                    # print("not mered", rect, r_2, distance)
             if merged:
                 rect_i = 0
             else:
                 rect_i += 1
+        rectangles = [rect[1] for rect in rectangles]
         return rectangles
 
     def _process_frame(self, clip, frame, ffc_affected=False):
@@ -383,8 +392,6 @@ class IRTrackExtractor(ClipTracker):
         :param thermal: A numpy array of shape (height, width) and type uint16
             If specified background subtraction algorithm will be used.
         """
-
-        start = time.time()
 
         saliencyMap = None
         filtered = None
@@ -409,17 +416,16 @@ class IRTrackExtractor(ClipTracker):
                     tracking_thermal, repeats=repeats
                 )
             if self.update_background:
-                self.background.update_background(frame)
-            filtered = self.background.compute_filtered(frame)
-            #
-            # saliencyMap = self.diff_background.compute_filtered(
-            #     tracking_thermal, clip.background_thresh
-            # )
+                has_motion = self.background.movement_detected
+                learning_rate = 0 if has_motion else self.learning_rate
+                self.background.update_background(
+                    frame, learning_rate=self.learning_rate
+                )
+                # self.background.detect_motion()
 
-            # _ = self.diff_background.update_background(tracking_thermal)
-            # self.background.update_background(tracking_thermal, filtered)
-            clip.set_background(self.background.background)
-        start = time.time()
+            filtered = self.background.compute_filtered(frame)
+            if not clip.background_calculated:
+                clip.set_background(self.background.background)
 
         threshold = 0
         if np.amin(saliencyMap) == 255:
@@ -431,11 +437,9 @@ class IRTrackExtractor(ClipTracker):
             pass
             # backsub = np.where(saliencyMap > 0, saliencyMap, backsub)
         cur_frame = clip.add_frame(frame, filtered, saliencyMap, ffc_affected)
-        start = time.time()
 
         if not self.do_tracking:
             return
-        start = time.time()
         re_f = filtered
         if self.scale:
             re_f = cv2.resize(
@@ -443,12 +447,10 @@ class IRTrackExtractor(ClipTracker):
                 (int(self.res_x * self.scale), int(self.res_y * self.scale)),
                 interpolation=cv2.INTER_AREA,
             )
+        # self.debug_tracking(frame, filtered)
         num, mask, component_details = detect_objects_ir(re_f, threshold=0)
         component_details = component_details[1:]
         component_details = self.merge_components(component_details)
-        # if self.scale:
-        #     for i in range((len(component_details))):
-        #         component_details[i] = component_details[i].rescale(1 / self.scale)
         if clip.from_metadata:
             for track in clip.tracks:
                 if clip.current_frame in track.frame_list:
@@ -481,6 +483,14 @@ class IRTrackExtractor(ClipTracker):
             if DEBUG_TRAP:
                 if len(clip.tracks) > 0:
                     self.show_trap_info(clip, frame)
+
+    def debug_tracking(self, frame, filtered):
+        cv2.imshow("gray", frame)
+        cv2.imshow("f", filtered)
+        cv2.imshow("b", self.background.background)
+        cv2.moveWindow("gray", 0, 0)
+        cv2.moveWindow("f", 640, 0)
+        cv2.waitKey()
 
     def show_trap_info(self, clip, frame):
         image = frame.copy()
@@ -529,7 +539,7 @@ class IRTrackExtractor(ClipTracker):
             wait = 300
 
         cv2.imshow("id", image)
-        cv2.waitKey(wait)
+        cv2.waitKey(100)
         # 1 / 0
 
     def filter_components(self, component_details):
@@ -564,7 +574,6 @@ class IRTrackExtractor(ClipTracker):
         return filtered
 
     def filter_track(self, clip, track, stats):
-        # return False
         # return not track.stable
         # discard any tracks that are less min_duration
         # these are probably glitches anyway, or don't contain enough information.
@@ -751,3 +760,35 @@ class Direction:
     RIGHT = 4
     TOP = 8
     MIDDLE = 16
+
+
+def rect_distance(r_a, r_b):
+    x_1 = 0
+    x_2 = 0
+    y_1 = 0
+    y_2 = 0
+    if r_a[2] + r_b[2] > max(r_a[0] + r_a[2], r_b[2] + r_b[0]) - min(r_a[0], r_b[0]):
+        # if over lap on  dimension then no distance
+        pass
+    elif r_a[0] < r_b[0]:
+        # right side of r_a to left side r_b
+        x_1 = r_a[0] + r_a[2]
+        x_2 = r_b[0]
+    else:
+        # right side of r_b to left side r_a
+        x_1 = r_b[0] + r_b[2]
+        x_2 = r_a[0]
+    overlap = r_a[3] + r_b[3] > max(r_a[1] + r_a[3], r_b[1] + r_b[3]) - min(
+        r_a[1], r_b[1]
+    )
+    if overlap:
+        # if over lap on  dimension then no distance
+        pass
+    elif r_a[1] < r_b[1]:
+        # r_a above r_b bottom r_a top of r_b
+        y_1 = r_a[1] + r_a[3]
+        y_2 = r_b[1]
+    else:
+        y_1 = r_b[1] + r_b[3]
+        y_2 = r_a[1]
+    return eucl_distance_sq((x_1, y_1), (x_2, y_2)) ** 0.5
