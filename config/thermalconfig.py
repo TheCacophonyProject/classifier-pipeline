@@ -70,7 +70,7 @@ class CameraMotionConfig:
     edge_pixels = attr.ib()
     warmer_only = attr.ib()
     dynamic_thresh = attr.ib()
-    run_classifier = attr.ib(default=True)
+    run_classifier = attr.ib(default=False)
     bluetooth_beacons = attr.ib(default=False)
     tracking_events = attr.ib(default=False)
 
