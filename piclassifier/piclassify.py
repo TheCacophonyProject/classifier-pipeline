@@ -310,7 +310,6 @@ def ir_camera(config, thermal_config_file, process_queue):
             else:
                 process_queue.put((frame, time.time()))
             qsize = process_queue.qsize()
-            logging.info("Q size is %s", qsize)
             if qsize > headers.fps * 4 and (
                 drop_frame is None or frames > (start_dropping + drop_frame)
             ):
