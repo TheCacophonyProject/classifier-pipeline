@@ -235,6 +235,7 @@ class IRTrackExtractor(ClipTracker):
         background_alg=None,
         background_frame=None,
         background_frames=1,
+        retrack_back=True,
     ):
         # track frames is the number of frames to track from supplied frames (most recent first)
         # -1 means all, 0 means none, 1 means just last frame etc
@@ -270,7 +271,7 @@ class IRTrackExtractor(ClipTracker):
                     (track_frames == -1) or (remaining <= track_frames)
                 )
                 self.learning_rate = 0
-                self.update_background = self.do_tracking
+                self.update_background = self.do_tracking and retrack_back
                 self.process_frame(clip, frame)
                 remaining -= 1
             self.learning_rate = -1
@@ -392,7 +393,6 @@ class IRTrackExtractor(ClipTracker):
             If specified background subtraction algorithm will be used.
         """
 
-        start = time.time()
         saliencyMap = None
         filtered = None
         if self.do_tracking:
@@ -424,8 +424,8 @@ class IRTrackExtractor(ClipTracker):
                 # self.background.detect_motion()
 
             filtered = self.background.compute_filtered(frame)
-            clip.set_background(self.background.background)
-        start = time.time()
+            if not clip.background_calculated:
+                clip.set_background(self.background.background)
 
         threshold = 0
         if np.amin(saliencyMap) == 255:
@@ -437,11 +437,9 @@ class IRTrackExtractor(ClipTracker):
             pass
             # backsub = np.where(saliencyMap > 0, saliencyMap, backsub)
         cur_frame = clip.add_frame(frame, filtered, saliencyMap, ffc_affected)
-        start = time.time()
 
         if not self.do_tracking:
             return
-        start = time.time()
         re_f = filtered
         if self.scale:
             re_f = cv2.resize(

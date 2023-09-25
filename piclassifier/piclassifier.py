@@ -243,7 +243,7 @@ class PiClassifier(Processor):
                 thermal_config, headers, on_recording_stopping
             )
 
-        if headers.model == "IR":
+        if headers.model == IRTrackExtractor.TYPE:
             logging.info("Running on IR")
             PiClassifier.SKIP_FRAMES = 3
             self.track_extractor = IRTrackExtractor(
@@ -434,13 +434,17 @@ class PiClassifier(Processor):
         # no need to retrack all of preview
         background_frames = None
         track_frames = -1
+        retrack_back = True
         if self.type == "IR":
             track_frames = 5
+            retrack_back = False
+            # background is calculated in motion, so already 5 frames ahead
         self.track_extractor.start_tracking(
             self.clip,
             preview_frames,
             track_frames=track_frames,
             background_alg=self.motion_detector._background,
+            retrack_back=retrack_back,
             # background_frame=clip.background,
             # background_frames=background_frames,
         )
