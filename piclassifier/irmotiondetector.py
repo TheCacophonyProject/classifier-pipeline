@@ -112,7 +112,7 @@ class IRMotionDetector(MotionDetector):
             #
             if self.gray_window.oldest is None:
                 return False
-            learning_rate = 0 if self.movement_detected else -1
+            learning_rate = 0.01 if self.movement_detected else -1
             self._background.update_background(gray, learning_rate=learning_rate)
             if self.num_frames > MIN_FRAMES:
                 # Filter and get diff from background
