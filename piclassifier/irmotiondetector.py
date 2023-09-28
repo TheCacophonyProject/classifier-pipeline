@@ -64,7 +64,7 @@ class IRMotionDetector(MotionDetector):
         super().__init__(thermal_config, headers)
         self.num_preview_frames = thermal_config.recorder.preview_secs * headers.fps
         self.rgb_window = SlidingWindow(self.num_preview_frames, dtype=np.uint8)
-        self.gray_window = SlidingWindow(self.num_preview_frames, dtype=np.uint8)
+        # self.gray_window = SlidingWindow(self.num_preview_frames, dtype=np.uint8)
         # self._background = Background()
         self._background = CVBackground()
         self.kernel_trigger = np.ones(
@@ -80,7 +80,7 @@ class IRMotionDetector(MotionDetector):
 
     def disconnected(self):
         self.rgb_window.reset()
-        self.gray_window.reset()
+        # self.gray_window.reset()
         self.processed = 0
 
     @property
@@ -108,36 +108,36 @@ class IRMotionDetector(MotionDetector):
         if self.can_record() or force_process:
             self.rgb_window.add(frame)
             gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-            self.gray_window.add(gray)
+            # self.gray_window.add(gray)
             #
-            if self.gray_window.oldest is None:
+            if self.rgb_window.oldest is None:
                 return False
             learning_rate = 0.01 if self.movement_detected else -1
             self._background.update_background(gray, learning_rate=learning_rate)
             if self.num_frames > MIN_FRAMES:
                 # Filter and get diff from background
-                delta = cv2.absdiff(
-                    self.gray_window.oldest, gray
-                )  # Get delta from current frame and background
-
-                threshold = cv2.threshold(delta, THRESHOLD, 255, cv2.THRESH_BINARY)[1]
+                # delta = cv2.absdiff(
+                #     self.gray_window.oldest, gray
+                # )  # Get delta from current frame and background
                 #
-                erosion_image = cv2.erode(threshold, self.get_kernel())
-                diff_erosion_pixels = len(erosion_image[erosion_image > 0])
+                # threshold = cv2.threshold(delta, THRESHOLD, 255, cv2.THRESH_BINARY)[1]
+                # #
+                # erosion_image = cv2.erode(threshold, self.get_kernel())
+                # diff_erosion_pixels = len(erosion_image[erosion_image > 0])
                 erosion_image = cv2.erode(
                     self._background.compute_filtered(None), self.get_kernel()
                 )
                 erosion_pixels = len(erosion_image[erosion_image > 0])
-
                 # assert erosion_pixels == self._background.detect_motion()
                 # if any have no pixels lets stop motion detection, wiht not updating
                 # background when motion is detected if the background actually changes
                 # this could cause a problem, this should catch that
-                if self.movement_detected:
-                    erosion_pixels = min(diff_erosion_pixels, erosion_pixels)
+                # if self.movement_detected:
+                # erosion_pixels = min(diff_erosion_pixels, erosion_pixels)
                 # to do find a value that suites the number of pixesl we want to move
                 # Calculate if there was motion in the current frame
                 # TODO Chenage how much ioldests added to the triggered depending on how big the motion is
+
                 self.prev_triggered = erosion_pixels > 0
                 if erosion_pixels > 0:
                     self.triggered += 1
