@@ -550,7 +550,7 @@ def filter_track(track_header, excluded_tags, filtered_stats={}):
 
         filtered_stats["tags"] += 1
         filter_tags = filtered_stats.setdefault("tag_names", set())
-        filter_tags.add(track_meta["human_tag"])
+        filter_tags.add(track_header.label)
         return True
 
     if track_header.human_tags is not None:

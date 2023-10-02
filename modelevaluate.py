@@ -216,6 +216,7 @@ def evaluate_dir(
                 sample.remapped_label = label_mapping.get(
                     sample.original_label, sample.original_label
                 )
+                track.label = sample.remapped_label
             frame_indices = np.arange(track.num_frames) + track.start_frame
             frames = []
             for i in frame_indices:
@@ -239,11 +240,12 @@ def evaluate_dir(
                 f.thermal -= thermal_medians[f.frame_number]
                 np.clip(f.thermal, a_min=0, a_max=None, out=f.thermal)
                 f.thermal, stats = imageprocessing.normalize(f.thermal, new_max=255)
-                f.resize_with_aspect(
-                    (32, 32),
-                    crop_rectangle,
-                    True,
-                )
+                if f.thermal.size > 0:
+                    f.resize_with_aspect(
+                        (32, 32),
+                        crop_rectangle,
+                        True,
+                    )
 
             prediction = model.classify_track_data(
                 track.track_id, track_frames, track.samples, preprocessed=True
