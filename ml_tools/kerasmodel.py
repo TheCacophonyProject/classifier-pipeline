@@ -924,7 +924,6 @@ class KerasModel(Interpreter):
             predict_me.append(frames)
             prediction_frames.append(segment.frame_indices)
             mass.append(segment.mass)
-            print("Classifying", segment.frame_indices, segment.mass)
         if len(predict_me) > 0:
             mass = np.array(mass)
             mass = mass[:, None]
@@ -934,13 +933,7 @@ class KerasModel(Interpreter):
                 features = np.repeat(features, len(predict_me), axis=0)
                 output = self.model.predict([predict_me, features])
             else:
-                print("Predict me", predict_me.shape, predict_me.dtype)
-                for r in predict_me[0]:
-                    for v in r:
-                        print(v)
                 output = self.model.predict(predict_me)
-            print(output)
-            print(self.model.summary())
 
             track_prediction.classified_clip(
                 output, output * output * mass, prediction_frames

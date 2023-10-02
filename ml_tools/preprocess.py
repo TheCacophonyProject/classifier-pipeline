@@ -309,7 +309,6 @@ def preprocess_movement(
     )
 
     if preprocess_fn:
-        print("Preprocessing??")
         data = data
         data = preprocess_fn(data)
     return data

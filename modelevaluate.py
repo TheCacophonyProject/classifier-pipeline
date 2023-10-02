@@ -205,8 +205,6 @@ def evaluate_dir(
         thermal_medians = np.uint16(thermal_medians)
 
         for track in clip.tracks:
-            if track.track_id != 587817:
-                continue
             track.calculate_segments(
                 segment_frame_spacing,
                 model.params.square_width**2,
@@ -215,7 +213,6 @@ def evaluate_dir(
                 ffc_frames=clip_db.ffc_frames,
             )
             for sample in track.samples:
-                print(sample.frame_indices)
                 sample.remapped_label = label_mapping.get(
                     sample.original_label, sample.original_label
                 )
@@ -239,9 +236,6 @@ def evaluate_dir(
                 f.filtered, stats = imageprocessing.normalize(
                     f.filtered, min=min_diff, max=max_diff, new_max=255
                 )
-                print(
-                    "For ", f.frame_number, " subbing", thermal_medians[f.frame_number]
-                )
                 f.thermal -= thermal_medians[f.frame_number]
                 np.clip(f.thermal, a_min=0, a_max=None, out=f.thermal)
                 f.thermal, stats = imageprocessing.normalize(f.thermal, new_max=255)
@@ -260,7 +254,6 @@ def evaluate_dir(
                 prediction.get_prediction(),
                 " should be ",
                 track.label,
-                np.round(100 * prediction.predictions),
             )
             y_true.append(track.label)
             y_pred.append(prediction.predicted_tag())
@@ -283,44 +276,9 @@ def main():
 
     base_dir = config.tracks_folder
     model = None
-    # model = KerasModel(train_config=config.train)
-    # model.labels = [
-    #     "bird",
-    #     "cat",
-    #     "deer",
-    #     "dog",
-    #     "false-positive",
-    #     "hedgehog",
-    #     "human",
-    #     "kiwi",
-    #     "leporidae",
-    #     "mustelid",
-    #     "penguin",
-    #     "possum",
-    #     "rodent",
-    #     "vehicle",
-    #     "wallaby",
-    # ]
-    # model.build_model()
-    # # return
-    # # model.load_model(model_file, training=False, weights=weights)
-    # print("Loading", model_file)
-    # model = model.model
-    model = tf.keras.models.load_model(model_file.parent / "frozen" / "wr.keras")
-    print(model.layers[0].dtype)
-    # model.load_weights(args.weights).expect_partial()
-    # model.save(model_file.parent / "frozen" / "wr.keras")
-    # return
-    model.trainable = False
-    model.training = False
-    print(model.summary())
-    test = np.ones((1, 160, 160, 3), dtype=np.float32)
-    for _ in range(2):
-        out = model.predict(test)
+    model = KerasModel(train_config=config.train)
+    model.load_model(model_file, training=False, weights=weights)
 
-        print("Empty", out)
-    return
-    #
     if args.evaluate_dir:
         evaluate_dir(model, Path(args.evaluate_dir), config, args.confusion)
     elif args.dataset:
