@@ -76,7 +76,7 @@ def resize_cv(image, dim, interpolation=cv2.INTER_LINEAR, extra_h=0, extra_v=0):
     )
 
 
-def square_clip(data, frames_per_row, tile_dim):
+def square_clip(data, frames_per_row, tile_dim, normalize=True):
     # lay each frame out side by side in rows
     new_frame = np.zeros((frames_per_row * tile_dim[0], frames_per_row * tile_dim[1]))
     i = 0
@@ -88,9 +88,12 @@ def square_clip(data, frames_per_row, tile_dim):
             else:
                 frame = data[i]
 
-            frame, stats = normalize(frame)
-            if not stats[0]:
-                continue
+            # cv2.imshow("frame", np.uint8(frame))
+            # cv2.waitKey(0)
+            if normalize:
+                frame, stats = normalize(frame, new_max=255)
+                if not stats[0]:
+                    continue
             success = True
             new_frame[
                 x * tile_dim[0] : (x + 1) * tile_dim[0],

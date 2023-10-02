@@ -18,6 +18,8 @@ import numpy as np
 from track.region import Region
 from ml_tools.datasetstructures import TrackHeader, ClipHeader
 from track.track import Track
+from load.cliptrackextractor import is_affected_by_ffc
+from cptv import CPTVReader
 
 special_datasets = [
     "tag_frames",
@@ -33,9 +35,41 @@ class RawDatabase:
         self.file = Path(database_filename)
         self.meta_data_file = self.file.with_suffix(".txt")
         self._meta_data = None
+        self.background = None
+        self.ffc_frames = None
+        self.frames = None
+
+    def load_frames(self):
+        ffc_frames = []
+        cptv_frames = []
+        background = None
+        tracker_version = self.meta_data.get("tracker_version")
+        frame_i = 0
+        with open(self.file, "rb") as f:
+            reader = CPTVReader(f)
+            for frame in reader:
+                if frame.background_frame:
+                    background = frame.pix
+                    if tracker_version < 10:
+                        continue
+                ffc = is_affected_by_ffc(frame)
+                if ffc:
+                    ffc_frames.append(frame_i)
+                cptv_frames.append(frame.pix)
+                frame_i += 1
+        frames = np.uint16(cptv_frames)
+        if background is None:
+            background = np.mean(frames, axis=0)
+
+        self.frames = []
+        for i, f in enumerate(frames):
+            self.frames.append(Frame(f, None, None, i))
+        self.ffc_frames = ffc_frames
+        self.background = background
 
     @property
     def meta_data(self):
+        print("Loading meta", self.meta_data_file)
         if self._meta_data is not None:
             return self._meta_data
         if not self.meta_data_file.is_file():
@@ -61,7 +95,7 @@ class RawDatabase:
             events=metadata.get("event", ""),
             trap=metadata.get("trap", ""),
             tracks=[],
-            ffc_frames=[],
+            ffc_frames=self.ffc_frames,
         )
         tracks = metadata.get("Tracks", [])
         meta = []

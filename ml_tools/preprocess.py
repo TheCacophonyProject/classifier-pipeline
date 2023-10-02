@@ -222,6 +222,9 @@ def preprocess_ir(
     return image
 
 
+index = 0
+
+
 def preprocess_movement(
     segment,
     frames_per_row,
@@ -234,15 +237,17 @@ def preprocess_movement(
     reference_level=None,
     sample=None,
     keep_edge=False,
+    preprocessed=False,
 ):
-    segment, flipped = preprocess_segment(
-        segment,
-        frame_size,
-        reference_level=reference_level,
-        augment=augment,
-        default_inset=0,
-        keep_edge=keep_edge,
-    )
+    if not preprocessed:
+        segment, flipped = preprocess_segment(
+            segment,
+            frame_size,
+            reference_level=reference_level,
+            augment=augment,
+            default_inset=0,
+            keep_edge=keep_edge,
+        )
     frame_types = {}
     channel_types = set([green_type, blue_type, red_type])
     for type in channel_types:
@@ -279,8 +284,12 @@ def preprocess_movement(
                 channel = TrackChannels.filtered
             channel_segment = [frame.get_channel(channel) for frame in segment]
             channel_data, success = imageprocessing.square_clip(
-                channel_segment, frames_per_row, (frame_size, frame_size)
+                channel_segment,
+                frames_per_row,
+                (frame_size, frame_size),
+                normalize=not preprocessed,
             )
+            # already done normalization
 
             if not success:
                 return None
@@ -291,15 +300,16 @@ def preprocess_movement(
         (frame_types[red_type], frame_types[green_type], frame_types[blue_type]), axis=2
     )
     #
-    # global index
-    # index += 1
-    # # # # # for testing
-    # tools.saveclassify_image(
-    #     data * 255,
-    #     f"samples/{index}",
-    # )
+    global index
+    index += 1
+    # # # # for testing
+    tools.saveclassify_image(
+        data,
+        f"samples/{index}",
+    )
 
     if preprocess_fn:
-        data = data * 255
+        print("Preprocessing??")
+        data = data
         data = preprocess_fn(data)
     return data

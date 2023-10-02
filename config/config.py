@@ -48,6 +48,7 @@ class Config(DefaultConfig):
     def load_from_file(cls, filename=None):
         if not filename:
             filename = find_config()
+            print("Loading", filename)
         with open(filename) as stream:
             return cls.load_from_stream(stream)
 

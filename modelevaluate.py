@@ -24,8 +24,9 @@ from ml_tools.kerasmodel import (
 )
 from ml_tools import tools
 from ml_tools.trackdatabase import TrackDatabase
+from ml_tools.rawdb import RawDatabase
 import tensorflow as tf
-from ml_tools.dataset import Dataset
+from ml_tools.dataset import Dataset, filter_clip, filter_track
 import pytz
 from ml_tools.datasetstructures import SegmentType
 from dateutil.parser import parse as parse_date
@@ -34,9 +35,60 @@ import matplotlib.pyplot as plt
 import numpy as np
 from pathlib import Path
 from ml_tools.preprocess import preprocess_ir
+from ml_tools.frame import Frame
+from ml_tools import imageprocessing
+import cv2
+from config.loadconfig import LoadConfig
+from sklearn.metrics import confusion_matrix
 
 crop_rectangle = tools.Rectangle(0, 0, 160, 120)
 PROB_THRESHOLD = 0.8
+
+land_birds = [
+    "pukeko",
+    "california quail",
+    "brown quail",
+    "black swan",
+    "quail",
+    "pheasant",
+    "penguin",
+    "duck",
+]
+
+
+def get_mappings(label_paths):
+    regroup = {}
+    for l, path in label_paths.items():
+        if l in land_birds:
+            regroup[l] = l
+            continue
+        split_path = path.split(".")
+        if len(split_path) == 1:
+            regroup[l] = l
+        elif path.startswith("all.mammal"):
+            if len(split_path) == 4:
+                regroup[l] = split_path[-2]
+            else:
+                regroup[l] = l
+        else:
+            # print("l", l, " has ", path)
+            parent = split_path[-2]
+            # print("Parent is", parent, path)
+            if parent == "kiwi" or split_path[-1] == "kiwi":
+                regroup[l] = "kiwi"
+            elif parent == "other":
+                regroup[l] = l
+
+            else:
+                if "bird." in path:
+                    regroup[l] = "bird"
+
+                elif len(split_path) > 2:
+                    regroup[l] = split_path[-3]
+                else:
+                    regroup[l] = split_path[-1]
+
+    return regroup
 
 
 def load_args():
@@ -54,20 +106,20 @@ def load_args():
         default="test",
         help="Dataset to use train, validation, test ( Default)",
     )
+
     parser.add_argument(
-        "--confusion",
-        help="Confusion matrix filename, used if you want to save confusion matrix image",
+        "--evaluate-dir",
+        help="Evalute directory of cptv files",
     )
-    parser.add_argument(
-        "--tracks", action="count", help="Evaluate whole track rather than samples"
-    )
+
     parser.add_argument("-c", "--config-file", help="Path to config file to use")
 
-    parser.add_argument("--track-id", help="Track id to evaluate from database")
-
-    parser.add_argument("--clip-id", help="Clip id to evaluate from database")
     parser.add_argument("-d", "--date", help="Use clips after this")
 
+    parser.add_argument(
+        "confusion",
+        help="Confusion matrix filename, used if you want to save confusion matrix image",
+    )
     args = parser.parse_args()
     if args.date:
         args.date = parse_date(args.date)
@@ -89,10 +141,140 @@ def init_logging(timestamps=False):
     )
 
 
+def filter_diffs(track_frames, background):
+    max_diff = 0
+    min_diff = 0
+    for f in track_frames:
+        r = f.region
+        if r.blank or r.width <= 0 or r.height <= 0:
+            continue
+
+        diff_frame = np.float32(f.thermal) - r.subimage(background)
+        new_max = np.amax(diff_frame)
+        new_min = np.amin(diff_frame)
+        if new_min < min_diff:
+            min_diff = new_min
+        if new_max > max_diff:
+            max_diff = new_max
+    return min_diff, max_diff
+
+
+def evaluate_dir(
+    model,
+    dir,
+    config,
+    confusion_file,
+):
+    with open("label_paths.json", "r") as f:
+        label_paths = json.load(f)
+    label_mapping = get_mappings(label_paths)
+    # dataset = Dataset(
+    #     dir,
+    #     "dataset",
+    #     config,
+    #     consecutive_segments=False,
+    #     label_mapping=label_mapping,
+    #     raw=True,
+    #     ext=".cptv",
+    # )
+    #
+    # tracks_loaded, total_tracks = dataset.load_clips(dont_filter_segment=True)
+    reason = {}
+    y_true = []
+    y_pred = []
+    for cptv_file in dir.glob(f"**/*cptv"):
+        # for clip in dataset.clips:
+        clip_db = RawDatabase(cptv_file)
+        clip = clip_db.get_clip_tracks(LoadConfig.DEFAULT_GROUPS)
+        if filter_clip(clip, reason):
+            logging.info("Filtering %s", cptv_file)
+            continue
+        clip.tracks = [
+            track
+            for track in clip.tracks
+            if not filter_track(track, config.load.excluded_tags, reason)
+        ]
+        if len(clip.tracks) == 0:
+            logging.info("No tracks after filtering %s", cptv_file)
+            continue
+        clip_db.load_frames()
+        segment_frame_spacing = int(round(clip.frames_per_second))
+        thermal_medians = []
+        for f in clip_db.frames:
+            thermal_medians.append(np.median(f.thermal))
+        thermal_medians = np.uint16(thermal_medians)
+
+        for track in clip.tracks:
+            if track.track_id != 587817:
+                continue
+            track.calculate_segments(
+                segment_frame_spacing,
+                model.params.square_width**2,
+                segment_min_mass=10,
+                # segment_type=SegmentType.ALL_SECTIONS,
+                ffc_frames=clip_db.ffc_frames,
+            )
+            for sample in track.samples:
+                print(sample.frame_indices)
+                sample.remapped_label = label_mapping.get(
+                    sample.original_label, sample.original_label
+                )
+            frame_indices = np.arange(track.num_frames) + track.start_frame
+            frames = []
+            for i in frame_indices:
+                frames.append(clip_db.frames[i])
+            track_frames = {}
+            track_medians = thermal_medians[frame_indices]
+
+            for f in frames:
+                region = track.regions_by_frame[f.frame_number]
+                track_frame = f.crop_by_region(region)
+                track_frame.region = region
+                track_frames[region.frame_number] = track_frame
+
+            min_diff, max_diff = filter_diffs(track_frames.values(), clip_db.background)
+            for f in track_frames.values():
+                f.float_arrays()
+                f.filtered = f.thermal - f.region.subimage(clip_db.background)
+                f.filtered, stats = imageprocessing.normalize(
+                    f.filtered, min=min_diff, max=max_diff, new_max=255
+                )
+                print(
+                    "For ", f.frame_number, " subbing", thermal_medians[f.frame_number]
+                )
+                f.thermal -= thermal_medians[f.frame_number]
+                np.clip(f.thermal, a_min=0, a_max=None, out=f.thermal)
+                f.thermal, stats = imageprocessing.normalize(f.thermal, new_max=255)
+                f.resize_with_aspect(
+                    (32, 32),
+                    crop_rectangle,
+                    True,
+                )
+
+            prediction = model.classify_track_data(
+                track.track_id, track_frames, track.samples, preprocessed=True
+            )
+            print(
+                track,
+                "Got a prediction of",
+                prediction.get_prediction(),
+                " should be ",
+                track.label,
+                np.round(100 * prediction.predictions),
+            )
+            y_true.append(track.label)
+            y_pred.append(prediction.predicted_tag())
+    cm = confusion_matrix(y_true, y_pred, labels=model.labels)
+    # Log the confusion matrix as an image summary.
+    figure = plot_confusion_matrix(cm, class_names=model.labels)
+    plt.savefig(confusion_file, format="png")
+
+
 def main():
     args = load_args()
     init_logging()
     config = Config.load_from_file(args.config_file)
+    print("LOading config", args.config_file)
     weights = None
     if args.model_file:
         model_file = Path(args.model_file)
@@ -100,56 +282,74 @@ def main():
         weights = model_file / args.weights
 
     base_dir = config.tracks_folder
+    model = None
+    # model = KerasModel(train_config=config.train)
+    # model.labels = [
+    #     "bird",
+    #     "cat",
+    #     "deer",
+    #     "dog",
+    #     "false-positive",
+    #     "hedgehog",
+    #     "human",
+    #     "kiwi",
+    #     "leporidae",
+    #     "mustelid",
+    #     "penguin",
+    #     "possum",
+    #     "rodent",
+    #     "vehicle",
+    #     "wallaby",
+    # ]
+    # model.build_model()
+    # # return
+    # # model.load_model(model_file, training=False, weights=weights)
+    # print("Loading", model_file)
+    # model = model.model
+    model = tf.keras.models.load_model(model_file.parent / "frozen" / "wr.keras")
+    print(model.layers[0].dtype)
+    # model.load_weights(args.weights).expect_partial()
+    # model.save(model_file.parent / "frozen" / "wr.keras")
+    # return
+    model.trainable = False
+    model.training = False
+    print(model.summary())
+    test = np.ones((1, 160, 160, 3), dtype=np.float32)
+    for _ in range(2):
+        out = model.predict(test)
 
-    model = KerasModel(train_config=config.train)
-    model.load_model(model_file, training=False, weights=weights)
-    # model = None
-    if args.track_id or args.clip_id:
-        if args.clip_id is None:
-            logging.error("Need clip id and track id")
-            sys.exit(0)
-        db = TrackDatabase(os.path.join(config.tracks_folder, "dataset.hdf5"))
-        evaluate_db_clip(model, db, args.clip_id, args.track_id)
-        sys.exit(0)
-
-    if args.tracks:
-        # def evaluate_db_clips(model, db, classifier, config, after_date):
-
-        evaluate_db_clips(model, config, args.date, args.confusion)
-        sys.exit(0)
-    model.load_training_meta(base_dir)
-    excluded, remapped = get_excluded(model.type)
-    files = base_dir + f"/training-data/{args.dataset}"
-    dataset, _, new_labels, _ = get_dataset(
-        files,
-        model.type,
-        model.labels,
-        batch_size=64,
-        image_size=model.params.output_dim[:2],
-        preprocess_fn=model.preprocess_fn,
-        augment=False,
-        resample=False,
-        include_features=model.params.mvm,
-        one_hot=True,
-        deterministic=True,
-        shuffle=False,
-        excluded_labels=excluded,
-        remapped_labels=remapped,
-    )
-    model.labels = new_labels
-    logging.info(
-        "Dataset loaded %s, using labels %s",
-        args.dataset,
-        model.labels,
-    )
-
-    if args.confusion:
-        if config.train.tfrecords:
-            model.confusion_tfrecords(dataset, args.confusion)
-        else:
-            model.confusion(dataset, args.confusion)
-    else:
-        model.evaluate(dataset)
+        print("Empty", out)
+    return
+    #
+    if args.evaluate_dir:
+        evaluate_dir(model, Path(args.evaluate_dir), config, args.confusion)
+    elif args.dataset:
+        model.load_training_meta(base_dir)
+        excluded, remapped = get_excluded(model.type)
+        files = base_dir + f"/training-data/{args.dataset}"
+        dataset, _, new_labels, _ = get_dataset(
+            files,
+            model.type,
+            model.labels,
+            batch_size=64,
+            image_size=model.params.output_dim[:2],
+            preprocess_fn=model.preprocess_fn,
+            augment=False,
+            resample=False,
+            include_features=model.params.mvm,
+            one_hot=True,
+            deterministic=True,
+            shuffle=False,
+            excluded_labels=excluded,
+            remapped_labels=remapped,
+        )
+        model.labels = new_labels
+        logging.info(
+            "Dataset loaded %s, using labels %s",
+            args.dataset,
+            model.labels,
+        )
+        model.confusion_tfrecords(dataset, args.confusion)
 
 
 def evaluate_db_clips(model, config, after_date, confusion_file="tracks-confusion"):

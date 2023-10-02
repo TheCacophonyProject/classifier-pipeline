@@ -30,6 +30,24 @@ Track = namedtuple("Track", "id regions what ai_what")
 
 
 RESCALE = 4
+from dateutil.parser import parse
+
+
+def latest_date(dir):
+    import json
+
+    latest_date = None
+    dbFiles = dir.glob("**/*.cptv")
+    for dbName in dbFiles:
+        meta_f = dbName.with_suffix(".txt")
+        with open(meta_f, "r") as f:
+            # add in some metadata stats
+            meta = json.load(f)
+        if meta.get("recordingDateTime"):
+            meta["recordingDateTime"] = parse(meta["recordingDateTime"])
+            if latest_date is None or meta["recordingDateTime"] > latest_date:
+                latest_date = meta["recordingDateTime"]
+    print("Latest date is", latest_date)
 
 
 def makecsv(dir):
@@ -82,7 +100,8 @@ def makecsv(dir):
 
 def main():
     args = parse_params()
-    makecsv(args.target)
+    latest_date(args.target)
+    # makecsv(args.target)
     return
     f = h5py.File(args.target, "r")
     clip_attrs = f.attrs

@@ -374,10 +374,12 @@ class KerasModel(Interpreter):
         logging.info("Loading %s with model weight %s", model_path, weights)
         self.model = tf.keras.models.load_model(dir_name)
         self.model.trainable = training
+        print("training", training)
         self.load_meta(dir_name)
         if weights is not None:
             self.model.load_weights(weights).expect_partial()
         logging.info("Loaded weight %s", weights)
+        print(self.model.summary())
 
     def load_meta(self, dir_name):
         meta = json.load((dir_name / "metadata.txt").open("r"))
@@ -388,7 +390,6 @@ class KerasModel(Interpreter):
         self.label_probabilities = meta.get("label_probabilities")
         self.preprocess_fn = self.get_preprocess_fn()
         self.type = meta.get("type", "thermal")
-
         logging.debug(
             "using types r %s g %s b %s type %s",
             self.params.red_type,
@@ -888,6 +889,7 @@ class KerasModel(Interpreter):
         data,
         segments,
         features=None,
+        preprocessed=False,
     ):
         track_prediction = TrackPrediction(track_id, self.labels)
         start = time.time()
@@ -910,8 +912,10 @@ class KerasModel(Interpreter):
                 self.params.green_type,
                 self.params.blue_type,
                 self.preprocess_fn,
-                reference_level=segment.frame_temp_median,
+                reference_level=None,
+                # segment.frame_temp_median,
                 keep_edge=self.params.keep_edge,
+                preprocessed=preprocessed,
             )
             if frames is None:
                 logging.warn("No frames to predict on")
@@ -920,16 +924,23 @@ class KerasModel(Interpreter):
             predict_me.append(frames)
             prediction_frames.append(segment.frame_indices)
             mass.append(segment.mass)
+            print("Classifying", segment.frame_indices, segment.mass)
         if len(predict_me) > 0:
             mass = np.array(mass)
             mass = mass[:, None]
-            predict_me = np.array(predict_me)
+            predict_me = np.float32(predict_me)
             if self.params.mvm:
                 features = features[np.newaxis, :]
                 features = np.repeat(features, len(predict_me), axis=0)
                 output = self.model.predict([predict_me, features])
             else:
+                print("Predict me", predict_me.shape, predict_me.dtype)
+                for r in predict_me[0]:
+                    for v in r:
+                        print(v)
                 output = self.model.predict(predict_me)
+            print(output)
+            print(self.model.summary())
 
             track_prediction.classified_clip(
                 output, output * output * mass, prediction_frames

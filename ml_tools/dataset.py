@@ -43,8 +43,8 @@ class Dataset:
     ):
         self.ext = ext
         self.raw = raw
-        if self.raw and self.ext == ".cptv":
-            raise Exception("Raw CPTV not implemented yet")
+        # if self.raw and self.ext == ".cptv":
+        # raise Exception("Raw CPTV not implemented yet")
         self.dataset_dir = Path(dataset_dir)
         self.consecutive_segments = consecutive_segments
         self.label_mapping = label_mapping
@@ -89,7 +89,7 @@ class Dataset:
             self.segment_length = 25
             # number of seconds segments are spaced apart
             self.segment_spacing = 1
-            self.segment_min_avg_mass = None
+            self.segment_min_avg_mass = 10
             self.min_frame_mass = 16
             self.segment_type = SegmentType.ALL_RANDOM
         self.filtered_stats = {
@@ -194,12 +194,14 @@ class Dataset:
         except:
             logging.error("Could not load %s", db_clip, exc_info=True)
             return 0
-        if clip_header is None or self.filter_clip(clip_header):
+        if clip_header is None or filter_clip(clip_header):
             return 0
         filtered = 0
         added = 0
         clip_header.tracks = [
-            track for track in clip_header.tracks if not self.filter_track(track)
+            track
+            for track in clip_header.tracks
+            if not filter_track(track, self.filtered_stats)
         ]
         self.clips.append(clip_header)
         for track_header in clip_header.tracks:
@@ -276,56 +278,6 @@ class Dataset:
         bins = self.samples_by_bin.setdefault(sample.bin_id, [])
         bins.append(sample)
         return True
-
-    def filter_track(self, track_header):
-        # some clips are banned for various reasons4
-        if track_header.label is None:
-            self.filtered_stats["notags"] += 1
-            return True
-        if track_header.label in self.excluded_tags:
-            self.filtered_stats["tags"] += 1
-            self.filtered_stats["tag_names"].add(track_meta["human_tag"])
-            return True
-
-        if track_header.human_tags is not None:
-            excluded_tags = [
-                tag for tag in track_header.human_tags if tag in self.excluded_tags
-            ]
-            if len(excluded_tags) > 0:
-                self.filtered_stats["tag_names"] |= set(excluded_tags)
-
-                self.filtered_stats["tags"] += 1
-                return True
-        # always let the false-positives through as we need them even though they would normally
-        # be filtered out.
-
-        if (
-            track_header.regions_by_frame is None
-            or len(track_header.regions_by_frame) == 0
-        ):
-            self.filtered_stats["no_data"] += 1
-            logging.info("No region data")
-            return True
-
-        # dont think we need this gp 28/08/2023
-        # if track_meta["human_tag"] == "false-positive":
-        # return False
-
-        # for some reason we get some records with a None confidence?
-        if track_header.confidence <= 0.6:
-            self.filtered_stats["confidence"] += 1
-            logging.info("Low confidence")
-            return True
-
-        return False
-
-    def filter_clip(self, clip):
-        # remove tracks of trapped animals
-        if "trap" in clip.events.lower() or "trap" in clip.trap.lower():
-            self.filtered_stats["trap"] += 1
-            logging.info("Filtered because in trap")
-            return True
-        return False
 
     def epoch_samples(
         self, cap_samples=None, replace=True, random=True, cap_at=None, label_cap=None
@@ -585,3 +537,57 @@ class Dataset:
             frame_numbers=frame_numbers,
         )
         return frames
+
+
+def filter_track(track_header, excluded_tags, filtered_stats={}):
+    # some clips are banned for various reasons4
+    if track_header.label is None:
+        filtered_stats.setdefault("notags", 0)
+        filtered_stats["notags"] += 1
+        return True
+    if track_header.label in excluded_tags:
+        filtered_stats.setdefault("tags", 0)
+
+        filtered_stats["tags"] += 1
+        filter_tags = filtered_stats.setdefault("tag_names", set())
+        filter_tags.add(track_meta["human_tag"])
+        return True
+
+    if track_header.human_tags is not None:
+        found_tags = [tag for tag in track_header.human_tags if tag in excluded_tags]
+        if len(found_tags) > 0:
+            filter_tags = filtered_stats.setdefault("tag_names", set())
+            filter_tags |= set(found_tags)
+            filtered_stats.setdefault("tags", 0)
+            filtered_stats["tags"] += 1
+            return True
+    # always let the false-positives through as we need them even though they would normally
+    # be filtered out.
+
+    if track_header.regions_by_frame is None or len(track_header.regions_by_frame) == 0:
+        filtered_stats.setdefault("no_data", 0)
+        filtered_stats["no_data"] += 1
+        logging.info("No region data")
+        return True
+
+    # dont think we need this gp 28/08/2023
+    # if track_meta["human_tag"] == "false-positive":
+    # return False
+
+    # for some reason we get some records with a None confidence?
+    if track_header.confidence <= 0.6:
+        filtered_stats.setdefault("confidence", 0)
+        filtered_stats["confidence"] += 1
+        logging.info("Low confidence")
+        return True
+
+    return False
+
+
+def filter_clip(clip, filtered_stats={}):
+    # remove tracks of trapped animals
+    if "trap" in clip.events.lower() or "trap" in clip.trap.lower():
+        self.filtered_stats["trap"] += 1
+        logging.info("Filtered because in trap")
+        return True
+    return False

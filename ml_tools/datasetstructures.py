@@ -287,7 +287,7 @@ class TrackHeader:
         self,
         segment_frame_spacing,
         segment_width,
-        segment_type,
+        segment_type=SegmentType.ALL_RANDOM,
         segment_min_mass=None,
         use_important=False,
         repeats=1,
@@ -879,7 +879,6 @@ def get_segments(
     dont_filter=False,
     skip_ffc=True,
 ):
-    print("Getting segments with ffc", ffc_frames)
     if segment_type == SegmentType.ALL_RANDOM_NOMIN:
         segment_min_mass = None
     if min_frames is None:
@@ -895,7 +894,11 @@ def get_segments(
             region.frame_number
             for region in regions
             if (has_no_mass or region.mass > 0)
-            and (skip_ffc is False or region.frame_number not in ffc_frames)
+            and (
+                ffc_frames is None
+                or skip_ffc is False
+                or region.frame_number not in ffc_frames
+            )
             and (skipped_frames is None or region.frame_number not in skipped_frames)
             and not region.blank
             and region.width > 0
