@@ -32,7 +32,6 @@ def get_excluded():
         "pest",
         "pig",
         "sealion",
-        "sheep",
     ]
 
 

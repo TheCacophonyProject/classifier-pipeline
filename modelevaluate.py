@@ -219,7 +219,7 @@ def evalute_prod_confusion(dir, confusion_file):
             if len(ai_tag) == 0:
                 y_pred.append("None")
             else:
-                y_pred.append(ai_tag)
+                y_pred.append(ai_tag[0])
 
     cm = confusion_matrix(y_true, y_pred, labels=labels)
     # Log the confusion matrix as an image summary.
