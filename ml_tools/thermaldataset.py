@@ -99,6 +99,20 @@ def load_dataset(filenames, remap_lookup, num_labels, args):
     return dataset
 
 
+rotation_augmentation = tf.keras.Sequential(
+    [
+        tf.keras.layers.RandomRotation(0.1, fill_mode="nearest", fill_value=0),
+    ]
+)
+data_augmentation = tf.keras.Sequential(
+    [
+        tf.keras.layers.RandomFlip("horizontal"),
+        tf.keras.layers.RandomBrightness(0.2),  # better per frame or per sequence??
+        tf.keras.layers.RandomContrast(0.5),
+    ]
+)
+
+
 def read_tfrecord(
     example,
     image_size,
@@ -147,11 +161,7 @@ def read_tfrecord(
         thermals = tf.reshape(thermalencoded, [25, 32, 32, 1])
         filtered = tf.reshape(filteredencoded, [25, 32, 32, 1])
         rgb_images = tf.concat((thermals, thermals, filtered), axis=3)
-        rotation_augmentation = tf.keras.Sequential(
-            [
-                tf.keras.layers.RandomRotation(0.1, fill_mode="nearest", fill_value=0),
-            ]
-        )
+
         # rotation augmentation before tiling
         if augment:
             logging.info("Augmenting")
@@ -160,15 +170,6 @@ def read_tfrecord(
         image = tile_images(rgb_images)
 
         if augment:
-            data_augmentation = tf.keras.Sequential(
-                [
-                    tf.keras.layers.RandomFlip("horizontal"),
-                    tf.keras.layers.RandomBrightness(
-                        0.2
-                    ),  # better per frame or per sequence??
-                    tf.keras.layers.RandomContrast(0.5),
-                ]
-            )
             image = data_augmentation(image)
         if preprocess_fn is not None:
             logging.info(
