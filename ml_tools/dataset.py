@@ -586,7 +586,9 @@ def filter_track(track_header, excluded_tags, filtered_stats={}):
 
 def filter_clip(clip, filtered_stats={}):
     # remove tracks of trapped animals
-    if "trap" in clip.events.lower() or "trap" in clip.trap.lower():
+    if (clip.events is not None and "trap" in clip.events.lower()) or (
+        clip.trap is not None and "trap" in clip.trap.lower()
+    ):
         self.filtered_stats["trap"] += 1
         logging.info("Filtered because in trap")
         return True

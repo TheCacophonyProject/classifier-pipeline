@@ -159,6 +159,74 @@ def filter_diffs(track_frames, background):
     return min_diff, max_diff
 
 
+def evalute_prod_confusion(dir, confusion_file):
+    with open("label_paths.json", "r") as f:
+        label_paths = json.load(f)
+    label_mapping = get_mappings(label_paths)
+
+    labels = [
+        "bird",
+        "bird/kiwi",
+        "cat",
+        "false-positive",
+        "hedgehog",
+        "human",
+        "insect",
+        "leporidae",
+        "mustelid",
+        "penguin",
+        "possum",
+        "rodent",
+        "sheep",
+        "vehicle",
+        "wallaby",
+        "None",
+        "unidentified",
+    ]
+    y_true = []
+    y_pred = []
+    dir = Path(dir)
+    for cptv_file in dir.glob(f"**/*cptv"):
+        meta_f = cptv_file.with_suffix(".txt")
+        meta_data = None
+        with open(meta_f, "r") as t:
+            # add in some metadata stats
+            meta_data = json.load(t)
+
+        for track in meta_data.get("Tracks", []):
+            tags = track.get("tags", [])
+            human_tags = [
+                tag.get("what")
+                for tag in tags
+                if tag.get("automatic") == False
+                # and tag.get("what", "") not in LoadConfig.EXCLUDED_TAGS
+            ]
+            human_tags = set(human_tags)
+            if len(human_tags) > 1:
+                print("Conflicting tags for ", track.get("id"), cptv_file)
+            if len(human_tags) == 0:
+                print("No humans in ", tags)
+                continue
+            human_tag = human_tags.pop()
+            human_tag = label_mapping.get(human_tag, human_tag)
+            ai_tag = [
+                tag.get("what")
+                for tag in tags
+                if tag.get("automatic") is True
+                and tag.get("data", {}).get("name") == "Inc3 RF"
+            ]
+            y_true.append(human_tag)
+            if len(ai_tag) == 0:
+                y_pred.append("None")
+            else:
+                y_pred.append(ai_tag)
+
+    cm = confusion_matrix(y_true, y_pred, labels=labels)
+    # Log the confusion matrix as an image summary.
+    figure = plot_confusion_matrix(cm, class_names=labels)
+    plt.savefig(confusion_file, format="png")
+
+
 def evaluate_dir(
     model,
     dir,
@@ -186,6 +254,10 @@ def evaluate_dir(
         # for clip in dataset.clips:
         clip_db = RawDatabase(cptv_file)
         clip = clip_db.get_clip_tracks(LoadConfig.DEFAULT_GROUPS)
+        if clip is None:
+            logging.warn("No clip for %s", cptv_file)
+            continue
+
         if filter_clip(clip, reason):
             logging.info("Filtering %s", cptv_file)
             continue
@@ -258,17 +330,34 @@ def evaluate_dir(
                 track.label,
             )
             y_true.append(track.label)
-            y_pred.append(prediction.predicted_tag())
+            if prediction.predicted_tag() is None:
+                y_pred.append("None")
+            else:
+                # to compare to prod add conf rules
+                print("Prediction score is", prediction.max_score)
+                if (
+                    prediction.clarity > min_tag_clarity
+                    and prediction.max_score > min_tag_confidence
+                ):
+                    y_pred.append(prediction.predicted_tag())
+                else:
+                    y_pred.append("unidentified")
+    model.labels.append("None")
     cm = confusion_matrix(y_true, y_pred, labels=model.labels)
     # Log the confusion matrix as an image summary.
     figure = plot_confusion_matrix(cm, class_names=model.labels)
     plt.savefig(confusion_file, format="png")
 
 
+min_tag_clarity = 0.2
+min_tag_confidence = 0.8
+
+
 def main():
     args = load_args()
     init_logging()
     config = Config.load_from_file(args.config_file)
+    # evalute_prod_confusion(args.evaluate_dir, args.confusion)
     print("LOading config", args.config_file)
     weights = None
     if args.model_file:
