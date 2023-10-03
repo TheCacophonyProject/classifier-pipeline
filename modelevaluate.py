@@ -391,8 +391,8 @@ def main():
 
     base_dir = config.tracks_folder
 
-    # model = KerasModel(train_config=config.train)
-    # model.load_model(model_file, training=False, weights=weights)
+    model = KerasModel(train_config=config.train)
+    model.load_model(model_file, training=False, weights=weights)
 
     if args.evaluate_dir:
         evaluate_dir(model, Path(args.evaluate_dir), config, args.confusion)
