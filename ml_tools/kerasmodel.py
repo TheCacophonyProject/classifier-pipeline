@@ -606,6 +606,11 @@ class KerasModel(Interpreter):
         self.save(run_name, history=history, test_results=test_accuracy)
 
     def checkpoints(self, run_name):
+        checkpoint_file = os.path.join(self.checkpoint_folder, run_name, "cp.ckpt")
+
+        cp_callback = tf.keras.callbacks.ModelCheckpoint(
+            filepath=checkpoint_file, save_weights_only=True, verbose=1
+        )
         val_loss = os.path.join(self.checkpoint_folder, run_name, "val_loss")
 
         checkpoint_loss = tf.keras.callbacks.ModelCheckpoint(
@@ -660,7 +665,13 @@ class KerasModel(Interpreter):
         reduce_lr_callback = tf.keras.callbacks.ReduceLROnPlateau(
             monitor="val_accuracy", verbose=1
         )
-        return [earlyStopping, checkpoint_acc, checkpoint_loss, reduce_lr_callback]
+        return [
+            earlyStopping,
+            checkpoint_acc,
+            checkpoint_loss,
+            reduce_lr_callback,
+            cp_callback,
+        ]
 
     def regroup(self, shuffle=True):
         # can use this to put animals into groups i.e. wallaby vs not

@@ -343,6 +343,8 @@ def evaluate_dir(
                 else:
                     y_pred.append("unidentified")
     model.labels.append("None")
+    model.labels.append("unidentified")
+
     cm = confusion_matrix(y_true, y_pred, labels=model.labels)
     # Log the confusion matrix as an image summary.
     figure = plot_confusion_matrix(cm, class_names=model.labels)
@@ -351,6 +353,28 @@ def evaluate_dir(
 
 min_tag_clarity = 0.2
 min_tag_confidence = 0.8
+
+
+# trying to figre out differing predictions
+def test_model():
+    model = None
+    tf.random.set_seed(1)
+    model = tf.keras.models.load_model(model_file.parent)
+    model.training = False
+    model.compile(
+        optimizer=tf.keras.optimizers.Adam(learning_rate=0.01),
+        loss=tf.keras.losses.CategoricalCrossentropy(),
+        metrics=[
+            "accuracy",
+        ],
+    )
+    model.load_weights(args.weights).expect_partial()
+    test = np.ones((1, 160, 160, 3), dtype=np.float32)
+    test = test / 2.0
+    for _ in range(2):
+        out = model.predict(test)
+        print("Empty", out)
+    return
 
 
 def main():
@@ -366,9 +390,9 @@ def main():
         weights = model_file / args.weights
 
     base_dir = config.tracks_folder
-    model = None
-    model = KerasModel(train_config=config.train)
-    model.load_model(model_file, training=False, weights=weights)
+
+    # model = KerasModel(train_config=config.train)
+    # model.load_model(model_file, training=False, weights=weights)
 
     if args.evaluate_dir:
         evaluate_dir(model, Path(args.evaluate_dir), config, args.confusion)
