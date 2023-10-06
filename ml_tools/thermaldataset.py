@@ -69,7 +69,7 @@ def get_extra_mappings(labels):
     keys = []
     for l in land_birds:
         if l in labels:
-            l_i = labels.index("l")
+            l_i = labels.index(l)
             keys.append(l_i)
             values.append(bird_index)
     extra_label_map = tf.lookup.StaticHashTable(

@@ -54,6 +54,18 @@ def get_distribution(dataset, num_labels, batched=True):
 
 
 def get_dataset(load_function, base_dir, labels, **args):
+    land_birds = [
+        "pukeko",
+        "california quail",
+        "brown quail",
+        "black swan",
+        "quail",
+        "pheasant",
+        "penguin",
+        "duck",
+        "chicken",
+        "rooster",
+    ]
     excluded_labels = args.get("excluded_labels", [])
     to_remap = args.get("remapped_labels", {})
     logging.info("Excluding %s", excluded_labels)
@@ -67,7 +79,7 @@ def get_dataset(load_function, base_dir, labels, **args):
         if excluded in labels:
             new_labels.remove(excluded)
     for excluded in to_remap.keys():
-        if excluded in labels:
+        if excluded in labels and excluded not in land_birds:
             new_labels.remove(excluded)
     for l in labels:
         keys.append(labels.index(l))
