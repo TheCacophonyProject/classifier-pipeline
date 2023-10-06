@@ -81,7 +81,7 @@ class Interpreter(ABC):
                 params = self.params
 
                 pre_f = preprocess_ir(
-                    frame.copy(),
+                    frame,
                     (
                         params.frame_size,
                         params.frame_size,
@@ -95,9 +95,7 @@ class Interpreter(ABC):
                 masses.append(1)
             return [frame.frame_number for f in frames], preprocessed, masses
         elif self.data_type == "thermal":
-            from ml_tools.preprocess import (
-                preprocess_movement,
-            )
+            from ml_tools.preprocess import preprocess_movement, preprocess_frame
 
             frames_per_classify = args.get("frames_per_classify", 25)
             logging.info(
@@ -141,16 +139,14 @@ class Interpreter(ABC):
             for frame, region in zip(frames, regions):
                 if region.blank:
                     continue
-                refs.append(np.median(frame.thermal))
-                thermal_reference = np.median(frame.thermal)
-                f = frame.crop_by_region(region)
-                mass += region.mass
-                f.resize_with_aspect(
+                preprocessed_f = preprocess_frame(
+                    frame,
                     (params.frame_size, params.frame_size),
+                    region,
                     clip.crop_rectangle,
-                    True,
                 )
-                segment_data.append(f)
+                mass += region.mass
+                segment_data.append(preprocessed_f)
 
             preprocessed = preprocess_movement(
                 segment_data,
@@ -160,8 +156,6 @@ class Interpreter(ABC):
                 green_type=params.green_type,
                 blue_type=params.blue_type,
                 preprocess_fn=self.preprocess_fn,
-                reference_level=refs,
-                keep_edge=params.keep_edge,
             )
             if preprocessed is None:
                 return None, mass

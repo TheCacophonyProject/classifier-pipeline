@@ -34,7 +34,7 @@ from sklearn.metrics import confusion_matrix
 import matplotlib.pyplot as plt
 import numpy as np
 from pathlib import Path
-from ml_tools.preprocess import preprocess_ir, preprocess
+from ml_tools.preprocess import preprocess_ir, preprocess_frame
 from ml_tools.frame import Frame
 from ml_tools import imageprocessing
 import cv2
@@ -298,7 +298,7 @@ def evaluate_dir(
             for i in frame_indices:
                 f = clip_db.frames[i]
                 f.region = track.regions_by_frame[f.frame_number]
-                pre_f = preprocess(
+                pre_f = preprocess_frame(
                     f, (32, 32), f.region, clip_db.background, crop_rectangle
                 )
                 track_frames[i] = pre_f

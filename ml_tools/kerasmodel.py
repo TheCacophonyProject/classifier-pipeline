@@ -21,9 +21,8 @@ from ml_tools.datasetstructures import SegmentType
 
 from ml_tools.preprocess import (
     preprocess_movement,
-    preprocess_frame,
     preprocess_ir,
-    preprocess,
+    preprocess_frame,
 )
 from ml_tools.interpreter import Interpreter
 from classify.trackprediction import TrackPrediction
@@ -784,7 +783,7 @@ class KerasModel(Interpreter):
                         clip.get_id(), track.get_id(), region.frame_number
                     )
                 )
-            cropped_frame = preprocess(
+            cropped_frame = preprocess_frame(
                 frame,
                 (self.params.frame_size, self.params.frame_size),
                 region,
@@ -807,7 +806,6 @@ class KerasModel(Interpreter):
 
     def classify_ir(self, clip, track, keep_all=True, segment_frames=None):
         data = []
-        crop = True
         thermal_median = np.empty(len(track.bounds_history), dtype=np.uint16)
         frames_used = []
         for i, region in enumerate(track.bounds_history):
@@ -842,12 +840,11 @@ class KerasModel(Interpreter):
                 region,
             )
             preprocessed = preprocess_ir(
-                frame.copy(),
+                frame,
                 (
                     self.params.frame_size,
                     self.params.frame_size,
                 ),
-                crop,
                 region,
                 self.preprocess_fn,
                 save_info=f"{region.frame_number} - {region}",
@@ -952,21 +949,6 @@ class KerasModel(Interpreter):
 
     def predict(self, frames):
         return self.model.predict(frames)
-
-    def classify_frame(self, frame, thermal_median, preprocess=True):
-        if preprocess:
-            frame = preprocess_frame(
-                frame,
-                False,
-                thermal_median,
-                0,
-                self.params.output_dim,
-                preprocess_fn=self.preprocess_fn,
-            )
-            if frame is None:
-                return None
-        output = self.model.predict(frame[np.newaxis, :])
-        return output[0]
 
     def confusion_tfrecords(self, dataset, filename):
         true_categories = tf.concat([y for x, y in dataset], axis=0)
