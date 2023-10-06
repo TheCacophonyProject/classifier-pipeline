@@ -429,7 +429,7 @@ class Track:
     def get_segments(
         self,
         ffc_frames,
-        frame_temp_median,
+        # frame_temp_median,
         segment_width,
         segment_frame_spacing=9,
         repeats=1,
@@ -438,7 +438,7 @@ class Track:
         segment_type=SegmentType.ALL_RANDOM,
     ):
         regions = np.array(self.bounds_history)
-        frame_temp_median = np.uint16(frame_temp_median)
+        # frame_temp_median = np.uint16(frame_temp_median)
         segments = []
         if segment_frames is not None:
             mass_history = np.uint16([region.mass for region in regions])
@@ -455,7 +455,7 @@ class Track:
                     mass=segment_mass,
                     label=None,
                     regions=regions[relative_frames],
-                    frame_temp_median=frame_temp_median[relative_frames],
+                    # frame_temp_median=frame_temp_median[relative_frames],
                     frame_indices=frames,
                     segment_type=segment_type,
                 )
@@ -471,7 +471,7 @@ class Track:
                 regions=regions,
                 ffc_frames=ffc_frames,
                 repeats=repeats,
-                frame_temp_median=frame_temp_median,
+                # frame_temp_median=frame_temp_median,
                 min_frames=min_frames,
                 segment_frames=None,
                 ignore_mass=not has_mass,

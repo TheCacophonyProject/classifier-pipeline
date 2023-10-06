@@ -19,7 +19,12 @@ import cv2
 from ml_tools import tools
 from ml_tools.datasetstructures import SegmentType
 
-from ml_tools.preprocess import preprocess_movement, preprocess_frame, preprocess_ir
+from ml_tools.preprocess import (
+    preprocess_movement,
+    preprocess_frame,
+    preprocess_ir,
+    preprocess,
+)
 from ml_tools.interpreter import Interpreter
 from classify.trackprediction import TrackPrediction
 from ml_tools.hyperparams import HyperParams
@@ -374,7 +379,6 @@ class KerasModel(Interpreter):
         logging.info("Loading %s with model weight %s", model_path, weights)
         self.model = tf.keras.models.load_model(dir_name)
         self.model.trainable = training
-        print("training", training)
         self.load_meta(dir_name)
         if weights is not None:
             self.model.load_weights(weights).expect_partial()
@@ -752,10 +756,20 @@ class KerasModel(Interpreter):
 
     def classify_thermal_track(self, clip, track, keep_all=True, segment_frames=None):
         track_data = {}
-        thermal_median = np.empty(len(track.bounds_history), dtype=np.uint16)
-        for i, region in enumerate(track.bounds_history):
-            if region.width == 0 or region.height == 0:
-                continue
+        segments = track.get_segments(
+            clip.ffc_frames,
+            self.params.square_width**2,
+            repeats=1,
+            segment_frames=segment_frames,
+            segment_type=self.params.segment_type,
+        )
+        frame_indices = set()
+        for segment in segments:
+            frame_indices.update(set(segment.frame_indices))
+        frame_indices = list(frame_indices)
+        frame_indices.sort()
+        for frame_index in frame_indices:
+            region = track.bounds_history[frame_index - track.start_frame]
 
             frame = clip.frame_buffer.get_frame(region.frame_number)
             if frame is None:
@@ -770,33 +784,19 @@ class KerasModel(Interpreter):
                         clip.get_id(), track.get_id(), region.frame_number
                     )
                 )
-            # AI just uses a background subtraction
-            frame.filtered = frame.thermal - clip.background
-            cropped_frame = frame.crop_by_region(region)
-            thermal_median[i] = np.median(frame.thermal)
-            cropped_frame.resize_with_aspect(
+            cropped_frame = preprocess(
+                frame,
                 (self.params.frame_size, self.params.frame_size),
+                region,
+                clip.background,
                 clip.crop_rectangle,
-                True,
             )
             track_data[frame.frame_number] = cropped_frame
-
-        segments = track.get_segments(
-            clip.ffc_frames,
-            thermal_median,
-            self.params.square_width**2,
-            repeats=1,
-            segment_frames=segment_frames,
-            segment_type=self.params.segment_type,
-        )
         features = None
         if self.params.mvm:
             features = forestmodel.process_track(clip, track)
         return self.classify_track_data(
-            track.get_id(),
-            track_data,
-            segments,
-            features,
+            track.get_id(), track_data, segments, features, preprocessed=True
         )
 
     def classify_track(self, clip, track, keep_all=True, segment_frames=None):
@@ -911,7 +911,6 @@ class KerasModel(Interpreter):
         mass = []
         for segment in segments:
             segment_frames = []
-            median = np.zeros((len(segment.frame_indices)))
             for frame_i in segment.frame_indices:
                 f = data[frame_i]
                 segment_frames.append(f.copy())
@@ -923,8 +922,6 @@ class KerasModel(Interpreter):
                 self.params.green_type,
                 self.params.blue_type,
                 self.preprocess_fn,
-                reference_level=None,
-                # segment.frame_temp_median,
                 keep_edge=self.params.keep_edge,
                 preprocessed=preprocessed,
             )
