@@ -164,5 +164,5 @@ class Interpreter(ABC):
                 keep_edge=params.keep_edge,
             )
             if preprocessed is None:
-                return None, mass
+                return None, None, mass
             return [f.frame_number for f in frames], [preprocessed], [mass]

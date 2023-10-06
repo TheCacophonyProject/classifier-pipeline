@@ -99,7 +99,7 @@ class FrameBuffer:
             return self.current_frame
         elif n == 1:
             return self.get_last_frame()
-        if len(self.frames) >= n:
+        if len(self.frames) > n:
             return self.frames[-(n + 1)]
         return None
 

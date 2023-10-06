@@ -148,7 +148,9 @@ def parse_file(file, config, thermal_config_file, preview_type):
 
 
 def parse_ir(file, config, thermal_config_file, preview_type):
-    thermal_config = ThermalConfig.load_from_file(thermal_config_file, "IR")
+    thermal_config = ThermalConfig.load_from_file(
+        thermal_config_file, IRTrackExtractor.TYPE
+    )
     from piclassifier import irmotiondetector
 
     irmotiondetector.MIN_FRAMES = 0
@@ -166,7 +168,7 @@ def parse_ir(file, config, thermal_config_file, preview_type):
                 res_y=res_y,
                 fps=10,
                 brand=None,
-                model="IR",
+                model=IRTrackExtractor.TYPE,
                 frame_size=res_y * res_x,
                 pixel_bits=8,
                 serial="",
@@ -248,16 +250,19 @@ def get_processor(process_queue, config, thermal_config, headers):
 
 
 def handle_headers(connection):
-    headers = ""
+    headers = b""
     left_over = None
     while True:
-        data = connection.recv(4096).decode()
+        data = connection.recv(4096)
         headers += data
-        done = headers.find("\n\n")
+        done = headers.find(b"\n\n")
         if done > -1:
+            left_over = headers[done + 2 :]
             headers = headers[:done]
-            left_over = headers[done + 2 :].encode()
+            if left_over[:5] == b"clear":
+                left_over = left_over[5:]
             break
+    headers = headers.decode()
     return HeaderInfo.parse_header(headers), left_over
 
 
@@ -275,7 +280,7 @@ def ir_camera(config, thermal_config_file, process_queue):
             res_y=int(res_y),
             fps=FPS,
             brand=None,
-            model="IR",
+            model=IRTrackExtractor.TYPE,
             frame_size=res_y * res_x,
             pixel_bits=8,
             serial="",
@@ -286,6 +291,9 @@ def ir_camera(config, thermal_config_file, process_queue):
         )
         processor = get_processor(process_queue, config, thermal_config, headers)
         processor.start()
+        drop_frame = None
+        dropped = 0
+        start_dropping = None
         while True:
             returned, frame = cap.read()
             if not processor.is_alive():
@@ -301,7 +309,26 @@ def ir_camera(config, thermal_config_file, process_queue):
             frames += 1
             if frames == 1:
                 log_event("camera-connected", {"type": IRTrackExtractor.TYPE})
-            process_queue.put((frame, time.time()))
+            if drop_frame is not None and (frames - start_dropping) % drop_frame == 0:
+                logging.info("Dropping frame due to slow processing")
+                dropped += 1
+            else:
+                process_queue.put((frame, time.time()))
+            qsize = process_queue.qsize()
+            if qsize > headers.fps * 4 and (
+                drop_frame is None or frames > (start_dropping + drop_frame)
+            ):
+                # drop every 9th frame
+                if drop_frame is None:
+                    drop_frame = 9
+                else:
+                    drop_frame = drop_frame - 1
+                # drop first frame
+                start_dropping = frames + 1
+                logging.info("Dropping every %s frame as qsize %s", drop_frame, qsize)
+            elif qsize < headers.fps * 3:
+                drop_frame = None
+                start_dropping = None
     finally:
         time.sleep(5)
         processor.terminate()
@@ -386,9 +413,11 @@ def handle_connection(connection, config, thermal_config_file, process_queue):
                 process_queue.put(STOP_SIGNAL)
                 break
             try:
-                message = data[:5].decode("utf-8")
-                if message == "clear":
-                    logging.info("processing error from camera")
+                message = data[:5]
+                if message == b"clear":
+                    logging.info(
+                        "processing error from camera"
+                    )  # TODO Check if this is handled properly.
                     process_queue.put(STOP_SIGNAL)
                     break
             except:

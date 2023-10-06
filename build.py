@@ -22,12 +22,12 @@ from ml_tools.thermalwriter import create_tf_records as create_thermal_records
 
 import numpy as np
 
-MAX_TEST_TRACKS = 1
-MAX_TEST_SAMPLES = 1
+MAX_TEST_TRACKS = 10
+MAX_TEST_SAMPLES = 10
 
-MIN_SAMPLES = 1
-MIN_TRACKS = 1
-LOW_SAMPLES_LABELS = ["bird", "cat", "possum"]
+MIN_SAMPLES = 100
+MIN_TRACKS = 100
+LOW_SAMPLES_LABELS = ["bird/kiwi"]
 
 
 def load_config(config_file):

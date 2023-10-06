@@ -809,7 +809,7 @@ class Track:
         filter_mass = 0.005 * median_mass
         filter_mass = max(filter_mass, 2)
         start = 0
-        logging.info(
+        logging.debug(
             "Triming track with median % and filter mass %s", median_mass, filter_mass
         )
         while start < len(self) and mass_history[start] <= filter_mass:
