@@ -52,6 +52,14 @@ def main(cmd_args=None):
     )
 
     parser.add_argument(
+        "--retrack",
+        type=str2bool,
+        nargs="?",
+        const=True,
+        default=None,
+        help="Use existing metadata to correct tracks",
+    )
+    parser.add_argument(
         "--cache",
         type=str2bool,
         nargs="?",
@@ -76,7 +84,7 @@ def main(cmd_args=None):
 
     if args.meta_to_stdout:
         config.classify.meta_to_stdout = True
-    extractor = TrackExtractor(config, cache_to_disk=args.cache)
+    extractor = TrackExtractor(config, cache_to_disk=args.cache, retrack=args.retrack)
     extractor.extract(args.source)
 
 

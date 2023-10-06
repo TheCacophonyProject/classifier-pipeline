@@ -504,9 +504,10 @@ class Track:
         self,
         track_meta,
         frames_per_second,
-        tag_precedence,
-        min_confidence,
+        tag_precedence=None,
+        min_confidence=0.8,
     ):
+        self.tracker_version = track_meta.get("tracker_version", "unknown")
         self.from_metadata = True
         self._id = track_meta["id"]
         extra_info = track_meta
@@ -814,19 +815,18 @@ class Track:
         while start < len(self) and mass_history[start] <= filter_mass:
             start += 1
         end = len(self) - 1
-        blanks = self.frames_since_target_seen
+
         while end > 0 and mass_history[end] <= filter_mass:
-            if blanks > 0:
-                blanks -= 1
+            if self.tracker and self.frames_since_target_seen > 0:
+                self.tracker._frames_since_target_seen -= 1
                 self.tracker._blank_frames -= 1
             end -= 1
-        self.tracker._frames_since_target_seen = 0
         if end < start:
-            self.start_frame = 0
             self.bounds_history = []
             self.vel_x = []
             self.vel_y = []
-            self.tracker._blank_frames = 0
+            if self.tracker:
+                self.tracker._blank_frames = 0
         else:
             self.start_frame += start
             self.bounds_history = self.bounds_history[start : end + 1]
@@ -870,6 +870,9 @@ class Track:
         return frames_overlapped / len(self)
 
     def set_end_s(self, fps):
+        if len(self) == 0:
+            self.end_s = self.start_s
+            return
         self.end_s = (self.end_frame + 1) / fps
 
     def predicted_velocity(self):
@@ -887,7 +890,7 @@ class Track:
     @property
     def end_frame(self):
         if len(self.bounds_history) == 0:
-            return 0
+            return self.start_frame
         return self.bounds_history[-1].frame_number
 
     @property
@@ -918,7 +921,10 @@ class Track:
 
     def start_and_end_in_secs(self):
         if self.end_s is None:
-            self.end_s = (self.end_frame + 1) / self.fps
+            if len(self) == 0:
+                self.end_s = self.start_s
+            else:
+                self.end_s = (self.end_frame + 1) / self.fps
 
         return (self.start_s, self.end_s)
 
@@ -967,7 +973,11 @@ class Track:
             return None
 
         tag = None
-        default_prec = tag_precedence.get("default", 100)
+        if tag_precedence is None:
+            default_prec = 100
+            tag_precedence = {}
+        else:
+            default_prec = tag_precedence.get("default", 100)
         best = None
         for track_tag in track_tags:
             ranking = cls.tag_ranking(track_tag, tag_precedence, default_prec)

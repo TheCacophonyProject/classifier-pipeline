@@ -78,7 +78,7 @@ class Clip:
         self.background_frames = 0
         self.config = trackconfig
         self.frames_per_second = fps
-
+        self.station_id = None
         self.calc_stats = calc_stats
         self.source_file = sourcefile
         self.stats = ClipStats()
@@ -336,7 +336,7 @@ class Clip:
             video_start_time.astimezone(Clip.local_tz).time().hour >= 2
         )
 
-    def load_metadata(self, metadata, tag_precedence):
+    def load_metadata(self, metadata, tag_precedence=None):
         self._id = metadata.get("id", 0)
         device_meta = metadata.get("Device")
         self.tags = metadata.get("Tags")
@@ -348,6 +348,7 @@ class Clip:
                 "-"
             )[-1]
         self.location = metadata.get("location")
+        self.station_id = metadata.get("stationId")
         tracks = self.load_tracks_meta(metadata, tag_precedence)
         self.from_metadata = True
         self.tracks = set(tracks)

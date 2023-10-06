@@ -23,39 +23,15 @@ insect = None
 fp = None
 
 
-def load_dataset(filenames, labels, args):
-    excluded_labels = args.get("excluded_labels", [])
-    global remapped_y
-    remapped = {}
-    keys = []
-    values = []
-    new_labels = labels.copy()
-    for excluded in excluded_labels:
-        if excluded in labels:
-            new_labels.remove(excluded)
-    for l in labels:
-        keys.append(labels.index(l))
-        if l in excluded_labels:
-            remapped[l] = 0
-            values.append(-1)
-            logging.info("Excluding %s", l)
-        else:
-            remapped[l] = [l]
-            values.append(new_labels.index(l))
-    if "false-positive" in labels and "insect" in labels:
-        remapped["false-positive"].append("insect")
-        values[labels.index("insect")] = new_labels.index("false-positive")
-        del remapped["insect"]
-    remapped_y = tf.lookup.StaticHashTable(
-        initializer=tf.lookup.KeyValueTensorInitializer(
-            keys=tf.constant(keys),
-            values=tf.constant(values),
-        ),
-        default_value=tf.constant(-1),
-        name="remapped_y",
-    )
-    for k, v in remapped.items():
-        logging.info("Label %s has these values: %s", k, v)
+def get_excluded():
+    return []
+
+
+def get_remapped():
+    return {"insect": "false-positive"}
+
+
+def load_dataset(filenames, remap_lookup, labels, args):
     deterministic = args.get("deterministic", False)
 
     ignore_order = tf.data.Options()
@@ -76,13 +52,13 @@ def load_dataset(filenames, labels, args):
     only_features = args.get("only_features", False)
     one_hot = args.get("one_hot", True)
     dataset = dataset.apply(tf.data.experimental.ignore_errors())
-    excluded_labels = args.get("excluded_labels")
 
     dataset = dataset.map(
         partial(
             read_tfrecord,
-            num_labels=len(new_labels),
             image_size=image_size,
+            remap_lookup=remap_lookup,
+            num_labels=len(new_labels),
             labeled=labeled,
             augment=augment,
             preprocess_fn=preprocess_fn,
@@ -106,166 +82,10 @@ def load_dataset(filenames, labels, args):
     return dataset, remapped, new_labels
 
 
-#
-def preprocess(data):
-    x = tf.stack(fields[:-1])
-    y = tf.stack(fields[-1:])
-    return tf.keras.applications.inception_v3.preprocess_input(x), y
-
-
-def get_distribution(dataset):
-    true_categories = tf.concat([y for x, y in dataset], axis=0)
-    num_labels = len(true_categories[0])
-    if len(true_categories) == 0:
-        return None
-    true_categories = np.int64(tf.argmax(true_categories, axis=1))
-    c = Counter(list(true_categories))
-    dist = np.empty((num_labels), dtype=np.float32)
-    for i in range(num_labels):
-        dist[i] = c[i]
-    return dist
-
-
-def get_dataset(base_dir, labels, **args):
-    num_labels = len(labels)
-
-    filenames = tf.io.gfile.glob(f"{base_dir}/*.tfrecord")
-    dataset, remapped, labels = load_dataset(filenames, labels, args)
-    resample_data = args.get("resample", True)
-    if resample_data:
-        logging.info("Resampling data")
-        dataset = resample(dataset, labels)
-
-    if not args.get("only_features"):
-        logging.info("shuffling data")
-        dataset = dataset.shuffle(
-            4096, reshuffle_each_iteration=args.get("reshuffle", True)
-        )
-    # tf refues to run if epoch sizes change so we must decide a costant epoch size even though with reject res
-    # it will chang eeach epoch, to ensure this take this repeat data and always take epoch_size elements
-    epoch_size = len([0 for x, y in dataset])
-    logging.info("Setting dataset size to %s", epoch_size)
-    if not args.get("only_features", False):
-        dataset = dataset.repeat(2)
-    scale_epoch = args.get("scale_epoch", None)
-    if scale_epoch:
-        epoch_size = epoch_size // scale_epoch
-    dataset = dataset.take(epoch_size)
-    dataset = dataset.prefetch(buffer_size=AUTOTUNE)
-    batch_size = args.get("batch_size", None)
-    if batch_size is not None:
-        dataset = dataset.batch(batch_size)
-    return dataset, remapped, labels
-
-
-def resample(dataset, labels):
-    excluded_labels = ["sheep"]
-    num_labels = len(labels)
-    true_categories = [y for x, y in dataset]
-    if len(true_categories) == 0:
-        logging.info("no data")
-        return None
-    true_categories = np.int64(tf.argmax(true_categories, axis=1))
-    c = Counter(list(true_categories))
-    dist = np.empty((num_labels), dtype=np.float32)
-    target_dist = np.empty((num_labels), dtype=np.float32)
-    for i in range(num_labels):
-        if labels[i] in excluded_labels:
-            logging.info("Excluding %s for %s", c[i], labels[i])
-            dist[i] = 0
-        else:
-            dist[i] = c[i]
-            logging.info("Have %s for %s", dist[i], labels[i])
-    zeros = dist[dist == 0]
-    non_zero_labels = num_labels - len(zeros)
-    target_dist[:] = 1 / non_zero_labels
-
-    dist = dist / np.sum(dist)
-    dist_max = np.max(dist)
-    # really this is what we want but when the values become too small they never get sampled
-    # so need to try reduce the large gaps in distribution
-    # can use class weights to adjust more, or just throw out some samples
-    max_range = target_dist[0] / 2
-    for i in range(num_labels):
-        if dist[i] == 0:
-            target_dist[i] = 0
-        elif dist_max - dist[i] > (max_range * 2):
-            target_dist[i] = dist[i]
-
-        target_dist[i] = max(0, target_dist[i])
-    target_dist = target_dist / np.sum(target_dist)
-
-
-# not currently used makes more sense to have recods by label but then you need a really big shuffle
-# buffer
-def get_resampled_by_label(
-    base_dir,
-    batch_size,
-    image_size,
-    labels,
-    reshuffle=True,
-    deterministic=False,
-    labeled=True,
-    resample=True,
-    augment=False,
-    weights=None,
-    stop_on_empty_dataset=True,
-    preprocess_fn=None,
-):
-    num_labels = len(labels)
-    global remapped_y
-    remapped = {}
-    keys = []
-    values = []
-    for l in labels:
-        remapped[l] = [l]
-        keys.append(labels.index(l))
-        values.append(labels.index(l))
-    if "false-positive" in labels and "insect" in labels:
-        remapped["false-positive"].append("insect")
-        values[labels.index("insect")] = labels.index("false-positive")
-        del remapped["insect"]
-    remapped_y = tf.lookup.StaticHashTable(
-        initializer=tf.lookup.KeyValueTensorInitializer(
-            keys=tf.constant(keys),
-            values=tf.constant(values),
-        ),
-        default_value=tf.constant(-1),
-        name="remapped_y",
-    )
-    weights = [1.0] * len(remapped)
-    datasets = []
-
-    for k, v in remapped.items():
-        filenames = []
-        for label in v:
-            safe_l = label.replace("/", "-")
-
-            filenames.append(tf.io.gfile.glob(f"{base_dir}/{safe_l}-0*.tfrecord"))
-        dataset = load_dataset(
-            filenames,
-            image_size,
-            num_labels,
-            deterministic=deterministic,
-            labeled=labeled,
-            augment=augment,
-            preprocess_fn=preprocess_fn,
-        )
-        dataset = dataset.shuffle(2048, reshuffle_each_iteration=True)
-
-        datasets.append(dataset)
-    resampled_ds = tf.data.Dataset.sample_from_datasets(
-        datasets, weights=weights, stop_on_empty_dataset=stop_on_empty_dataset
-    )
-    resampled_ds = resampled_ds.shuffle(2048, reshuffle_each_iteration=reshuffle)
-    resampled_ds = resampled_ds.prefetch(buffer_size=AUTOTUNE)
-    # resampled_ds = resampled_ds.batch(batch_size)
-    return resampled_ds, remapped
-
-
 def read_tfrecord(
     example,
     image_size,
+    remap_lookup,
     num_labels,
     labeled,
     augment=False,
@@ -342,8 +162,7 @@ def read_tfrecord(
             image = preprocess_fn(image)
     if labeled:
         label = tf.cast(example["image/class/label"], tf.int32)
-        global remapped_y
-        label = remapped_y.lookup(label)
+        label = remap_lookup.lookup(label)
 
         if one_hot:
             if tf.math.equal(label, -1):
@@ -388,11 +207,6 @@ def tile_images(images):
     return image
 
 
-def class_func(features, label):
-    label = tf.argmax(label)
-    return label
-
-
 from collections import Counter
 
 
@@ -434,42 +248,6 @@ def main():
             show_batch(x, y, labels)
 
     # return
-
-
-def get_weighting(dataset, labels):
-    excluded_labels = ["sheep"]
-
-    dont_weight = ["mustelid", "wallaby", "human", "penguin"]
-    num_labels = len(labels)
-    true_categories = tf.concat([y for x, y in dataset], axis=0)
-    if len(true_categories) == 0:
-        return None
-    true_categories = np.int64(tf.argmax(true_categories, axis=1))
-    c = Counter(list(true_categories))
-    dist = np.empty((num_labels), dtype=np.float32)
-    for i in range(num_labels):
-        if labels[i] in excluded_labels:
-            logging.info("Excluding %s for %s", c[i], labels[i])
-            dist[i] = 0
-        else:
-            dist[i] = c[i]
-            logging.info("Have %s for %s", dist[i], labels[i])
-    zeros = dist[dist == 0]
-    non_zero_labels = num_labels - len(zeros)
-
-    total = np.sum(dist)
-    weights = {}
-    for i in range(num_labels):
-        if labels[i] in dont_weight:
-            weights[i] = 1
-        if dist[i] == 0:
-            weights[i] = 0
-        else:
-            weights[i] = (1 / dist[i]) * (total / non_zero_labels)
-            # cap the weights
-            weights[i] = min(weights[i], 4)
-            weights[i] = max(weights[i], 0.25)
-        logging.info("weights for %s is %s", labels[i], weights[i])
 
 
 def show_batch(image_batch, label_batch, labels):

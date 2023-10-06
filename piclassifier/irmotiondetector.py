@@ -80,7 +80,7 @@ class IRMotionDetector(MotionDetector):
 
     def disconnected(self):
         self.rgb_window.reset()
-        self.gray_window.reset()
+        # self.gray_window.reset()
         self.processed = 0
 
     @property

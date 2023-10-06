@@ -57,8 +57,6 @@ def load_config():
 def main():
     conf, args = load_config()
 
-    # tf.logging.set_verbosity(3)
-
     os.makedirs(conf.train.train_dir, exist_ok=True)
     train_model(
         args.name,

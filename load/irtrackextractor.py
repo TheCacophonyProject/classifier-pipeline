@@ -139,6 +139,8 @@ class IRTrackExtractor(ClipTracker):
         on_trapped=None,
         update_background=True,
         trap_size="L",
+        tracking_alg="mog2",
+        check_trapped=False,
     ):
         super().__init__(
             config,
@@ -149,6 +151,8 @@ class IRTrackExtractor(ClipTracker):
             do_tracking=do_tracking,
             scale=scale,
         )
+        self.check_trapped = check_trapped
+        self.tracking_alg = tracking_alg
         self.on_trapped = on_trapped
         self.saliency = None
         self.background = None
@@ -246,7 +250,7 @@ class IRTrackExtractor(ClipTracker):
         clip.set_model("IR")
         clip.set_video_stats(datetime.now())
         if background_alg is None:
-            self.background = CVBackground(use_subsense=False)
+            self.background = CVBackground(self.tracking_alg)
             # self.diff_background = DiffBackground(clip.background_thresh)
             if background_frame is not None:
                 # if self.scale:
@@ -451,13 +455,16 @@ class IRTrackExtractor(ClipTracker):
         num, mask, component_details = detect_objects_ir(re_f, threshold=0)
         component_details = component_details[1:]
         component_details = self.merge_components(component_details)
+        # self.debug_tracking(frame, filtered, mask, component_details)
         if clip.from_metadata:
             for track in clip.tracks:
                 if clip.current_frame in track.frame_list:
                     track.add_frame_for_existing_region(
                         cur_frame,
                         threshold,
-                        clip.frame_buffer.current_frame.filtered,
+                        clip.frame_buffer.prev_frame.filtered
+                        if clip.frame_buffer.prev_frame is not None
+                        else None,
                     )
         else:
             regions = []

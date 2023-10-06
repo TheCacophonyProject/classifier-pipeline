@@ -191,8 +191,15 @@ class TrackDatabase:
                 if clip.device:
                     group_attrs["device"] = clip.device
                 group_attrs["frames_per_second"] = clip.frames_per_second
-                if clip.location and clip.location.get("coordinates") is not None:
-                    group_attrs["location"] = clip.location["coordinates"]
+                if clip.location:
+                    if "coordinates" in clip.location:
+                        loc = clip.location["coordinates"]
+                    else:
+                        loc = (clip.location["lat"], clip.location["lng"])
+
+                    group_attrs["location"] = loc
+                if clip.station_id:
+                    group_attrs["station_id"] = clip.station_id
                 if clip.tags:
                     clip_tags = []
                     for track in clip.tags:
@@ -697,7 +704,7 @@ class TrackDatabase:
 
     def get_unique_clip_id(self):
         clip_ids = list(self.get_all_clip_ids().keys())
-        clip_ids = np.array(clip_ids).astype(np.int)
+        clip_ids = np.array(clip_ids).astype(np.int64)
         if len(clip_ids) == 0:
             return 1
         max_clip = np.amax(clip_ids)

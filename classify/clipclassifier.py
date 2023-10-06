@@ -42,6 +42,7 @@ class ClipClassifier:
 
     def load_models(self):
         for model in self.config.classify.models:
+            logging.info("Loading %s", model)
             classifier = self.get_classifier(model)
             self.models[model.id] = classifier
 

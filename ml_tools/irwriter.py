@@ -109,7 +109,6 @@ def create_tf_example(frame, image_dir, sample, labels, filename):
     # image.save(encoded_jpg_io, format="JPEG")
     # encoded_mask = encoded_jpg_io.getvalue()
     # mask_key = hashlib.sha256(encoded_mask).hexdigest()
-    print("writing image of size", frame.thermal.shape)
     feature_dict = {
         "image/augmented": tfrecord_util.int64_feature(sample.augment),
         "image/height": tfrecord_util.int64_feature(image_height),

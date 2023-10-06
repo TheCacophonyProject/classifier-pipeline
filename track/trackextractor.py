@@ -18,18 +18,18 @@ from ml_tools import tools
 from ml_tools.previewer import Previewer
 from track.track import Track
 
-from classify.thumbnail import get_thumbanil_info, thumbnail_debug, best_trackless_thumb
+from classify.thumbnail import get_thumbnail_info, thumbnail_debug, best_trackless_thumb
 
 
 class TrackExtractor:
     """Generate tracks for CPTV files."""
 
-    def __init__(self, config, cache_to_disk=None):
+    def __init__(self, config, cache_to_disk=None, retrack=False):
         """Create an instance of a clip classifier"""
 
         self.config = config
         self.worker_threads = config.worker_threads
-
+        self.retrack = retrack
         if cache_to_disk is None:
             self.cache_to_disk = self.config.classify.cache_to_disk
         else:
@@ -64,16 +64,19 @@ class TrackExtractor:
 
     def extract(self, base):
         # IF passed a dir extract all cptv files, if a cptv just extract this cptv file
-        if os.path.isfile(base):
+        base = Path(base)
+        if not base.exists():
+            return
+        if base.is_file():
             init_worker(self.config, self.cache_to_disk)
-            extract_file(base)
+            extract_file(base, self.retrack)
             return
         data = []
         for folder_path, _, files in os.walk(base):
             for name in files:
                 if os.path.splitext(name)[1] in [".mp4", ".avi", ".cptv"]:
                     full_path = os.path.join(folder_path, name)
-                    data.append(full_path)
+                    data.append(full_path, self.retrack)
         with Pool(
             self.worker_threads, init_worker, (self.config, self.cache_to_disk)
         ) as pool:
@@ -95,7 +98,7 @@ def init_worker(c, cache):
     cache_to_disk = cache
 
 
-def extract_file(filename):
+def extract_file(filename, retrack=False):
     """
     Process a file extracting tracks and identifying them.
     :param filename: filename to process
@@ -127,7 +130,9 @@ def extract_file(filename):
             config.tracking,
             cache_to_disk,
             verbose=config.verbose,
-            keep_frames=False if previewer is None else True,
+            keep_frames=True,
+            # False if previewer is None else True,
+            tracking_alg="subsense",
         )
 
         logging.info("Using ir extractor")
@@ -137,6 +142,10 @@ def extract_file(filename):
     else:
         clip.frames_per_second = 10
 
+    if retrack:
+        logging.info("Retracking")
+        metadata = tools.load_clip_metadata(filename.with_suffix(".txt"))
+        clip.load_metadata(metadata)
     start = time.time()
     success = track_extractor.parse_clip(clip)
 
@@ -144,6 +153,12 @@ def extract_file(filename):
     if not success:
         logging.error("Could not parse %s", filename)
         return
+
+    if retrack:
+        for track in clip.tracks:
+            track.trim()
+            track.set_end_s(clip.frames_per_second)
+
     meta_filename = filename.with_suffix(".txt")
 
     if previewer:
@@ -159,10 +174,11 @@ def extract_file(filename):
 def save_metadata(filename, meta_filename, clip, track_extractor, config):
     # record results in text file.
     metadata = clip.get_metadata()
-    for i, track in enumerate(clip.tracks):
-        best_thumb, best_score = get_thumbanil_info(clip, track)
+    tt = sorted(clip.tracks, key=lambda x: x.get_id())
+    for i, track in enumerate(tt):
+        best_thumb, best_score = get_thumbnail_info(clip, track)
         if best_thumb is None:
-            metadata["tracks"][i]["thumbanil"] = None
+            metadata["tracks"][i]["thumbnail"] = None
             continue
         thumbnail_info = {
             "region": best_thumb.region,

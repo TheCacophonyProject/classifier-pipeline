@@ -15,7 +15,7 @@ pillow~=9.5.0
 attrs~=19.1
 filelock~=3.0.12
 Astral~=1.10.1
-timezonefinder~=4.1.0
+timezonefinder~=6.2.0
 portalocker~=1.5.2
 toml~=0.10.0
 cacophonyapi
@@ -25,3 +25,5 @@ PyGObject~=3.44.1
 multiprocess
 pathos
 joblib
+#requires sudo apt-get install libopencv-dev used for ir track extraction on server
+pybgs==3.2.0.post1

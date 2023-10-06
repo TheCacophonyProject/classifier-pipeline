@@ -174,7 +174,9 @@ class ClipTrackExtractor(ClipTracker):
                     track.add_frame_for_existing_region(
                         cur_frame,
                         threshold,
-                        clip.frame_buffer.current_frame.filtered,
+                        clip.frame_buffer.prev_frame.filtered
+                        if clip.frame_buffer.prev_frame is not None
+                        else None,
                     )
         else:
             regions = []

@@ -112,7 +112,7 @@ def record(
             writer.write_frame(frame)
             frames += 1
 
-    except Exception as ex:
+    except:
         logging.error("%s Error Recording %s", name, filename.resolve(), exc_info=True)
         log_event("error-recording", ex)
         try:
