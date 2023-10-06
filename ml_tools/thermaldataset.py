@@ -38,14 +38,14 @@ def get_excluded():
 def get_remapped():
     return {
         "allbirds": "bird",
-        "black swan": "bird",
-        "brown quail": "bird",
-        "california quail": "bird",
-        "duck": "bird",
-        "insect": "false-positive",
-        "pheasant": "bird",
-        "pukeko": "bird",
-        "quail": "bird",
+        # "black swan": "bird",
+        # "brown quail": "bird",
+        # "california quail": "bird",
+        # "duck": "bird",
+        # "insect": "false-positive",
+        # "pheasant": "bird",
+        # "pukeko": "bird",
+        # "quail": "bird",
     }
 
 
