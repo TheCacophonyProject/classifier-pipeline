@@ -415,7 +415,9 @@ def handle_connection(connection, config, thermal_config_file, process_queue):
             try:
                 message = data[:5]
                 if message == b"clear":
-                    logging.info("processing error from camera")     # TODO Check if this is handled properly.
+                    logging.info(
+                        "processing error from camera"
+                    )  # TODO Check if this is handled properly.
                     process_queue.put(STOP_SIGNAL)
                     break
             except:
