@@ -50,7 +50,7 @@ def load_dataset(filenames, remap_lookup, num_labels, args):
         partial(
             read_irrecord,
             remap_lookup=remap_lookup,
-            num_labels=num_labels,
+            num_labels=len(labels),
             image_size=image_size,
             labeled=labeled,
             augment=augment,
@@ -61,8 +61,6 @@ def load_dataset(filenames, remap_lookup, num_labels, args):
         deterministic=deterministic,
     )
 
-    filter_excluded = lambda x, y: not tf.math.equal(tf.math.count_nonzero(y), 0)
-    dataset = dataset.filter(filter_excluded)
     return dataset
 
 

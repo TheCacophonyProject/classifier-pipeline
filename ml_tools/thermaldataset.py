@@ -49,7 +49,42 @@ def get_remapped():
     }
 
 
-def load_dataset(filenames, remap_lookup, num_labels, args):
+def get_extra_mappings(labels):
+    land_birds = [
+        "pukeko",
+        "california quail",
+        "brown quail",
+        "black swan",
+        "quail",
+        "pheasant",
+        "penguin",
+        "duck",
+        "chicken",
+        "rooster",
+    ]
+    if "bird" not in labels:
+        return None
+    bird_index = labels.index("bird")
+    values = []
+    keys = []
+    for l in land_birds:
+        if l in labels:
+            l_i = labels.index("l")
+            keys.append(l_i)
+            values.append(bird_index)
+    extra_label_map = tf.lookup.StaticHashTable(
+        initializer=tf.lookup.KeyValueTensorInitializer(
+            keys=tf.constant(keys),
+            values=tf.constant(values),
+        ),
+        default_value=tf.constant(-1),
+        name="extra_label_map",
+    )
+    logging.info("Extra label mapping is %s to %s ", keys, values)
+    return extra_label_map
+
+
+def load_dataset(filenames, remap_lookup, labels, args):
     deterministic = args.get("deterministic", False)
     ignore_order = tf.data.Options()
     ignore_order.experimental_deterministic = (
@@ -70,19 +105,23 @@ def load_dataset(filenames, remap_lookup, num_labels, args):
     only_features = args.get("only_features", False)
     one_hot = args.get("one_hot", True)
     dataset = dataset.apply(tf.data.experimental.ignore_errors())
-
+    extra_label_map = None
+    if args.get("multi_label"):
+        extra_label_map = get_extra_mappings(labels)
+        logging.info("Using multi label")
     dataset = dataset.map(
         partial(
             read_tfrecord,
             image_size=image_size,
             remap_lookup=remap_lookup,
-            num_labels=num_labels,
+            num_labels=len(labels),
             labeled=labeled,
             augment=augment,
             preprocess_fn=preprocess_fn,
             include_features=include_features,
             only_features=only_features,
             one_hot=one_hot,
+            extra_label_map=extra_label_map,
         ),
         num_parallel_calls=AUTOTUNE,
         deterministic=deterministic,
@@ -94,8 +133,6 @@ def load_dataset(filenames, remap_lookup, num_labels, args):
 
     dataset = dataset.filter(filter_nan)
 
-    filter_excluded = lambda x, y: not tf.math.equal(tf.math.count_nonzero(y), 0)
-    dataset = dataset.filter(filter_excluded)
     return dataset
 
 
@@ -124,6 +161,7 @@ def read_tfrecord(
     only_features=False,
     one_hot=True,
     include_features=False,
+    extra_label_map=None,
 ):
     logging.info(
         "Read tf record with image %s lbls %s labeld %s aug  %s  prepr %s only features %s one hot %s include fetures %s",
@@ -181,12 +219,13 @@ def read_tfrecord(
     if labeled:
         label = tf.cast(example["image/class/label"], tf.int32)
         label = remap_lookup.lookup(label)
-
+        if extra_label_map is not None:
+            extra = extra_label_map.lookup(label)
+            label = tf.stack([label, extra], axis=0)
         if one_hot:
-            if tf.math.equal(label, -1):
-                label = tf.zeros(num_labels)
-            else:
-                label = tf.one_hot(label, num_labels)
+            label = tf.one_hot(label, num_labels)
+            if extra_label_map is not None:
+                label = tf.reduce_max(label, axis=0)
         if include_features or only_features:
             features = example["image/features"]
             if only_features:

@@ -68,7 +68,7 @@ def train_model(
             run_name=run_name + "_" + "TEST",
             weights=weights,
             resample=False,
-            rebalance=True,
+            rebalance=False,
         )
     except KeyboardInterrupt:
         pass

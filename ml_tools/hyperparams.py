@@ -28,6 +28,7 @@ class HyperParams(dict):
         self["channel"] = self.channel
         self["type"] = self.type
         self["segment_type"] = self.segment_type
+        self["multi_label"] = False
 
     @property
     def output_dim(self):
@@ -38,6 +39,10 @@ class HyperParams(dict):
                 3,
             )
         return (self.frame_size, self.frame_size, 3)
+
+    @property
+    def multi_label(self):
+        return self.get("multi_label", False)
 
     @property
     def keep_aspect(self):

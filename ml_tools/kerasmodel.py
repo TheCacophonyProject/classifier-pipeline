@@ -337,11 +337,17 @@ class KerasModel(Interpreter):
                     layer.trainable = i >= retrain_from
         else:
             base_model.trainable = self.params.base_training
+
+        if self.params.multi_label:
+            acc = tf.metrics.binary_accuracy
+        else:
+            acc = tf.metrics.categorical_accuracy
+
         self.model.compile(
             optimizer=optimizer(self.params),
             loss=loss(self.params),
             metrics=[
-                "accuracy",
+                acc,
                 tf.keras.metrics.AUC(),
                 tf.keras.metrics.Recall(),
                 tf.keras.metrics.Precision(),
@@ -540,6 +546,7 @@ class KerasModel(Interpreter):
             excluded_labels=self.excluded_labels,
             remapped_labels=self.remapped_labels,
             # dist=self.dataset_counts["train"],
+            multi_label=self.params.multi_label,
         )
         self.remapped = remapped
         self.validate, remapped, _, _ = get_dataset(
@@ -554,6 +561,7 @@ class KerasModel(Interpreter):
             include_features=self.params.mvm,
             excluded_labels=self.excluded_labels,
             remapped_labels=self.remapped_labels,
+            multi_label=self.params.multi_label
             # dist=self.dataset_counts["validation"],
         )
 
@@ -602,6 +610,7 @@ class KerasModel(Interpreter):
                 resample=False,
                 excluded_labels=self.excluded_labels,
                 remapped_labels=self.remapped_labels,
+                multi_label=self.params.multi_label,
             )
             if self.test:
                 test_accuracy = self.model.evaluate(self.test)
@@ -1143,10 +1152,13 @@ def plot_to_image(figure):
 
 
 def loss(params):
-    softmax = tf.keras.losses.CategoricalCrossentropy(
+    if params.multi_label:
+        return tf.keras.losses.BinaryCrossentropy(
+            label_smoothing=params.label_smoothing,
+        )
+    return tf.keras.losses.CategoricalCrossentropy(
         label_smoothing=params.label_smoothing,
     )
-    return softmax
 
 
 def optimizer(params):

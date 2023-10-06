@@ -102,7 +102,11 @@ def get_dataset(load_function, base_dir, labels, **args):
     filenames = tf.io.gfile.glob(f"{base_dir}/*.tfrecord")
     if not args.get("deterministic"):
         random.shuffle(filenames)
-    dataset = load_function(filenames, remap_lookup, num_labels, args)
+
+    dataset = load_function(filenames, remap_lookup, new_labels, args)
+
+    filter_excluded = lambda x, y: not tf.math.equal(tf.math.count_nonzero(y), 0)
+    dataset = dataset.filter(filter_excluded)
     if dataset is None:
         logging.warn("No dataset for %s", filenames)
         return None, None

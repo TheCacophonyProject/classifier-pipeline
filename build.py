@@ -648,6 +648,8 @@ land_birds = [
     "pheasant",
     "penguin",
     "duck",
+    "chicken",
+    "rooster",
 ]
 
 
