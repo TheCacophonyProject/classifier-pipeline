@@ -29,7 +29,7 @@
   use-sunrise-sunset = false
   max-secs = 300
   min-disk-space-mb = 200
-  min-secs = 10
+  min-secs = 5
   output-dir = "/var/spool/cptv"
   preview-secs = 1
 

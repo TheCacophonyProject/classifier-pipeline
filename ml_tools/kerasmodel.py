@@ -28,7 +28,10 @@ from ml_tools.thermaldataset import (
     get_weighting,
 )
 from ml_tools.thermaldataset import get_distribution
-from ml_tools.irdataset import get_resampled as get_ir_dataset
+from ml_tools.irdataset import get_dataset as get_ir_dataset
+
+import tensorflow_decision_forests as tfdf
+from ml_tools import forestmodel
 
 import tensorflow_decision_forests as tfdf
 from ml_tools import forestmodel
@@ -38,6 +41,7 @@ class KerasModel(Interpreter):
     """Defines a deep learning model"""
 
     VERSION = 1
+    TYPE = "Keras"
 
     def __init__(self, train_config=None, labels=None, data_dir=None):
         self.model = None
@@ -339,7 +343,8 @@ class KerasModel(Interpreter):
         # self.model.summary()
         # self.model.load_weights(dir + "/variables/variables")
 
-    def load_model(self, model_path, training=False, weights=None):
+    def load_model(self, model_path, training=False, weights=None, data_type="thermal"):
+        super().__init__(model_path, data_type)
         logging.info("Loading %s with weight %s", model_path, weights)
         dir = os.path.dirname(model_path)
         self.model = tf.keras.models.load_model(dir)
@@ -507,7 +512,6 @@ class KerasModel(Interpreter):
             include_features=self.params.mvm,
             # dist=self.dataset_counts["validation"],
         )
-        # distribution = get_distribution(self.train)
         if rebalance:
             self.class_weights = get_weighting(self.train, self.labels)
             logging.info(
@@ -748,11 +752,16 @@ class KerasModel(Interpreter):
         data = []
         crop = True
         thermal_median = np.empty(len(track.bounds_history), dtype=np.uint16)
+        frames_used = []
         for i, region in enumerate(track.bounds_history):
             if region.blank:
                 continue
             if region.width == 0 or region.height == 0:
-                logging.warn("No width or height for frame %s", region.frame_number)
+                logging.warn(
+                    "No width or height for frame %s regoin %s",
+                    region.frame_number,
+                    region,
+                )
                 continue
             frame = clip.frame_buffer.get_frame(region.frame_number)
             if frame is None:
@@ -767,7 +776,14 @@ class KerasModel(Interpreter):
                         clip.get_id(), track.get_id(), region.frame_number
                     )
                 )
-
+            logging.info(
+                "classifying ir with preprocess %s size %s crop? %s f shape %s region %s",
+                self.preprocess_fn.__module__,
+                self.params.frame_size,
+                crop,
+                frame.thermal.shape,
+                region,
+            )
             preprocessed = preprocess_ir(
                 frame.copy(),
                 (
@@ -779,13 +795,43 @@ class KerasModel(Interpreter):
                 self.preprocess_fn,
                 save_info=f"{region.frame_number} - {region}",
             )
-
+            logging.info(
+                "preprocessed is %s max %s min %s",
+                preprocessed.shape,
+                np.amax(preprocessed),
+                np.amin(preprocessed),
+            )
+            frames_used.append(region.frame_number)
             data.append(preprocessed)
         data = np.float32(data)
+
+        # GP TEST STUFF PLEASE DELETE ME LATER
+        for f in data:
+            image = f.copy()
+            image = (image + 1) * 127.5
+            image = np.uint8(image)
+            image = cv2.resize(image, (600, 600))
+            out = self.model.predict(np.expand_dims(f, axis=0))
+            best_res = np.argmax(out[0])
+            prediction = self.labels[best_res]
+            image = cv2.putText(
+                image,
+                prediction,
+                (10, 10),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                1,
+                (255, 0, 0),
+            )
+
+            cv2.imshow("f", image)
+            cv2.moveWindow("f", 0, 0)
+            cv2.waitKey()
+        # GP TEST STUFF PLEASE DELETE ME LATER
+
         output = self.model.predict(data)
         track_prediction = TrackPrediction(track.get_id(), self.labels)
 
-        track_prediction.classified_clip(output, output, None)
+        track_prediction.classified_clip(output, output, np.array(frames_used))
         track_prediction.normalize_score()
         return track_prediction
 
@@ -845,8 +891,8 @@ class KerasModel(Interpreter):
         track_prediction.classify_time = time.time() - start
         return track_prediction
 
-    def predict(self, frame):
-        return self.model.predict(frame[np.newaxis, :])[0]
+    def predict(self, frames):
+        return self.model.predict(frames)
 
     def classify_frame(self, frame, thermal_median, preprocess=True):
         if preprocess:

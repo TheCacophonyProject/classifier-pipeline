@@ -43,7 +43,7 @@ import tensorflow as tf
 from . import tfrecord_util
 from ml_tools import tools
 from ml_tools.imageprocessing import normalize, rotate
-from load.irtrackextractor import get_ir_back_filtered
+from track.cliptracker import get_diff_back_filtered
 import cv2
 import random
 import math
@@ -109,7 +109,7 @@ def create_tf_example(frame, image_dir, sample, labels, filename):
     # image.save(encoded_jpg_io, format="JPEG")
     # encoded_mask = encoded_jpg_io.getvalue()
     # mask_key = hashlib.sha256(encoded_mask).hexdigest()
-
+    print("writing image of size", frame.thermal.shape)
     feature_dict = {
         "image/augmented": tfrecord_util.int64_feature(sample.augment),
         "image/height": tfrecord_util.int64_feature(image_height),
@@ -204,16 +204,12 @@ def create_tf_records(
     lbl_counts = [0] * num_labels
 
     writers = []
-    for label in labels:
-        for i in range(num_shards):
-            writers.append(
-                tf.io.TFRecordWriter(
-                    str(
-                        output_path
-                        / (f"{label}-%05d-of-%05d.tfrecord" % (i, num_shards))
-                    )
-                )
+    for i in range(num_shards):
+        writers.append(
+            tf.io.TFRecordWriter(
+                str(output_path / (f"%05d-of-%05d.tfrecord" % (i, num_shards)))
             )
+        )
     load_first = 200
     try:
         count = 0
@@ -245,9 +241,8 @@ def create_tf_records(
                     l_i = labels.index(sample.label)
 
                     total_num_annotations_skipped += num_annotations_skipped
-                    writers[num_shards * l_i + lbl_counts[l_i] % num_shards].write(
-                        tf_example.SerializeToString()
-                    )
+                    writer = writers[count % num_shards]
+                    writer.write(tf_example.SerializeToString())
                     count += 1
                     lbl_counts[l_i] += 1
 
@@ -302,7 +297,7 @@ def get_data(db, sample, cropped, back_thresh):
         f.crop_by_region(region, out=f)
         background = region.subimage(background)
     f.mask = f.filtered
-    f.filtered, _ = get_ir_back_filtered(background, f.thermal, back_thresh)
+    f.filtered = get_diff_back_filtered(background, f.thermal, back_thresh)
 
     assert f.thermal.shape == f.filtered.shape
     f.normalize()

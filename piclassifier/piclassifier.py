@@ -13,33 +13,30 @@ from load.clip import Clip
 from load.irtrackextractor import IRTrackExtractor
 
 from load.cliptrackextractor import ClipTrackExtractor
-from ml_tools.preprocess import (
-    preprocess_segment,
-    preprocess_ir,
-    preprocess_frame,
-    preprocess_movement,
-)
+
 from ml_tools.previewer import Previewer, add_last_frame_tracking
 from ml_tools import tools
 from .cptvrecorder import CPTVRecorder
 from .throttledrecorder import ThrottledRecorder
 from .dummyrecorder import DummyRecorder
 from .irrecorder import IRRecorder
+from .irmotiondetector import IRMotionDetector
+from .cptvmotiondetector import CPTVMotionDetector
 
-from .motiondetector import MotionDetector, SlidingWindow
+from .motiondetector import SlidingWindow
 from .processor import Processor
-from ml_tools.preprocess import (
-    preprocess_frame,
-    preprocess_movement,
-)
 
 from ml_tools.interpreter import Interpreter
 from ml_tools.logs import init_logging
 from ml_tools.hyperparams import HyperParams
 from ml_tools.tools import CustomJSONEncoder
+from ml_tools.forestmodel import ForestModel
 from track.region import Region
 from . import beacon
 
+from piclassifier.trapcontroller import trigger_trap
+
+SNAPSHOT_SIGNAL = "snap"
 STOP_SIGNAL = "stop"
 SKIP_SIGNAL = "skip"
 track_extractor = None
@@ -47,47 +44,57 @@ clip = None
 
 
 class NeuralInterpreter(Interpreter):
-    def __init__(self, model_name):
+    TYPE = "Neural"
+
+    def __init__(self, model_name, data_type):
         from openvino.inference_engine import IENetwork, IECore
 
-        super().__init__(model_name)
-
+        super().__init__(model_name, data_type)
+        model_name = Path(model_name)
         # can use to test on PC
         # device = "CPU"
         device = "MYRIAD"
-        model_xml = model_name + ".xml"
-        model_bin = os.path.splitext(model_xml)[0] + ".bin"
+        model_xml = model_name.with_suffix(".xml")
+        model_bin = model_name.with_suffix(".bin")
         ie = IECore()
         ie.set_config({}, device)
         net = ie.read_network(model=model_xml, weights=model_bin)
         self.input_blob = next(iter(net.input_info))
         self.out_blob = next(iter(net.outputs))
+        self.input_shape = net.input_info[self.input_blob].input_data.shape
+
         net.batch_size = 1
         self.exec_net = ie.load_network(network=net, device_name=device)
+        self.preprocess_fn = inc3_preprocess
 
     def predict(self, input_x):
         if input_x is None:
             return None
         input_x = np.float32(input_x)
-        rearranged_arr = np.transpose(input_x, axes=[2, 0, 1])
-        input_x = np.array([[rearranged_arr]])
+        channels_last = input_x.shape[-1] == 3
+        if channels_last:
+            input_x = np.moveaxis(input_x, 3, 1)
+        # input_x = np.transpose(input_x, axes=[3, 1, 2])
+        # input_x = np.array([[rearranged_arr]])
         res = self.exec_net.infer(inputs={self.input_blob: input_x})
         res = res[self.out_blob]
-        return res[0]
+        return res
 
     def shape(self):
-        return self.input_blob.shape
+        return self.input_shape
 
 
 class LiteInterpreter(Interpreter):
-    def __init__(self, model_name):
-        super().__init__(model_name)
+    TYPE = "TFLite"
 
-        import tensorflow as tf
+    def __init__(self, model_name, data_type):
+        super().__init__(model_name, data_type)
+
+        import tflite_runtime.interpreter as tflite
 
         model_name = Path(model_name)
         model_name = model_name.with_suffix(".tflite")
-        self.interpreter = tf.lite.Interpreter(str(model_name))
+        self.interpreter = tflite.Interpreter(str(model_name))
 
         self.interpreter.allocate_tensors()  # Needed before execution!
 
@@ -95,24 +102,30 @@ class LiteInterpreter(Interpreter):
             0
         ]  # Model has single output.
         self.input = self.interpreter.get_input_details()[0]  # Model has single input.
+        self.preprocess_fn = inc3_preprocess
 
     def predict(self, input_x):
         start = time.time()
         input_x = np.float32(input_x)
-        input_x = input_x[np.newaxis, :]
+        # input_x = input_x[np.newaxis, :]
 
         self.interpreter.set_tensor(self.input["index"], input_x)
         self.interpreter.invoke()
-        pred = self.interpreter.get_tensor(self.output["index"])[0]
+        pred = self.interpreter.get_tensor(self.output["index"])
         logging.info("taken %s to predict", time.time() - start)
-
         return pred
 
     def shape(self):
         return self.input["shape"]
 
 
-def get_full_classifier(model):
+def inc3_preprocess(x):
+    x /= 127.5
+    x -= 1.0
+    return x
+
+
+def get_full_classifier(model, data_type):
     from ml_tools.kerasmodel import KerasModel
 
     """
@@ -123,22 +136,29 @@ def get_full_classifier(model):
     logging.info("classifier loading")
     classifier = KerasModel()
     classifier.load_model(model.model_file, weights=model.model_weights)
+    classifier.type = data_type
     logging.info("classifier loaded ({})".format(datetime.now() - t0))
 
     return classifier
 
 
-def get_classifier(model):
-    model_name, model_type = os.path.splitext(model.model_file)
-    logging.info("Loading %s", model_name)
-    if model_type == ".tflite":
-        classifier = LiteInterpreter(model_name)
-    elif model_type == ".xml":
-        classifier = NeuralInterpreter(model_name)
+def get_classifier(model, data_type):
+    # model_name, type = os.path.splitext(model.model_file)
+
+    logging.info(
+        "Loading %s of type %s with datatype %s",
+        model.model_file,
+        model.type,
+        data_type,
+    )
+    if model.type == LiteInterpreter.TYPE:
+        classifier = LiteInterpreter(model.model_file, data_type)
+    elif model.type == NeuralInterpreter.TYPE:
+        classifier = NeuralInterpreter(model.model_file, data_type)
+    elif model.type == ForestModel.TYPE:
+        classifier = ForestModel(model.model_file, data_type)
     else:
-        classifier = get_full_classifier(
-            model,
-        )
+        classifier = get_full_classifier(model, data_type)
     return classifier
 
 
@@ -159,10 +179,14 @@ def run_classifier(
                     return
                 if frame == "skip":
                     pi_classifier.skip_frame()
+                elif frame == SNAPSHOT_SIGNAL:
+                    pi_classifier.take_snapshot()
             else:
-                pi_classifier.process_frame(frame)
+                pi_classifier.process_frame(frame[0], frame[1])
     except:
         logging.error("Error running classifier restarting ..", exc_info=True)
+        pi_classifier.disconnected()
+        return
 
 
 predictions = None
@@ -176,7 +200,8 @@ class PiClassifier(Processor):
     MAX_CONSEC = 1
     # after every MAX_CONSEC frames skip this many frames
     # this gives the cpu a break
-    SKIP_FRAMES = 10
+    SKIP_FRAMES = 30
+    PREDICT_EVERY = 40
 
     def __init__(
         self,
@@ -187,6 +212,7 @@ class PiClassifier(Processor):
         detect_after=None,
         preview_type=None,
     ):
+        self.constant_recorder = None
         self._output_dir = thermal_config.recorder.output_dir
         self.headers = headers
         super().__init__()
@@ -209,27 +235,49 @@ class PiClassifier(Processor):
         self.bluetooth_beacons = thermal_config.motion.bluetooth_beacons
         self.preview_frames = thermal_config.recorder.preview_secs * headers.fps
 
-        self.fps_timer = SlidingWindow((9), np.float32)
+        self.fps_timer = SlidingWindow((headers.fps * 3), np.float32)
         self.preview_type = preview_type
         self.max_keep_frames = None if preview_type else 0
         if thermal_config.recorder.disable_recordings:
             self.recorder = DummyRecorder(
                 thermal_config, headers, on_recording_stopping
             )
-        if headers.model == "IR":
+
+        if headers.model == IRTrackExtractor.TYPE:
             logging.info("Running on IR")
+            PiClassifier.SKIP_FRAMES = 3
             self.track_extractor = IRTrackExtractor(
                 self.config.tracking,
-                config.use_opt_flow,
-                self.config.classify.cache_to_disk,
+                cache_to_disk=self.config.classify.cache_to_disk,
+                keep_frames=False,
                 verbose=config.verbose,
                 calc_stats=False,
                 scale=0.25,
+                on_trapped=on_track_trapped,
+                update_background=False,
+                trap_size=thermal_config.device_setup.trap_size,
             )
-            self.type = "IR"
+            self.tracking_config = self.track_extractor.config
+
+            self.type = IRTrackExtractor.TYPE
             if not thermal_config.recorder.disable_recordings:
                 self.recorder = IRRecorder(
                     thermal_config, headers, on_recording_stopping
+                )
+            self.snapshot_recorder = IRRecorder(
+                thermal_config, headers, on_recording_stopping, name="IR Snapshot"
+            )
+            self.motion_detector = IRMotionDetector(
+                thermal_config,
+                headers,
+            )
+            if thermal_config.recorder.constant_recorder:
+                self.constant_recorder = IRRecorder(
+                    thermal_config,
+                    headers,
+                    on_recording_stopping,
+                    name="IR Constant",
+                    constant_recorder=True,
                 )
         else:
             logging.info("Running on Thermal")
@@ -237,14 +285,33 @@ class PiClassifier(Processor):
                 self.config.tracking,
                 self.config.use_opt_flow,
                 self.config.classify.cache_to_disk,
+                keep_frames=False,
                 calc_stats=False,
             )
+            self.tracking_config = self.track_extractor.config
+
             self.type = "thermal"
             if not thermal_config.recorder.disable_recordings:
                 self.recorder = CPTVRecorder(
                     thermal_config, headers, on_recording_stopping
                 )
-        self.tracking_config = self.track_extractor.config
+            self.snapshot_recorder = CPTVRecorder(
+                thermal_config, headers, on_recording_stopping, name="CPTV Snapshot"
+            )
+            self.motion_detector = CPTVMotionDetector(
+                thermal_config,
+                self.tracking_config.motion.dynamic_thresh,
+                headers,
+                detect_after=detect_after,
+            )
+            if thermal_config.recorder.constant_recorder:
+                self.constant_recorder = CPTVRecorder(
+                    thermal_config,
+                    headers,
+                    on_recording_stopping,
+                    name="CPTV Constant",
+                    constant_recorder=True,
+                )
         edge = self.tracking_config.edge_pixels
         self.crop_rectangle = tools.Rectangle(
             edge, edge, headers.res_x - 2 * edge, headers.res_y - 2 * edge
@@ -258,30 +325,35 @@ class PiClassifier(Processor):
             self.recorder = DummyRecorder(
                 thermal_config, headers, on_recording_stopping
             )
-        else:
-            self.recorder = CPTVRecorder(thermal_config, headers, on_recording_stopping)
         if thermal_config.throttler.activate:
             self.recorder = ThrottledRecorder(
                 self.recorder, thermal_config, headers, on_recording_stopping
             )
-
-        self.motion_detector = MotionDetector(
-            thermal_config,
-            self.tracking_config.motion.dynamic_thresh,
-            headers,
-            detect_after=detect_after,
-        )
         self.meta_dir = os.path.join(thermal_config.recorder.output_dir)
         if not os.path.exists(self.meta_dir):
             os.makedirs(self.meta_dir)
 
         if self.classify:
             model = config.classify.models[0]
-            self.classifier = get_classifier(model)
-            self.frames_per_classify = (
-                self.classifier.params.square_width
-                * self.classifier.params.square_width
-            )
+            self.classifier = get_classifier(model, self.type)
+
+            if self.classifier.TYPE == ForestModel.TYPE:
+                self.last_x_frames = 5 * headers.fps
+                self.frames_per_classify = self.last_x_frames
+                PiClassifier.SKIP_FRAMES = 30
+                # probably could be even more
+
+            else:
+                # self.preprocess_fn = self.get_preprocess_fn()
+
+                self.last_x_frames = 1
+                self.frames_per_classify = (
+                    self.classifier.params.square_width
+                    * self.classifier.params.square_width
+                )
+                if self.frames_per_classify > 1:
+                    self.last_x_frames = self.frames_per_classify * 2
+
             self.max_keep_frames = (
                 self.frames_per_classify * 2 if not preview_type else None
             )
@@ -294,70 +366,93 @@ class PiClassifier(Processor):
                 self.fp_index = self.classifier.labels.index("false-positive")
             except ValueError:
                 self.fp_index = None
-            self.preprocess_fn = self.get_preprocess_fn()
             self.startup_classifier()
 
-    def get_preprocess_fn(self):
-        import tensorflow as tf
-
-        pretrained_model = self.classifier.params.model_name
-        if pretrained_model == "resnet":
-            return tf.keras.applications.resnet.preprocess_input
-
-        elif pretrained_model == "resnetv2":
-            return tf.keras.applications.resnet_v2.preprocess_input
-
-        elif pretrained_model == "resnet152":
-            return tf.keras.applications.resnet.preprocess_input
-
-        elif pretrained_model == "vgg16":
-            return tf.keras.applications.vgg16.preprocess_input
-
-        elif pretrained_model == "vgg19":
-            return tf.keras.applications.vgg19.preprocess_input
-
-        elif pretrained_model == "mobilenet":
-            return tf.keras.applications.mobilenet_v2.preprocess_input
-
-        elif pretrained_model == "densenet121":
-            return tf.keras.applications.densenet.preprocess_input
-
-        elif pretrained_model == "inceptionresnetv2":
-            return tf.keras.applications.inception_resnet_v2.preprocess_input
-        elif pretrained_model == "inceptionv3":
-            return tf.keras.applications.inception_v3.preprocess_input
-        logging.warn(
-            "pretrained model %s has no preprocessing function", pretrained_model
-        )
-        return None
+    #
+    # def get_preprocess_fn(self):
+    #     import tensorflow as tf
+    #
+    #     pretrained_model = self.classifier.params.model_name
+    #     if pretrained_model == "resnet":
+    #         return tf.keras.applications.resnet.preprocess_input
+    #
+    #     elif pretrained_model == "resnetv2":
+    #         return tf.keras.applications.resnet_v2.preprocess_input
+    #
+    #     elif pretrained_model == "resnet152":
+    #         return tf.keras.applications.resnet.preprocess_input
+    #
+    #     elif pretrained_model == "vgg16":
+    #         return tf.keras.applications.vgg16.preprocess_input
+    #
+    #     elif pretrained_model == "vgg19":
+    #         return tf.keras.applications.vgg19.preprocess_input
+    #
+    #     elif pretrained_model == "mobilenet":
+    #         return tf.keras.applications.mobilenet_v2.preprocess_input
+    #
+    #     elif pretrained_model == "densenet121":
+    #         return tf.keras.applications.densenet.preprocess_input
+    #
+    #     elif pretrained_model == "inceptionresnetv2":
+    #         return tf.keras.applications.inception_resnet_v2.preprocess_input
+    #     elif pretrained_model == "inceptionv3":
+    #         return tf.keras.applications.inception_v3.preprocess_input
+    #     logging.warn(
+    #         "pretrained model %s has no preprocessing function", pretrained_model
+    #     )
+    #     return None
 
     def new_clip(self, preview_frames):
         self.clip = Clip(
-            self.tracking_config, "stream", model=self.headers.model, type=self.type
+            self.tracking_config,
+            "stream",
+            model=self.headers.model,
+            type=self.type,
+            calc_stats=False,
+            fps=self.headers.fps,
         )
         global clip
         clip = self.clip
         self.clip.video_start_time = datetime.now()
         self.clip.num_preview_frames = self.preview_frames
+
         self.clip.set_res(self.res_x, self.res_y)
         self.clip.set_frame_buffer(
             self.tracking_config.high_quality_optical_flow,
             self.config.classify.cache_to_disk,
             self.config.use_opt_flow,
-            True,
-            self.max_keep_frames,
+            keep_frames=self.max_keep_frames > 0
+            if self.max_keep_frames is not None
+            else True,
+            max_frames=self.max_keep_frames,
         )
         edge_pixels = self.tracking_config.edge_pixels
 
         self.clip.update_background(self.motion_detector.background.copy())
         self.clip._background_calculated()
         # no need to retrack all of preview
-        self.track_extractor.start_tracking(self.clip, preview_frames)
+        background_frames = None
+        track_frames = -1
+        retrack_back = True
+        if self.type == IRTrackExtractor.TYPE:
+            track_frames = 5
+            retrack_back = False
+            # background is calculated in motion, so already 5 frames ahead
+        self.track_extractor.start_tracking(
+            self.clip,
+            preview_frames,
+            track_frames=track_frames,
+            background_alg=self.motion_detector._background,
+            retrack_back=retrack_back,
+            # background_frame=clip.background,
+            # background_frames=background_frames,
+        )
 
     def startup_classifier(self):
         # classifies an empty frame to force loading of the model into memory
         in_shape = self.classifier.shape()[1:]
-        p_frame = np.zeros((in_shape), np.float32)
+        p_frame = np.zeros((1, *in_shape), np.float32)
         self.classifier.predict(p_frame)
 
     def get_active_tracks(self):
@@ -365,7 +460,28 @@ class PiClassifier(Processor):
         Gets current clips active_tracks and returns the top NUM_CONCURRENT_TRACKS order by priority
         """
         active_tracks = self.clip.active_tracks
-        active_tracks = [track for track in active_tracks if len(track) > 10]
+        active_tracks = [track for track in active_tracks if len(track) >= 8]
+        filtered = []
+        for track in active_tracks:
+            pred = None
+            if self.predictions is not None:
+                pred = self.predictions.prediction_for(track.get_id())
+            if pred is not None:
+                if (
+                    pred.last_frame_classified is not None
+                    and self.clip.current_frame - pred.last_frame_classified
+                    < PiClassifier.PREDICT_EVERY
+                ):
+                    logging.debug(
+                        "Skipping %s as predicted %s and now at %s",
+                        track,
+                        pred.last_frame_classified,
+                        self.clip.current_frame,
+                    )
+                    continue
+
+            filtered.append(track)
+        active_tracks = filtered
         if (
             len(active_tracks) <= PiClassifier.NUM_CONCURRENT_TRACKS
             or not self.classify
@@ -373,9 +489,7 @@ class PiClassifier(Processor):
             return active_tracks
         active_predictions = []
         for track in active_tracks:
-            prediction = self.predictions.get_or_create_prediction(
-                track, keep_all=False
-            )
+            prediction = self.predictions.get_or_create_prediction(track, keep_all=True)
             active_predictions.append(prediction)
 
         top_priority = sorted(
@@ -410,20 +524,28 @@ class PiClassifier(Processor):
 
         active_tracks = self.get_active_tracks()
         new_prediction = False
+        if len(active_tracks) == 0:
+            return False
+
+        logging.info("Identifying %s", active_tracks)
         for i, track in enumerate(active_tracks):
             regions = []
             track_prediction = self.predictions.get_or_create_prediction(
-                track, keep_all=False
+                track, keep_all=True
             )
-            if self.type == "IR":
-                prediction, mass = self.identify_ir(track)
-            else:
-                prediction, mass = self.identify_thermal(track)
+            frames, prediction, mass = self.classifier.predict_track(
+                clip,
+                track,
+                last_x_frames=self.last_x_frames,
+                scale=self.track_extractor.scale,
+                frames_per_classify=self.frames_per_classify,
+            )
             if prediction is None:
                 track_prediction.last_frame_classified = self.clip.current_frame
                 continue
-            track_prediction.classified_frame(self.clip.current_frame, prediction, mass)
-            logging.debug(
+            for p, m in zip(prediction, mass):
+                track_prediction.classified_frames(frames, p, m)
+            logging.info(
                 "Track %s is predicted as %s", track, track_prediction.get_prediction()
             )
 
@@ -458,79 +580,14 @@ class PiClassifier(Processor):
                     if track_prediction:
                         active_predictions.append(track_prediction)
                 beacon.classification(active_predictions)
+        return True
 
-    def identify_ir(self, track):
-        region = track.bounds_history[-1]
-        frame = self.clip.frame_buffer.get_last_frame()
-        if frame is None:
-            return
-        params = self.classifier.params
-        preprocessed = preprocess_ir(
-            frame.copy(),
-            (
-                params.frame_size,
-                params.frame_size,
-            ),
-            region=region,
-            preprocess_fn=self.preprocess_fn,
-        )
-        if preprocessed is None:
-            return None, 1
-        prediction = self.classifier.predict(preprocessed)
-        return prediction, 1
-
-    def identify_thermal(self, track):
-        regions = track.bounds_history[-self.frames_per_classify * 2 :]
-        frames = self.clip.frame_buffer.get_last_x(len(regions))
-        if frames is None:
-            return
-        indices = np.random.choice(
-            len(regions),
-            min(self.frames_per_classify, len(regions)),
-            replace=False,
-        )
-        indices.sort()
-        frames = np.array(frames)[indices]
-        regions = np.array(regions)[indices]
-
-        refs = []
-        segment_data = []
-        mass = 0
-        params = self.classifier.params
-
-        for frame, region in zip(frames, regions):
-            if region.blank:
-                continue
-            refs.append(np.median(frame.thermal))
-            thermal_reference = np.median(frame.thermal)
-            f = frame.crop_by_region(region)
-            mass += region.mass
-            f.resize_with_aspect(
-                (params.frame_size, params.frame_size),
-                self.clip.crop_rectangle,
-                True,
-            )
-            segment_data.append(f)
-
-        preprocessed = preprocess_movement(
-            segment_data,
-            params.square_width,
-            params.frame_size,
-            red_type=params.red_type,
-            green_type=params.green_type,
-            blue_type=params.blue_type,
-            preprocess_fn=self.preprocess_fn,
-            reference_level=refs,
-            keep_edge=params.keep_edge,
-        )
-        if preprocessed is None:
-            return None, mass
-        prediction = self.classifier.predict(preprocessed)
-        return prediction, mass
-
-    def get_recent_frame(self):
+    def get_recent_frame(self, last_frame=None):
+        # save us having to lock if we dont have a different frame
+        if last_frame is not None and self.motion_detector.num_frames == last_frame:
+            return None, None, last_frame
+        last_frame = self.motion_detector.get_recent_frame()
         if self.clip:
-            last_frame = self.motion_detector.get_recent_frame()
             if last_frame is None:
                 return None
             track_meta = []
@@ -540,13 +597,16 @@ class PiClassifier(Processor):
                 if self.predictions:
                     pred = {self.predictions.model.id: self.predictions}
                 meta = track.get_metadata(pred)
-                meta["positions"] = meta["positions"][-1:]
+                last_pos = meta["positions"][-1].copy()
+                # if self.track_extractor.scale is not None:
+                # last_pos.rescale(1 / self.track_extractor.scale)
+                meta["positions"] = [last_pos]
                 track_meta.append(meta)
 
             return last_frame, track_meta, self.motion_detector.num_frames
         else:
             return (
-                self.motion_detector.get_recent_frame(),
+                last_frame,
                 {},
                 self.motion_detector.num_frames,
             )
@@ -554,6 +614,10 @@ class PiClassifier(Processor):
     def disconnected(self):
         self.motion_detector.disconnected()
         self.recorder.force_stop()
+        self.snapshot_recorder.force_stop()
+        if self.constant_recorder is not None:
+            self.constant_recorder.force_stop()
+
         self.end_clip()
         self.service.quit()
 
@@ -563,20 +627,45 @@ class PiClassifier(Processor):
         if self.clip:
             self.clip.current_frame += 1
 
-    def process_frame(self, lepton_frame):
+    def take_snapshot(self):
+        started = self.snapshot_recorder.start_recording(
+            None, [], self.motion_detector.temp_thresh, time.time()
+        )
+        if not started:
+            logging.info("Already taking snapshot recording")
+            return False
+        logging.info("Taking new snapshot recorder")
+        self.snapshot_recorder.write_until = 2 * self.headers.fps
+        return True
+
+    def process_frame(self, lepton_frame, received_at):
+        import time
+
         start = time.time()
         self.motion_detector.process_frame(lepton_frame)
         self.process_time += time.time() - start
-
+        if self.snapshot_recorder.recording:
+            self.snapshot_recorder.process_frame(False, lepton_frame, received_at)
+        if self.constant_recorder is not None and self.motion_detector.can_record():
+            if self.constant_recorder.recording:
+                self.constant_recorder.process_frame(True, lepton_frame, received_at)
+            else:
+                logging.info("Starting new constant recorder")
+                self.constant_recorder.start_recording(
+                    self.motion_detector.background,
+                    [],
+                    self.motion_detector.temp_thresh,
+                    time.time(),
+                )
         if not self.recorder.recording and self.motion_detector.movement_detected:
             s_r = time.time()
-            preview_frames = self.motion_detector.thermal_window.get_frames()[:-1]
-
+            preview_frames = self.motion_detector.preview_frames()
+            bak = self.motion_detector.background
             recording = self.recorder.start_recording(
                 self.motion_detector.background,
                 preview_frames,
                 self.motion_detector.temp_thresh,
-                lepton_frame.received_at,
+                received_at,
             )
             self.rec_time += time.time() - s_r
             if recording:
@@ -588,9 +677,7 @@ class PiClassifier(Processor):
 
         if self.recorder.recording:
             t_start = time.time()
-            self.track_extractor.process_frame(
-                self.clip, lepton_frame.pix, self.motion_detector.ffc_affected
-            )
+            self.track_extractor.process_frame(self.clip, lepton_frame)
             self.tracking_time += time.time() - t_start
             s_r = time.time()
             if self.tracking is not None:
@@ -616,27 +703,28 @@ class PiClassifier(Processor):
                     self.tracking = None
 
             self.recorder.process_frame(
-                self.motion_detector.movement_detected, lepton_frame
+                self.motion_detector.movement_detected, lepton_frame, received_at
             )
             self.rec_time += time.time() - s_r
             if self.classify:
-                if self.motion_detector.ffc_affected or self.clip.on_preview():
+                if self.motion_detector.calibrating or self.clip.on_preview():
                     self.skip_classifying = PiClassifier.SKIP_FRAMES
                     self.classified_consec = 0
                 elif (
                     self.classify
-                    and self.motion_detector.ffc_affected is False
+                    and self.motion_detector.calibrating is False
                     and self.clip.active_tracks
                     and self.skip_classifying <= 0
                     and not self.clip.on_preview()
                 ):
                     id_start = time.time()
-                    self.identify_last_frame()
-                    self.identify_time += time.time() - id_start
-                    self.classified_consec += 1
-                    if self.classified_consec == PiClassifier.MAX_CONSEC:
-                        self.skip_classifying = PiClassifier.SKIP_FRAMES
-                        self.classified_consec = 0
+                    identified = self.identify_last_frame()
+                    if identified:
+                        self.identify_time += time.time() - id_start
+                        self.classified_consec += 1
+                        if self.classified_consec == PiClassifier.MAX_CONSEC:
+                            self.skip_classifying = PiClassifier.SKIP_FRAMES
+                            self.classified_consec = 0
                 else:
                     self.classified_consec = 0
             elif self.tracking is None and self.tracking_events:
@@ -676,23 +764,22 @@ class PiClassifier(Processor):
             and self.frame_num % PiClassifier.DEBUG_EVERY == 0
         ):
             average = np.mean(self.fps_timer.get_frames())
-
+            mem = process_mem()
             logging.info(
-                "tracking {}% process {}%  identify {}% rec{}%s fps {}/sec  cpu % {} memory % {} behind by {} seconds".format(
-                    round(100 * self.tracking_time / self.total_time, 3),
-                    round(100 * self.process_time / self.total_time, 3),
-                    round(100 * self.identify_time / self.total_time, 3),
-                    round(100 * self.rec_time / self.total_time, 3),
-                    round(1 / average),
-                    psutil.cpu_percent(),
-                    psutil.virtual_memory()[2],
-                    time.time() - lepton_frame.received_at,
-                )
+                "tracking %s %% process %s %%  identify %s %% rec %s %% fps %s/sec process  system cpu %s process memory %s%% system memory %s behind by %s seconds",
+                round(100 * self.tracking_time / self.total_time, 3),
+                round(100 * self.process_time / self.total_time, 3),
+                round(100 * self.identify_time / self.total_time, 3),
+                round(100 * self.rec_time / self.total_time, 3),
+                round(1 / average),
+                psutil.cpu_percent(),
+                mem,
+                psutil.virtual_memory()[2],
+                time.time() - received_at,
             )
             self.tracking_time = 0
             self.process_time = 0
             self.identify_time = 0
-            self.motion_detector.rec_time = 0
             self.total_time = 0
             self.rec_time = 0
         self.fps_timer.add(time.time() - start)
@@ -710,14 +797,15 @@ class PiClassifier(Processor):
             if self.preview_type:
                 self.create_mp4()
             logging.debug(
-                "Ending clip with %s tracks pre filtering", len(self.clip.tracks)
+                "Ending clip with %s tracks post filtering", len(self.clip.tracks)
             )
             if self.classify:
-                for _, prediction in self.predictions.prediction_per_track.items():
+                for t_id, prediction in self.predictions.prediction_per_track.items():
                     if prediction.max_score:
                         logging.info(
-                            "Clip {} {}".format(
+                            "Clip {} {} {}".format(
                                 self.clip.get_id(),
+                                t_id,
                                 prediction.description(),
                             )
                         )
@@ -740,14 +828,38 @@ class PiClassifier(Processor):
         return self._output_dir
 
 
+def on_track_trapped(track):
+    track.trap_reported = True
+    # GP could make a prediction here
+
+    global predictions
+
+    tag = None
+    if predictions is not None:
+        pred = predictions.prediction_for(track.get_id())
+        if pred is not None:
+            tag = pred.predicted_tag()
+            track.trap_tag = tag
+    logging.warn("Trapped track %s with tag %s", track, tag)
+    trigger_trap(tag)
+
+
 def on_recording_stopping(filename):
     global clip, track_extractor, predictions
+
     if predictions is not None:
         for track_prediction in predictions.prediction_per_track.values():
             track_prediction.normalize_score()
 
     if clip and track_extractor:
         track_extractor.apply_track_filtering(clip)
+        # filter criteria has been scaled so resize after
+        # if track_extractor.scale is not None:
+        #     for track in clip.tracks:
+        #         for r in track.bounds_history:
+        #             # bring back to orignal size
+        #             r.rescale(1 / track_extractor.scale)
+
         meta_name = os.path.splitext(filename)[0] + ".txt"
         logging.debug("saving meta to %s", meta_name)
         predictions_per_model = None
@@ -764,3 +876,9 @@ def on_recording_stopping(filename):
 
         with open(meta_name, "w") as f:
             json.dump(meta_data, f, indent=4, cls=CustomJSONEncoder)
+
+
+def process_mem():
+    # return the memory usage in percentage like top
+    process = psutil.Process(os.getppid())
+    return process.memory_percent()

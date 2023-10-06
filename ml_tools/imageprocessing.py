@@ -180,7 +180,7 @@ def save_image_channels(data, filename):
 index = 0
 
 
-def theshold_saliency(image, otsus=False, threshold=100, kernel=(15, 15)):
+def detect_objects_ir(image, otsus=False, threshold=100, kernel=(15, 15)):
     image = np.uint8(image)
     # image = cv2.fastNlMeansDenoising(np.uint8(image), None)
 
@@ -193,15 +193,6 @@ def theshold_saliency(image, otsus=False, threshold=100, kernel=(15, 15)):
 
     _, image = cv2.threshold(image, threshold, 255, flags)
 
-    components, small_mask, stats, _ = cv2.connectedComponentsWithStats(image)
-    return components, small_mask, stats
-
-
-def detect_objects_ir(image, otsus=True, threshold=0, kernel=(15, 15)):
-    image = np.uint8(image)
-    image = cv2.Canny(image, 100, 200)
-    image = cv2.dilate(image, kernel, iterations=1)
-    image = cv2.morphologyEx(image, cv2.MORPH_CLOSE, kernel)
     components, small_mask, stats, _ = cv2.connectedComponentsWithStats(image)
     return components, small_mask, stats
 
@@ -266,3 +257,44 @@ def clear_frame(frame):
         return False
 
     return True
+
+
+def hist_diff(region, background, thermal, normalize_images=False):
+    track_back = region.subimage(background).copy()
+    track_thermal = region.subimage(thermal).copy()
+    if normalize_images:
+        track_back, _ = normalize(track_back, new_max=255)
+        track_thermal, _ = normalize(track_thermal, new_max=255)
+        track_back = np.float32(track_back)
+        track_thermal = np.float32(track_thermal)
+    h_bins = 60
+    # s_bins = 60
+    histSize = [h_bins]
+
+    hist_base = cv2.calcHist(
+        [track_back],
+        None,
+        None,
+        histSize,
+        [0, 255],
+        accumulate=False,
+    )
+    cv2.normalize(hist_base, hist_base, alpha=0, beta=1, norm_type=cv2.NORM_MINMAX)
+    hist_track = cv2.calcHist(
+        [track_thermal],
+        None,
+        None,
+        histSize,
+        [0, 255],
+        accumulate=False,
+    )
+
+    cv2.normalize(
+        hist_track,
+        hist_track,
+        alpha=0,
+        beta=1,
+        norm_type=cv2.NORM_MINMAX,
+    )
+    compared_v = cv2.compareHist(hist_track, hist_base, 0)
+    return compared_v

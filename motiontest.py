@@ -4,7 +4,7 @@ from cptv import CPTVReader
 
 from config.config import Config
 from ml_tools.logs import init_logging
-from piclassifier.motiondetector import MotionDetector
+from piclassifier.cptvmotiondetector import CPTVMotionDetector
 from config.thermalconfig import ThermalConfig
 from piclassifier.headerinfo import HeaderInfo
 
@@ -44,7 +44,7 @@ def main():
             firmware="",
         )
 
-        motion_detector = MotionDetector(
+        motion_detector = CPTVMotionDetector(
             thermal_config, config.tracking["thermal"].motion.dynamic_thresh, headers
         )
         for i, frame in enumerate(reader):

@@ -26,14 +26,20 @@ class Processor(ABC):
     def __init__(
         self,
     ):
-        self.service = SnapshotService(self.get_recent_frame, self.headers)
+        self.service = SnapshotService(
+            self.get_recent_frame, self.headers, self.take_snapshot
+        )
+
+    @abstractmethod
+    def take_snapshot(self):
+        ...
 
     @abstractmethod
     def process_frame(self, lepton_frame):
         ...
 
     @abstractmethod
-    def get_recent_frame(self):
+    def get_recent_frame(self, last_frame=None):
         ...
 
     @abstractmethod

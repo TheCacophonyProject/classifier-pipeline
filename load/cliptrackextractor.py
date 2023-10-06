@@ -30,7 +30,7 @@ from .clip import Clip
 from ml_tools.tools import Rectangle
 from track.region import Region
 from track.track import Track
-from piclassifier.motiondetector import is_affected_by_ffc
+from piclassifier.cptvmotiondetector import is_affected_by_ffc
 from ml_tools.imageprocessing import detect_objects, normalize
 from track.cliptracker import ClipTracker
 
@@ -125,7 +125,7 @@ class ClipTrackExtractor(ClipTracker):
             for frame in reader:
                 if not process_background and frame.background_frame:
                     continue
-                self.process_frame(clip, frame.pix, is_affected_by_ffc(frame))
+                self.process_frame(clip, frame)
 
         if not clip.from_metadata and self.do_tracking:
             self.apply_track_filtering(clip)
@@ -139,17 +139,22 @@ class ClipTrackExtractor(ClipTracker):
     def tracking_time(self):
         return self._tracking_time
 
-    def start_tracking(self, clip, frames):
+    def start_tracking(self, clip, frames, track_frames=True, **args):
         # no need to retrack all of preview
-        for frame in frames[-9:]:
-            self.process_frame(clip, frame.pix.copy())
+        do_tracking = self.do_tracking
+        self.do_tracking = self.do_tracking and track_frames
+        for frame in frames:
+            self.process_frame(clip, frame)
+        self.do_tracking = do_tracking
 
-    def process_frame(self, clip, thermal, ffc_affected=False):
+    def process_frame(self, clip, frame, **args):
         """
         Tracks objects through frame
         :param thermal: A numpy array of shape (height, width) and type uint16
         If specified background subtraction algorithm will be used.
         """
+        ffc_affected = is_affected_by_ffc(frame)
+        thermal = frame.pix.copy()
         if ffc_affected:
             self.print_if_verbose("{} ffc_affected".format(clip.current_frame))
         clip.ffc_affected = ffc_affected

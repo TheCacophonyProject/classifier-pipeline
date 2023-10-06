@@ -7,7 +7,7 @@ import numpy as np
 
 from track.track import Track
 from track.region import Region
-from ml_tools.imageprocessing import detect_objects, normalize
+from ml_tools.imageprocessing import detect_objects, normalize, hist_diff
 
 
 class ClipTracker(ABC):
@@ -19,8 +19,12 @@ class ClipTracker(ABC):
         calc_stats=True,
         verbose=False,
         do_tracking=True,
+        scale=None,
     ):
         config = config.get(self.type)
+        self.scale = scale
+        # if scale:
+        # config.rescale(scale)
         self.do_tracking = do_tracking
         self.verbose = verbose
         self.config = config
@@ -61,7 +65,7 @@ class ClipTracker(ABC):
 
     @property
     @abstractmethod
-    def start_tracking(self, clip, preview_frames):
+    def start_tracking(self, clip, preview_frames, track_frames=True):
         """start_tracking"""
         ...
 
@@ -126,7 +130,7 @@ class ClipTracker(ABC):
         scores.sort(key=lambda record: record[0])
         matched_tracks = set()
         blanked_tracks = set()
-
+        cur_frame = clip.frame_buffer.current_frame
         for score, track, region in scores:
             if (
                 track in matched_tracks
@@ -135,26 +139,45 @@ class ClipTracker(ABC):
             ):
                 continue
             logging.debug(
-                "matched %s with %s to track %s", clip.current_frame, region, track
+                "frame# %s matched %s to track %s", clip.current_frame, region, track
             )
             used_regions.add(region)
             unmatched_regions.remove(region)
-            if not self.config.filter_regions_pre_match and (
-                region.pixel_variance < self.config.aoi_pixel_variance
-                or region.mass < self.config.aoi_min_mass
-            ):
-                # this will force a blank frame to be added, rather than if we filter earlier
-                # and match this track to a different region
-                logging.debug(
-                    "%s filtering region %s because of variance %s and mass %s track %s",
-                    region.frame_number,
-                    region,
-                    region.pixel_variance,
-                    region.mass,
-                    track,
-                )
-                blanked_tracks.add(track)
-                continue
+            if not self.config.filter_regions_pre_match:
+                if self.config.min_hist_diff is not None:
+                    background = clip.background
+                    # if self.scale:
+                    #     background = clip.rescaled_background(
+                    #         (int(self.res_x), int(self.res_y))
+                    #     )
+                    hist_v = hist_diff(region, background, cur_frame.thermal)
+                    if hist_v > self.config.min_hist_diff:
+                        logging.warn(
+                            "%s filtering region %s because of hist diff %s track %s ",
+                            region.frame_number,
+                            region,
+                            hist_v,
+                            track,
+                        )
+
+                        blanked_tracks.add(track)
+                        continue
+                if (
+                    region.pixel_variance < self.config.aoi_pixel_variance
+                    or region.mass < self.config.aoi_min_mass
+                ):
+                    # this will force a blank frame to be added, rather than if we filter earlier
+                    # and match this track to a different region
+                    logging.debug(
+                        "%s filtering region %s because of variance %s and mass %s track %s",
+                        region.frame_number,
+                        region,
+                        region.pixel_variance,
+                        region.mass,
+                        track,
+                    )
+                    blanked_tracks.add(track)
+                    continue
             track.add_region(region)
             matched_tracks.add(track)
 
@@ -196,7 +219,7 @@ class ClipTracker(ABC):
             track.add_blank_frame()
             if track.tracking:
                 clip.active_tracks.add(track)
-                logging.info(
+                logging.debug(
                     "frame {} adding a blank frame to {} ".format(
                         clip.current_frame, track.get_id()
                     )
@@ -223,7 +246,6 @@ class ClipTracker(ABC):
         :param filtered: The filtered frame
         :return: regions of interest, mask frame
         """
-
         delta_thermal, delta_filtered = self.get_delta_frame(
             clip,
         )
@@ -252,6 +274,8 @@ class ClipTracker(ABC):
                 frame_number=clip.current_frame,
                 centroid=centroid,
             )
+            if self.scale:
+                region.rescale(1 / self.scale)
             # GP this needs to be checked for themals 29/06/2022
             if clip.type == "IR":
                 if delta_thermal is not None:
@@ -436,3 +460,177 @@ class ClipTracker(ABC):
     def print_if_verbose(self, info_string):
         if self.verbose:
             logging.info(info_string)
+
+
+class Background(ABC):
+    TRIGGER_FRAMES = 2
+
+    def __init__(self):
+        self.rescaled = None
+        self.prev_triggered = False
+        self.triggered = 0
+        self.movement_detected = False
+        self.kernel_trigger = np.ones(
+            (15, 15), "uint8"
+        )  # kernel for erosion when not recording
+        self.kernel_recording = np.ones(
+            (10, 10), "uint8"
+        )  # kernel for erosion when recording
+
+    @abstractmethod
+    def set_background(self, background, frames=1):
+        """set_background version"""
+        ...
+
+    @abstractmethod
+    def update_background(self, thermal, filtered):
+        """update_background version"""
+        ...
+
+    @abstractmethod
+    def compute_filtered(self, thermal, threshold):
+        """compute_filtered version"""
+        ...
+
+    @property
+    @abstractmethod
+    def background(self):
+        """Background image"""
+        ...
+
+    @property
+    @abstractmethod
+    def frames(self):
+        """frames used"""
+        ...
+
+    @property
+    def frames(self):
+        return self._frames
+
+    def get_kernel(self):
+        if self.movement_detected:
+            return self.kernel_recording
+        else:
+            return self.kernel_trigger
+
+    def detect_motion(self):
+        fg = self.compute_filtered(None)
+        erosion_image = cv2.erode(fg, self.get_kernel())
+        erosion_pixels = len(erosion_image[erosion_image > 0])
+
+        self.prev_triggered = erosion_pixels > 0
+        if erosion_pixels > 0:
+            self.triggered += 1
+            self.triggered = min(self.triggered, 2)
+        else:
+            self.triggered -= 1
+            self.triggered = max(self.triggered, 0)
+        self.movement_detected = self.triggered >= Background.TRIGGER_FRAMES
+        return self.movement_detected
+
+
+class CVBackground(Background):
+    def __init__(self, use_subsense=False):
+        super().__init__()
+        self.use_subsense = use_subsense
+        # knn doesnt respect learning rate, but maybe mog2 is better anyway
+        if use_subsense:
+            import pybgs as bgs
+
+            self.algorithm = bgs.SuBSENSE()
+        else:
+            self.algorithm = cv2.createBackgroundSubtractorMOG2(
+                history=1000, detectShadows=False
+            )
+            # print(self.algorithm.getBackgroundRatio(), "RATION")
+            # 1 / 0
+        # self.algorithm = cv2.createBackgroundSubtractorKNN(
+        #     history=1000, detectShadows=False
+        # )
+        self._frames = 0
+        self._background = None
+
+    def set_background(self, background, frames=1):
+        # seems to be better to do x times rather than just set background
+        if self.use_subsense:
+            for _ in range(10):
+                # doesnt have a learning rate
+                self.update_background(background, learning_rate=1)
+        else:
+            self.update_background(background, learning_rate=1)
+
+            # return
+
+    def update_background(self, thermal, filtered=None, learning_rate=-1):
+        if self.use_subsense:
+            self._background = self.algorithm.apply(thermal)
+        else:
+            self._background = self.algorithm.apply(thermal, None, learning_rate)
+
+        self._frames += 1
+
+    @property
+    def background(self):
+        if self.use_subsense:
+            return self.algorithm.getBackgroundModel()
+        else:
+            return self.algorithm.getBackgroundImage()
+
+    def compute_filtered(self, thermal):
+        return self._background
+
+
+class DiffBackground(Background):
+    def __init__(self, background_thresh):
+        super().__init__()
+        self._frames = 1
+        self._background = None
+        self.background_thresh = background_thresh
+
+    def set_background(self, background, frames=1):
+        self._frames = frames
+        self._background = np.float32(background) * self.frames
+        return
+
+    def update_background(self, thermal):
+        background = self.background
+        filtered = get_diff_back_filtered(
+            self.background,
+            thermal,
+            self.background_thresh,
+        )
+        new_thermal = np.where(filtered > 0, background, thermal)
+        self._background += new_thermal
+        self._frames += 1
+
+    def compute_filtered(self, thermal=None):
+        filtered = get_diff_back_filtered(
+            self.background,
+            thermal,
+            self.background_thresh,
+        )
+        return filtered
+
+    @property
+    def background(self):
+        return self._background / self.frames
+
+    @property
+    def frames(self):
+        return self._frames
+
+
+def get_diff_back_filtered(background, frame, back_thresh):
+    """
+    Calculates filtered frame from thermal
+    :param frame: the frame
+    :param background: (optional) used for background subtraction
+    :return: uint8 filtered frame and adjusted clip threshold for normalized frame
+    """
+
+    filtered = np.float32(frame.copy())
+    filtered = abs(filtered - background)
+    filtered[filtered < back_thresh] = 0
+    filtered, stats = normalize(filtered, new_max=255)
+    return filtered

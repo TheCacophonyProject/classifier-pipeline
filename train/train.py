@@ -61,7 +61,8 @@ def train_model(
             epochs=conf.train.epochs,
             run_name=run_name + "_" + "TEST",
             weights=weights,
-            resample=True,
+            resample=False,
+            rebalance=True,
         )
     except KeyboardInterrupt:
         pass

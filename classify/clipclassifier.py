@@ -19,13 +19,6 @@ from track.track import Track
 
 from cptv import CPTVReader
 from datetime import datetime
-from ml_tools.imageprocessing import (
-    detect_objects,
-    normalize,
-    detect_objects_ir,
-    theshold_saliency,
-)
-
 from ml_tools.forestmodel import ForestModel
 
 

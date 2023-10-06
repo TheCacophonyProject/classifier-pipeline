@@ -70,7 +70,7 @@ class CameraMotionConfig:
     edge_pixels = attr.ib()
     warmer_only = attr.ib()
     dynamic_thresh = attr.ib()
-    run_classifier = attr.ib(default=True)
+    run_classifier = attr.ib(default=False)
     bluetooth_beacons = attr.ib(default=False)
     tracking_events = attr.ib(default=False)
 
@@ -79,7 +79,7 @@ class CameraMotionConfig:
         if model == "lepton3.5":
             return cls(
                 temp_thresh=28000,
-                delta_thresh=200,
+                delta_thresh=150,
                 count_thresh=3,
                 frame_compare_gap=45,
                 one_diff_only=True,
@@ -136,20 +136,38 @@ class RecorderConfig:
     rec_window = attr.ib()
     output_dir = attr.ib()
     disable_recordings = attr.ib()
+    min_disk_space = attr.ib()
+    constant_recorder = attr.ib()
 
     @classmethod
     def load(cls, recorder, window):
         return cls(
-            disable_recordings=recorder.get("disable_recordings", False),
-            min_secs=recorder.get("min-secs", 10),
+            constant_recorder=recorder.get("constant-recorder", False),
+            min_disk_space=recorder.get("min-disk-space-mb", 200),
+            disable_recordings=recorder.get("disable-recordings", False),
+            min_secs=recorder.get("min-secs", 5),
             max_secs=recorder.get("max-secs", 600),
             preview_secs=recorder.get("preview-secs", 5),
             rec_window=TimeWindow(
                 RelAbsTime(window.get("start-recording"), default_offset=30 * 60),
                 RelAbsTime(window.get("stop-recording"), default_offset=30 * 60),
             ),
-            output_dir=recorder.get("output-dir", "."),
+            output_dir=recorder.get("output-dir", "/var/spool/cptv"),
         )
+
+
+@attr.s
+class DeviceSetup:
+    ir = attr.ib(default=False)
+    trap_size = attr.ib(default=None)
+    # S or L for small or large
+
+    @classmethod
+    def load(cls, device):
+        size = device.get("trap-size", "L")
+        if size is not None:
+            size = size.upper()
+        return cls(ir=device.get("ir", False), trap_size=size)
 
 
 @attr.s
@@ -159,7 +177,10 @@ class DeviceConfig:
 
     @classmethod
     def load(cls, device):
-        return cls(name=device.get("name"), device_id=device.get("id"))
+        return cls(
+            name=device.get("name"),
+            device_id=device.get("id"),
+        )
 
 
 @attr.s
@@ -169,6 +190,7 @@ class ThermalConfig:
     device = attr.ib()
     location = attr.ib()
     throttler = attr.ib()
+    device_setup = attr.ib()
 
     @classmethod
     def load_from_file(cls, filename=None, model=None):
@@ -189,6 +211,7 @@ class ThermalConfig:
                 raw.get("thermal-recorder", {}), raw.get("windows", {})
             ),
             device=DeviceConfig.load(raw.get("device", {})),
+            device_setup=DeviceSetup.load(raw.get("device-setup", {})),
             location=LocationConfig.load(raw.get("location", {})),
         )
 

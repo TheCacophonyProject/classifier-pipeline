@@ -144,14 +144,13 @@ class TrackDatabase:
         :param tracker: if provided stats from tracker are used for the clip stats
         :param overwrite: Overwrites existing clip (if it exists).
         """
-        logging.info("creating clip {}".format(clip.get_id()))
+        logging.info("creating clip %s", clip.get_id())
         clip_id = str(clip.get_id())
         with HDF5Manager(self.database, "a") as f:
             clips = f["clips"]
             if overwrite and clip_id in clips:
                 del clips[clip_id]
             group = clips.create_group(clip_id)
-
             if clip is not None:
                 if clip.background is not None:
                     height, width = clip.background.shape
@@ -768,7 +767,6 @@ class TrackDatabase:
                     frame_node = cropped_frame.create_dataset(
                         str(frame_i), dims, chunks=chunks, **opts, dtype=np.int16
                     )
-
                     frame_node[:, :, :] = cropped_array
                 else:
                     skipped_frames.append(frame_i + track.start_frame)

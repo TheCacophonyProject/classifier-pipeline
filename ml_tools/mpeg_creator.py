@@ -1,6 +1,7 @@
 import locale
 import os
 import subprocess
+import logging
 
 
 class MPEGCreator:
@@ -18,23 +19,36 @@ class MPEGCreator:
     The output from ffmpeg is available via the `output` property.
     """
 
-    def __init__(self, filename, quality=21):
+    def __init__(
+        self,
+        filename,
+        quality=21,
+        fps=9,
+        codec="libx264",
+        bitrate="400K",
+        pix_fmt="bgr24",
+    ):
         self.filename = filename
         self.quality = quality
         self._ffmpeg = None
         self._output = []
+        self.fps = fps
+        self.codec = codec
+        self.bitrate = bitrate
+        self.pix_fmt = pix_fmt
 
-    def next_frame(self, frame):
+    def next_frame(self, frame, shape=None):
         if self._ffmpeg is None:
-            height, width, _ = frame.shape
+            if shape is None:
+                height, width, _ = frame.shape
+            else:
+                height, width, _ = shape
             self._ffmpeg = self._start(width, height)
-
         self._ffmpeg.stdin.write(frame.tobytes())
 
     def close(self):
         if not self._ffmpeg:
             return
-
         self._ffmpeg.stdin.close()
 
         return_code = self._ffmpeg.wait(timeout=60)
@@ -52,7 +66,8 @@ class MPEGCreator:
         return (b"".join(self._output)).decode(encoding)
 
     def _start(self, width, height):
-        command = get_ffmpeg_command(self.filename, width, height, self.quality)
+        command = self.get_ffmpeg_command(width, height)
+        logging.debug("command is %s", " ".join(command))
         proc = subprocess.Popen(
             command,
             stdin=subprocess.PIPE,
@@ -67,41 +82,36 @@ class MPEGCreator:
         if buf:
             self._output.append(buf)
 
+    def get_ffmpeg_command(self, width, height, quality=18):
+        if os.name == "nt":
+            FFMPEG_BIN = "ffmpeg.exe"  # on Windows
+        else:
+            FFMPEG_BIN = "ffmpeg"  # on Linux ans Mac OS
 
-def get_ffmpeg_command(filename, width, height, quality=18):
-    if os.name == "nt":
-        FFMPEG_BIN = "ffmpeg.exe"  # on Windows
-    else:
-        FFMPEG_BIN = "ffmpeg"  # on Linux ans Mac OS
-
-    command = [
-        FFMPEG_BIN,
-        "-y",  # overwrite output file if it exists
-        "-f",
-        "rawvideo",
-        "-vcodec",
-        "rawvideo",
-        "-loglevel",
-        "warning",  # minimal output
-        "-s",
-        str(width) + "x" + str(height),  # size of one frame
-        "-pix_fmt",
-        "rgb24",
-        "-r",
-        "9",  # frames per second
-        "-i",
-        "-",  # The imput comes from a pipe
-        "-an",  # Tells FFMPEG not to expect any audio
-        "-vcodec",
-        "libx264",
-        "-tune",
-        "grain",  # good for keepinn the grain in our videos
-        "-crf",
-        str(quality),  # quality, lower is better
-        "-pix_fmt",
-        "yuv420p",  # window thumbnails require yuv420p for some reason
-        "-preset",
-        "veryfast",
-        filename,
-    ]
-    return command
+        command = [
+            FFMPEG_BIN,
+            "-y",  # overwrite output file if it exists
+            "-f",
+            "rawvideo",
+            "-vcodec",
+            "rawvideo",
+            "-loglevel",
+            "warning",  # minimal output
+            "-s",
+            str(width) + "x" + str(height),  # size of one frame
+            "-pix_fmt",
+            self.pix_fmt,
+            "-r",
+            str(self.fps),  # frames per second
+            "-i",
+            "-",  # The imput comes from a pipe
+            "-an",  # Tells FFMPEG not to expect any audio
+            "-c:v",
+            self.codec,
+            "-b:v",
+            "1000k",
+            "-preset",
+            "veryfast",
+            str(self.filename),
+        ]
+        return command

@@ -30,7 +30,7 @@ from ml_tools.tools import Rectangle
 from track.framebuffer import FrameBuffer
 from track.track import Track
 from track.region import Region
-from piclassifier.motiondetector import is_affected_by_ffc
+from piclassifier.cptvmotiondetector import is_affected_by_ffc
 
 RES_X = 160
 RES_Y = 120
@@ -53,6 +53,7 @@ class Clip:
         calc_stats=True,
         model=None,
         type="thermal",
+        fps=FRAMES_PER_SECOND,
     ):
         self._id = Clip.CLIP_ID
         Clip.CLIP_ID += 1
@@ -76,7 +77,7 @@ class Clip:
         self.res_y = None
         self.background_frames = 0
         self.config = trackconfig
-        self.frames_per_second = Clip.FRAMES_PER_SECOND
+        self.frames_per_second = fps
 
         self.calc_stats = calc_stats
         self.source_file = sourcefile
@@ -94,6 +95,21 @@ class Clip:
         if background is not None:
             self._background = background
             self._background_calculated()
+
+        self.rescaled = None
+
+    def rescaled_background(self, dims):
+        if self.rescaled is not None:
+            if self.rescaled[0] == self.current_frame:
+                logging.info("Loading from cache")
+                # 1 / 0
+                return self.rescaled[1]
+        resized = cv2.resize(
+            self.background,
+            (dims),
+        )
+        self.rescaled = (self.current_frame, resized)
+        return resized
 
     @property
     def background(self):
@@ -116,8 +132,9 @@ class Clip:
         self.track_max_delta = threshold.track_max_delta
 
     def _background_calculated(self):
-        self.stats.mean_background_value = np.average(self._background)
-        self.set_temp_thresh()
+        if self.type != "IR" or self.calc_stats:
+            self.stats.mean_background_value = np.average(self._background)
+            self.set_temp_thresh()
         self.background_calculated = True
 
     def on_preview(self):
@@ -464,7 +481,8 @@ class ClipStats:
         self.frame_stats_max.append(f_max)
         self.frame_stats_median.append(f_median)
         self.frame_stats_mean.append(f_mean)
-        self.filtered_sum += np.sum(np.abs(filtered))
+        if filtered is not None:
+            self.filtered_sum += np.sum(np.abs(filtered))
 
     def completed(self, num_frames, height, width):
         if num_frames == 0:

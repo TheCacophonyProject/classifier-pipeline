@@ -118,35 +118,100 @@ def normalize(features):
 class ForestModel(Interpreter):
     TYPE = "RandomForest"
 
-    def __init__(self, model_file):
-        super().__init__(model_file)
+    def __init__(self, model_file, data_type=None):
+        super().__init__(model_file, data_type)
+        model_file = Path(model_file)
         self.model = joblib.load(model_file)
         self.buffer_length = 5
         self.features_used = self.params.get("features_used")
 
-    def classify_track(self, clip, track, segment_frames=None):
+    def classify_track(self, clip, track, last_x_frames=None, segment_frames=None):
         track_prediction = TrackPrediction(track.get_id(), self.labels)
-
-        x = process_track(clip, track)
-        if self.features_used is not None:
-            f_mask = feature_mask(self.features_used)
-            x = np.take(x, f_mask)
-        if x is None:
-            logging.warning("Random forest could not classify track")
-            return None
-        x = x[np.newaxis, :]
-        predictions = self.model.predict_proba(x)
+        predictions, mass = self.predict_track(clip, track, last_x_frames=last_x_frames)
         track_prediction.classified_clip(predictions, predictions * 100, [-1])
         return track_prediction
 
     def shape(self):
-        return (1, 52)
+        return (1, 188)
+
+    def preprocess(self):
+        return
+
+    def predict(self, x):
+        return self.model.predict_proba(x)
+
+    def predict_track(self, clip, track, **args):
+        last_x_frames = args.get(
+            "last_x_frames",
+        )
+        scale = args.get("scale")
+        x = process_track(clip, track, last_x_frames, scale=scale)
+
+        if x is None:
+            logging.warning("Random forest could not classify track")
+            return None, None
+        if self.features_used is not None and len(self.features_used) > 0:
+            f_mask = feature_mask(self.features_used)
+            x = np.take(x, f_mask)
+
+        x = x[np.newaxis, :]
+        predictions = self.model.predict_proba(x)
+        # print("predictions", predictions.shape)
+        return predictions, [1]
 
 
-def process_track(
-    clip,
-    track,
+def process_track(clip, track, last_x_frames=None, buf_len=5, scale=None):
+    background = clip.background
+    all_frames = None
+    frame_temp_median = {}
+    if last_x_frames is None:
+        bounds = track.bounds_history
+    else:
+        bounds = track.bounds_history[-last_x_frames:]
+        all_frames = clip.frame_buffer.get_last_x(len(bounds))
+
+    logging.debug(
+        "taking %s from %s with scale %s", len(bounds), len(track.bounds_history), scale
+    )
+    frames = []
+    # bounds = bounds[:50]
+    data_bounds = np.empty_like(bounds)
+    for i, r in enumerate(bounds):
+        # if scale is not None and scale != 1:
+        #     r = r.copy()
+        #     r.rescale(1 / scale)
+        #     data_bounds[i] = r
+        # else:
+        data_bounds[i] = bounds[i]
+        if all_frames is None:
+            frame = clip.frame_buffer.get_frame(r.frame_number)
+        else:
+            frame = all_frames[i]
+        thermal = frame.thermal
+        frames.append(thermal)
+        frame_temp_median[r.frame_number] = np.median(frame.thermal)
+        assert frame.frame_number == r.frame_number
+    if scale is not None and scale != 1:
+        resize = 1 / scale
+        background = clip.rescaled_background(
+            (int(background.shape[1] * resize), int(background.shape[0] * resize))
+        )
+    else:
+        backgorund = clip.background
+    x = forest_features(
+        frames, background, frame_temp_median, data_bounds, cropped=False
+    )
+    return x
+
+
+def forest_features(
+    track_frames,
+    background,
+    frame_temp_median,
+    regions,
     buf_len=5,
+    cropped=True,
+    normalize=False,
 ):
     background = clip.background
     frames = []
@@ -156,12 +221,23 @@ def process_track(
         frames.append(frame)
         frame_temp_median[r.frame_number] = np.median(frame.thermal)
     return forest_features(
-        frames, background, frame_temp_median, track.bounds_history, cropped=False
+        frames,
+        background,
+        frame_temp_median,
+        track.bounds_history,
+        cropped=False,
+        normalize=normalize,
     )
 
 
 def forest_features(
-    track_frames, background, frame_temp_median, regions, buf_len=5, cropped=True
+    track_frames,
+    background,
+    frame_temp_median,
+    regions,
+    buf_len=5,
+    cropped=True,
+    normalize=False,
 ):
     frame_features = []
     avg_features = None
@@ -170,6 +246,7 @@ def forest_features(
     all_features = []
     f_count = 0
     prev_count = 0
+    back_med = np.median(background)
     if len(track_frames) <= buf_len:
         return None
 
@@ -181,7 +258,7 @@ def forest_features(
         frame.float_arrays()
         feature = FrameFeatures(region)
         sub_back = region.subimage(background)
-        feature.calc_histogram(sub_back, frame.thermal)
+        feature.calc_histogram(sub_back, frame.thermal, normalize=normalize)
         t_median = frame_temp_median[frame.frame_number]
         if cropped:
             cropped_frame = frame
@@ -190,7 +267,7 @@ def forest_features(
         thermal = cropped_frame.thermal
         f_count += 1
 
-        thermal = thermal + np.median(background) - t_median
+        thermal = thermal + back_med - t_median
         filtered = thermal - sub_back
 
         feature.calculate(thermal, sub_back)
@@ -216,14 +293,16 @@ def forest_features(
             avg_features = features.copy()
         else:
             maximum_features = np.maximum(features, maximum_features)
-            for i, (new, min_f) in enumerate(zip(features, minimum_features)):
-                if min_f == 0:
-                    minimum_features[i] = new
-                elif new != 0 and new < min_f:
-                    minimum_features[i] = new
+            non_zero = features != 0
+            current_zero = minimum_features == 0
+            minimum_features[current_zero] = features[current_zero]
+            minimum_features[non_zero] = np.minimum(
+                minimum_features[non_zero], features[non_zero]
+            )
             # Aggregate
             avg_features += features
-
+    if f_count <= buf_len:
+        return None
     # Compute statistics for all tracks that have the min required duration
     valid_counter = 0
     N = f_count - np.array(
@@ -487,16 +566,17 @@ class FrameFeatures:
             ]
         )
 
-    def calc_histogram(self, sub_back, crop_t):
-        max_v = np.amax(sub_back)
-        min_v = np.amin(sub_back)
-        sub_back = (np.float32(sub_back) - min_v) / (max_v - min_v)
-        max_v = np.amax(crop_t)
-        min_v = np.amin(crop_t)
-        crop_t = (np.float32(crop_t) - min_v) / (max_v - min_v)
+    def calc_histogram(self, sub_back, crop_t, normalize=False):
+        if normalize:
+            max_v = np.amax(sub_back)
+            min_v = np.amin(sub_back)
+            sub_back = (np.float32(sub_back) - min_v) / (max_v - min_v)
+            max_v = np.amax(crop_t)
+            min_v = np.amin(crop_t)
+            crop_t = (np.float32(crop_t) - min_v) / (max_v - min_v)
 
-        sub_back *= 255
-        crop_t *= 255
+            sub_back *= 255
+            crop_t *= 255
 
         # sub_back = np.uint8(sub_back)
         # crop_t = np.uint8(crop_t)

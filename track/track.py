@@ -24,7 +24,7 @@ from collections import namedtuple
 from ml_tools.tools import Rectangle
 from track.region import Region
 from kalman.kalman import Kalman
-from ml_tools.tools import eucl_distance
+from ml_tools.tools import eucl_distance_sq
 from ml_tools.datasetstructures import get_segments, SegmentHeader, SegmentType
 import cv2
 import logging
@@ -65,6 +65,7 @@ class RegionTracker(Tracker):
 
     def __init__(self, id, tracking_config, crop_rectangle=None):
         self.track_id = id
+        self.clear_run = 0
         self.kalman_tracker = Kalman()
         self._frames_since_target_seen = 0
         self.frames = 0
@@ -146,12 +147,12 @@ class RegionTracker(Tracker):
                 max_distances = max_distances[:1]
 
             if max_mass_change and abs(avg_mass - region.mass) > max_mass_change:
-                logging.info(
-                    "track {} region mass {} deviates too much from {}".format(
-                        track.get_id(),
-                        region.mass,
-                        avg_mass,
-                    )
+                logging.debug(
+                    "track %s region mass %s deviates too much from %s for region %s",
+                    track.get_id(),
+                    region.mass,
+                    avg_mass,
+                    region,
                 )
                 continue
             skip = False
@@ -159,10 +160,12 @@ class RegionTracker(Tracker):
                 if max_distance is None:
                     continue
                 if distance > max_distance:
-                    logging.info(
-                        "track {} distance score {} bigger than max distance {}".format(
-                            track.get_id(), distance, max_distance
-                        )
+                    logging.debug(
+                        "track %s distance score %s bigger than max distance %s for region %s",
+                        track.get_id(),
+                        distance,
+                        max_distance,
+                        region,
                     )
                     skip = True
                     break
@@ -171,10 +174,12 @@ class RegionTracker(Tracker):
                 continue
 
             if size_change > max_size_change:
-                logging.info(
-                    "track {} size_change {} bigger than max size_change {}".format(
-                        track.get_id(), size_change, max_size_change
-                    )
+                logging.debug(
+                    "track % size_change %s bigger than max size_change %s for region %s",
+                    track.get_id(),
+                    size_change,
+                    max_size_change,
+                    region,
                 )
                 continue
             # only for thermal
@@ -193,12 +198,14 @@ class RegionTracker(Tracker):
             self._blank_frames += 1
             self._frames_since_target_seen += 1
             stop_tracking = min(
-                2 * (self.frames - self.blank_frames),
+                2 * (self.frames - self._frames_since_target_seen),
                 self.max_blanks,
             )
             self._tracking = self._frames_since_target_seen < stop_tracking
-
         else:
+            if self._frames_since_target_seen != 0:
+                self.clear_run = 0
+            self.clear_run += 1
             self._tracking = True
             self.kalman_tracker.correct(region)
             self._frames_since_target_seen = 0
@@ -304,7 +311,6 @@ def get_max_size_change(track, region):
     if len(track) < 5:
         # may increase at first
         region_percent = 2
-    logging.info("Track %s entering %s exiting %s", track, entering, exiting)
     vel = np.sum(np.abs(track.velocity))
     if entering or exiting:
         region_percent = 2
@@ -340,7 +346,11 @@ class Track:
         Creates a new Track.
         :param id: id number for track, if not specified is provided by an auto-incrementer
         """
-
+        self.in_trap = False
+        self.trap_reported = False
+        self.trigger_frame = None
+        self.direction = 0
+        self.trap_tag = None
         if not id:
             self._id = Track._track_id
             Track._track_id += 1
@@ -348,7 +358,6 @@ class Track:
             self._id = id
         self.clip_id = clip_id
         self.start_frame = None
-        self.end_frame = None
         self.start_s = None
         self.end_s = None
         self.fps = fps
@@ -543,7 +552,7 @@ class Track:
                         raise Exception("No frame number info for track")
             if self.start_frame is None:
                 self.start_frame = region.frame_number
-            self.end_frame = region.frame_number
+            # self.end_frame = region.frame_number
             self.bounds_history.append(region)
             self.frame_list.append(region.frame_number)
         self.current_frame_num = 0
@@ -573,7 +582,7 @@ class Track:
                 self.add_blank_frame()
         self.tracker.add_region(region)
         self.bounds_history.append(region)
-        self.end_frame = region.frame_number
+        # self.end_frame = region.frame_number
         self.prev_frame_num = region.frame_number
         self.update_velocity()
 
@@ -687,7 +696,7 @@ class Track:
             if region.has_moved(self.bounds_history[i - 1]) or region.is_along_border:
                 distance = (vx**2 + vy**2) ** 0.5
                 movement += distance
-                offset = eucl_distance(first_point, region.mid)
+                offset = eucl_distance_sq(first_point, region.mid)
                 max_offset = max(max_offset, offset)
                 frames_moved += 1
         avg_vel = avg_vel / len(mass_history)
@@ -799,7 +808,7 @@ class Track:
         filter_mass = 0.005 * median_mass
         filter_mass = max(filter_mass, 2)
         start = 0
-        logging.info(
+        logging.debug(
             "Triming track with median % and filter mass %s", median_mass, filter_mass
         )
         while start < len(self) and mass_history[start] <= filter_mass:
@@ -866,6 +875,21 @@ class Track:
     def predicted_velocity(self):
         return self.tracker.predicted_velocity()
 
+    def update_trapped_state(self):
+        if self.in_trap:
+            return self.in_trap
+        min_frames = 2
+        if len(self.bounds_history) < min_frames:
+            return False
+        self.in_trap = all(r.in_trap for r in self.bounds_history[-min_frames:])
+        return self.in_trap
+
+    @property
+    def end_frame(self):
+        if len(self.bounds_history) == 0:
+            return 0
+        return self.bounds_history[-1].frame_number
+
     @property
     def nonblank_frames(self):
         return self.end_frame + 1 - self.start_frame - self.blank_frames
@@ -903,6 +927,11 @@ class Track:
         start_s, end_s = self.start_and_end_in_secs()
 
         track_info["id"] = self.get_id()
+        if self.in_trap:
+            track_info["trap_triggered"] = self.in_trap
+            track_info["trigger_frame"] = self.trigger_frame
+            if self.trap_tag is not None:
+                track_info["trap_tag"] = self.trap_tag
         track_info["tracker_version"] = self.tracker_version
         track_info["start_s"] = round(start_s, 2)
         track_info["end_s"] = round(end_s, 2)

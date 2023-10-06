@@ -4,10 +4,9 @@ from ml_tools import tools
 from ml_tools.frame import TrackChannels
 import logging
 from ml_tools import imageprocessing
-import enum
-import tensorflow as tf
 from track.region import Region
 import cv2
+from ml_tools.tools import FrameTypes
 
 # size to scale each frame to when loaded.
 
@@ -18,7 +17,16 @@ res_x = 120
 res_y = 160
 
 
+# this is from tf source code same as preprocess_input
+def preprocess_fn(x):
+    x /= 127.5
+    x -= 1.0
+    return x
+
+
 def convert(image):
+    import tensorflow as tf
+
     image = tf.image.convert_image_dtype(image, tf.float32)
     return image
 
@@ -32,6 +40,8 @@ def augement_frame(frame, frame_size, dim):
     )
 
     image = convert(frame)
+    import tensorflow as tf
+
     image = tf.image.random_crop(image, size=[dim[0], dim[1], 3])
     if random.random() > 0.50:
         image = tf.image.flip_left_right(image)
@@ -41,20 +51,6 @@ def augement_frame(frame, frame_size, dim):
     image = tf.minimum(image, 1.0)
     image = tf.maximum(image, 0.0)
     return image.numpy()
-
-
-class FrameTypes(enum.Enum):
-    """Types of frames"""
-
-    thermal_tiled = 0
-    filtered_tiled = 1
-    flow_tiled = 2
-    overlay = 3
-    flow_rgb = 4
-
-    @staticmethod
-    def is_valid(name):
-        return name in FrameTypes.__members__.keys()
 
 
 def preprocess_segment(
@@ -209,7 +205,6 @@ def preprocess_ir(
         crop_rectangle = tools.Rectangle(
             0, 0, frame.thermal.shape[1], frame.thermal.shape[0]
         )
-        # region.enlarge(20, max=crop_rectangle)
         frame.crop_by_region(region, out=frame)
     frame.normalize()
     image = np.stack((frame.thermal, frame.thermal, frame.thermal), axis=2)
@@ -221,7 +216,7 @@ def preprocess_ir(
         None,
         True,
     )
-    # tools.saveclassify_rgb(np.uint8(image), f"samples/{count}")
+
     if preprocess_fn:
         image = preprocess_fn(image)
     return image
@@ -303,6 +298,7 @@ def preprocess_movement(
     #     data * 255,
     #     f"samples/{index}",
     # )
+
     if preprocess_fn:
         data = data * 255
         data = preprocess_fn(data)

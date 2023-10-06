@@ -68,22 +68,26 @@ def get_track_thumb_stats(clip, track):
         if region.blank or region.mass == 0:
             continue
         frame = clip.frame_buffer.get_frame(region.frame_number)
+        if frame is None:
+            continue
+        contour_image = frame.filtered if frame.mask is None else frame.mask
         contours, _ = cv2.findContours(
-            np.uint8(region.subimage(frame.mask)),
+            np.uint8(region.subimage(contour_image)),
             cv2.RETR_EXTERNAL,
             # cv2.CHAIN_APPROX_SIMPLE,
             cv2.CHAIN_APPROX_TC89_L1,
         )
         if len(contours) == 0:
             # shouldnt happen
-            contour_points.append(0)
+            # contour_points.append(0)
+            continue
         else:
             points = len(contours[0])
             if points > max_contour:
                 max_contour = points
 
         # get mask of all pixels that are considered an animal
-        filtered_sub = region.subimage(frame.mask)
+        filtered_sub = region.subimage(contour_image)
         sub_mask = filtered_sub > 0
 
         # get the thermal values for this mask
@@ -137,7 +141,7 @@ def score(stat, max_mass, max_median_diff, min_median_diff, max_contour):
     pts = stat.contours / max_contour
     pts = pts * 50
 
-    centroid_mid = tools.eucl_distance(region.centroid, region.mid) ** 0.5
+    centroid_mid = tools.eucl_distance_sq(region.centroid, region.mid) ** 0.5
     centroid_mid *= 2
     # this will be probably between 1-10 could be worth * 1.5
     # median diff out of 50
@@ -186,7 +190,7 @@ def display_track(h_data, id):
                 or region.bottom >= 119
                 or region.right >= 159
             )
-            centroid_mid = tools.eucl_distance(region.centroid, region.mid) ** 0.5
+            centroid_mid = tools.eucl_distance_sq(region.centroid, region.mid) ** 0.5
             title = f"#{region.frame_number} - centroid {round(centroid_mid)} - {is_along_border}\n"
             title += f" cts {stat.contours}"
             title += f" mass {region.mass}"

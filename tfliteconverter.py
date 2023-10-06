@@ -47,6 +47,9 @@ def convert_model(args):
         #     tf.lite.OpsSet.TFLITE_BUILTINS,  # enable TensorFlow Lite ops.
         #     tf.lite.OpsSet.SELECT_TF_OPS,  # enable TensorFlow ops.
         # ]
+        # 8 bit ingeter
+        converter.optimizations = [tf.lite.Optimize.DEFAULT]
+
         tflite_model = converter.convert()
         print("saving model to ", lite_dir / args.tflite_name)
         lite_dir.mkdir(parents=True, exist_ok=True)

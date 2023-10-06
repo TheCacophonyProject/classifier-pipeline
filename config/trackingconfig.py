@@ -61,6 +61,7 @@ class TrackingConfig(DefaultConfig):
     areas_of_interest = attr.ib()
     # filter regions out by mass and variance before matching to a track
     filter_regions_pre_match = attr.ib()
+    min_hist_diff = attr.ib()
 
     @classmethod
     def load(cls, tracking):
@@ -111,6 +112,7 @@ class TrackingConfig(DefaultConfig):
             areas_of_interest=tracking["areas_of_interest"],
             max_mass_std_percent=tracking["max_mass_std_percent"],
             filter_regions_pre_match=tracking["filter_regions_pre_match"],
+            min_hist_diff=tracking["min_hist_diff"],
         )
 
     @classmethod
@@ -173,13 +175,17 @@ class TrackingConfig(DefaultConfig):
                 "base_velocity": 2,
             },
             filter_regions_pre_match=True,
+            min_hist_diff=None,
         )
         if type == "IR":
+            # default_tracking.min_hist_diff = 0.95
+            default_tracking.filters["min_duration_secs"] = 0
+            default_tracking.min_duration_secs = 0
             default_tracking.filter_regions_pre_match = False
             default_tracking.areas_of_interest["pixel_variance"] = 0
             default_tracking.areas_of_interest["min_mass"] = 0
-            default_tracking.filters["track_min_offset"] = 16
-            default_tracking.track_min_offset = 16
+            default_tracking.filters["track_min_offset"] = 7
+            default_tracking.track_min_offset = 20
             default_tracking.min_dimension = 10
             default_tracking.min_tracks = None
             default_tracking.frame_padding = 10
@@ -213,6 +219,22 @@ class TrackingConfig(DefaultConfig):
 
     def as_dict(self):
         return attr.asdict(self)
+
+    def rescale(self, scale):
+        # adjust numbers if we rescale frame sizes
+        self.frame_padding = int(scale * self.frame_padding)
+        self.min_dimension = int(scale * self.min_dimension)
+        if self.params["base_distance_change"]:
+            self.params["base_distance_change"] *= scale
+        if self.params["min_mass_change"]:
+            self.params["min_mass_change"] *= scale
+        if self.params["max_distance"]:
+            self.params["max_distance"] *= scale
+        if self.params["base_velocity"]:
+            self.params["base_velocity"] *= scale
+        self.track_min_offset *= scale
+        self.track_min_mass *= scale
+        self.aoi_min_mass *= scale
 
 
 #

@@ -27,7 +27,7 @@ MAX_TEST_SAMPLES = 100
 
 MIN_SAMPLES = 100
 MIN_TRACKS = 100
-LOW_SAMPLES_LABELS = ["bird/kiwi"]
+LOW_SAMPLES_LABELS = ["bird", "cat", "possum"]
 
 
 def load_config(config_file):
@@ -215,7 +215,7 @@ def split_label(dataset, label, existing_test_count=0, max_samples=None):
     min_t = MIN_TRACKS
 
     if label in LOW_SAMPLES_LABELS:
-        min_t = 1
+        min_t = 10
 
     num_validate_tracks = max(total_tracks * 0.15, min_t)
     num_test_tracks = (
@@ -367,6 +367,7 @@ def main():
     init_logging()
     args = parse_args()
     config = load_config(args.config_file)
+    logging.info("Building for type %s", config.train.type)
     test_clips = config.build.test_clips()
     if test_clips is None:
         test_clips = []

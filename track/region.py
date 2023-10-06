@@ -39,6 +39,15 @@ class Region(Rectangle):
     was_cropped = attr.ib(default=False)
     blank = attr.ib(default=False)
     is_along_border = attr.ib(default=False)
+    in_trap = attr.ib(default=False)
+
+    def rescale(self, factor):
+        self.x = int(self.x * factor)
+        self.y = int(self.y * factor)
+
+        self.width = int(self.width * factor)
+        self.height = int(self.height * factor)
+        self.mass = self.mass * (factor**2)
 
     @staticmethod
     def from_ltwh(left, top, width, height):
@@ -138,17 +147,6 @@ class Region(Rectangle):
         self.pixel_variance = tools.calculate_variance(filtered, prev_filtered)
 
     def set_is_along_border(self, bounds, edge=0):
-        logging.info(
-            "Set is along border %s,%s,%s,%s bounds %s,%s,%s,%s",
-            self.x,
-            self.y,
-            self.right,
-            self.bottom,
-            bounds.x,
-            bounds.y,
-            bounds.width,
-            bounds.height,
-        )
         self.is_along_border = (
             self.was_cropped
             or self.x <= bounds.x + edge
@@ -181,17 +179,17 @@ class Region(Rectangle):
 
         expected_x = int(other.x)
         expected_y = int(other.y)
-        distance = tools.eucl_distance((expected_x, expected_y), (self.x, self.y))
+        distance = tools.eucl_distance_sq((expected_x, expected_y), (self.x, self.y))
         distances.append(distance)
 
         expected_x = int(other.mid_x)
         expected_y = int(other.mid_y)
-        distance = tools.eucl_distance(
+        distance = tools.eucl_distance_sq(
             (expected_x, expected_y), (self.mid_x, self.mid_y)
         )
         distances.append(distance)
 
-        distance = tools.eucl_distance(
+        distance = tools.eucl_distance_sq(
             (
                 other.right,
                 other.bottom,
@@ -200,7 +198,7 @@ class Region(Rectangle):
         )
         # expected_x = int(other.right)
         # expected_y = int(other.bottom)
-        # distance = tools.eucl_distance((expected_x, expected_y), (self.x, self.y))
+        # distance = tools.eucl_distance_sq((expected_x, expected_y), (self.x, self.y))
         distances.append(distance)
 
         return distances

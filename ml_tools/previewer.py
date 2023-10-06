@@ -108,7 +108,7 @@ class Previewer:
             res_x *= 2
             res_y *= 2
 
-        mpeg = MPEGCreator(filename)
+        mpeg = MPEGCreator(str(filename))
         frame_scale = 4
         for frame_number, frame in enumerate(clip.frame_buffer):
             if self.preview_type == self.PREVIEW_RAW:
@@ -226,7 +226,7 @@ class Previewer:
         if type == "IR":
             thermal = thermal[..., np.newaxis]
             thermal = np.repeat(thermal, 3, axis=2)
-            image = Image.fromarray(thermal)
+            image = Image.fromarray(np.uint8(thermal))
         else:
             image = tools.convert_heat_to_img(frame, self.colourmap, h_min, h_max)
 
@@ -322,6 +322,7 @@ class Previewer:
             filtered = np.uint8(filtered)
             thermal = thermal[..., np.newaxis]
             thermal = np.repeat(thermal, 3, axis=2)
+            filtered[filtered > 0] = 255
             filtered = filtered[..., np.newaxis]
             filtered = np.repeat(filtered, 3, axis=2)
             thermal = Image.fromarray(thermal)
@@ -339,7 +340,8 @@ class Previewer:
             mask = np.zeros((np.array(thermal).shape), dtype=np.uint8)
             mask = Image.fromarray(mask)
         else:
-            mask, _ = normalize(frame.mask, new_max=255)
+            mask = frame.mask * 255
+            # mask, _ = normalize(frame.mask, new_max=255)
             mask = np.uint8(mask)
 
             mask = mask[..., np.newaxis]

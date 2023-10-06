@@ -1,19 +1,21 @@
 #!/usr/bin/python3
 import argparse
-from datetime import datetime
+from datetime import datetime, timedelta
 import logging
 import os
 import psutil
 import socket
 import time
 import cv2
+import json
 
 # fixes logging not showing up in tensorflow
 
 from cptv import CPTVReader
 import numpy as np
-import json
+from threading import Thread
 
+from config.timewindow import WindowStatus
 from config.config import Config
 from config.thermalconfig import ThermalConfig
 from .cptvrecorder import CPTVRecorder
@@ -26,7 +28,10 @@ from .cameras import lepton3
 from .cameras.irframe import IRFrame
 import multiprocessing
 from cptv import Frame
+from .eventreporter import log_event
+from load.irtrackextractor import IRTrackExtractor
 
+from load.cliptrackextractor import ClipTrackExtractor
 
 SOCKET_NAME = "/var/run/lepton-frames"
 VOSPI_DATA_SIZE = 160
@@ -34,6 +39,7 @@ TELEMETRY_PACKET_COUNT = 4
 STOP_SIGNAL = "stop"
 
 SKIP_SIGNAL = "skip"
+SNAPSHOT_SIGNAL = "snap"
 
 
 # TODO abstract interpreter class
@@ -52,7 +58,9 @@ def parse_args():
     parser.add_argument(
         "--thermal-config-file", help="Path to pi-config file (config.toml) to use"
     )
-
+    parser.add_argument(
+        "--ir", action="count", help="Path to pi-config file (config.toml) to use"
+    )
     args = parser.parse_args()
     return args
 
@@ -63,17 +71,49 @@ def main():
     args = parse_args()
 
     config = Config.load_from_file(args.config_file)
+    thermal_config = ThermalConfig.load_from_file(args.thermal_config_file)
+    thermal_config.recorder.rec_window.set_location(
+        *thermal_config.location.get_lat_long(use_default=True),
+        thermal_config.location.altitude,
+    )
+
     if args.file:
         return parse_file(
             args.file, config, args.thermal_config_file, args.preview_type
         )
+
+    process_queue = multiprocessing.Queue()
+
+    snapshot_thread = Thread(
+        target=take_snapshots,
+        args=(
+            thermal_config,
+            process_queue,
+        ),
+    )
+    snapshot_thread.start()
+
+    if args.ir or thermal_config.device_setup.ir:
+        while True:
+            try:
+                read = ir_camera(config, args.thermal_config_file, process_queue)
+                if read == 0:
+                    logging.error("Error reading camera try again in 10")
+                    time.sleep(10)
+                else:
+                    log_event("camera-disconnected", f"read {read} frames")
+            except Exception as ex:
+                log_event("camera-disconnected", ex)
+                logging.error("Error reading camera try again in 10", exc_info=True)
+                time.sleep(10)
+        return
 
     try:
         os.unlink(SOCKET_NAME)
     except OSError:
         if os.path.exists(SOCKET_NAME):
             raise
-
+    logging.info("running as thermal")
     sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     sock.bind(SOCKET_NAME)
     sock.listen(1)
@@ -81,9 +121,13 @@ def main():
         logging.info("waiting for a connection")
         connection, client_address = sock.accept()
         logging.info("connection from %s", client_address)
+        log_event("camera-connected", {"type": ClipTrackExtractor.TYPE})
         try:
-            handle_connection(connection, config, args.thermal_config_file)
-        except:
+            handle_connection(
+                connection, config, args.thermal_config_file, process_queue
+            )
+        except Exception as ex:
+            log_event("camera-disconnected", ex)
             logging.error("Error with connection", exc_info=True)
             # return
         finally:
@@ -104,23 +148,27 @@ def parse_file(file, config, thermal_config_file, preview_type):
 
 
 def parse_ir(file, config, thermal_config_file, preview_type):
-    thermal_config = ThermalConfig.load_from_file(thermal_config_file, "IR")
+    thermal_config = ThermalConfig.load_from_file(
+        thermal_config_file, IRTrackExtractor.TYPE
+    )
+    from piclassifier import irmotiondetector
+
+    irmotiondetector.MIN_FRAMES = 0
     count = 0
     vidcap = cv2.VideoCapture(file)
     while True:
         success, image = vidcap.read()
         if not success:
             break
-        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-        gray = cv2.resize(gray, (640, 360))
+        # gray = cv2.resize(gray, (640, 480))
         if count == 0:
-            res_y, res_x = gray.shape
+            res_y, res_x = image.shape[:2]
             headers = HeaderInfo(
                 res_x=res_x,
                 res_y=res_y,
                 fps=10,
                 brand=None,
-                model="IR",
+                model=IRTrackExtractor.TYPE,
                 frame_size=res_y * res_x,
                 pixel_bits=8,
                 serial="",
@@ -135,10 +183,18 @@ def parse_ir(file, config, thermal_config_file, preview_type):
                 0,
                 preview_type,
             )
-        frame = Frame(gray, None, None, None, None)
-        frame.received_at = time.time()
-
-        pi_classifier.process_frame(frame)
+            gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+            pi_classifier.motion_detector._background._background = np.float32(gray)
+            pi_classifier.motion_detector._background.update_background(
+                gray, learning_rate=1
+            )
+            pi_classifier.motion_detector._background._frames = 1000
+            count += 1
+            # assume this has been run over 1000 frames
+            continue
+        # frame = Frame(image, None, None, None, None)
+        # frame.received_at = time.time()
+        pi_classifier.process_frame(image, time.time())
         count += 1
     vidcap.release()
     pi_classifier.disconnected()
@@ -172,10 +228,10 @@ def parse_cptv(file, config, thermal_config_file, preview_type):
         )
         for frame in reader:
             if frame.background_frame:
-                pi_classifier.motion_detector.background = frame.pix
+                pi_classifier.motion_detector._background._background = frame.pix
                 continue
-            frame.received_at = time.time()
-            pi_classifier.process_frame(frame)
+            pi_classifier.process_frame(frame, time.time())
+
         pi_classifier.disconnected()
 
 
@@ -194,32 +250,143 @@ def get_processor(process_queue, config, thermal_config, headers):
 
 
 def handle_headers(connection):
-    headers = ""
+    headers = b""
     left_over = None
     while True:
-        data = connection.recv(4096).decode()
+        data = connection.recv(4096)
         headers += data
-        done = headers.find("\n\n")
+        done = headers.find(b"\n\n")
         if done > -1:
+            left_over = headers[done + 2 :]
             headers = headers[:done]
-            left_over = headers[done + 2 :].encode()
+            if left_over[:5] == b"clear":
+                left_over = left_over[5:]
             break
+    headers = headers.decode()
     return HeaderInfo.parse_header(headers), left_over
 
 
-def handle_connection(connection, config, thermal_config_file):
+def ir_camera(config, thermal_config_file, process_queue):
+    FPS = 10
+    logging.info("Starting ir video capture")
+    cap = cv2.VideoCapture(0)
+    cap.set(cv2.CAP_PROP_FPS, FPS)
+    frames = 0
+    try:
+        res_x = cap.get(cv2.CAP_PROP_FRAME_WIDTH)
+        res_y = cap.get(cv2.CAP_PROP_FRAME_HEIGHT)
+        headers = HeaderInfo(
+            res_x=int(res_x),
+            res_y=int(res_y),
+            fps=FPS,
+            brand=None,
+            model=IRTrackExtractor.TYPE,
+            frame_size=res_y * res_x,
+            pixel_bits=8,
+            serial="",
+            firmware="",
+        )
+        thermal_config = ThermalConfig.load_from_file(
+            thermal_config_file, headers.model
+        )
+        processor = get_processor(process_queue, config, thermal_config, headers)
+        processor.start()
+        drop_frame = None
+        dropped = 0
+        start_dropping = None
+        while True:
+            returned, frame = cap.read()
+            if not processor.is_alive():
+                logging.info("Processor stopped, restarting %s", processor.is_alive())
+                processor = get_processor(
+                    process_queue, config, thermal_config, headers
+                )
+                processor.start()
+            if not returned:
+                logging.info("no frame from video capture")
+                process_queue.put(STOP_SIGNAL)
+                break
+            frames += 1
+            if frames == 1:
+                log_event("camera-connected", {"type": IRTrackExtractor.TYPE})
+            if drop_frame is not None and (frames - start_dropping) % drop_frame == 0:
+                logging.info("Dropping frame due to slow processing")
+                dropped += 1
+            else:
+                process_queue.put((frame, time.time()))
+            qsize = process_queue.qsize()
+            if qsize > headers.fps * 4 and (
+                drop_frame is None or frames > (start_dropping + drop_frame)
+            ):
+                # drop every 9th frame
+                if drop_frame is None:
+                    drop_frame = 9
+                else:
+                    drop_frame = drop_frame - 1
+                # drop first frame
+                start_dropping = frames + 1
+                logging.info("Dropping every %s frame as qsize %s", drop_frame, qsize)
+            elif qsize < headers.fps * 3:
+                drop_frame = None
+                start_dropping = None
+    finally:
+        time.sleep(5)
+        processor.terminate()
+    return frames
+
+
+def next_snapshot(thermal_config, prev_window_type=None):
+    window = thermal_config.recorder.rec_window
+    current_status = None
+    if prev_window_type is None:
+        current_status = window.window_status()
+
+    if current_status == WindowStatus.before or (
+        prev_window_type == WindowStatus.new or prev_window_type == WindowStatus.after
+    ):
+        started = window.next_start()
+        return (window.next_start(), WindowStatus.before)
+    elif not window.non_stop and (
+        current_status == WindowStatus.inside or prev_window_type == WindowStatus.before
+    ):
+        started = window.next_start()
+        if current_status is not None and started - datetime.now() < timedelta(
+            minutes=30
+        ):
+            logging.info("Started inside window within 30 mins")
+            return (started, WindowStatus.before)
+
+        return (window.next_end(), WindowStatus.inside)
+    else:
+        # next windowtimes
+        window.next_window()
+        return (window.next_start(), WindowStatus.before)
+
+
+def take_snapshots(thermal_config, process_queue):
+    next_snap = next_snapshot(thermal_config, None)
+    while True:
+        snap_time = next_snap[0] - timedelta(minutes=2)
+        time_until = (snap_time - datetime.now()).total_seconds()
+        if time_until > 0:
+            logging.info("Taking snapshot at %s", snap_time)
+            time.sleep(time_until)
+        logging.info("Sending snapshot signal")
+        process_queue.put(SNAPSHOT_SIGNAL)
+        next_snap = next_snapshot(thermal_config, next_snap[1])
+
+
+def handle_connection(connection, config, thermal_config_file, process_queue):
     headers, extra_b = handle_headers(connection)
     thermal_config = ThermalConfig.load_from_file(thermal_config_file, headers.model)
     logging.info(
         "parsed camera headers %s running with config %s", headers, thermal_config
     )
 
-    process_queue = multiprocessing.Queue()
-
     processor = get_processor(process_queue, config, thermal_config, headers)
     processor.start()
 
-    edge = config.tracking.edge_pixels
+    edge = config.tracking["thermal"].edge_pixels
     crop_rectangle = tools.Rectangle(
         edge, edge, headers.res_x - 2 * edge, headers.res_y - 2 * edge
     )
@@ -227,6 +394,12 @@ def handle_connection(connection, config, thermal_config_file):
     read = 0
     try:
         while True:
+            if not processor.is_alive():
+                logging.info("Processor stopped restarting")
+                processor = get_processor(
+                    process_queue, config, thermal_config, headers
+                )
+                processor.start()
             if extra_b is not None:
                 data = extra_b + connection.recv(
                     headers.frame_size - len(extra_b), socket.MSG_WAITALL
@@ -240,9 +413,11 @@ def handle_connection(connection, config, thermal_config_file):
                 process_queue.put(STOP_SIGNAL)
                 break
             try:
-                message = data[:5].decode("utf-8")
-                if message == "clear":
-                    logging.info("processing error from camera")
+                message = data[:5]
+                if message == b"clear":
+                    logging.info(
+                        "processing error from camera"
+                    )  # TODO Check if this is handled properly.
                     process_queue.put(STOP_SIGNAL)
                     break
             except:
@@ -251,20 +426,21 @@ def handle_connection(connection, config, thermal_config_file):
             frame = raw_frame.parse(data)
             frame.received_at = time.time()
             cropped_frame = crop_rectangle.subimage(frame.pix)
-            t_max = np.amax(cropped_frame)
             t_min = np.amin(cropped_frame)
             # seems to happen if pi is working hard
             if t_min == 0:
                 logging.warning(
-                    "received frame has odd values skipping thermal frame max {} thermal frame min {} cpu % {} memory % {}".format(
-                        t_max, t_min, psutil.cpu_percent(), psutil.virtual_memory()[2]
+                    "received frame has odd values skipping thermal frame min {} cpu % {} memory % {}".format(
+                        t_min, psutil.cpu_percent(), psutil.virtual_memory()[2]
                     )
                 )
+                log_event("bad-thermal-frame", f"Bad Pixel of {t_min}")
                 process_queue.put(SKIP_SIGNAL)
             elif read < 100:
                 process_queue.put(SKIP_SIGNAL)
             else:
-                process_queue.put(frame)
+                process_queue.put((frame, time.time()))
+
     finally:
         time.sleep(5)
         # give it a moment to close down properly

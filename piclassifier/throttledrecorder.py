@@ -21,29 +21,61 @@ class ThrottledRecorder(Recorder):
         )
         self.min_recording = self.recorder.min_frames
         self.throttled_at = None
+        self.constant_recorder = False
+
+    def final_name(self):
+        return self.recorder.final_name()
+
+    @property
+    def name(self):
+        return self.recorder.name
+
+    @property
+    def filename(self):
+        return self.recorder.filename
+
+    @filename.setter
+    def filename(self, a):
+        self.recorder.filename = a
 
     @property
     def recording(self):
         return self.recorder.recording
+
+    @recording.setter
+    def recording(self, a):
+        self.recorder.recording = a
+
+    @property
+    def write_until(self):
+        return self.recorder.write_until
+
+    @write_until.setter
+    def write_until(self, a):
+        self.recorder.write_until = a
+
+    @property
+    def min_frames(self):
+        return self.recorder.min_frames
 
     def force_stop(self):
         if self.recorder.recording:
             self.last_rec = time.time()
         self.recorder.force_stop()
 
-    def process_frame(self, movement_detected, cptv_frame):
+    def process_frame(self, movement_detected, cptv_frame, received_at):
         if movement_detected:
-            self.last_motion = cptv_frame.received_at
+            self.last_motion = received_at
 
         was_recording = self.recorder.recording
-        self.recorder.process_frame(movement_detected, cptv_frame)
-        self.take_token(cptv_frame.received_at)
+        self.recorder.process_frame(movement_detected, cptv_frame, received_at)
+        self.take_token(received_at)
         if was_recording and not self.recorder.recording:
-            self.last_rec = cptv_frame.received_at
+            self.last_rec = received_at
 
         if self.throttling and self.recorder.recording:
             logging.info("Throttling recording")
-            self.stop_recording(cptv_frame.received_at)
+            self.stop_recording(received_at)
 
     def update_tokens(self, frame_time):
         if self.last_motion is None:
@@ -80,7 +112,7 @@ class ThrottledRecorder(Recorder):
                 else:
                     return
             else:
-                self.tokens = since_motion * self.fps
+                self.tokens += since_motion * self.fps
                 logging.debug(
                     "Updating tokens %s seconds since motion has earnt %s tokens",
                     round(since_motion),
@@ -95,11 +127,10 @@ class ThrottledRecorder(Recorder):
             self.tokens += since_motion * self.fps
         self.throttling = False
         self.throttled_at = None
+        self.tokens = int(self.tokens)
         self.tokens = min(self.tokens, self.bucket_size)
 
-    def start_recording(
-        self, background_frame, preview_frames, temp_thresh, frame_time
-    ):
+    def new_recording(self, background_frame, preview_frames, temp_thresh, frame_time):
         logging.debug("Attempting rec have %s tokens", self.tokens)
         self.update_tokens(frame_time)
         self.last_motion = frame_time
@@ -110,15 +141,38 @@ class ThrottledRecorder(Recorder):
             self.throttle(frame_time)
             return False
         self.take_token(frame_time, len(preview_frames))
-        self.recorder.start_recording(
+        self.recorder.new_recording(
             background_frame, preview_frames, temp_thresh, frame_time
         )
+        return True
+
+    def can_record(self, frame_time):
+        prev_throttled = self.throttling
+        self.update_tokens(frame_time)
+        logging.debug(
+            "Attempting rec have %s tokens was throttled %s throttled  %s tokens %s",
+            self.tokens,
+            prev_throttled,
+            self.throttling,
+            self.tokens,
+        )
+        self.last_motion = frame_time
+        if self.throttling:
+            if not prev_throttled:
+                throttled_event()
+            return False
+        if self.tokens < self.min_recording:
+            self.throttle(frame_time)
+            return False
         return True
 
     def stop_recording(self, frame_time):
         if self.recorder.recording:
             self.last_rec = frame_time
             self.recorder.stop_recording(frame_time)
+
+    def new_temp_name(self, frame_time):
+        return self.recorder.new_temp_name(frame_time)
 
     def throttle(self, frame_time):
         logging.info("Throttling")
@@ -128,5 +182,6 @@ class ThrottledRecorder(Recorder):
 
     def take_token(self, frame_time, num_tokens=1):
         self.tokens -= num_tokens
-        if self.tokens == 0:
+        if self.tokens <= 0:
+            self.tokens = 0
             self.throttle(frame_time)
