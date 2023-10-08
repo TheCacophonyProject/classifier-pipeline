@@ -181,7 +181,10 @@ class Rectangle:
         )
         # region_info["centroid"][0] = round(region_info["centroid"][0], 1)
         # region_info["centroid"][1] = round(region_info["centroid"][1], 1)
-        region_info["pixel_variance"] = round(region_info["pixel_variance"], 2)
+        if region_info["pixel_variance"] is not None:
+            region_info["pixel_variance"] = round(region_info["pixel_variance"], 2)
+        else:
+            region_info["pixel_variance"] = 0
         return region_info
 
 
