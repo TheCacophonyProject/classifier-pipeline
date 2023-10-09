@@ -963,20 +963,43 @@ class KerasModel(Interpreter):
         true_categories = tf.concat([y for x, y in dataset], axis=0)
         if len(true_categories) > 1:
             if self.params.multi_label or 1 == 1:
-                multi = []
-                for y in true_categories:
-                    multi.append(tf.where(y).numpy().ravel())
-                    # print(y, tf.where(y))
-                true_categories = np.int64(multi)
-
+                # multi = []
+                # for y in true_categories:
+                # multi.append(tf.where(y).numpy().ravel())
+                # print(y, tf.where(y))
+                # true_categories = np.int64(true_categories)
+                pass
             else:
                 true_categories = np.int64(tf.argmax(true_categories, axis=1))
         y_pred = self.model.predict(dataset)
         if self.params.multi_label:
-            predicted_categories = []
-            for p in y_pred:
-                predicted_categories.append(tf.where(p >= 0.8).numpy().ravel())
-            predicted_categories = np.int64(predicted_categories)
+            self.labels.append("nothing")
+            # predicted_categori/es = []
+            # for p in y_pred:
+            # predicted_categories.append(tf.where(p >= 0.8).numpy().ravel())
+            # predicted_categories = np.int64(predicted_categories)
+
+            flat_p = []
+            flat_y = []
+            for y, p in zip(true_categories, y_pred):
+                index = 0
+                for y_l, p_l in zip(y, p):
+                    predicted = p_l >= 0.8
+                    if y_l == 0 and predicted:
+                        flat_y.append(len(self.labels) - 1)
+                        flat_p.append(index)
+                    elif y_l == 1 and predicted:
+                        flat_y.append(index)
+                        flat_p.append(index)
+                    elif y_l == 1 and not predicted:
+                        flat_y.append(index)
+                        flat_p.append(len(self.labels) - 1)
+                    elif y_l == 0 and not predicted:
+                        # all good
+                        continue
+                    index += 1
+            true_categories = np.int64(flat_p)
+            predicted_categories = np / int64(flat_y)
         else:
             predicted_categories = np.int64(tf.argmax(y_pred, axis=1))
 
