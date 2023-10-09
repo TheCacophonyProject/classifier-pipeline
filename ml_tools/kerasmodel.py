@@ -962,10 +962,23 @@ class KerasModel(Interpreter):
     def confusion_tfrecords(self, dataset, filename):
         true_categories = tf.concat([y for x, y in dataset], axis=0)
         if len(true_categories) > 1:
-            true_categories = np.int64(tf.argmax(true_categories, axis=1))
-        y_pred = self.model.predict(dataset)
+            if self.params.multi_label or 1 == 1:
+                multi = []
+                for y in true_categories:
+                    multi.append(tf.where(y).numpy().ravel())
+                    # print(y, tf.where(y))
+                true_categories = np.int64(multi)
 
-        predicted_categories = np.int64(tf.argmax(y_pred, axis=1))
+            else:
+                true_categories = np.int64(tf.argmax(true_categories, axis=1))
+        y_pred = self.model.predict(dataset)
+        if self.params.multi_label:
+            predicted_categories = []
+            for p in y_pred:
+                predicted_categories.append(tf.where(p >= 0.8).numpy().ravel())
+            predicted_categories = np.int64(predicted_categories)
+        else:
+            predicted_categories = np.int64(tf.argmax(y_pred, axis=1))
 
         cm = confusion_matrix(
             true_categories, predicted_categories, labels=np.arange(len(self.labels))

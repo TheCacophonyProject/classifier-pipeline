@@ -421,6 +421,7 @@ def main():
             shuffle=False,
             excluded_labels=excluded,
             remapped_labels=remapped,
+            multi_label=model.params.multi_label,
         )
         model.labels = new_labels
         logging.info(
