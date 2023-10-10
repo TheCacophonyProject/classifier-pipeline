@@ -95,28 +95,28 @@ class KerasModel(Interpreter):
             return None
         return self.model.get_config()["layers"][0]["config"]["batch_input_shape"]
 
-    def get_base_model(self, input_shape, weights="imagenet"):
+    def get_base_model(self, input, weights="imagenet"):
         pretrained_model = self.params.model_name
         if pretrained_model == "resnet":
             return (
                 tf.keras.applications.ResNet50(
                     weights=weights,
                     include_top=False,
-                    input_shape=input_shape,
+                    input_tensor=inputs,
                 ),
                 tf.keras.applications.resnet.preprocess_input,
             )
         elif pretrained_model == "resnetv2":
             return (
                 tf.keras.applications.ResNet50V2(
-                    weights=weights, include_top=False, input_shape=input_shape
+                    weights=weights, include_top=False, input_tensor=input
                 ),
                 tf.keras.applications.resnet_v2.preprocess_input,
             )
         elif pretrained_model == "resnet152":
             return (
                 tf.keras.applications.ResNet152(
-                    weights=weights, include_top=False, input_shape=input_shape
+                    weights=weights, include_top=False, input_tensor=input
                 ),
                 tf.keras.applications.resnet.preprocess_input,
             )
@@ -125,7 +125,7 @@ class KerasModel(Interpreter):
                 tf.keras.applications.VGG16(
                     weights=weights,
                     include_top=False,
-                    input_shape=input_shape,
+                    input_tensor=input,
                 ),
                 tf.keras.applications.vgg16.preprocess_input,
             )
@@ -134,7 +134,7 @@ class KerasModel(Interpreter):
                 tf.keras.applications.VGG19(
                     weights=weights,
                     include_top=False,
-                    input_shape=input_shape,
+                    input_tensor=input,
                 ),
                 tf.keras.applications.vgg19.preprocess_input,
             )
@@ -143,7 +143,7 @@ class KerasModel(Interpreter):
                 tf.keras.applications.MobileNetV2(
                     weights=weights,
                     include_top=False,
-                    input_shape=input_shape,
+                    input_tensor=input,
                 ),
                 tf.keras.applications.mobilenet_v2.preprocess_input,
             )
@@ -152,7 +152,7 @@ class KerasModel(Interpreter):
                 tf.keras.applications.DenseNet121(
                     weights=weights,
                     include_top=False,
-                    input_shape=input_shape,
+                    input_tensor=input,
                 ),
                 tf.keras.applications.densenet.preprocess_input,
             )
@@ -161,7 +161,7 @@ class KerasModel(Interpreter):
                 tf.keras.applications.InceptionResNetV2(
                     weights=weights,
                     include_top=False,
-                    input_shape=input_shape,
+                    input_tensor=input,
                 ),
                 tf.keras.applications.inception_resnet_v2.preprocess_input,
             )
@@ -170,7 +170,7 @@ class KerasModel(Interpreter):
                 tf.keras.applications.InceptionV3(
                     weights=weights,
                     include_top=False,
-                    input_shape=input_shape,
+                    input_tensor=input,
                 ),
                 tf.keras.applications.inception_v3.preprocess_input,
             )
@@ -179,7 +179,7 @@ class KerasModel(Interpreter):
                 tf.keras.applications.EfficientNetB5(
                     weights=weights,
                     include_top=False,
-                    input_shape=input_shape,
+                    input_tensor=input,
                 ),
                 None,
             )
@@ -188,7 +188,7 @@ class KerasModel(Interpreter):
                 tf.keras.applications.EfficientNetB0(
                     weights=weights,
                     include_top=False,
-                    input_shape=input_shape,
+                    input_tensor=input,
                 ),
                 None,
             )
@@ -197,19 +197,19 @@ class KerasModel(Interpreter):
                 tf.keras.applications.EfficientNetB1(
                     weights=weights,
                     include_top=False,
-                    input_shape=input_shape,
+                    input_tensor=input,
                 ),
                 None,
             )
         elif pretrained_model == "nasnet":
             return (
                 tf.keras.applications.nasnet.NASNetLarge(
-                    weights=weights, include_top=False, input_shape=input_shape
+                    weights=weights, include_top=False, input_tensor=input
                 ),
                 tf.keras.applications.nasnet.preprocess_input,
             )
         elif pretrained_model == "wr-resnet":
-            return WRResNet(input_shape), None
+            return WRResNet(input), None
         raise Exception("Could not find model " + pretrained_model)
 
     def get_preprocess_fn(self):
@@ -274,9 +274,12 @@ class KerasModel(Interpreter):
         width = self.params.output_dim[0]
         inputs = tf.keras.Input(shape=(width, width, 3), name="input")
         weights = None if self.params.base_training else "imagenet"
-        base_model, preprocess = self.get_base_model((width, width, 3), weights=weights)
+        base_model, preprocess = self.get_base_model(inputs, weights=weights)
         self.preprocess_fn = preprocess
-        x = base_model(inputs, training=self.params.base_training)
+
+        # inputs = base_model.input
+        x = base_model.output
+        # x = base_model(inputs, training=self.params.base_training)
 
         if self.params.lstm:
             x = tf.keras.layers.GlobalAveragePooling2D()(x)
@@ -396,6 +399,7 @@ class KerasModel(Interpreter):
         print(self.model.summary())
 
     def load_meta(self, dir_name):
+        print("Load meta", dir_name)
         meta = json.load((dir_name / "metadata.txt").open("r"))
         self.params = HyperParams()
         self.params.update(meta["hyperparams"])

@@ -362,24 +362,33 @@ min_tag_confidence = 0.8
 
 
 # trying to figre out differing predictions
-def test_model():
+def test_model(model_file, weights, config):
+    import tensorflow.keras.backend as K
+
     model = None
     tf.random.set_seed(1)
-    model = tf.keras.models.load_model(model_file.parent)
-    model.training = False
-    model.compile(
-        optimizer=tf.keras.optimizers.Adam(learning_rate=0.01),
-        loss=tf.keras.losses.CategoricalCrossentropy(),
-        metrics=[
-            "accuracy",
-        ],
-    )
-    model.load_weights(args.weights).expect_partial()
-    test = np.ones((1, 160, 160, 3), dtype=np.float32)
-    test = test / 2.0
+    model = KerasModel(train_config=config.train)
+    model.load_model(model_file.parent)
+    model.build_model(dropout=0.3)
+    model.model.load_weights(str(weights)).expect_partial()
+    print("Loading weigfhts", weights)
+    # model.load_weights(weights)
+    model = model.model
+
     for _ in range(2):
-        out = model.predict(test)
-        print("Empty", out)
+        test = np.ones((1, 160, 160, 3), dtype=np.float32)
+        test = test / 2.0
+        print("RUN")
+        print("RUN")
+        print("RUN")
+        print("RUN")
+
+        # for l, o in zip(model.layers[1].layers, layer_outs):
+        #     print(l.name)
+        #     for x in np.array(o).ravel():
+        #         print(x)
+        print(model.predict(test))
+        # print(layer_outs)
     return
 
 
@@ -394,7 +403,8 @@ def main():
         model_file = Path(args.model_file)
     if args.weights:
         weights = model_file / args.weights
-
+    test_model(model_file, Path(weights), config)
+    return
     base_dir = config.tracks_folder
 
     model = KerasModel(train_config=config.train)

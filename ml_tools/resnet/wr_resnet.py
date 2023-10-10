@@ -2,10 +2,10 @@ import tensorflow as tf
 
 
 # https://arxiv.org/pdf/1605.07146.pdf
-def WRResNet(input_shape=(128, 512, 1), depth=22, k=4):
+def WRResNet(X_input, depth=22, k=4):
     filters = [16, 16 * k, 32 * k, 64 * k]
     # Define the input as a tensor with shape input_shape
-    X_input = tf.keras.Input(input_shape)
+    # X_input = tf.keras.Input(input_shape, name="wr-input")
     n = int((depth - 4) / 6)
     for stage, f in enumerate(filters):
         if stage == 0:
