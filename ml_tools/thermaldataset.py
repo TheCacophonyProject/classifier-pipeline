@@ -51,18 +51,7 @@ def get_remapped(multi_label=False):
 
 
 def get_extra_mappings(labels):
-    land_birds = [
-        "pukeko",
-        "california quail",
-        "brown quail",
-        "black swan",
-        "quail",
-        "pheasant",
-        "penguin",
-        "duck",
-        "chicken",
-        "rooster",
-    ]
+    land_birds = ["land-bird"]
     if "bird" not in labels:
         return None
     bird_index = labels.index("bird")
