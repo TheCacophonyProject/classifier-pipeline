@@ -321,8 +321,13 @@ class KerasModel(Interpreter):
                     x = tf.keras.layers.Dense(i, activation="relu")(x)
             if dropout:
                 x = tf.keras.layers.Dropout(dropout)(x)
+
+            activation = "softmax"
+            if self.params.multi_label:
+                activation = "sigmoid"
+            logging.info("Using %s activation", activation)
             preds = tf.keras.layers.Dense(
-                len(self.labels), activation="softmax", name="prediction"
+                len(self.labels), activation=activation, name="prediction"
             )(x)
             self.model = tf.keras.models.Model(inputs, outputs=preds)
         if retrain_from is None:
@@ -506,13 +511,17 @@ class KerasModel(Interpreter):
         logging.info(
             "%s Training model for %s epochs with weights %s", run_name, epochs, weights
         )
-        self.excluded_labels, self.remapped_labels = get_excluded(self.type)
+        self.excluded_labels, self.remapped_labels = get_excluded(
+            self.type, self.params.multi_label
+        )
         train_files = os.path.join(self.data_dir, "train")
         validate_files = os.path.join(self.data_dir, "validation")
         logging.info(
             "Excluding %s remapping %s", self.excluded_labels, self.remapped_labels
         )
 
+        if self.params.multi_label:
+            self.labels.append("land-bird")
         orig_labels = self.labels.copy()
         for l in self.excluded_labels:
             if l in self.labels:
@@ -1428,9 +1437,9 @@ class ClearMemory(Callback):
         tf.keras.backend.clear_session()
 
 
-def get_excluded(type):
+def get_excluded(type, multi_label=False):
     if type == "thermal":
-        return thermaldataset.get_excluded(), thermaldataset.get_remapped()
+        return thermaldataset.get_excluded(), thermaldataset.get_remapped(multi_label)
     else:
         return irdataset.get_excluded(), irdataset.get_remapped()
 

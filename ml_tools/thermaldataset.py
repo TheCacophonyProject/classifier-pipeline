@@ -35,17 +35,18 @@ def get_excluded():
     ]
 
 
-def get_remapped():
+def get_remapped(multi_label=False):
+    land_bird = "land-bird" if multi_label else "bird"
     return {
+        "insect": "false-positive",
         "allbirds": "bird",
-        # "black swan": "bird",
-        # "brown quail": "bird",
-        # "california quail": "bird",
-        # "duck": "bird",
-        # "insect": "false-positive",
-        # "pheasant": "bird",
-        # "pukeko": "bird",
-        # "quail": "bird",
+        "black swan": land_bird,
+        "brown quail": land_bird,
+        "california quail": land_bird,
+        "duck": land_bird,
+        "pheasant": land_bird,
+        "pukeko": land_bird,
+        "quail": land_bird,
     }
 
 
