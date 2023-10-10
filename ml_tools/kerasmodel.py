@@ -369,7 +369,7 @@ class KerasModel(Interpreter):
         logging.info("Loaded weight %s", weights)
 
     def load_meta(self, dir_name):
-        meta = json.load((dir_name / "metadata.txt").open("r"))
+        meta = json.load((dir_name / "saved_model.json").open("r"))
         self.params = HyperParams()
         self.params.update(meta["hyperparams"])
         self.labels = meta["labels"]
@@ -430,34 +430,12 @@ class KerasModel(Interpreter):
         json.dump(
             model_stats,
             open(
-                os.path.join(run_dir, "metadata.txt"),
+                os.path.join(run_dir, "saved_model.json"),
                 "w",
             ),
             indent=4,
             cls=MetaJSONEncoder,
         )
-        best_loss = os.path.join(run_dir, "val_loss")
-        if os.path.exists(best_loss):
-            json.dump(
-                model_stats,
-                open(
-                    os.path.join(best_loss, "metadata.txt"),
-                    "w",
-                ),
-                indent=4,
-                cls=MetaJSONEncoder,
-            )
-        best_acc = os.path.join(run_dir, "val_acc")
-        if os.path.exists(best_acc):
-            json.dump(
-                model_stats,
-                open(
-                    os.path.join(best_acc, "metadata.txt"),
-                    "w",
-                ),
-                indent=4,
-                cls=MetaJSONEncoder,
-            )
 
     def close(self):
         # if self.test:

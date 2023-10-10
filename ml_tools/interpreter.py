@@ -15,7 +15,7 @@ class Interpreter(ABC):
     def load_json(self, filename):
         """Loads model and parameters from file."""
         filename = Path(filename)
-        filename = filename.with_suffix(".txt")
+        filename = filename.with_suffix(".json")
         logging.info("Loading metadata from %s", filename)
         stats = json.load(open(filename, "r"))
 

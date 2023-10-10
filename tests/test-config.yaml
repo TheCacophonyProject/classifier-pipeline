@@ -5,4 +5,4 @@ classify:
     models:
       - name: "Inc3"
         id: 2
-        model_file: "model/val_acc/saved_model.pb"
+        model_file: "thermal-model/saved_model.pb"
