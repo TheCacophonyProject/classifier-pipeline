@@ -3,6 +3,7 @@ source_folder: "tests/clips/"
 tracks_folder: "tests/classify/"
 classify:
     models:
-      - name: "Inc3"
-        id: 2
-        model_file: "thermal-model/saved_model.pb"
+      - id: 2
+        name: "Thermal WR"
+        type: "TFLite"
+        model_file: "/home/gp/cacophony/classifier-data/thermal-training/tflite/converted_model.tflite"

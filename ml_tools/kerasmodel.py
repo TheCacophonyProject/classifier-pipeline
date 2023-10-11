@@ -35,9 +35,6 @@ from ml_tools.tfdataset import get_weighting, get_distribution, get_dataset as g
 import tensorflow_decision_forests as tfdf
 from ml_tools import forestmodel
 
-import tensorflow_decision_forests as tfdf
-from ml_tools import forestmodel
-
 classify_i = 0
 
 
