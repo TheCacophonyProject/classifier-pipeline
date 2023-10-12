@@ -26,7 +26,7 @@ from .cptvmotiondetector import CPTVMotionDetector
 from .motiondetector import SlidingWindow
 from .processor import Processor
 
-from ml_tools.interpreter import Interpreter
+from ml_tools.interpreter import Interpreter, get_interpreter
 from ml_tools.logs import init_logging
 from ml_tools.hyperparams import HyperParams
 from ml_tools.tools import CustomJSONEncoder
@@ -41,125 +41,6 @@ STOP_SIGNAL = "stop"
 SKIP_SIGNAL = "skip"
 track_extractor = None
 clip = None
-
-
-class NeuralInterpreter(Interpreter):
-    TYPE = "Neural"
-
-    def __init__(self, model_name, data_type):
-        from openvino.inference_engine import IENetwork, IECore
-
-        super().__init__(model_name, data_type)
-        model_name = Path(model_name)
-        # can use to test on PC
-        # device = "CPU"
-        device = "MYRIAD"
-        model_xml = model_name.with_suffix(".xml")
-        model_bin = model_name.with_suffix(".bin")
-        ie = IECore()
-        ie.set_config({}, device)
-        net = ie.read_network(model=model_xml, weights=model_bin)
-        self.input_blob = next(iter(net.input_info))
-        self.out_blob = next(iter(net.outputs))
-        self.input_shape = net.input_info[self.input_blob].input_data.shape
-
-        net.batch_size = 1
-        self.exec_net = ie.load_network(network=net, device_name=device)
-        self.preprocess_fn = inc3_preprocess
-
-    def predict(self, input_x):
-        if input_x is None:
-            return None
-        input_x = np.float32(input_x)
-        channels_last = input_x.shape[-1] == 3
-        if channels_last:
-            input_x = np.moveaxis(input_x, 3, 1)
-        # input_x = np.transpose(input_x, axes=[3, 1, 2])
-        # input_x = np.array([[rearranged_arr]])
-        res = self.exec_net.infer(inputs={self.input_blob: input_x})
-        res = res[self.out_blob]
-        return res
-
-    def shape(self):
-        return self.input_shape
-
-
-class LiteInterpreter(Interpreter):
-    TYPE = "TFLite"
-
-    def __init__(self, model_name, data_type):
-        super().__init__(model_name, data_type)
-
-        import tflite_runtime.interpreter as tflite
-
-        model_name = Path(model_name)
-        model_name = model_name.with_suffix(".tflite")
-        self.interpreter = tflite.Interpreter(str(model_name))
-
-        self.interpreter.allocate_tensors()  # Needed before execution!
-
-        self.output = self.interpreter.get_output_details()[
-            0
-        ]  # Model has single output.
-        self.input = self.interpreter.get_input_details()[0]  # Model has single input.
-        self.preprocess_fn = inc3_preprocess
-
-    def predict(self, input_x):
-        start = time.time()
-        input_x = np.float32(input_x)
-        # input_x = input_x[np.newaxis, :]
-
-        self.interpreter.set_tensor(self.input["index"], input_x)
-        self.interpreter.invoke()
-        pred = self.interpreter.get_tensor(self.output["index"])
-        logging.info("taken %s to predict", time.time() - start)
-        return pred
-
-    def shape(self):
-        return self.input["shape"]
-
-
-def inc3_preprocess(x):
-    x /= 127.5
-    x -= 1.0
-    return x
-
-
-def get_full_classifier(model, data_type):
-    from ml_tools.kerasmodel import KerasModel
-
-    """
-    Returns a classifier object, which is created on demand.
-    This means if the ClipClassifier is copied to a new process a new Classifier instance will be created.
-    """
-    t0 = datetime.now()
-    logging.info("classifier loading")
-    classifier = KerasModel()
-    classifier.load_model(model.model_file, weights=model.model_weights)
-    classifier.type = data_type
-    logging.info("classifier loaded ({})".format(datetime.now() - t0))
-
-    return classifier
-
-
-def get_classifier(model, data_type):
-    # model_name, type = os.path.splitext(model.model_file)
-
-    logging.info(
-        "Loading %s of type %s with datatype %s",
-        model.model_file,
-        model.type,
-        data_type,
-    )
-    if model.type == LiteInterpreter.TYPE:
-        classifier = LiteInterpreter(model.model_file, data_type)
-    elif model.type == NeuralInterpreter.TYPE:
-        classifier = NeuralInterpreter(model.model_file, data_type)
-    elif model.type == ForestModel.TYPE:
-        classifier = ForestModel(model.model_file, data_type)
-    else:
-        classifier = get_full_classifier(model, data_type)
-    return classifier
 
 
 def run_classifier(
@@ -335,7 +216,7 @@ class PiClassifier(Processor):
 
         if self.classify:
             model = config.classify.models[0]
-            self.classifier = get_classifier(model, self.type)
+            self.classifier = get_interpreter(model, self.type)
 
             if self.classifier.TYPE == ForestModel.TYPE:
                 self.last_x_frames = 5 * headers.fps

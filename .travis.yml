@@ -22,13 +22,12 @@ script:
   tests/clips/possum.cptv
 - sudo mkdir /var/spool/cptv
 - sudo chmod -R 777 /var/spool/cptv
-- |
-  python -c "import gdown
-  gdown.download(\"https://drive.google.com/u/1/uc?id=1CQoQLYbfX9NzRo2_BlpNE_I3c0iG6ZFd\", \"model_hq.tar\", quiet=False)"
-- mkdir model
-- tar -C model -xvf model_hq.tar
-- cp model/val_acc/metadata.txt model/val_acc/saved_model.txt
-- python3 classify.py -c tests/test-config.yaml ./tests/clips/
+- wget -O thermal-model.tar https://github.com/TheCacophonyProject/AI-Model/releases/download/v0.3/inc3-19012023-tflite.tar
+- mkdir thermal-model
+- tar xzvf thermal-model.tar -C thermal-model --strip-components=1
+# going to fix shortly GP
+# - python3 classify.py -c tests/test-config.yaml ./tests/clips/
+- pip install tflite-runtime==2.11.0
 - python3 piclassify.py --file tests/clips/possum.cptv  --thermal-config-file tests/config.toml
   -c tests/test-config.yaml
 deploy:
