@@ -25,17 +25,14 @@ def main():
 
     config = Config.load_from_file(args.config_file)
     service = ClassifyService(config)
-    while True:
-        try:
-            service.run()
-        except KeyboardInterrupt:
-            logging.info("Keyboard interupt closing down")
-            break
-        except PermissionError:
-            logging.error("Error with permissions", exc_info=True)
-            break
-        except:
-            logging.error("Error with service restarting", exc_info=True)
+    try:
+        service.run()
+    except KeyboardInterrupt:
+        logging.info("Keyboard interupt closing down")
+    except PermissionError:
+        logging.error("Error with permissions", exc_info=True)
+    except:
+        logging.error("Error with service restarting", exc_info=True)
 
 
 class ClassifyService:

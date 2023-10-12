@@ -18,7 +18,7 @@ from track.track import Track
 
 from cptv import CPTVReader
 from datetime import datetime
-from ml_tools.forestmodel import ForestModel
+from ml_tools.interpreter import get_interpreter
 
 
 class ClipClassifier:
@@ -43,7 +43,6 @@ class ClipClassifier:
         for model in self.config.classify.models:
             logging.info("Loading %s", model)
             classifier = self.get_classifier(model)
-            self.models[model.id] = classifier
 
     def get_classifier(self, model):
         """
@@ -52,17 +51,13 @@ class ClipClassifier:
         """
         if model.id in self.models:
             return self.models[model.id]
+        if model.type != KerasModel.TYPE:
+            raise Exception("Can only classify with kerasmodel right now")
         load_start = time.time()
         logging.info("classifier loading %s", model.model_file)
-        if model.type == ForestModel.TYPE:
-            classifier = ForestModel(model.model_file)
-        else:
-            classifier = KerasModel(self.config.train)
-            classifier.load_model(model.model_file, weights=model.model_weights)
-            classifier.model.summary()
+        classifier = get_interpreter(model)
         logging.info("classifier loaded (%s)", time.time() - load_start)
         self.models[model.id] = classifier
-
         return classifier
 
     def get_meta_data(self, filename):
@@ -148,13 +143,21 @@ class ClipClassifier:
         predictions_per_model = {}
         if self.model:
             prediction = self.classify_clip(
-                clip, self.model, meta_data, reuse_frames=reuse_frames
+                clip,
+                self.model,
+                meta_data,
+                track_extractor.type,
+                reuse_frames=reuse_frames,
             )
             predictions_per_model[self.model.id] = prediction
         else:
             for model in self.config.classify.models:
                 prediction = self.classify_clip(
-                    clip, model, meta_data, reuse_frames=reuse_frames
+                    clip,
+                    model,
+                    meta_data,
+                    track_extractor.type,
+                    reuse_frames=reuse_frames,
                 )
                 predictions_per_model[model.id] = prediction
         destination_folder = os.path.dirname(filename)

@@ -40,6 +40,13 @@ from ml_tools.tfdataset import get_weighting, get_distribution, get_dataset as g
 import tensorflow_decision_forests as tfdf
 from ml_tools import forestmodel
 
+# import (
+#    get_resampled_by_label as get_thermal_dataset_by_label,
+#    get_dataset as get_thermal_dataset,
+#    get_weighting,
+# )
+from ml_tools import irdataset
+from ml_tools.tfdataset import get_weighting, get_distribution, get_dataset as get_tf
 import tensorflow_decision_forests as tfdf
 from ml_tools import forestmodel
 
@@ -380,14 +387,14 @@ class KerasModel(Interpreter):
         # self.model.summary()
         # self.model.load_weights(dir + "/variables/variables")
 
-    def load_model(self, model_path, training=False, weights=None, data_type="thermal"):
+    def load_model(self, model_path, training=False, weights=None):
         model_path = Path(model_path)
         if model_path.is_file():
             dir_name = model_path.parent
-            super().__init__(model_path, data_type)
+            super().__init__(model_path)
         else:
             dir_name = model_path
-            super().__init__(model_path / "saved_model.pb", data_type)
+            super().__init__(model_path / "saved_model.pb")
 
         logging.info("Loading %s with model weight %s", model_path, weights)
         self.model = tf.keras.models.load_model(dir_name)
@@ -399,8 +406,7 @@ class KerasModel(Interpreter):
         print(self.model.summary())
 
     def load_meta(self, dir_name):
-        print("Load meta", dir_name)
-        meta = json.load((dir_name / "metadata.txt").open("r"))
+        meta = json.load((dir_name / "saved_model.json").open("r"))
         self.params = HyperParams()
         self.params.update(meta["hyperparams"])
         self.labels = meta["labels"]
@@ -460,34 +466,12 @@ class KerasModel(Interpreter):
         json.dump(
             model_stats,
             open(
-                os.path.join(run_dir, "metadata.txt"),
+                os.path.join(run_dir, "saved_model.json"),
                 "w",
             ),
             indent=4,
             cls=MetaJSONEncoder,
         )
-        best_loss = os.path.join(run_dir, "val_loss")
-        if os.path.exists(best_loss):
-            json.dump(
-                model_stats,
-                open(
-                    os.path.join(best_loss, "metadata.txt"),
-                    "w",
-                ),
-                indent=4,
-                cls=MetaJSONEncoder,
-            )
-        best_acc = os.path.join(run_dir, "val_acc")
-        if os.path.exists(best_acc):
-            json.dump(
-                model_stats,
-                open(
-                    os.path.join(best_acc, "metadata.txt"),
-                    "w",
-                ),
-                indent=4,
-                cls=MetaJSONEncoder,
-            )
 
     def close(self):
         # if self.test:
@@ -879,36 +863,12 @@ class KerasModel(Interpreter):
             )
             frames_used.append(region.frame_number)
             data.append(preprocessed)
+        if len(data) == 0:
+            return None
         data = np.float32(data)
-        global classify_i
-        # GP TEST STUFF PLEASE DELETE ME LATER
-        for f in data:
-            image = f.copy()
-            image = (image + 1) * 127.5
-
-            image = np.uint8(image)
-            # image = cv2.resize(image, (600, 600))
-            out = self.model.predict(np.expand_dims(f, axis=0))
-            best_res = np.argmax(out[0])
-            prediction = self.labels[best_res]
-            image = cv2.putText(
-                image,
-                prediction,
-                (10, 10),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                1,
-                (255, 0, 0),
-            )
-            print("Clasify i is", classify_i)
-            cv2.imwrite(f"f-{classify_i}.png", image)
-            classify_i += 1
-            # cv2.moveWindow("f", 0, 0)
-        # cv2.waitKey()
-        # GP TEST STUFF PLEASE DELETE ME LATER
-
-        output = self.model.predict(data)
         track_prediction = TrackPrediction(track.get_id(), self.labels)
 
+        output = self.model.predict(data)
         track_prediction.classified_clip(output, output, np.array(frames_used))
         track_prediction.normalize_score()
         return track_prediction

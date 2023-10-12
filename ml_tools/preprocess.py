@@ -219,13 +219,13 @@ def preprocess_movement(
         (frame_types[red_type], frame_types[green_type], frame_types[blue_type]), axis=2
     )
     #
-    global index
-    index += 1
-    # # # # for testing
-    tools.saveclassify_image(
-        data,
-        f"samples/{index}",
-    )
+    # global index
+    # index += 1
+    # # # # # for testing
+    # tools.saveclassify_image(
+    #     data,
+    #     f"samples/{index}",
+    # )
 
     if preprocess_fn:
         data = preprocess_fn(data)

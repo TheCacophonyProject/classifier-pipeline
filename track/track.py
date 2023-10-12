@@ -809,7 +809,7 @@ class Track:
         filter_mass = 0.005 * median_mass
         filter_mass = max(filter_mass, 2)
         start = 0
-        logging.info(
+        logging.debug(
             "Triming track with median % and filter mass %s", median_mass, filter_mass
         )
         while start < len(self) and mass_history[start] <= filter_mass:
@@ -818,17 +818,16 @@ class Track:
         end = len(self) - 1
 
         while end > 0 and mass_history[end] <= filter_mass:
-            logging.info("Masss is less than %s %s", filter_mass, mass_history[end])
-            if self.tracker and self.tracker.frames_since_target_seen > 0:
+            if self.tracker and self.frames_since_target_seen > 0:
                 self.tracker._frames_since_target_seen -= 1
                 self.tracker._blank_frames -= 1
             end -= 1
         if end < start:
-            self.start_frame = 0
             self.bounds_history = []
             self.vel_x = []
             self.vel_y = []
-            self.tracker._blank_frames = 0
+            if self.tracker:
+                self.tracker._blank_frames = 0
         else:
             self.start_frame += start
             self.bounds_history = self.bounds_history[start : end + 1]
@@ -872,6 +871,9 @@ class Track:
         return frames_overlapped / len(self)
 
     def set_end_s(self, fps):
+        if len(self) == 0:
+            self.end_s = self.start_s
+            return
         self.end_s = (self.end_frame + 1) / fps
 
     def predicted_velocity(self):
@@ -889,7 +891,7 @@ class Track:
     @property
     def end_frame(self):
         if len(self.bounds_history) == 0:
-            return 0
+            return self.start_frame
         return self.bounds_history[-1].frame_number
 
     @property
@@ -920,7 +922,10 @@ class Track:
 
     def start_and_end_in_secs(self):
         if self.end_s is None:
-            self.end_s = (self.end_frame + 1) / self.fps
+            if len(self) == 0:
+                self.end_s = self.start_s
+            else:
+                self.end_s = (self.end_frame + 1) / self.fps
 
         return (self.start_s, self.end_s)
 

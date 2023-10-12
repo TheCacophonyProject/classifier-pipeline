@@ -61,6 +61,8 @@ def load_dataset(filenames, remap_lookup, num_labels, args):
         deterministic=deterministic,
     )
 
+    filter_excluded = lambda x, y: not tf.math.equal(tf.math.count_nonzero(y), 0)
+    dataset = dataset.filter(filter_excluded)
     return dataset
 
 

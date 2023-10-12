@@ -18,7 +18,7 @@ from ml_tools import tools
 from ml_tools.previewer import Previewer
 from track.track import Track
 
-from classify.thumbnail import get_thumbanil_info, thumbnail_debug, best_trackless_thumb
+from classify.thumbnail import get_thumbnail_info, thumbnail_debug, best_trackless_thumb
 
 
 class TrackExtractor:
@@ -64,7 +64,10 @@ class TrackExtractor:
 
     def extract(self, base):
         # IF passed a dir extract all cptv files, if a cptv just extract this cptv file
-        if os.path.isfile(base):
+        base = Path(base)
+        if not base.exists():
+            return
+        if base.is_file():
             init_worker(self.config, self.cache_to_disk)
             extract_file(base, self.retrack)
             return
@@ -173,9 +176,9 @@ def save_metadata(filename, meta_filename, clip, track_extractor, config):
     metadata = clip.get_metadata()
     tt = sorted(clip.tracks, key=lambda x: x.get_id())
     for i, track in enumerate(tt):
-        best_thumb, best_score = get_thumbanil_info(clip, track)
+        best_thumb, best_score = get_thumbnail_info(clip, track)
         if best_thumb is None:
-            metadata["tracks"][i]["thumbanil"] = None
+            metadata["tracks"][i]["thumbnail"] = None
             continue
         thumbnail_info = {
             "region": best_thumb.region,

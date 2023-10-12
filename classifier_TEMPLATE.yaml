@@ -122,7 +122,7 @@ tracking:
         dynamic_thresh: True
         camera_thresholds:
           ir:
-            camera_model: "lepton3"
+            camera_model: "ir"
             # Default temperature threshold require for tracking
             temp_thresh: None
             # Minimum raw temperature difference between background and track
