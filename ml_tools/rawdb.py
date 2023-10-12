@@ -39,6 +39,12 @@ class RawDatabase:
         self.ffc_frames = None
         self.frames = None
 
+    def get_frames(self):
+        return self.frames
+
+    def get_clip_background(self):
+        return self.background
+
     def load_frames(self):
         ffc_frames = []
         cptv_frames = []
@@ -69,7 +75,6 @@ class RawDatabase:
 
     @property
     def meta_data(self):
-        print("Loading meta", self.meta_data_file)
         if self._meta_data is not None:
             return self._meta_data
         if not self.meta_data_file.is_file():
@@ -169,11 +174,11 @@ class RawDatabase:
             clip_header.tracks.append(header)
         return clip_header
 
-    def get_clip_meta(self):
-        meta = self.meta_data
-
-        clip_meta = {}
-        clip_meta["clip_id"] = r_id
-        stationId = metadata.get("stationId", 0)
-        clip_meta["station_id"] = stationId
-        clip_meta["crop_rectangle"] = np.uint8(clip.crop_rectangle.to_ltrb())
+    def get_clip_meta(self, tag_precedence):
+        return self.get_clip_tracks(tag_precedence)
+        #
+        # clip_meta = {}
+        # clip_meta["clip_id"] = r_id
+        # stationId = metadata.get("stationId", 0)
+        # clip_meta["station_id"] = stationId
+        # clip_meta["crop_rectangle"] = np.uint8(clip.crop_rectangle.to_ltrb())

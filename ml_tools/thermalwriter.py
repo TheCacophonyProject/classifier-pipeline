@@ -47,6 +47,7 @@ from ml_tools.forestmodel import forest_features
 from ml_tools import imageprocessing
 from ml_tools.frame import TrackChannels
 from ml_tools.trackdatabase import TrackDatabase
+from ml_tools.rawdb import RawDatabase
 
 crop_rectangle = tools.Rectangle(0, 0, 640, 480)
 from functools import lru_cache
@@ -101,6 +102,9 @@ def create_tf_example(sample, data, features, labels, num_frames):
     feature_dict = {
         "image/filtered": tfrecord_util.int64_feature(1 if sample.filtered else 0),
         "image/avg_mass": tfrecord_util.int64_feature(avg_mass),
+        "image/track_median_mass": tfrecord_util.int64_feature(
+            int(sample.track_median_mass)
+        ),
         "image/avg_dim": tfrecord_util.int64_feature(average_dim),
         "image/height": tfrecord_util.int64_feature(image_height),
         "image/width": tfrecord_util.int64_feature(image_width),
@@ -146,7 +150,7 @@ def get_track_data(clip_id, track_id, db):
 
 
 def save_data(samples, writer, labels, extra_args):
-    sample_data = get_data(samples)
+    sample_data = get_data(samples, extra_args)
     if sample_data is None:
         return 0
     saved = 0
@@ -164,21 +168,27 @@ def save_data(samples, writer, labels, extra_args):
     return saved
 
 
-def get_data(clip_samples):
+def get_data(clip_samples, extra_args):
     # prepare the sample data for saving
     if len(clip_samples) == 0:
         return None
     data = []
     crop_rectangle = tools.Rectangle(2, 2, 160 - 2 * 2, 140 - 2 * 2)
-    db = TrackDatabase(clip_samples[0].source_file)
+    if clip_samples[0].source_file.stem == ".hdf5":
+        db = TrackDatabase(clip_samples[0].source_file)
+    else:
+        db = RawDatabase(clip_samples[0].source_file)
+        db.load_frames()
+        # going to redo segments to get rid of ffc segments
+
     clip_id = clip_samples[0].clip_id
     try:
-        background = db.get_clip_background(clip_id)
+        background = db.get_clip_background()
         if background is None:
-            frame_data = db.get_clip(clip_id)
+            frame_data = db.get_frames()
             background = np.median(frame_data, axis=0)
             del frame_data
-        clip_meta = db.get_clip_meta()
+        clip_meta = db.get_clip_meta(extra_args.get("tag_precedence"))
         frame_temp_median = clip_meta.frame_temp_median
 
         # group samples by track_id
@@ -186,12 +196,43 @@ def get_data(clip_samples):
         for s in clip_samples:
             samples_by_track.setdefault(s.track_id, []).append(s)
 
-        for track_id, samples in samples_by_track.items():
+        for track_id in samples_by_track.keys():
+            samples = samples_by_track[track_id]
+            if clip_samples[0].source_file.stem != ".hdf5":
+                track = next(
+                    (track for track in clip_meta.tracks if track.track_id == track_id),
+                    None,
+                )
+                if track is None:
+                    logging.error(
+                        "Cannot find track %s in clip %s", track_id, clip_meta.clip_id
+                    )
+                    continue
+
+                # GP All assumes we dont have a track over multiple bins (Whcih we probably never want)
+
+                track.calculate_segments(
+                    extra_args.get("segment_frame_spacing", 9),
+                    extra_args.get("segment_width", 25),
+                    extra_args.get("segment_type"),
+                    extra_args.get("segment_min_avg_mass"),
+                    max_segments=extra_args.get("max_segments"),
+                    dont_filter=extra_args.get("dont_filter_segment", False),
+                    skip_ffc=extra_args.get("skip_ffc", True),
+                    ffc_frames=clip_meta.ffc_frames,
+                )
+                samples = track.samples
+                frame_indices = set()
+                for sample in track.samples:
+                    frame_indices.update(set(sample.frame_indices))
+
+            else:
+                track_frames = db.get_track(
+                    clip_id, track_id, channels=[TrackChannels.thermal], crop=True
+                )
             logging.debug("Saving %s samples %s", track_id, len(samples))
             used_frames = []
-            track_frames = db.get_track(
-                clip_id, track_id, channels=[TrackChannels.thermal], crop=True
-            )
+
             features = forest_features(
                 track_frames,
                 background,

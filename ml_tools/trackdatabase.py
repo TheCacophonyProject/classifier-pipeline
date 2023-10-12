@@ -475,6 +475,7 @@ class TrackDatabase:
                 track = self.dataset_track(
                     clip[track_id], clip_header.clip_id, track_id
                 )
+                track.station_id = clip_header.station_id
                 clip_header.tracks.append(track)
         return clip_header
 
@@ -492,7 +493,7 @@ class TrackDatabase:
             return frames[0]
         return None
 
-    def get_clip(
+    def get_frames(
         self,
         clip_id,
         frame_numbers=None,

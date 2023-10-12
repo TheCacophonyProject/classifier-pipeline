@@ -108,7 +108,6 @@ class Dataset:
         self.lbl_p = None
         self.numpy_data = None
 
-        self.ignore_mass = True
         self.skip_ffc = True
 
     @property
@@ -218,7 +217,6 @@ class Dataset:
                     self.segment_min_avg_mass,
                     max_segments=self.max_segments,
                     dont_filter=dont_filter_segment,
-                    ignore_mass=self.ignore_mass,
                     skip_ffc=self.skip_ffc,
                     ffc_frames=clip_header.ffc_frames,
                 )
@@ -274,7 +272,6 @@ class Dataset:
 
         if sample.label not in self.labels:
             self.labels.append(sample.label)
-
         bins = self.samples_by_bin.setdefault(sample.bin_id, [])
         bins.append(sample)
         return True

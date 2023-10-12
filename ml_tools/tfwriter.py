@@ -39,7 +39,7 @@ import random
 import math
 
 
-def process_job(queue, labels, base_dir, save_data,extra_args):
+def process_job(queue, labels, base_dir, save_data, extra_args):
     import gc
 
     pid = os.getpid()
@@ -81,10 +81,14 @@ def process_job(queue, labels, base_dir, save_data,extra_args):
             logging.error("Process_job error %s", samples[0].source_file, exc_info=True)
 
 
-
-
 def create_tf_records(
-    dataset, output_path, labels, save_data,extra_args=None, num_shards=1, cropped=True, augment=False
+    dataset,
+    output_path,
+    labels,
+    save_data,
+    num_shards=1,
+    augment=False,
+    **extra_args,
 ):
     output_path = Path(output_path)
     if output_path.is_dir():
@@ -108,7 +112,7 @@ def create_tf_records(
         for i in range(num_processes):
             p = Process(
                 target=process_job,
-                args=(job_queue, labels, output_path, save_data,extra_args),
+                args=(job_queue, labels, output_path, save_data, extra_args),
             )
             processes.append(p)
             p.start()

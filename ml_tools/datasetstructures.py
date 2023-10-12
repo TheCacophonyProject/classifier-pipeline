@@ -48,6 +48,12 @@ class BaseSample(ABC):
 
     @property
     @abstractmethod
+    def track_median_mass(self):
+        """The function gets median mass of the track."""
+        ...
+
+    @property
+    @abstractmethod
     def frame_indices(self):
         """The function gets all frames indices for this sample."""
         ...
@@ -134,7 +140,6 @@ class TrackHeader:
         start_frame,
         ffc_frames=None,
         sample_frames_indices=None,
-        skipped_frames=None,
         station_id=None,
         rec_time=None,
         source_file=None,
@@ -142,6 +147,7 @@ class TrackHeader:
         confidence=None,
         human_tags=None,
     ):
+        self.station_id = station_id
         self.clip_id = clip_id
         self.source_file = source_file
         self.human_tags = human_tags
@@ -165,12 +171,34 @@ class TrackHeader:
         self.frame_crop = None
         self.num_frames = num_frames
         self.important_predicted = 0
-        mass_history = [region.mass for region in self.regions_by_frame.values()]
-        self.lower_mass = np.uint16(np.percentile(mass_history, q=25))
-        self.upper_mass = np.uint16(np.percentile(mass_history, q=75))
-        self.median_mass = np.uint16(np.median(mass_history))
-        self.mean_mass = np.uint16(np.mean(mass_history))
-        self.skipped_frames = skipped_frames
+
+        mass_history = np.uint16(
+            [region.mass for region in self.regions_by_frame.values()]
+        )
+        mass_history = [
+            region.frame_number
+            for region in self.regions_by_frame.values()
+            if region.mass > 0
+            and (
+                ffc_frames is None
+                or skip_ffc is False
+                or region.frame_number not in ffc_frames
+            )
+            and not region.blank
+            and region.width > 0
+            and region.height > 0
+        ]
+        self.has_no_mass = np.sum(mass_history) == 0
+        if len(mass_history) == 0:
+            self.lower_mass = 0
+            self.upper_mass = 0
+            self.median_mass = 0
+            self.mean_mass = 0
+        else:
+            self.lower_mass = np.uint16(np.percentile(mass_history, q=25))
+            self.upper_mass = np.uint16(np.percentile(mass_history, q=75))
+            self.median_mass = np.uint16(np.median(mass_history))
+            self.mean_mass = np.uint16(np.mean(mass_history))
         self.samples = []
 
     @property
@@ -289,11 +317,9 @@ class TrackHeader:
         segment_width,
         segment_type=SegmentType.ALL_RANDOM,
         segment_min_mass=None,
-        use_important=False,
         repeats=1,
         max_segments=None,
         dont_filter=False,
-        ignore_mass=False,
         skip_ffc=True,
         ffc_frames=None,
         location=None,
@@ -313,23 +339,21 @@ class TrackHeader:
             label=self.label,
             regions=np.array(regions),
             segment_min_mass=segment_min_mass,
-            sample_frames=self.sample_frames if use_important else None,
             ffc_frames=ffc_frames,
             lower_mass=self.lower_mass,
             repeats=repeats,
             min_frames=min_frames,
-            skipped_frames=self.skipped_frames,
             segment_type=segment_type,
             max_segments=max_segments,
-            location=None,
-            station_id=None,
-            rec_time=None,
+            station_id=self.station_id,
             source_file=self.source_file,
-            camera=None,
             dont_filter=dont_filter,
-            ignore_mass=ignore_mass,
             skip_ffc=skip_ffc,
         )
+        # GP could get this from the tracks when writing
+        # but might be best to keep samples independent for ease
+        for s in self.samples:
+            s._track_median_mass = self.median_mass
 
     @property
     def camera_id(self):
@@ -376,7 +400,6 @@ class TrackHeader:
         # sample_frames = track_meta.get("sample_frames")
         # if sample_frames is not None:
         #     sample_frames = sample_frames + track_start_frame
-        skipped_frames = track_meta.get("skipped_frames")
         regions = {}
         f_i = 0
         first_region = None
@@ -420,7 +443,6 @@ class TrackHeader:
             res_y=clip_meta.get("res_y", CPTV_FILE_HEIGHT),
             ffc_frames=ffc_frames,
             sample_frames_indices=sample_frames,
-            skipped_frames=skipped_frames,
             station_id=station_id,
             rec_time=rec_time,
             source_file=source_file,
@@ -680,6 +702,7 @@ class SegmentHeader(Sample):
         rec_time=None,
         source_file=None,
         filtered=False,
+        track_median_mass=None,
     ):
         super().__init__(label)
         self.filtered = filtered
@@ -707,6 +730,11 @@ class SegmentHeader(Sample):
         self._mass = np.uint16(mass)
         self.camera = camera
         self._source_file = source_file
+        self._track_median_mass = track_median_mass
+
+    @property
+    def track_median_mass(self):
+        return self._track_median_mass
 
     @property
     def source_file(self):
@@ -861,14 +889,11 @@ def get_segments(
     regions,
     label=None,
     segment_min_mass=None,
-    sample_frames=None,
     ffc_frames=[],
     lower_mass=0,
     repeats=1,
     min_frames=None,
-    skipped_frames=None,
     segment_frames=None,
-    ignore_mass=False,
     segment_type=SegmentType.ALL_RANDOM,
     max_segments=None,
     location=None,
@@ -886,47 +911,43 @@ def get_segments(
     segments = []
     mass_history = np.uint16([region.mass for region in regions])
     filtered_stats = {"segment_mass": 0, "too short": 0}
-    if sample_frames is not None:
-        frame_indices = [frame.frame_number for frame in sample_frames]
-    else:
-        has_no_mass = np.sum(mass_history) == 0
-        frame_indices = [
-            region.frame_number
-            for region in regions
-            if (has_no_mass or region.mass > 0)
-            and (
-                ffc_frames is None
-                or skip_ffc is False
-                or region.frame_number not in ffc_frames
-            )
-            and (skipped_frames is None or region.frame_number not in skipped_frames)
-            and not region.blank
-            and region.width > 0
-            and region.height > 0
-        ]
-        if len(frame_indices) == 0:
-            logging.warn("Nothing to load for %s - %s", clip_id, track_id)
-            return [], filtered_stats
-        if segment_min_mass is not None:
-            if len(frame_indices) > 0:
-                segment_min_mass = min(
-                    segment_min_mass,
-                    np.median(mass_history[frame_indices - start_frame]),
-                )
-        else:
-            segment_min_mass = 1
-            # remove blank frames
 
-        if segment_type == SegmentType.TOP_RANDOM:
-            # take top 50 mass frames
-            frame_indices = sorted(
-                frame_indices,
-                key=lambda f_i: mass_history[f_i - start_frame],
-                reverse=True,
-            )
-            frame_indices = frame_indices[:50]
-            frame_indices.sort()
-    # 1 / 0
+    has_no_mass = np.sum(mass_history) == 0
+    frame_indices = [
+        region.frame_number
+        for region in regions
+        if (has_no_mass or region.mass > 0)
+        and (
+            ffc_frames is None
+            or skip_ffc is False
+            or region.frame_number not in ffc_frames
+        )
+        and not region.blank
+        and region.width > 0
+        and region.height > 0
+    ]
+
+    if len(frame_indices) == 0:
+        logging.warn("Nothing to load for %s - %s", clip_id, track_id)
+        return [], filtered_stats
+    if segment_min_mass is not None:
+        segment_min_mass = min(
+            segment_min_mass,
+            np.median(mass_history[frame_indices - start_frame]),
+        )
+    else:
+        segment_min_mass = 1
+        # remove blank frames
+
+    if segment_type == SegmentType.TOP_RANDOM:
+        # take top 50 mass frames
+        frame_indices = sorted(
+            frame_indices,
+            key=lambda f_i: mass_history[f_i - start_frame],
+            reverse=True,
+        )
+        frame_indices = frame_indices[:50]
+        frame_indices.sort()
     if segment_type == SegmentType.TOP_SEQUENTIAL:
         return get_top_mass_segments(
             clip_id,
@@ -941,7 +962,6 @@ def get_segments(
             start_frame,
             lower_mass,
             segment_min_mass,
-            ignore_mass,
             source_file=source_file,
         )
     # if len(frame_indices) < min_frames:
@@ -1008,11 +1028,7 @@ def get_segments(
             segment_mass = np.sum(mass_slice)
             segment_avg_mass = segment_mass / len(mass_slice)
             filtered = False
-            if (
-                not ignore_mass
-                and segment_min_mass
-                and segment_avg_mass < segment_min_mass
-            ):
+            if segment_min_mass and segment_avg_mass < segment_min_mass:
                 if dont_filter:
                     filtered = True
                 else:
@@ -1066,9 +1082,10 @@ def get_top_mass_segments(
     start_frame,
     lower_mass,
     segment_min_mass,
-    ignore_mass=False,
     source_file=None,
 ):
+    # Needs re testing if want to use
+    logging.warning("Top mass segments hasn't been tested may not work")
     filtered_stats = {"segment_mass": 0, "too short": 0}
 
     segments = []
@@ -1096,9 +1113,7 @@ def get_top_mass_segments(
         segment_info = sorted_mass[0]
         index = segment_info[0]
         avg_mass = segment_info[1] / segment_width
-        if not best_mass and (
-            ignore_mass or (avg_mass < lower_mass or avg_mass < segment_min_mass)
-        ):
+        if not best_mass and (avg_mass < lower_mass or avg_mass < segment_min_mass):
             break
         movement_data = get_movement_data(regions[index : index + segment_width])
         width = min(segment_width, len(regions))
