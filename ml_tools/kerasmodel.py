@@ -743,7 +743,7 @@ class KerasModel(Interpreter):
         )
         features = None
         if self.params.mvm:
-            features = forestmodel.process_track(clip, track)
+            features = forestmodel.process_track(clip, track, normalize=True)
         return self.classify_track_data(
             track.get_id(),
             track_data,
