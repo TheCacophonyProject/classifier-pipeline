@@ -135,15 +135,7 @@ class Interpreter(ABC):
                     clip.background,
                     clip.crop_rectangle,
                 )
-                # refs.append(np.median(frame.thermal))
-                # thermal_reference = np.median(frame.thermal)
-                # f = frame.crop_by_region(region)
-                # mass += region.mass
-                # f.resize_with_aspect(
-                #     (params.frame_size, params.frame_size),
-                #     clip.crop_rectangle,
-                #     True,
-                # )
+                mass += region.mass
                 segment_data.append(f)
             preprocessed = preprocess_movement(
                 segment_data,
