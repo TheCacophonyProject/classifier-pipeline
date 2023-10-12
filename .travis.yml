@@ -23,8 +23,8 @@ script:
 - sudo mkdir /var/spool/cptv
 - sudo chmod -R 777 /var/spool/cptv
 - wget -O thermal-model.tar https://github.com/TheCacophonyProject/AI-Model/releases/download/v0.3/inc3-19012023-tflite.tar
-- mkdir thermal-model
-- tar xzvf thermal-model.tar -C thermal-model --strip-components=1
+- mkdir /thermal-model
+- tar xzvf thermal-model.tar -C /thermal-model --strip-components=1
 # going to fix shortly GP
 # - python3 classify.py -c tests/test-config.yaml ./tests/clips/
 - python3 piclassify.py --file tests/clips/possum.cptv  --thermal-config-file tests/config.toml
