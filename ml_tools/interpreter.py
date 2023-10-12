@@ -8,9 +8,8 @@ from pathlib import Path
 
 
 class Interpreter(ABC):
-    def __init__(self, model_file, data_type):
+    def __init__(self, model_file):
         self.load_json(model_file)
-        self.data_type = data_type
 
     def load_json(self, filename):
         """Loads model and parameters from file."""
