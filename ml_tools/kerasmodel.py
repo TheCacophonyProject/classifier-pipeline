@@ -348,14 +348,14 @@ class KerasModel(Interpreter):
         # self.model.summary()
         # self.model.load_weights(dir + "/variables/variables")
 
-    def load_model(self, model_path, training=False, weights=None, data_type="thermal"):
+    def load_model(self, model_path, training=False, weights=None):
         model_path = Path(model_path)
         if model_path.is_file():
             dir_name = model_path.parent
-            super().__init__(model_path, data_type)
+            super().__init__(model_path)
         else:
             dir_name = model_path
-            super().__init__(model_path / "saved_model.pb", data_type)
+            super().__init__(model_path / "saved_model.pb")
 
         logging.info("Loading %s with model weight %s", model_path, weights)
         self.model = tf.keras.models.load_model(dir_name)

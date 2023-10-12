@@ -216,7 +216,7 @@ class PiClassifier(Processor):
 
         if self.classify:
             model = config.classify.models[0]
-            self.classifier = get_interpreter(model, self.type)
+            self.classifier = get_interpreter(model)
 
             if self.classifier.TYPE == ForestModel.TYPE:
                 self.last_x_frames = 5 * headers.fps

@@ -8,20 +8,20 @@ from pathlib import Path
 
 
 class Interpreter(ABC):
-    def __init__(self, model_file, data_type):
+    def __init__(self, model_file):
         self.load_json(model_file)
-        self.data_type = data_type
 
     def load_json(self, filename):
         """Loads model and parameters from file."""
         filename = Path(filename)
         filename = filename.with_suffix(".json")
         logging.info("Loading metadata from %s", filename)
-        stats = json.load(open(filename, "r"))
+        metadata = json.load(open(filename, "r"))
 
-        self.labels = stats["labels"]
+        self.labels = metadata["labels"]
         self.params = HyperParams()
-        self.params.update(stats.get("hyperparams", {}))
+        self.params.update(metadata.get("hyperparams", {}))
+        self.data_type = metadata.get("type", "thermal")
 
     @abstractmethod
     def shape(self):
@@ -158,10 +158,10 @@ class Interpreter(ABC):
 class NeuralInterpreter(Interpreter):
     TYPE = "Neural"
 
-    def __init__(self, model_name, data_type):
+    def __init__(self, model_name):
         from openvino.inference_engine import IENetwork, IECore
 
-        super().__init__(model_name, data_type)
+        super().__init__(model_name)
         model_name = Path(model_name)
         # can use to test on PC
         # device = "CPU"
@@ -199,8 +199,8 @@ class NeuralInterpreter(Interpreter):
 class LiteInterpreter(Interpreter):
     TYPE = "TFLite"
 
-    def __init__(self, model_name, data_type):
-        super().__init__(model_name, data_type)
+    def __init__(self, model_name):
+        super().__init__(model_name)
 
         import tflite_runtime.interpreter as tflite
 
@@ -234,29 +234,27 @@ def inc3_preprocess(x):
     return x
 
 
-def get_interpreter(model, data_type):
+def get_interpreter(model):
     # model_name, type = os.path.splitext(model.model_file)
 
     logging.info(
-        "Loading %s of type %s with datatype %s",
+        "Loading %s of type %s",
         model.model_file,
         model.type,
-        data_type,
     )
 
     if model.type == LiteInterpreter.TYPE:
-        classifier = LiteInterpreter(model.model_file, data_type)
+        classifier = LiteInterpreter(model.model_file)
     elif model.type == NeuralInterpreter.TYPE:
-        classifier = NeuralInterpreter(model.model_file, data_type)
+        classifier = NeuralInterpreter(model.model_file)
     elif model.type == "RandomForest":
         from ml_tools.forestmodel import ForestModel
 
-        classifier = ForestModel(model.model_file, data_type)
+        classifier = ForestModel(model.model_file)
     else:
         from ml_tools.kerasmodel import KerasModel
 
         classifier = KerasModel()
         classifier.load_model(model.model_file, weights=model.model_weights)
-        classifier.type = data_type
 
     return classifier

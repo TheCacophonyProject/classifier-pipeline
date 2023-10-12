@@ -45,7 +45,7 @@ class ClipClassifier:
             logging.info("Loading %s", model)
             classifier = self.get_classifier(model)
 
-    def get_classifier(self, model, data_type):
+    def get_classifier(self, model):
         """
         Returns a classifier object, which is created on demand.
         This means if the ClipClassifier is copied to a new process a new Classifier instance will be created.
@@ -56,7 +56,7 @@ class ClipClassifier:
             raise Exception("Can only classify with kerasmodel right now")
         load_start = time.time()
         logging.info("classifier loading %s", model.model_file)
-        classifier = get_interpreter(model, data_type)
+        classifier = get_interpreter(model)
         logging.info("classifier loaded (%s)", time.time() - load_start)
         self.models[model.id] = classifier
         return classifier
@@ -185,9 +185,9 @@ class ClipClassifier:
             clip.frame_buffer.remove_cache()
         return meta_data
 
-    def classify_clip(self, clip, model, meta_data, data_type, reuse_frames=None):
+    def classify_clip(self, clip, model, meta_data, reuse_frames=None):
         start = time.time()
-        classifier = self.get_classifier(model, data_type)
+        classifier = self.get_classifier(model)
         predictions = Predictions(classifier.labels, model)
         predictions.model_load_time = time.time() - start
 
