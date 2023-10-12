@@ -56,7 +56,8 @@ class RawDatabase:
             for frame in reader:
                 if frame.background_frame:
                     background = frame.pix
-                    if tracker_version < 10:
+                    # bug in previous tracker version where background was first frame
+                    if tracker_version >= 10:
                         continue
                 ffc = is_affected_by_ffc(frame)
                 if ffc:
