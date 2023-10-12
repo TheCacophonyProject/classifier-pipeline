@@ -66,6 +66,8 @@ class Interpreter(ABC):
         if len(frames) == 0:
             return None, None, None
 
+        from ml_tools.preprocess import preprocess_frame
+
         if self.data_type == "IR":
             logging.info("Preprocess IR scale %s last_x %s", scale, last_x_frames)
             from ml_tools.preprocess import (
@@ -99,9 +101,7 @@ class Interpreter(ABC):
                 masses.append(1)
             return [frame.frame_number for f in frames], preprocessed, masses
         elif self.data_type == "thermal":
-            from ml_tools.preprocess import (
-                preprocess_movement,
-            )
+            from ml_tools.preprocess import preprocess_movement, preprocess_frame
 
             frames_per_classify = args.get("frames_per_classify", 25)
             logging.info(
@@ -128,17 +128,23 @@ class Interpreter(ABC):
             for frame, region in zip(frames, regions):
                 if region.blank:
                     continue
-                refs.append(np.median(frame.thermal))
-                thermal_reference = np.median(frame.thermal)
-                f = frame.crop_by_region(region)
-                mass += region.mass
-                f.resize_with_aspect(
+                f = preprocess_frame(
+                    frame,
                     (params.frame_size, params.frame_size),
+                    region,
+                    clip.background,
                     clip.crop_rectangle,
-                    True,
                 )
+                # refs.append(np.median(frame.thermal))
+                # thermal_reference = np.median(frame.thermal)
+                # f = frame.crop_by_region(region)
+                # mass += region.mass
+                # f.resize_with_aspect(
+                #     (params.frame_size, params.frame_size),
+                #     clip.crop_rectangle,
+                #     True,
+                # )
                 segment_data.append(f)
-
             preprocessed = preprocess_movement(
                 segment_data,
                 params.square_width,
@@ -147,8 +153,6 @@ class Interpreter(ABC):
                 green_type=params.green_type,
                 blue_type=params.blue_type,
                 preprocess_fn=self.preprocess_fn,
-                reference_level=refs,
-                keep_edge=params.keep_edge,
             )
             if preprocessed is None:
                 return None, None, mass

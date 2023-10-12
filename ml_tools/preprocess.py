@@ -58,7 +58,7 @@ def preprocess_frame(frame, out_dim, region, background=None, crop_rectangle=Non
     cropped_frame = frame.crop_by_region(region)
     cropped_frame.thermal = np.float32(cropped_frame.thermal)
     if cropped_frame.filtered is not None:
-        if backgorund is None:
+        if background is None:
             logging.warning(
                 "Not calculating filtered frame as no background was supplied"
             )
