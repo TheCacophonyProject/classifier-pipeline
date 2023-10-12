@@ -6,4 +6,4 @@ classify:
       - id: 2
         name: "Thermal WR"
         type: "TFLite"
-        model_file: "/home/gp/cacophony/classifier-data/thermal-training/tflite/converted_model.tflite"
+        model_file: "/thermal-model/converted_model.tflite"
