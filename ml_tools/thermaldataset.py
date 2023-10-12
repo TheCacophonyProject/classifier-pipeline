@@ -286,17 +286,10 @@ def main():
     )
     print("Ecpoh size is", epoch_size)
     print(get_distribution(resampled_ds, len(labels)))
-    return
+    # return
     #
     for e in range(2):
         print("epoch", e)
-        true_categories = [y for x, y in resampled_ds]
-        true_categories = tf.concat(true_categories, axis=0)
-        true_categories = np.int64(tf.argmax(true_categories, axis=1))
-        c = Counter(list(true_categories))
-        print("epoch is size", len(true_categories))
-        for i in range(len(labels)):
-            print("after have", labels[i], c[i])
         for x, y in resampled_ds:
             show_batch(x, y, labels)
 
@@ -304,7 +297,6 @@ def main():
 
 
 def show_batch(image_batch, label_batch, labels):
-    image_batch = image_batch[0]
     plt.figure(figsize=(10, 10))
     print("images in batch", len(image_batch), len(label_batch))
     num_images = min(len(image_batch), 25)

@@ -204,30 +204,31 @@ def process_track(clip, track, last_x_frames=None, buf_len=5, scale=None):
     return x
 
 
-def forest_features(
-    track_frames,
-    background,
-    frame_temp_median,
-    regions,
-    buf_len=5,
-    cropped=True,
-    normalize=False,
-):
-    background = clip.background
-    frames = []
-    frame_temp_median = {}
-    for r in track.bounds_history:
-        frame = clip.frame_buffer.get_frame(r.frame_number)
-        frames.append(frame)
-        frame_temp_median[r.frame_number] = np.median(frame.thermal)
-    return forest_features(
-        frames,
-        background,
-        frame_temp_median,
-        track.bounds_history,
-        cropped=False,
-        normalize=normalize,
-    )
+#
+# def forest_features(
+#     track_frames,
+#     background,
+#     frame_temp_median,
+#     regions,
+#     buf_len=5,
+#     cropped=True,
+#     normalize=False,
+# ):
+#     background = clip.background
+#     frames = []
+#     frame_temp_median = {}
+#     for r in track.bounds_history:
+#         frame = clip.frame_buffer.get_frame(r.frame_number)
+#         frames.append(frame)
+#         frame_temp_median[r.frame_number] = np.median(frame.thermal)
+#     return forest_features(
+#         frames,
+#         background,
+#         frame_temp_median,
+#         track.bounds_history,
+#         cropped=False,
+#         normalize=normalize,
+#     )
 
 
 def forest_features(

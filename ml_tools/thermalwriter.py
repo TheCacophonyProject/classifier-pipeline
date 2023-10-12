@@ -222,9 +222,17 @@ def get_data(clip_samples, extra_args):
                     ffc_frames=clip_meta.ffc_frames,
                 )
                 samples = track.samples
-                frame_indices = set()
-                for sample in track.samples:
-                    frame_indices.update(set(sample.frame_indices))
+                frame_temp_median = {}
+                track_frames = []
+                for frame_i in range(
+                    track.start_frame, track.start_frame + track.num_frames
+                ):
+                    f = db.frames[frame_i]
+                    f.region = track.regions_by_frame[frame_i]
+                    frame_temp_median[frame_i] = np.median(f.thermal)
+                    f.thermal = f.region.subimage(f.thermal)
+                    f.float_arrays()
+                    track_frames.append(f)
 
             else:
                 track_frames = db.get_track(
@@ -239,6 +247,7 @@ def get_data(clip_samples, extra_args):
                 frame_temp_median,
                 [f.region for f in track_frames],
                 normalize=True,
+                cropped=True,
             )
 
             by_frame_number = {}
