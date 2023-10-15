@@ -147,7 +147,6 @@ class ClipClassifier:
                 clip,
                 self.model,
                 meta_data,
-                track_extractor.type,
                 reuse_frames=reuse_frames,
             )
             predictions_per_model[self.model.id] = prediction
@@ -157,7 +156,6 @@ class ClipClassifier:
                     clip,
                     model,
                     meta_data,
-                    track_extractor.type,
                     reuse_frames=reuse_frames,
                 )
                 predictions_per_model[model.id] = prediction
