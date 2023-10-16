@@ -6,6 +6,7 @@ import argparse
 import logging
 from ml_tools.logs import init_logging
 from config.config import Config
+import time
 
 
 def str2bool(v):
@@ -54,7 +55,23 @@ def main(cmd_args=None):
     config = Config.load_from_file()
     results = ""
     try:
-        sock.connect(config.classify.service_socket)
+        count = 0
+        retries = 1
+        while True:
+            try:
+                sock.connect(config.classify.service_socket)
+                logging.info("Connected to %s ", config.classify.service_socket)
+                break
+            except Exception as ex:
+                if count >= retries:
+                    raise ex
+                count += 1
+                logging.warning(
+                    "Could not connect to %s retrying in 10s error was %s",
+                    config.classify.service_socket,
+                    ex,
+                )
+                time.sleep(10)
         data = {"file": args.source, "cache": args.cache, "reuse_frames": False}
         sock.send(json.dumps(data).encode())
 

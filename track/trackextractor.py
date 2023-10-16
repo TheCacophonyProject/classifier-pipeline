@@ -158,7 +158,6 @@ def extract_file(filename, retrack=False):
         for track in clip.tracks:
             track.trim()
             track.set_end_s(clip.frames_per_second)
-
     meta_filename = filename.with_suffix(".txt")
 
     if previewer:
