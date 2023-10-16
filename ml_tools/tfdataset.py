@@ -79,9 +79,7 @@ def get_dataset(load_function, base_dir, labels, **args):
         if excluded in labels:
             new_labels.remove(excluded)
     for remapped_lbl in to_remap.keys():
-        if remapped_lbl in labels and (
-            args.get("multi_label") == False or remapped_lbl not in land_birds
-        ):
+        if remapped_lbl in labels:
             new_labels.remove(remapped_lbl)
     for l in labels:
         keys.append(labels.index(l))

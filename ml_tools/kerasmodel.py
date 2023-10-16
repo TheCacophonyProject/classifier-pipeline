@@ -630,7 +630,11 @@ class KerasModel(Interpreter):
             save_weights_only=True,
             mode="auto",
         )
-        val_acc = os.path.join(self.checkpoint_folder, run_name, "val_acc")
+        val_acc = os.path.join(
+            self.checkpoint_folder,
+            run_name,
+            "val_binary_acc" if self.params.multi_label else "val_acc",
+        )
 
         checkpoint_acc = tf.keras.callbacks.ModelCheckpoint(
             val_acc,
