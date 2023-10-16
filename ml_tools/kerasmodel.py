@@ -401,8 +401,8 @@ class KerasModel(Interpreter):
         self.model.trainable = training
         self.load_meta(dir_name)
         if weights is not None:
-            self.model.load_weights(weights).expect_partial()
-        logging.info("Loaded weight %s", weights)
+            self.model.load_weights(weights)
+            logging.info("Loaded weight %s", weights)
         print(self.model.summary())
 
     def load_meta(self, dir_name):
@@ -905,8 +905,6 @@ class KerasModel(Interpreter):
                 self.params.green_type,
                 self.params.blue_type,
                 self.preprocess_fn,
-                keep_edge=self.params.keep_edge,
-                preprocessed=preprocessed,
             )
             if frames is None:
                 logging.warn("No frames to predict on")
@@ -939,7 +937,7 @@ class KerasModel(Interpreter):
     def confusion_tfrecords(self, dataset, filename):
         true_categories = tf.concat([y for x, y in dataset], axis=0)
         if len(true_categories) > 1:
-            if self.params.multi_label or 1 == 1:
+            if self.params.multi_label:
                 # multi = []
                 # for y in true_categories:
                 # multi.append(tf.where(y).numpy().ravel())
@@ -976,7 +974,7 @@ class KerasModel(Interpreter):
                         continue
                     index += 1
             true_categories = np.int64(flat_p)
-            predicted_categories = np / int64(flat_y)
+            predicted_categories = np.int64(flat_y)
         else:
             predicted_categories = np.int64(tf.argmax(y_pred, axis=1))
 

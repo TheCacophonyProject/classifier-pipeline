@@ -41,6 +41,10 @@ import cv2
 from config.loadconfig import LoadConfig
 from sklearn.metrics import confusion_matrix
 
+root_logger = logging.getLogger()
+for handler in root_logger.handlers:
+    if isinstance(handler, logging.StreamHandler) and handler.stream == sys.stderr:
+        root_logger.removeHandler(handler)
 crop_rectangle = tools.Rectangle(0, 0, 160, 120)
 PROB_THRESHOLD = 0.8
 
@@ -250,7 +254,9 @@ def evaluate_dir(
     reason = {}
     y_true = []
     y_pred = []
-    for cptv_file in dir.glob(f"**/*cptv"):
+    files = list(dir.glob(f"**/*cptv"))
+    files.sort()
+    for cptv_file in files:
         # for clip in dataset.clips:
         clip_db = RawDatabase(cptv_file)
         clip = clip_db.get_clip_tracks(LoadConfig.DEFAULT_GROUPS)
@@ -286,6 +292,7 @@ def evaluate_dir(
             )
             frame_indices = set()
             for sample in track.samples:
+                print("Using ", sample.frame_indices)
                 frame_indices.update(set(sample.frame_indices))
                 sample.remapped_label = label_mapping.get(
                     sample.original_label, sample.original_label
@@ -369,12 +376,24 @@ def test_model(model_file, weights, config):
     tf.random.set_seed(1)
     model = KerasModel(train_config=config.train)
     model.load_model(model_file.parent)
-    model.build_model(dropout=0.3)
-    model.model.load_weights(str(weights)).expect_partial()
-    print("Loading weigfhts", weights)
-    # model.load_weights(weights)
+    # model.model.save_weights(model_file.parent / "final_weights")
+    # model.build_model(dropout=0.3)
+
+    # model.model.load_weights(str(weights))
+    # print("Loading weigfhts", weights)
+    model.model.load_weights(weights)
     model = model.model
 
+    output = model.layers[1].output
+    for new_l in model.layers[2:]:
+        print(new_l.name)
+        output = new_l(output)
+    new_model = tf.keras.models.Model(model.layers[1].input, outputs=output)
+
+    print("Saving", model_file.parent / "re_save")
+    new_model.summary()
+    new_model.save(model_file.parent / "re_save")
+    return
     for _ in range(2):
         test = np.ones((1, 160, 160, 3), dtype=np.float32)
         test = test / 2.0
@@ -392,6 +411,30 @@ def test_model(model_file, weights, config):
     return
 
 
+def re_save(model_file, weights, config):
+    tf.random.set_seed(1)
+    model = KerasModel(train_config=config.train)
+    model.load_model(model_file.parent)
+    # model.model.save_weights(model_file.parent / "final_weights")
+    # model.build_model(dropout=0.3)
+
+    # model.model.load_weights(str(weights))
+    # print("Loading weigfhts", weights)
+    # model.model.save_weight(model_file.parent / "final_weights")
+    model.model.load_weights(weights)
+    model = model.model
+
+    output = model.layers[1].output
+    for new_l in model.layers[2:]:
+        print(new_l.name)
+        output = new_l(output)
+    new_model = tf.keras.models.Model(model.layers[1].input, outputs=output)
+
+    print("Saving", model_file.parent / "re_save")
+    new_model.summary()
+    new_model.save(model_file.parent / "re_save")
+
+
 def main():
     args = load_args()
     init_logging()
@@ -403,9 +446,10 @@ def main():
         model_file = Path(args.model_file)
     if args.weights:
         weights = model_file / args.weights
-    test_model(model_file, Path(weights), config)
-    return
+    # test_model(model_file, Path(weights), config)
+    # return
     base_dir = config.tracks_folder
+    tf.random.set_seed(1)
 
     model = KerasModel(train_config=config.train)
     model.load_model(model_file, training=False, weights=weights)
@@ -414,6 +458,8 @@ def main():
         evaluate_dir(model, Path(args.evaluate_dir), config, args.confusion)
     elif args.dataset:
         model.load_training_meta(base_dir)
+        if model.params.multi_label:
+            model.labels.append("land-bird")
         excluded, remapped = get_excluded(model.type)
         files = base_dir + f"/training-data/{args.dataset}"
         dataset, _, new_labels, _ = get_dataset(
