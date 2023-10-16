@@ -292,7 +292,6 @@ def evaluate_dir(
             )
             frame_indices = set()
             for sample in track.samples:
-                print("Using ", sample.frame_indices)
                 frame_indices.update(set(sample.frame_indices))
                 sample.remapped_label = label_mapping.get(
                     sample.original_label, sample.original_label

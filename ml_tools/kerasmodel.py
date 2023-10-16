@@ -969,9 +969,9 @@ class KerasModel(Interpreter):
                     elif y_l == 1 and not predicted:
                         flat_y.append(index)
                         flat_p.append(len(self.labels) - 1)
-                    elif y_l == 0 and not predicted:
-                        # all good
-                        continue
+                    # elif y_l == 0 and not predicted:
+                    # all good
+                    # continue
                     index += 1
             true_categories = np.int64(flat_p)
             predicted_categories = np.int64(flat_y)
