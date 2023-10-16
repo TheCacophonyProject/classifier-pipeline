@@ -13,6 +13,8 @@ import logging
 import pickle
 import sys
 import os
+
+os.environ["CUDA_VISIBLE_DEVICES"] = "1"
 import json
 import pickle
 from config.config import Config
@@ -284,10 +286,10 @@ def evaluate_dir(
 
         for track in clip.tracks:
             track.calculate_segments(
-                segment_frame_spacing,
+                segment_frame_spacing * 2,
                 model.params.square_width**2,
                 segment_min_mass=10,
-                # segment_type=SegmentType.ALL_SECTIONS,
+                segment_type=SegmentType.ALL_SECTIONS,
                 ffc_frames=clip_db.ffc_frames,
             )
             frame_indices = set()

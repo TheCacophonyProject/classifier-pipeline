@@ -54,7 +54,7 @@ def makecsv(dir):
     dbFiles = dir.glob("**/*.hdf5")
     import csv
 
-    print("MAking csv")
+    print("Making csv")
 
     rec_counts = {}
     track_counts = {}
