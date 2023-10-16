@@ -118,7 +118,9 @@ def get_thumbnail_info(clip, track):
         max_contour,
     ) = get_track_thumb_stats(clip, track)
     if len(stats) == 0:
-        return None, 0
+        if len(track.bounds_history) == 0:
+            return None, 0
+        return Stat(track.bounds_history[0], 0, 0), 0
     scored_frames = sorted(
         stats,
         key=lambda s: score(s, max_mass, max_median_diff, min_median_diff, max_contour),
