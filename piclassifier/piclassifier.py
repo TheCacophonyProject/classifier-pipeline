@@ -9,7 +9,7 @@ import logging
 from pathlib import Path
 
 from classify.trackprediction import Predictions
-from load.clip import Clip
+from track.clip import Clip
 from track.irtrackextractor import IRTrackExtractor
 
 from track.cliptrackextractor import ClipTrackExtractor

@@ -24,7 +24,7 @@ from multiprocessing import Process, Queue
 import traceback
 from ml_tools import tools
 
-from load.clip import Clip, ClipStats
+from track.clip import Clip, ClipStats
 import numpy as np
 import json
 from pathlib import Path

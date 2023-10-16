@@ -24,7 +24,7 @@ import numpy as np
 import cv2
 from PIL import Image, ImageDraw, ImageFont
 
-from load.clip import Clip
+from track.clip import Clip
 from ml_tools import tools
 from ml_tools.tools import Rectangle
 import ml_tools.globals as globs

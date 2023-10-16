@@ -814,7 +814,6 @@ class Track:
         )
         while start < len(self) and mass_history[start] <= filter_mass:
             start += 1
-            logging.info("Start is %s", start)
         end = len(self) - 1
 
         while end > 0 and mass_history[end] <= filter_mass:

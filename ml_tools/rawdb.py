@@ -18,7 +18,7 @@ import numpy as np
 from track.region import Region
 from ml_tools.datasetstructures import TrackHeader, ClipHeader
 from track.track import Track
-from load.cliptrackextractor import is_affected_by_ffc
+from track.cliptrackextractor import is_affected_by_ffc
 from cptv import CPTVReader
 
 special_datasets = [
