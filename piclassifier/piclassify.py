@@ -29,9 +29,9 @@ from .cameras.irframe import IRFrame
 import multiprocessing
 from cptv import Frame
 from .eventreporter import log_event
-from load.irtrackextractor import IRTrackExtractor
+from track.irtrackextractor import IRTrackExtractor
 
-from load.cliptrackextractor import ClipTrackExtractor
+from track.cliptrackextractor import ClipTrackExtractor
 
 SOCKET_NAME = "/var/run/lepton-frames"
 VOSPI_DATA_SIZE = 160

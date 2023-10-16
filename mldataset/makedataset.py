@@ -32,7 +32,7 @@ from pathlib import Path
 import h5py
 from cptv import CPTVReader
 import yaml
-from load.cliptrackextractor import is_affected_by_ffc
+from track.cliptrackextractor import is_affected_by_ffc
 from track.track import Track
 from track.region import Region
 

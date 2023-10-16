@@ -21,7 +21,7 @@ import attr
 
 from .defaultconfig import DefaultConfig, deep_copy_map_if_key_not_exist
 from .trackingmotionconfig import TrackingMotionConfig
-from load.cliptrackextractor import ClipTrackExtractor
+from track.cliptrackextractor import ClipTrackExtractor
 from track.track import RegionTracker
 
 

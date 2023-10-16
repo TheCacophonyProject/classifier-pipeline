@@ -10,9 +10,9 @@ from pathlib import Path
 
 from classify.trackprediction import Predictions
 from load.clip import Clip
-from load.irtrackextractor import IRTrackExtractor
+from track.irtrackextractor import IRTrackExtractor
 
-from load.cliptrackextractor import ClipTrackExtractor
+from track.cliptrackextractor import ClipTrackExtractor
 
 from ml_tools.previewer import Previewer, add_last_frame_tracking
 from ml_tools import tools
