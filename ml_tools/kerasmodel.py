@@ -633,12 +633,12 @@ class KerasModel(Interpreter):
         val_acc = os.path.join(
             self.checkpoint_folder,
             run_name,
-            "val_binary_acc" if self.params.multi_label else "val_acc",
+            "val_acc",
         )
 
         checkpoint_acc = tf.keras.callbacks.ModelCheckpoint(
             val_acc,
-            monitor="val_accuracy",
+            monitor="val_binary_acc" if self.params.multi_label else "val_acc",
             verbose=1,
             save_best_only=True,
             save_weights_only=True,
@@ -656,7 +656,8 @@ class KerasModel(Interpreter):
             mode="max",
         )
         earlyStopping = tf.keras.callbacks.EarlyStopping(
-            patience=22, monitor="val_accuracy"
+            patience=22,
+            monitor="val_binary_acc" if self.params.multi_label else "val_acc",
         )
         # havent found much use in this just takes training time
         # file_writer_cm = tf.summary.create_file_writer(
@@ -676,7 +677,8 @@ class KerasModel(Interpreter):
         #   "verbose": 1
         # },
         reduce_lr_callback = tf.keras.callbacks.ReduceLROnPlateau(
-            monitor="val_accuracy", verbose=1
+            monitor="val_binary_acc" if self.params.multi_label else "val_acc",
+            verbose=1,
         )
         return [
             earlyStopping,

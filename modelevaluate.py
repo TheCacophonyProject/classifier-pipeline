@@ -355,6 +355,7 @@ def evaluate_dir(
                 y_pred[-1],
                 " should be ",
                 track.label,
+                np.round(100 * prediction.predictions),
             )
     model.labels.append("None")
     model.labels.append("unidentified")
