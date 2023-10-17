@@ -160,7 +160,9 @@ class ForestModel(Interpreter):
         return predictions, [1]
 
 
-def process_track(clip, track, last_x_frames=None, buf_len=5, scale=None):
+def process_track(
+    clip, track, last_x_frames=None, buf_len=5, scale=None, normalize=False
+):
     background = clip.background
     all_frames = None
     frame_temp_median = {}
@@ -188,7 +190,7 @@ def process_track(clip, track, last_x_frames=None, buf_len=5, scale=None):
         else:
             frame = all_frames[i]
         thermal = frame.thermal
-        frames.append(thermal)
+        frames.append(frame)
         frame_temp_median[r.frame_number] = np.median(frame.thermal)
         assert frame.frame_number == r.frame_number
     if scale is not None and scale != 1:
@@ -199,62 +201,12 @@ def process_track(clip, track, last_x_frames=None, buf_len=5, scale=None):
     else:
         backgorund = clip.background
     x = forest_features(
-        frames, background, frame_temp_median, data_bounds, cropped=False
-    )
-    return x
-
-
-def forest_features(
-    track_frames,
-    background,
-    frame_temp_median,
-    regions,
-    buf_len=5,
-    cropped=True,
-    normalize=False,
-):
-    background = clip.background
-    all_frames = None
-    frame_temp_median = {}
-    for r in track.bounds_history:
-        frame = clip.frame_buffer.get_frame(r.frame_number)
-        frames.append(frame)
-        frame_temp_median[r.frame_number] = np.median(frame.thermal)
-    return forest_features(
         frames,
         background,
         frame_temp_median,
-        track.bounds_history,
+        data_bounds,
         cropped=False,
         normalize=normalize,
-    )
-    frames = []
-    # bounds = bounds[:50]
-    data_bounds = np.empty_like(bounds)
-    for i, r in enumerate(bounds):
-        # if scale is not None and scale != 1:
-        #     r = r.copy()
-        #     r.rescale(1 / scale)
-        #     data_bounds[i] = r
-        # else:
-        data_bounds[i] = bounds[i]
-        if all_frames is None:
-            frame = clip.frame_buffer.get_frame(r.frame_number)
-        else:
-            frame = all_frames[i]
-        thermal = frame.thermal
-        frames.append(thermal)
-        frame_temp_median[r.frame_number] = np.median(frame.thermal)
-        assert frame.frame_number == r.frame_number
-    if scale is not None and scale != 1:
-        resize = 1 / scale
-        background = clip.rescaled_background(
-            (int(background.shape[1] * resize), int(background.shape[0] * resize))
-        )
-    else:
-        backgorund = clip.background
-    x = forest_features(
-        frames, background, frame_temp_median, data_bounds, cropped=False
     )
     return x
 
@@ -284,7 +236,7 @@ def forest_features(
         if region.blank or region.width == 0 or region.height == 0:
             prev_count = 0
             continue
-        frame.float_arrays()
+
         feature = FrameFeatures(region)
         sub_back = region.subimage(background)
         feature.calc_histogram(sub_back, frame.thermal, normalize=normalize)

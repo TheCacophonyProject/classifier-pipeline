@@ -805,7 +805,7 @@ class KerasModel(Interpreter):
             track_data[frame.frame_number] = cropped_frame
         features = None
         if self.params.mvm:
-            features = forestmodel.process_track(clip, track)
+            features = forestmodel.process_track(clip, track, normalize=True)
         return self.classify_track_data(
             track.get_id(), track_data, segments, features, preprocessed=True
         )
