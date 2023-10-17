@@ -763,6 +763,8 @@ def main():
     print_counts(*datasets)
     print("split data")
     record_dir = base_dir / "training-data"
+    record_dir.mkdir(parents=True, exist_ok=True)
+
     dataset_counts = {}
     # create_tf_records = create_thermal_records
     if config.train.type == "IR":
