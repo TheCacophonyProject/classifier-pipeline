@@ -64,13 +64,13 @@ def preprocess_frame(frame, out_dim, region, background=None, crop_rectangle=Non
             )
         else:
             cropped_frame.filtered = cropped_frame.thermal - region.subimage(background)
-    cropped_frame.thermal -= median
-    np.clip(cropped_frame.thermal, 0, None, out=cropped_frame.thermal)
     cropped_frame.resize_with_aspect(
         out_dim,
         crop_rectangle,
         True,
     )
+    cropped_frame.thermal -= median
+    np.clip(cropped_frame.thermal, 0, None, out=cropped_frame.thermal)
     cropped_frame.normalize()
     return cropped_frame
 
