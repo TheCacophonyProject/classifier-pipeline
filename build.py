@@ -717,6 +717,8 @@ def main():
         ext=args.ext,
     )
     base_dir = Path(config.tracks_folder)
+    record_dir = base_dir / "training-data"
+    record_dir.mkdir(parents=True, exist_ok=True)
 
     if args.split_file:
         logging.info("Loading datasets from split file %s", args.split_file)
@@ -758,12 +760,10 @@ def main():
 
         datasets = split_randomly(master_dataset, config, args.date, test_clips)
         validate_datasets(datasets, test_clips, args.date)
-        dump_split_ids(datasets, base_dir / "training-data/datasplit.json")
+        dump_split_ids(datasets, record_dir / "datasplit.json")
 
     print_counts(*datasets)
     print("split data")
-    record_dir = base_dir / "training-data"
-    record_dir.mkdir(parents=True, exist_ok=True)
 
     dataset_counts = {}
     # create_tf_records = create_thermal_records
