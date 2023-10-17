@@ -783,6 +783,8 @@ class KerasModel(Interpreter):
             region = track.bounds_history[frame_index - track.start_frame]
 
             frame = clip.frame_buffer.get_frame(region.frame_number)
+            # filteresd is calculated slightly different for tracking, set to null so preprocess can recalc it
+            frame.filtered = None
             if frame is None:
                 logging.error(
                     "Clasifying clip %s track %s can't get frame %s",

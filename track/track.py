@@ -457,11 +457,9 @@ class Track:
                     regions=regions[relative_frames],
                     # frame_temp_median=frame_temp_median[relative_frames],
                     frame_indices=frames,
-                    segment_type=segment_type,
                 )
                 segments.append(segment)
         else:
-            has_mass = any([region.mass for region in regions if region.mass > 0])
             segments, _ = get_segments(
                 self.clip_id,
                 self._id,
@@ -474,7 +472,6 @@ class Track:
                 # frame_temp_median=frame_temp_median,
                 min_frames=min_frames,
                 segment_frames=None,
-                ignore_mass=not has_mass,
                 segment_type=segment_type,
             )
         return segments
