@@ -335,7 +335,7 @@ def evaluate_dir(
             #         )
 
             prediction = model.classify_track_data(
-                track.track_id, track_frames, track.samples, preprocessed=True
+                track.track_id, track_frames, track.samples
             )
             y_true.append(track.label)
             if prediction.predicted_tag() is None:

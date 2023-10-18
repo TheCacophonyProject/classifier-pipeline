@@ -334,8 +334,8 @@ class TrackHeader:
             self.clip_id,
             self.track_id,
             self.start_frame,
-            segment_frame_spacing,
-            segment_width,
+            segment_frame_spacing=segment_frame_spacing,
+            segment_width=segment_width,
             label=self.label,
             regions=np.array(regions),
             segment_min_mass=segment_min_mass,
@@ -884,9 +884,9 @@ def get_segments(
     clip_id,
     track_id,
     start_frame,
-    segment_frame_spacing,
-    segment_width,
     regions,
+    segment_frame_spacing=9,
+    segment_width=25,
     label=None,
     segment_min_mass=None,
     ffc_frames=[],
@@ -1005,6 +1005,7 @@ def get_segments(
                 frames = section[indices]
                 frame_indices = frame_indices[segment_frame_spacing:]
             elif random_frames:
+                # frame indices already randomized so just need to grab some
                 frames = frame_indices[:segment_width]
                 frame_indices = frame_indices[segment_width:]
             else:

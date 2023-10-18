@@ -125,7 +125,7 @@ def preprocess_frame(frame, out_dim, region, background=None, crop_rectangle=Non
 index = 0
 
 
-def preprocess_ir(
+def preprocess_single_frame(
     frame,
     frame_size,
     region=None,
@@ -168,50 +168,23 @@ def preprocess_movement(
     frame_types = {}
     channel_types = set([green_type, blue_type, red_type])
     for type in channel_types:
-        if type == FrameTypes.overlay:
-            if overlay is None:
-                overlay = imageprocessing.overlay_image(
-                    data,
-                    regions,
-                    dim=(frames_per_row * frame_size, frames_per_row * frame_size),
-                    require_movement=True,
-                )
-                channel_data, stats = imageprocessing.normalize(overlay, min=0)
-                if not stats[0]:
-                    return None
-            else:
-                channel_data = np.zeros((square.shape[0], square.shape[1]))
-                channel_data[: overlay.shape[0], : overlay.shape[1]] = overlay
-
-            if flipped:
-                channel_data = np.flip(channel_data, axis=1)
-        elif type == FrameTypes.flow_tiled:
-            channel_segment = [
-                frame.get_channel(TrackChannels.flow) for frame in preprocess_frames
-            ]
-            channel_data, success = imageprocessing.square_clip_flow(
-                channel_segment, frames_per_row, (frame_size, frame_size)
-            )
-            if not success:
-                return None
+        if type == FrameTypes.thermal_tiled:
+            channel = TrackChannels.thermal
+        elif type == FrameTypes.filtered_tiled:
+            channel = TrackChannels.filtered
         else:
-            if type == FrameTypes.thermal_tiled:
-                channel = TrackChannels.thermal
-            else:
-                channel = TrackChannels.filtered
-            channel_segment = [
-                frame.get_channel(channel) for frame in preprocess_frames
-            ]
-            channel_data, success = imageprocessing.square_clip(
-                channel_segment,
-                frames_per_row,
-                (frame_size, frame_size),
-                normalize=False,
-            )
-            # already done normalization
+            raise Exception("Cannot process type %s for movement", type)
+        channel_segment = [frame.get_channel(channel) for frame in preprocess_frames]
+        channel_data, success = imageprocessing.square_clip(
+            channel_segment,
+            frames_per_row,
+            (frame_size, frame_size),
+            normalize=False,
+        )
+        # already done normalization
 
-            if not success:
-                return None
+        if not success:
+            return None
 
         frame_types[type] = channel_data
 
@@ -229,4 +202,4 @@ def preprocess_movement(
 
     if preprocess_fn:
         data = preprocess_fn(data)
-    return data
+    return np.float32(data)

@@ -219,21 +219,21 @@ class PiClassifier(Processor):
             self.classifier = get_interpreter(model)
 
             if self.classifier.TYPE == ForestModel.TYPE:
-                self.last_x_frames = 5 * headers.fps
-                self.frames_per_classify = self.last_x_frames
+                self.predict_from_last = 5 * headers.fps
+                self.frames_per_classify = self.predict_from_last
                 PiClassifier.SKIP_FRAMES = 30
                 # probably could be even more
 
             else:
                 # self.preprocess_fn = self.get_preprocess_fn()
 
-                self.last_x_frames = 1
+                self.predict_from_last = 1
                 self.frames_per_classify = (
                     self.classifier.params.square_width
                     * self.classifier.params.square_width
                 )
                 if self.frames_per_classify > 1:
-                    self.last_x_frames = self.frames_per_classify * 2
+                    self.predict_from_last = self.frames_per_classify * 2
 
             self.max_keep_frames = (
                 self.frames_per_classify * 2 if not preview_type else None
@@ -417,9 +417,10 @@ class PiClassifier(Processor):
             frames, prediction, mass = self.classifier.predict_track(
                 clip,
                 track,
-                last_x_frames=self.last_x_frames,
+                predict_from_last=self.predict_from_last,
                 scale=self.track_extractor.scale,
                 frames_per_classify=self.frames_per_classify,
+                num_predictions=1,
             )
             if prediction is None:
                 track_prediction.last_frame_classified = self.clip.current_frame

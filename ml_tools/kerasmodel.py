@@ -21,7 +21,6 @@ from ml_tools.datasetstructures import SegmentType
 
 from ml_tools.preprocess import (
     preprocess_movement,
-    preprocess_ir,
     preprocess_frame,
 )
 from ml_tools.interpreter import Interpreter
@@ -30,21 +29,6 @@ from ml_tools.hyperparams import HyperParams
 from ml_tools import thermaldataset
 from ml_tools.resnet.wr_resnet import WRResNet
 
-# import (
-#    get_resampled_by_label as get_thermal_dataset_by_label,
-#    get_dataset as get_thermal_dataset,
-#    get_weighting,
-# )
-from ml_tools import irdataset
-from ml_tools.tfdataset import get_weighting, get_distribution, get_dataset as get_tf
-import tensorflow_decision_forests as tfdf
-from ml_tools import forestmodel
-
-# import (
-#    get_resampled_by_label as get_thermal_dataset_by_label,
-#    get_dataset as get_thermal_dataset,
-#    get_weighting,
-# )
 from ml_tools import irdataset
 from ml_tools.tfdataset import get_weighting, get_distribution, get_dataset as get_tf
 import tensorflow_decision_forests as tfdf
@@ -765,60 +749,32 @@ class KerasModel(Interpreter):
         model = tf.keras.models.Model(input_layer, preds)
         return model
 
-    def classify_thermal_track(self, clip, track, keep_all=True, segment_frames=None):
-        track_data = {}
-        segments = track.get_segments(
-            clip.ffc_frames,
-            self.params.square_width**2,
-            repeats=1,
+    def classify_track(self, clip, track, segment_frames=None):
+        # logging.debug("Classifying track %s", self.type)
+        # if self.params.square_width == 1:
+        #     frames, preprocessed, masses = self.preprocess_frames(clip, track)
+        # else:
+        #     frames, preprocessed, masses = self.preprocess_segments(
+        #         clip, track, segment_frames=segment_frames
+        #     )
+        start = time.time()
+        prediction_frames, output, masses = self.predict_track(
+            clip,
+            track,
             segment_frames=segment_frames,
-            segment_type=self.params.segment_type,
+            frames_per_classify=self.params.square_width**2,
         )
-        frame_indices = set()
-        for segment in segments:
-            frame_indices.update(set(segment.frame_indices))
-        frame_indices = list(frame_indices)
-        frame_indices.sort()
-        for frame_index in frame_indices:
-            region = track.bounds_history[frame_index - track.start_frame]
-
-            frame = clip.frame_buffer.get_frame(region.frame_number)
-            # filteresd is calculated slightly different for tracking, set to null so preprocess can recalc it
-            frame.filtered = None
-            if frame is None:
-                logging.error(
-                    "Clasifying clip %s track %s can't get frame %s",
-                    clip.get_id(),
-                    track.get_id(),
-                    region.frame_number,
-                )
-                raise Exception(
-                    "Clasifying clip {} track {} can't get frame {}".format(
-                        clip.get_id(), track.get_id(), region.frame_number
-                    )
-                )
-            cropped_frame = preprocess_frame(
-                frame,
-                (self.params.frame_size, self.params.frame_size),
-                region,
-                clip.background,
-                clip.crop_rectangle,
-            )
-            track_data[frame.frame_number] = cropped_frame
-        features = None
-        if self.params.mvm:
-            features = forestmodel.process_track(clip, track, normalize=True)
-        return self.classify_track_data(
-            track.get_id(), track_data, segments, features, preprocessed=True
+        track_prediction = TrackPrediction(track.get_id(), self.labels)
+        # self.model.predict(preprocessed)
+        masses = np.array(masses)
+        masses = masses[:, None]
+        track_prediction.classified_clip(
+            output, output * output * masses, prediction_frames
         )
+        track_prediction.classify_time = time.time() - start
+        return track_prediction
 
-    def classify_track(self, clip, track, keep_all=True, segment_frames=None):
-        logging.debug("Classifying track %s", self.type)
-        if self.type == "IR":
-            return self.classify_ir(clip, track)
-        return self.classify_thermal_track(clip, track, keep_all, segment_frames)
-
-    def classify_ir(self, clip, track, keep_all=True, segment_frames=None):
+    def classify_ir(self, clip, track, segment_frames=None):
         data = []
         thermal_median = np.empty(len(track.bounds_history), dtype=np.uint16)
         frames_used = []
@@ -881,59 +837,59 @@ class KerasModel(Interpreter):
         track_prediction.normalize_score()
         return track_prediction
 
-    def classify_track_data(
-        self,
-        track_id,
-        data,
-        segments,
-        features=None,
-        preprocessed=False,
-    ):
-        track_prediction = TrackPrediction(track_id, self.labels)
-        start = time.time()
-        predictions = []
-        smoothed_predictions = []
-        predict_me = []
-        prediction_frames = []
-        mass = []
-        for segment in segments:
-            segment_frames = []
-            for frame_i in segment.frame_indices:
-                f = data[frame_i]
-                segment_frames.append(f.copy())
-            frames = preprocess_movement(
-                segment_frames,
-                self.params.square_width,
-                self.params.frame_size,
-                self.params.red_type,
-                self.params.green_type,
-                self.params.blue_type,
-                self.preprocess_fn,
-            )
-            if frames is None:
-                logging.warn("No frames to predict on")
-                continue
-
-            predict_me.append(frames)
-            prediction_frames.append(segment.frame_indices)
-            mass.append(segment.mass)
-        if len(predict_me) > 0:
-            mass = np.array(mass)
-            mass = mass[:, None]
-            predict_me = np.float32(predict_me)
-            if self.params.mvm:
-                features = features[np.newaxis, :]
-                features = np.repeat(features, len(predict_me), axis=0)
-                output = self.model.predict([predict_me, features])
-            else:
-                output = self.model.predict(predict_me)
-
-            track_prediction.classified_clip(
-                output, output * output * mass, prediction_frames
-            )
-
-        track_prediction.classify_time = time.time() - start
-        return track_prediction
+    #
+    # def classify_track_data(
+    #     self,
+    #     track_id,
+    #     data,
+    #     segments,
+    #     features=None,
+    # ):
+    #     track_prediction = TrackPrediction(track_id, self.labels)
+    #     start = time.time()
+    #     predictions = []
+    #     smoothed_predictions = []
+    #     predict_me = []
+    #     prediction_frames = []
+    #     mass = []
+    #     for segment in segments:
+    #         segment_frames = []
+    #         for frame_i in segment.frame_indices:
+    #             f = data[frame_i]
+    #             segment_frames.append(f.copy())
+    #         frames = preprocess_movement(
+    #             segment_frames,
+    #             self.params.square_width,
+    #             self.params.frame_size,
+    #             self.params.red_type,
+    #             self.params.green_type,
+    #             self.params.blue_type,
+    #             self.preprocess_fn,
+    #         )
+    #         if frames is None:
+    #             logging.warn("No frames to predict on")
+    #             continue
+    #
+    #         predict_me.append(frames)
+    #         prediction_frames.append(segment.frame_indices)
+    #         mass.append(segment.mass)
+    #     if len(predict_me) > 0:
+    #         mass = np.array(mass)
+    #         mass = mass[:, None]
+    #         predict_me = np.float32(predict_me)
+    #         if self.params.mvm:
+    #             features = features[np.newaxis, :]
+    #             features = np.repeat(features, len(predict_me), axis=0)
+    #             output = self.model.predict([predict_me, features])
+    #         else:
+    #             output = self.model.predict(predict_me)
+    #
+    #         track_prediction.classified_clip(
+    #             output, output * output * mass, prediction_frames
+    #         )
+    #
+    #     track_prediction.classify_time = time.time() - start
+    #     return track_prediction
 
     def predict(self, frames):
         return self.model.predict(frames)
@@ -1010,88 +966,89 @@ class KerasModel(Interpreter):
         test_accuracy = self.model.evaluate(dataset)
         logging.info("Test accuracy is %s", test_accuracy)
 
-    # needs to be updated to work with tfrecord datagen
-    def track_accuracy(self, dataset, confusion="confusion.png"):
-        dataset.set_read_only(True)
-        dataset.use_segments = self.params.use_segments
-        predictions = []
-        actual = []
-        raw_predictions = []
-        total = 0
-        correct = 0
-        samples_by_label = {}
-        incorrect_labels = {}
-        for sample in dataset.segments:
-            label_samples = samples_by_label.setdefault(sample.label, {})
-            if sample.track_id in label_samples:
-                label_samples[sample.track_id].append(sample)
-            else:
-                label_samples[sample.track_id] = [sample]
-        bird_tracks = len(label_samples.get("bird", []))
-
-        for label in dataset.label_mapping.keys():
-            incorrect = {}
-            incorrect_labels[label] = incorrect
-            track_samples = samples_by_label.get(label)
-            if not track_samples:
-                logging.warn("No samples for %s", label)
-                continue
-            track_samples = track_samples.values()
-            if label == "insect" or label == "false-positive":
-                track_samples = np.random.choice(
-                    list(track_samples),
-                    min(len(track_samples), bird_tracks),
-                    replace=False,
-                )
-            logging.info("taking %s tracks for %s", len(track_samples), label)
-            mapped_label = dataset.mapped_label(label)
-            for track_segments in track_samples:
-                segment_db = dataset.numpy_data.load_segments(track_segments)
-                frame_db = {}
-                for frames in segment_db.values():
-                    for f in frames:
-                        frame_db[f.frame_number] = f
-                track_prediction = self.classify_track_data(
-                    track_segments[0].track_id,
-                    frame_db,
-                    segments=track_segments,
-                )
-
-                total += 1
-                if track_prediction is None or len(track_prediction.predictions) == 0:
-                    logging.warn("No predictions for %s", track_segments[0].track_id)
-                    continue
-                avg = np.mean(track_prediction.predictions, axis=0)
-                actual.append(self.labels.index(mapped_label))
-                predictions.append(track_prediction.best_label_index)
-
-                raw_predictions.append(avg)
-                if actual[-1] == predictions[-1]:
-                    correct += 1
-                else:
-                    if track_prediction.predicted_tag() in incorrect:
-                        incorrect[track_prediction.predicted_tag()].append(
-                            track_segments[0].unique_track_id
-                        )
-                    else:
-                        incorrect[track_prediction.predicted_tag()] = [
-                            track_segments[0].unique_track_id
-                        ]
-
-                if total % 50 == 0:
-                    logging.info("Processed %s", total)
-        for label, incorrect in incorrect_labels.items():
-            logging.info("Incorrect ************ %s", label)
-            logging.info(incorrect.get("false-positive"))
-        logging.info("Predicted correctly %s", round(100 * correct / total))
-        self.f1(actual, raw_predictions)
-
-        if confusion is not None:
-            cm = confusion_matrix(
-                actual, predictions, labels=np.arange(len(self.labels))
-            )
-            figure = plot_confusion_matrix(cm, class_names=self.labels)
-            plt.savefig(confusion, format="png")
+    #
+    # # needs to be updated to work with tfrecord datagen
+    # def track_accuracy(self, dataset, confusion="confusion.png"):
+    #     dataset.set_read_only(True)
+    #     dataset.use_segments = self.params.use_segments
+    #     predictions = []
+    #     actual = []
+    #     raw_predictions = []
+    #     total = 0
+    #     correct = 0
+    #     samples_by_label = {}
+    #     incorrect_labels = {}
+    #     for sample in dataset.segments:
+    #         label_samples = samples_by_label.setdefault(sample.label, {})
+    #         if sample.track_id in label_samples:
+    #             label_samples[sample.track_id].append(sample)
+    #         else:
+    #             label_samples[sample.track_id] = [sample]
+    #     bird_tracks = len(label_samples.get("bird", []))
+    #
+    #     for label in dataset.label_mapping.keys():
+    #         incorrect = {}
+    #         incorrect_labels[label] = incorrect
+    #         track_samples = samples_by_label.get(label)
+    #         if not track_samples:
+    #             logging.warn("No samples for %s", label)
+    #             continue
+    #         track_samples = track_samples.values()
+    #         if label == "insect" or label == "false-positive":
+    #             track_samples = np.random.choice(
+    #                 list(track_samples),
+    #                 min(len(track_samples), bird_tracks),
+    #                 replace=False,
+    #             )
+    #         logging.info("taking %s tracks for %s", len(track_samples), label)
+    #         mapped_label = dataset.mapped_label(label)
+    #         for track_segments in track_samples:
+    #             segment_db = dataset.numpy_data.load_segments(track_segments)
+    #             frame_db = {}
+    #             for frames in segment_db.values():
+    #                 for f in frames:
+    #                     frame_db[f.frame_number] = f
+    #             track_prediction = self.classify_track_data(
+    #                 track_segments[0].track_id,
+    #                 frame_db,
+    #                 segments=track_segments,
+    #             )
+    #
+    #             total += 1
+    #             if track_prediction is None or len(track_prediction.predictions) == 0:
+    #                 logging.warn("No predictions for %s", track_segments[0].track_id)
+    #                 continue
+    #             avg = np.mean(track_prediction.predictions, axis=0)
+    #             actual.append(self.labels.index(mapped_label))
+    #             predictions.append(track_prediction.best_label_index)
+    #
+    #             raw_predictions.append(avg)
+    #             if actual[-1] == predictions[-1]:
+    #                 correct += 1
+    #             else:
+    #                 if track_prediction.predicted_tag() in incorrect:
+    #                     incorrect[track_prediction.predicted_tag()].append(
+    #                         track_segments[0].unique_track_id
+    #                     )
+    #                 else:
+    #                     incorrect[track_prediction.predicted_tag()] = [
+    #                         track_segments[0].unique_track_id
+    #                     ]
+    #
+    #             if total % 50 == 0:
+    #                 logging.info("Processed %s", total)
+    #     for label, incorrect in incorrect_labels.items():
+    #         logging.info("Incorrect ************ %s", label)
+    #         logging.info(incorrect.get("false-positive"))
+    #     logging.info("Predicted correctly %s", round(100 * correct / total))
+    #     self.f1(actual, raw_predictions)
+    #
+    #     if confusion is not None:
+    #         cm = confusion_matrix(
+    #             actual, predictions, labels=np.arange(len(self.labels))
+    #         )
+    #         figure = plot_confusion_matrix(cm, class_names=self.labels)
+    #         plt.savefig(confusion, format="png")
 
 
 # from tensorflow examples
