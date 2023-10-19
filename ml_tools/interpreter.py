@@ -47,7 +47,7 @@ class Interpreter(ABC):
         if predict_from_last is not None:
             predict_from_last = min(predict_from_last, available_frames)
         # this might be a little slower as it checks some massess etc
-        # but keeps it the same
+        # but keeps it the same for all ways of classifying
         if frames_per_classify > 1:
             if predict_from_last is not None and segment_frames is None:
                 logging.debug(
