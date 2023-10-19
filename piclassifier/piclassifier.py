@@ -332,9 +332,14 @@ class PiClassifier(Processor):
 
     def startup_classifier(self):
         # classifies an empty frame to force loading of the model into memory
-        in_shape = self.classifier.shape()[1:]
-        p_frame = np.zeros((1, *in_shape), np.float32)
-        self.classifier.predict(p_frame)
+        num_inputs, in_shape = self.classifier.shape()
+        if num_inputs > 1:
+            zero_input = []
+            for shape in in_shape:
+                zero_input.append(np.zeros((1, *shape[1:]), np.float32))
+        else:
+            zero_input = np.zeros((1, *in_shape[1:]), np.float32)
+        self.classifier.predict(zero_input)
 
     def get_active_tracks(self):
         """

@@ -132,7 +132,7 @@ class ForestModel(Interpreter):
         return track_prediction
 
     def shape(self):
-        return (1, 188)
+        return 1, (1, 188)
 
     def preprocess(self):
         return
@@ -161,15 +161,15 @@ class ForestModel(Interpreter):
 
 
 def process_track(
-    clip, track, last_x_frames=None, buf_len=5, scale=None, normalize=False
+    clip, track, predict_from_last=None, buf_len=5, scale=None, normalize=False
 ):
     background = clip.background
     all_frames = None
     frame_temp_median = {}
-    if last_x_frames is None:
+    if predict_from_last is None:
         bounds = track.bounds_history
     else:
-        bounds = track.bounds_history[-last_x_frames:]
+        bounds = track.bounds_history[-predict_from_last:]
         all_frames = clip.frame_buffer.get_last_x(len(bounds))
 
     logging.debug(

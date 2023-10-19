@@ -87,7 +87,7 @@ class FrameBuffer:
         # this supports max frames etc
         frame_ago = self.current_frame.frame_number - frame_number
         frame = self.get_frame_ago(frame_ago)
-        assert frame.frame_number == frame_number
+        assert frame == None or frame.frame_number == frame_number
         return frame
 
     def close_cache(self):

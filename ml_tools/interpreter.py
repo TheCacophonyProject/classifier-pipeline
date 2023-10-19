@@ -25,7 +25,7 @@ class Interpreter(ABC):
 
     @abstractmethod
     def shape(self):
-        """Prediction shape"""
+        """Num Inputs, Prediction shape"""
         ...
 
     @abstractmethod
@@ -40,7 +40,7 @@ class Interpreter(ABC):
         segment_frames = args.get("segment_frames")
         frames_per_classify = args.get("frames_per_classify", 25)
         available_frames = (
-            min(track.bounds_history, clip.frame_buffer.max_frames)
+            min(len(track.bounds_history), clip.frame_buffer.max_frames)
             if clip.frame_buffer.max_frames is not None
             else len(track.bounds_history)
         )
@@ -49,8 +49,8 @@ class Interpreter(ABC):
         # this might be a little slower as it checks some massess etc
         # but keeps it the same
         if frames_per_classify > 1:
-            if predict_from_last is not None and segment_frames is not None:
-                logging.info(
+            if predict_from_last is not None and segment_frames is None:
+                logging.debug(
                     "Prediction from last available frames %s track is of length %s",
                     available_frames,
                     len(track.bounds_history),
@@ -69,7 +69,7 @@ class Interpreter(ABC):
                         predict_from_last = i + 1
                         if valid_regions >= predict_from_last:
                             break
-                logging.info(
+                logging.debug(
                     "After checking blanks have predict from last %s from last available frames %s track is of length %s",
                     predict_from_last,
                     available_frames,
@@ -185,7 +185,6 @@ class Interpreter(ABC):
 
             frame = clip.frame_buffer.get_frame(region.frame_number)
             # filtered is calculated slightly different for tracking, set to null so preprocess can recalc it
-            frame.filtered = None
             if frame is None:
                 logging.error(
                     "Clasifying clip %s track %s can't get frame %s",
@@ -210,7 +209,9 @@ class Interpreter(ABC):
         if self.params.mvm:
             from ml_tools.forestmodel import process_track as forest_process_track
 
-            features = forest_process_track(clip, track, normalize=True)
+            features = forest_process_track(
+                clip, track, normalize=True, predict_from_last=predict_from_last
+            )
 
         preprocessed = []
         masses = []
@@ -281,7 +282,7 @@ class NeuralInterpreter(Interpreter):
         return res
 
     def shape(self):
-        return self.input_shape
+        return 1, self.input_shape
 
 
 class LiteInterpreter(Interpreter):
@@ -313,7 +314,7 @@ class LiteInterpreter(Interpreter):
         return pred
 
     def shape(self):
-        return self.input["shape"]
+        return 1, self.input["shape"]
 
 
 def inc3_preprocess(x):

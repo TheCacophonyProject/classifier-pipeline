@@ -53,11 +53,18 @@ def augement_frame(frame, frame_size, dim):
     return image.numpy()
 
 
-def preprocess_frame(frame, out_dim, region, background=None, crop_rectangle=None):
+def preprocess_frame(
+    frame,
+    out_dim,
+    region,
+    background=None,
+    crop_rectangle=None,
+    calculate_filtered=True,
+):
     median = np.median(frame.thermal)
-    cropped_frame = frame.crop_by_region(region)
+    cropped_frame = frame.crop_by_region(region, only_thermal=True)
     cropped_frame.thermal = np.float32(cropped_frame.thermal)
-    if cropped_frame.filtered is None:
+    if calculate_filtered:
         if background is None:
             logging.warning(
                 "Not calculating filtered frame as no background was supplied"
@@ -151,7 +158,7 @@ def preprocess_single_frame(
     return image
 
 
-index = 0
+# index = 0
 
 
 #
@@ -192,9 +199,9 @@ def preprocess_movement(
         (frame_types[red_type], frame_types[green_type], frame_types[blue_type]), axis=2
     )
     #
+    # # # # # for testing
     # global index
     # index += 1
-    # # # # # for testing
     # tools.saveclassify_image(
     #     data,
     #     f"samples/{index}",

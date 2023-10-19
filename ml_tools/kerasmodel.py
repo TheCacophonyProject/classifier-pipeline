@@ -84,7 +84,11 @@ class KerasModel(Interpreter):
     def shape(self):
         if self.model is None:
             return None
-        return self.model.get_config()["layers"][0]["config"]["batch_input_shape"]
+        inputs = self.model.inputs
+        shape = []
+        for input in inputs:
+            shape.append(tuple(input.shape.as_list()))
+        return len(shape), shape
 
     def get_base_model(self, input, weights="imagenet"):
         pretrained_model = self.params.model_name

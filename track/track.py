@@ -440,8 +440,12 @@ class Track:
         max_segments=None,
     ):
         if from_last is not None:
-            regions = np.array(self.bounds_history[:-from_last])
+            if from_last == 0:
+                return []
+            regions = np.array(self.bounds_history[-from_last:])
+            start_frame = regions[0].frame_number
         else:
+            start_frame = self.start_frame
             regions = np.array(self.bounds_history)
 
         # frame_temp_median = np.uint16(frame_temp_median)
@@ -455,7 +459,7 @@ class Track:
                 segment = SegmentHeader(
                     self.clip_id,
                     self._id,
-                    start_frame=self.start_frame,
+                    start_frame=start_frame,
                     frames=len(frames),
                     weight=1,
                     mass=segment_mass,
@@ -469,7 +473,7 @@ class Track:
             segments, _ = get_segments(
                 self.clip_id,
                 self._id,
-                self.start_frame,
+                start_frame,
                 segment_frame_spacing=segment_frame_spacing,
                 segment_width=segment_width,
                 regions=regions,
