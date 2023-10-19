@@ -1,7 +1,7 @@
 import time
 import os
-from load.clip import Clip
-from load.cliptrackextractor import ClipTrackExtractor
+from track.clip import Clip
+from track.cliptrackextractor import ClipTrackExtractor
 from config.config import Config
 from ml_tools.previewer import Previewer
 

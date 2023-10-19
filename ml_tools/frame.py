@@ -198,7 +198,7 @@ class Frame:
         if self.filtered is not None:
             self.filtered *= adjust
 
-    def crop_by_region(self, region, out=None):
+    def crop_by_region(self, region, only_thermal=False, out=None):
         # make a new frame cropped by region
         thermal = None
         filtered = None
@@ -206,12 +206,13 @@ class Frame:
         flow = None
         if self.thermal is not None:
             thermal = region.subimage(self.thermal)
-        if self.filtered is not None:
-            filtered = region.subimage(self.filtered)
-        if self.mask is not None:
-            mask = region.subimage(self.mask)
-        if self.flow is not None:
-            flow = region.subimage(self.flow)
+        if not only_thermal:
+            if self.filtered is not None:
+                filtered = region.subimage(self.filtered)
+            if self.mask is not None:
+                mask = region.subimage(self.mask)
+            if self.flow is not None:
+                flow = region.subimage(self.flow)
         if out:
             out.thermal = thermal
             out.filtered = filtered

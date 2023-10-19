@@ -3,6 +3,7 @@ import tensorflow as tf
 from functools import partial
 import numpy as np
 import logging
+import random
 
 AUTOTUNE = tf.data.AUTOTUNE
 
@@ -53,9 +54,21 @@ def get_distribution(dataset, num_labels, batched=True):
 
 
 def get_dataset(load_function, base_dir, labels, **args):
+    land_birds = [
+        "pukeko",
+        "california quail",
+        "brown quail",
+        "black swan",
+        "quail",
+        "pheasant",
+        "penguin",
+        "duck",
+        "chicken",
+        "rooster",
+    ]
     excluded_labels = args.get("excluded_labels", [])
     to_remap = args.get("remapped_labels", {})
-
+    logging.info("Excluding %s", excluded_labels)
     remapped = {}
     keys = []
     values = []
@@ -65,9 +78,9 @@ def get_dataset(load_function, base_dir, labels, **args):
     for excluded in excluded_labels:
         if excluded in labels:
             new_labels.remove(excluded)
-    for excluded in to_remap.keys():
-        if excluded in labels:
-            new_labels.remove(excluded)
+    for remapped_lbl in to_remap.keys():
+        if remapped_lbl in labels:
+            new_labels.remove(remapped_lbl)
     for l in labels:
         keys.append(labels.index(l))
         if l not in new_labels:
@@ -99,12 +112,18 @@ def get_dataset(load_function, base_dir, labels, **args):
 
     # 1 / 0
     filenames = tf.io.gfile.glob(f"{base_dir}/*.tfrecord")
-    dataset = load_function(filenames, remap_lookup, num_labels, args)
+    if not args.get("deterministic"):
+        random.shuffle(filenames)
+
+    dataset = load_function(filenames, remap_lookup, new_labels, args)
+
+    filter_excluded = lambda x, y: not tf.math.equal(tf.math.count_nonzero(y), 0)
+    dataset = dataset.filter(filter_excluded)
     if dataset is None:
         logging.warn("No dataset for %s", filenames)
         return None, None
 
-    dataset = dataset.cache()
+    # dataset = dataset.cache()
     if not args.get("only_features") and args.get("shuffle", True):
         logging.info("shuffling data")
         dataset = dataset.shuffle(
@@ -129,7 +148,7 @@ def get_dataset(load_function, base_dir, labels, **args):
         dataset = dataset.batch(batch_size)
     dataset = dataset.prefetch(buffer_size=AUTOTUNE)
 
-    return dataset, remapped, new_labels
+    return dataset, remapped, new_labels, epoch_size
 
 
 def resample(dataset, labels):

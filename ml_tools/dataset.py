@@ -15,9 +15,12 @@ import numpy as np
 import gc
 from ml_tools.datasetstructures import TrackHeader, TrackingSample, SegmentType
 from ml_tools.trackdatabase import TrackDatabase
+from ml_tools.rawdb import RawDatabase
 from ml_tools import tools
 from track.region import Region
 import json
+from config.loadconfig import LoadConfig
+from pathlib import Path
 
 
 class Dataset:
@@ -28,42 +31,39 @@ class Dataset:
 
     def __init__(
         self,
-        db_file,
+        dataset_dir,
         name="Dataset",
         config=None,
         use_predictions=False,
         consecutive_segments=False,
         labels=[],
+        label_mapping=None,
+        raw=True,
+        ext=".cptv",
     ):
+        self.ext = ext
+        self.raw = raw
+        # if self.raw and self.ext == ".cptv":
+        # raise Exception("Raw CPTV not implemented yet")
+        self.dataset_dir = Path(dataset_dir)
         self.consecutive_segments = consecutive_segments
-        # self.camera_bins = {}
-        # database holding track data
-        self.db_file = db_file
-        self.db = None
-        self.load_db()
-        self.label_mapping = None
+        self.label_mapping = label_mapping
         # name of this dataset
         self.name = name
         # list of our tracks
-        self.samples_by_label = {}
         self.samples_by_bin = {}
         self.samples = []
-        self.sample_cdf = []
-        self.tracks = []
-        self.tracks_by_label = {}
-        self.tracks_by_bin = {}
-        self.tracks_by_id = {}
-        self.camera_names = set()
-        # self.cameras_by_id = {}
+        self.samples_by_id = {}
+        self.clips = []
 
         # list of label names
         self.labels = labels
-        self.label_mapping = None
 
         self.enable_augmentation = False
         self.label_caps = {}
         self.use_segments = True
         if config:
+            self.tag_precedence = config.load.tag_precedence
             self.type = config.train.type
             if config.train.type == "IR":
                 self.use_segments = False
@@ -82,14 +82,14 @@ class Dataset:
             self.filter_by_lq = config.build.filter_by_lq
             self.segment_type = SegmentType.ALL_RANDOM
             self.max_segments = config.build.max_segments
-
         else:
+            self.tag_precedence = LoadConfig.DEFAULT_GROUPS
             self.filter_by_lq = True
             # number of seconds each segment should be
             self.segment_length = 25
             # number of seconds segments are spaced apart
             self.segment_spacing = 1
-            self.segment_min_avg_mass = None
+            self.segment_min_avg_mass = 10
             self.min_frame_mass = 16
             self.segment_type = SegmentType.ALL_RANDOM
         self.filtered_stats = {
@@ -108,28 +108,11 @@ class Dataset:
         self.lbl_p = None
         self.numpy_data = None
 
-    def load_db(self):
-        self.db = TrackDatabase(self.db_file)
-
-    def set_read_only(self, read_only):
-        if self.db is not None:
-            self.db.set_read_only(read_only)
+        self.skip_ffc = True
 
     @property
     def sample_count(self):
-        return len(self.samples)
-
-    #
-    # def samples(self):
-    #     if self.use_segments:
-    #         return self.segments
-    #     return self.frame_samples
-
-    def set_samples(self, samples):
-        self.samples = samples
-
-    def set_samples_for(self, label, samples):
-        self.samples_by_label[label] = samples
+        return len(self.samples_by_id)
 
     def get_label_caps(self, labels, remapped=False):
         counts = []
@@ -169,31 +152,11 @@ class Dataset:
         bins = 0
         weight = 0
         samples_count = 0
-        if self.label_mapping:
-            for key, value in self.label_mapping.items():
-                if key == label or value == label:
-                    label_tracks = self.tracks_by_label.get(key, [])
-                    tracks += len(label_tracks)
-                    samples_count += len(self.samples_by_label.get(key, []))
-                    # segments += sum(len(track.segments) for track in label_tracks)
-                    # frames += sum(
-                    #     len(track.get_sample_frames())
-                    #     for track in label_tracks
-                    #     if track.sample_frames is not None
-                    # )
-
-                if key == label or value == label:
-                    label_tracks = []
-                    segments = self.segments_by_label.get(key, [])
-                    tracks += len(set([segment.track_id for segment in segments]))
-                    segments_count += len(segments)
-                    frames += sum([segment.frames for segment in segments])
-        else:
-            samples = self.samples_by_label.get(label, [])
-            tracks = len(set([sample.track_id for sample in samples]))
-            weight = self.get_label_weight(label)
-            bins = len(set([sample.bin_id for sample in samples]))
-            samples_count = len(samples)
+        samples = self.samples_by_label.get(label, [])
+        tracks = len(set([sample.track_id for sample in samples]))
+        weight = self.get_label_weight(label)
+        bins = len(set([sample.bin_id for sample in samples]))
+        samples_count = len(samples)
         return samples_count, tracks, bins, weight
 
     def load_clips(
@@ -202,36 +165,49 @@ class Dataset:
         before_date=None,
         after_date=None,
         label=None,
+        dont_filter_segment=False,
     ):
         """
         Loads track headers from track database with optional filter
         :return: [number of tracks added, total tracks].
         """
+
         counter = 0
         logging.info("Loading clips")
-        clip_ids = self.db.get_all_clip_ids(before_date, after_date, label)
-        if shuffle:
-            np.random.shuffle(clip_ids)
-        for clip_id in clip_ids:
-            self.load_clip(clip_id)
+        for db_clip in self.dataset_dir.glob(f"**/*{self.ext}"):
+            tracks_added = self.load_clip(db_clip, dont_filter_segment)
+            if tracks_added == 0:
+                logging.info("No tracks added for %s", db_clip)
             counter += 1
             if counter % 50 == 0:
-                logging.debug("Dataset loaded %s / %s", counter, len(clip_ids))
-        return [counter, len(clip_ids)]
+                logging.debug("Dataset loaded %s", counter)
+        return [counter, counter]
 
-    def load_clip(self, clip_id):
-        clip_meta = self.db.get_clip_meta(clip_id)
-        tracks = self.db.get_clip_tracks(clip_id)
+    def load_clip(self, db_clip, dont_filter_segment=False):
+        if self.raw:
+            db = RawDatabase(db_clip)
+        else:
+            db = TrackDatabase(db_clip)
+        try:
+            clip_header = db.get_clip_tracks(self.tag_precedence)
+        except:
+            logging.error("Could not load %s", db_clip, exc_info=True)
+            return 0
+        if clip_header is None or filter_clip(clip_header):
+            return 0
         filtered = 0
-        for track_meta in tracks:
-            if self.filter_track(clip_meta, track_meta):
-                filtered += 1
-                continue
-            track_header = TrackHeader.from_meta(clip_id, clip_meta, track_meta)
-            self.tracks.append(track_header)
+        added = 0
+        clip_header.tracks = [
+            track
+            for track in clip_header.tracks
+            if not filter_track(track, self.filtered_stats)
+        ]
+        self.clips.append(clip_header)
+        for track_header in clip_header.tracks:
+            added += 1
             if self.use_segments:
                 segment_frame_spacing = int(
-                    round(self.segment_spacing * track_header.frames_per_second)
+                    round(self.segment_spacing * clip_header.frames_per_second)
                 )
                 segment_width = self.segment_length
                 track_header.calculate_segments(
@@ -240,25 +216,30 @@ class Dataset:
                     self.segment_type,
                     self.segment_min_avg_mass,
                     max_segments=self.max_segments,
+                    dont_filter=dont_filter_segment,
+                    skip_ffc=self.skip_ffc,
+                    ffc_frames=clip_header.ffc_frames,
                 )
                 self.filtered_stats["segment_mass"] += track_header.filtered_stats[
                     "segment_mass"
                 ]
-                for segment in track_header.segments:
-                    self.add_clip_sample_mappings(segment)
+
             else:
-                sample_frames = track_header.get_sample_frames()
-                skip_x = None
+                skip_last = None
                 if self.type == "IR":
-                    skip_last = int(len(sample_frames) * 0.1)
-                    sample_frames = sample_frames[:-skip_last]
-                for sample in sample_frames:
-                    if not self.filter_by_lq or (
-                        sample.mass >= track_header.lower_mass
-                        and sample.mass <= track_header.upper_mass
-                    ):
-                        self.add_clip_sample_mappings(sample)
-        return filtered
+                    # a lot of ir clips have bad tracking near end so just reduce track length
+                    skip_last = 0.1
+                track_header.calculate_sample_frames(
+                    min_mass=None if not self.filter_by_lq else track_header.lower_mass,
+                    max_mass=None if not self.filter_by_lq else track_header.upper_mass,
+                    ffc_frames=clip_header.ffc_frames,
+                    skip_last=skip_last,
+                )
+                if track_header.label not in self.labels:
+                    self.labels.append(track_header.label)
+            for sample in track_header.samples:
+                self.add_clip_sample_mappings(sample)
+        return added
 
     def add_samples(self, samples):
         """
@@ -271,95 +252,29 @@ class Dataset:
                 result += 1
         return result
 
-    def filter_sample(self, sample):
-        if sample.label not in self.included_labels:
-            self.filtered_stats["tags"] += 1
-            return True
-
-        if self.min_frame_mass and sample.mass < self.min_frame_mass:
-            return True
-        return False
+    @property
+    def samples_by_label(self):
+        samples_by_label = {}
+        for sample in self.samples:
+            if sample.label not in samples_by_label:
+                samples_by_label[sample.label] = []
+            samples_by_label[sample.label].append(sample)
+        return samples_by_label
 
     def add_clip_sample_mappings(self, sample):
-        if self.filter_sample(sample):
-            return False
+        self.samples_by_id[sample.id] = sample
         self.samples.append(sample)
-        if self.label_mapping and sample.label in self.label_mapping:
-            sample.label = self.mapped_label(sample.label)
+
+        if self.label_mapping:
+            sample.remapped_label = self.label_mapping.get(
+                sample.original_label, sample.original_label
+            )
 
         if sample.label not in self.labels:
             self.labels.append(sample.label)
-
-        if sample.label not in self.samples_by_label:
-            self.samples_by_label[sample.label] = []
-        self.samples_by_label[sample.label].append(sample)
-
         bins = self.samples_by_bin.setdefault(sample.bin_id, [])
         bins.append(sample)
-        self.camera_names.add(sample.camera)
         return True
-
-    def filter_track(self, clip_meta, track_meta):
-        # some clips are banned for various reasons4
-        source = os.path.basename(clip_meta["filename"])
-        if self.banned_clips and source in self.banned_clips:
-            self.filtered_stats["banned"] += 1
-            return True
-        if "tag" not in track_meta:
-            self.filtered_stats["notags"] += 1
-            return True
-        if track_meta["tag"] not in self.included_labels:
-            self.filtered_stats["tags"] += 1
-            self.filtered_stats["tag_names"].add(track_meta["tag"])
-            return True
-        track_tags = track_meta.get("track_tags")
-        if track_tags is not None:
-            try:
-                track_tags = json.loads(track_tags)
-            except:
-                logging.error(
-                    "Error loading track tags json for %s clip %s track %s",
-                    track_tags,
-                    clip_meta.get("id"),
-                    track_meta.get("id"),
-                )
-                self.filtered_stats["bad_track_json"] += 1
-
-                return True
-            excluded_tags = [
-                tag["what"]
-                for tag in track_tags
-                if not tag.get("automatic", False)
-                and tag.get("what") in self.excluded_tags
-            ]
-            if len(excluded_tags) > 0:
-                self.filtered_stats["tag_names"] |= set(excluded_tags)
-
-                self.filtered_stats["tags"] += 1
-                return True
-        # always let the false-positives through as we need them even though they would normally
-        # be filtered out.
-        if "bounds_history" not in track_meta or len(track_meta["bounds_history"]) == 0:
-            self.filtered_stats["no_data"] += 1
-            return True
-
-        if track_meta["tag"] == "false-positive":
-            return False
-
-        # for some reason we get some records with a None confidence?
-        if track_meta.get("confidence", 1.0) <= 0.6:
-            self.filtered_stats["confidence"] += 1
-            return True
-
-        # remove tracks of trapped animals
-        if (
-            "trap" in clip_meta.get("event", "").lower()
-            or "trap" in clip_meta.get("trap", "").lower()
-        ):
-            self.filtered_stats["trap"] += 1
-            return True
-
-        return False
 
     def epoch_samples(
         self, cap_samples=None, replace=True, random=True, cap_at=None, label_cap=None
@@ -396,44 +311,51 @@ class Dataset:
     def label_cdf(self, label):
         return self.sample_label_cdf.get(label, [])
 
-    def get_sample(self, cap=None, replace=True, label=None, random=True):
-        """Returns a random frames from weighted list."""
-        if label:
-            samples = self.samples_for(label, remapped=True)
-            cdf = self.label_cdf(label)
-        else:
-            samples = self.samples()
-            cdf = self.cdf()
-        if not samples:
-            return None
-        if cap is None:
-            return samples
-        if random:
-            return np.random.choice(samples, cap, replace=replace, p=cdf)
-        else:
-            cap = min(cap, len(samples))
-            return samples[:cap]
+    def get_samples_by_source(self):
+        samples_by_source = {}
+        for s in self.samples_by_id.values():
+            samples_by_source.setdefault(s.source_file, []).append(s)
+        return samples_by_source
 
-    def balance_bins(self, max_bin_weight=None):
-        """
-        Adjusts weights so that bins with a number number of segments aren't sampled so frequently.
-        :param max_bin_weight: bins with more weight than this number will be scaled back to this weight.
-        """
-
-        for bin_name, samples in self.samples_by_bin.items():
-            bin_weight = sum(sample.sample_weight for sample in samples)
-            if bin_weight == 0:
-                continue
-            if max_bin_weight is None:
-                scale_factor = 1 / bin_weight
-                # means each bin has equal possiblity
-            elif bin_weight > max_bin_weight:
-                scale_factor = max_bin_weight / bin_weight
-            else:
-                scale_factor = 1
-            for sample in samples:
-                sample.weight = np.float16(sample.sample_weight * scale_factor)
-        self.rebuild_cdf()
+    #
+    # def get_sample(self, cap=None, replace=True, label=None, random=True):
+    #     """Returns a random frames from weighted list."""
+    #     if label:
+    #         samples = self.samples_for(label, remapped=True)
+    #         cdf = self.label_cdf(label)
+    #     else:
+    #         samples = self.samples()
+    #         cdf = self.cdf()
+    #     if not samples:
+    #         return None
+    #     if cap is None:
+    #         return samples
+    #     if random:
+    #         return np.random.choice(samples, cap, replace=replace, p=cdf)
+    #     else:
+    #         cap = min(cap, len(samples))
+    #         return samples[:cap]
+    #
+    # def balance_bins(self, max_bin_weight=None):
+    #     """
+    #     Adjusts weights so that bins with a number number of segments aren't sampled so frequently.
+    #     :param max_bin_weight: bins with more weight than this number will be scaled back to this weight.
+    #     """
+    #
+    #     for bin_name, samples in self.samples_by_bin.items():
+    #         bin_weight = sum(sample.sample_weight for sample in samples)
+    #         if bin_weight == 0:
+    #             continue
+    #         if max_bin_weight is None:
+    #             scale_factor = 1 / bin_weight
+    #             # means each bin has equal possiblity
+    #         elif bin_weight > max_bin_weight:
+    #             scale_factor = max_bin_weight / bin_weight
+    #         else:
+    #             scale_factor = 1
+    #         for sample in samples:
+    #             sample.weight = np.float16(sample.sample_weight * scale_factor)
+    #     self.rebuild_cdf()
 
     def remove_label(self, label_to_remove):
         """
@@ -453,55 +375,56 @@ class Dataset:
             return self.label_mapping.get(label, label)
         return label
 
-    def rebuild_cdf(self, lbl_p=None):
-        """Calculates the CDF used for fast random sampling for frames and
-        segments, if balance labels is set each label has an equal chance of
-        being chosen
-        """
-        if lbl_p is None:
-            lbl_p = self.lbl_p
-
-        self.sample_cdf = []
-        total = 0
-        self.sample_label_cdf = {}
-
-        for sample in self.samples:
-            sample_weight = sample.sample_weight
-            if lbl_p and sample.label in lbl_p:
-                sample_weight *= lbl_p[sample.label]
-            total += sample_weight
-
-            self.sample_cdf.append(sample_weight)
-
-            cdf = self.sample_label_cdf.setdefault(sample.label, [])
-            cdf.append(sample.sample_weight)
-
-        if len(self.sample_cdf) > 0:
-            self.sample_cdf = [x / total for x in self.sample_cdf]
-
-        for key, cdf in self.sample_label_cdf.items():
-            total = sum(cdf)
-            self.sample_label_cdf[key] = [x / total for x in cdf]
-
-        if self.label_mapping:
-            mapped_cdf = {}
-            labels = list(self.label_mapping.keys())
-            labels.sort()
-            for label in labels:
-                if label not in self.sample_label_cdf:
-                    continue
-                label_cdf = self.sample_label_cdf[label]
-                new_label = self.label_mapping[label]
-                if lbl_p and label in lbl_p:
-                    label_cdf = np.float64(label_cdf)
-                    label_cdf *= lbl_p[label]
-                cdf = mapped_cdf.setdefault(new_label, [])
-                cdf.extend(label_cdf)
-
-            for key, cdf in mapped_cdf.items():
-                total = sum(cdf)
-                mapped_cdf[key] = [x / total for x in cdf]
-            self.sample_label_cdf = mapped_cdf
+    #
+    # def rebuild_cdf(self, lbl_p=None):
+    #     """Calculates the CDF used for fast random sampling for frames and
+    #     segments, if balance labels is set each label has an equal chance of
+    #     being chosen
+    #     """
+    #     if lbl_p is None:
+    #         lbl_p = self.lbl_p
+    #
+    #     self.sample_cdf = []
+    #     total = 0
+    #     self.sample_label_cdf = {}
+    #
+    #     for sample in self.samples:
+    #         sample_weight = sample.sample_weight
+    #         if lbl_p and sample.label in lbl_p:
+    #             sample_weight *= lbl_p[sample.label]
+    #         total += sample_weight
+    #
+    #         self.sample_cdf.append(sample_weight)
+    #
+    #         cdf = self.sample_label_cdf.setdefault(sample.label, [])
+    #         cdf.append(sample.sample_weight)
+    #
+    #     if len(self.sample_cdf) > 0:
+    #         self.sample_cdf = [x / total for x in self.sample_cdf]
+    #
+    #     for key, cdf in self.sample_label_cdf.items():
+    #         total = sum(cdf)
+    #         self.sample_label_cdf[key] = [x / total for x in cdf]
+    #
+    #     if self.label_mapping:
+    #         mapped_cdf = {}
+    #         labels = list(self.label_mapping.keys())
+    #         labels.sort()
+    #         for label in labels:
+    #             if label not in self.sample_label_cdf:
+    #                 continue
+    #             label_cdf = self.sample_label_cdf[label]
+    #             new_label = self.label_mapping[label]
+    #             if lbl_p and label in lbl_p:
+    #                 label_cdf = np.float64(label_cdf)
+    #                 label_cdf *= lbl_p[label]
+    #             cdf = mapped_cdf.setdefault(new_label, [])
+    #             cdf.extend(label_cdf)
+    #
+    #         for key, cdf in mapped_cdf.items():
+    #             total = sum(cdf)
+    #             mapped_cdf[key] = [x / total for x in cdf]
+    #         self.sample_label_cdf = mapped_cdf
 
     def get_label_weight(self, label):
         """Returns the total weight for all segments of given label."""
@@ -516,77 +439,78 @@ class Dataset:
         """
         regroups the dataset so multiple animals can be under a single label
         """
-        self.label_mapping = {}
-        counts = []
+        self.label_mapping = groups
         samples_by_bin = {}
-        samples = []
-        for mapped_label, labels in groups.items():
+        samples_by_label = {}
+
+        for lbl, remapped_lbl in groups.items():
             count = 0
-            for label in labels:
-                lbl_samples = self.samples_for(label)
-                count += len(lbl_samples)
-                samples.extend(lbl_samples)
-                self.label_mapping[label] = mapped_label
-                for sample in lbl_samples:
-                    samples_by_bin[sample.bin_id] = sample
-            counts.append(count)
+            samples = self.samples_by_label[lbl]
+            for s in samples:
+                s.remapped_label = remapped_lbl
+                samples_by_bin.setdefault(s.bin_id, []).append(s)
+            samples_by_label.setdefault(remapped_lbl, []).extend(samples)
 
         self.labels = list(groups.keys())
         self.labels.sort()
         self.samples_by_bin = samples_by_bin
-        self.set_samples(samples)
-        # self.samples_by_id == {}
-
-        if shuffle:
-            np.random.shuffle(self.samples)
-        self.rebuild_cdf()
+        self.samples_by_label = samples_by_label
+        #
+        # if shuffle:
+        #     np.random.shuffle(self.samples)
+        # self.rebuild_cdf()
 
     def has_data(self):
-        return len(self.samples) > 0
+        return len(self.samples_by_id) > 0
 
-    def recalculate_segments(self, segment_type=SegmentType.ALL_RANDOM):
-        self.samples_by_bin.clear()
-        self.samples_by_label.clear()
-        del self.samples[:]
-        del self.samples
-        self.samples = []
-        self.samples_by_label = {}
-        self.samples_by_bin = {}
-        logging.info("%s generating segments  type %s", self.name, segment_type)
-        start = time.time()
-        empty_tracks = []
-        filtered_stats = 0
-
-        for track in self.tracks:
-            segment_frame_spacing = int(
-                round(self.segment_spacing * track.frames_per_second)
-            )
-            segment_width = self.segment_length
-            track.calculate_segments(
-                segment_frame_spacing,
-                segment_width,
-                segment_type,
-                segment_min_mass=segment_min_avg_mass,
-            )
-            filtered_stats = filtered_stats + track.filtered_stats["segment_mass"]
-            if len(track.segments) == 0:
-                empty_tracks.append(track)
-                continue
-            for sample in track.segments:
-                self.add_clip_sample_mappings(sample)
-
-        self.rebuild_cdf()
-        logging.info(
-            "%s #segments %s filtered stats are %s took  %s",
-            self.name,
-            len(self.samples),
-            filtered_stats,
-            time.time() - start,
-        )
+    #
+    # def recalculate_segments(self, segment_type=SegmentType.ALL_RANDOM):
+    #     self.samples_by_bin.clear()
+    #     self.samples_by_label.clear()
+    #     del self.samples[:]
+    #     del self.samples
+    #     self.samples = []
+    #     self.samples_by_label = {}
+    #     self.samples_by_bin = {}
+    #     logging.info("%s generating segments  type %s", self.name, segment_type)
+    #     start = time.time()
+    #     empty_tracks = []
+    #     filtered_stats = 0
+    #
+    #     for track in self.tracks:
+    #         segment_frame_spacing = int(
+    #             round(self.segment_spacing * track.frames_per_second)
+    #         )
+    #         segment_width = self.segment_length
+    #         track.calculate_segments(
+    #             segment_frame_spacing,
+    #             segment_width,
+    #             segment_type,
+    #             segment_min_mass=segment_min_avg_mass,
+    #         )
+    #         filtered_stats = filtered_stats + track.filtered_stats["segment_mass"]
+    #         if len(track.segments) == 0:
+    #             empty_tracks.append(track)
+    #             continue
+    #         for sample in track.segments:
+    #             self.add_clip_sample_mappings(sample)
+    #
+    #     self.rebuild_cdf()
+    #     logging.info(
+    #         "%s #segments %s filtered stats are %s took  %s",
+    #         self.name,
+    #         len(self.samples),
+    #         filtered_stats,
+    #         time.time() - start,
+    #     )
 
     def remove_sample(self, sample):
-        self.samples.remove(sample)
-        self.samples_by_label[sample.label].remove(sample)
+        del self.samples_by_id[sample.id]
+        try:
+            # not nessesarily there if splitting by clip hack
+            self.samples_by_bin[sample.bin_id].remove(sample)
+        except:
+            pass
 
     def fetch_track(
         self,
@@ -610,3 +534,59 @@ class Dataset:
             frame_numbers=frame_numbers,
         )
         return frames
+
+
+def filter_track(track_header, excluded_tags, filtered_stats={}):
+    # some clips are banned for various reasons4
+    if track_header.label is None:
+        filtered_stats.setdefault("notags", 0)
+        filtered_stats["notags"] += 1
+        return True
+    if track_header.label in excluded_tags:
+        filtered_stats.setdefault("tags", 0)
+
+        filtered_stats["tags"] += 1
+        filter_tags = filtered_stats.setdefault("tag_names", set())
+        filter_tags.add(track_header.label)
+        return True
+
+    if track_header.human_tags is not None:
+        found_tags = [tag for tag in track_header.human_tags if tag in excluded_tags]
+        if len(found_tags) > 0:
+            filter_tags = filtered_stats.setdefault("tag_names", set())
+            filter_tags |= set(found_tags)
+            filtered_stats.setdefault("tags", 0)
+            filtered_stats["tags"] += 1
+            return True
+    # always let the false-positives through as we need them even though they would normally
+    # be filtered out.
+
+    if track_header.regions_by_frame is None or len(track_header.regions_by_frame) == 0:
+        filtered_stats.setdefault("no_data", 0)
+        filtered_stats["no_data"] += 1
+        logging.info("No region data")
+        return True
+
+    # dont think we need this gp 28/08/2023
+    # if track_meta["human_tag"] == "false-positive":
+    # return False
+
+    # for some reason we get some records with a None confidence?
+    if track_header.confidence <= 0.6:
+        filtered_stats.setdefault("confidence", 0)
+        filtered_stats["confidence"] += 1
+        logging.info("Low confidence")
+        return True
+
+    return False
+
+
+def filter_clip(clip, filtered_stats={}):
+    # remove tracks of trapped animals
+    if (clip.events is not None and "trap" in clip.events.lower()) or (
+        clip.trap is not None and "trap" in clip.trap.lower()
+    ):
+        self.filtered_stats["trap"] += 1
+        logging.info("Filtered because in trap")
+        return True
+    return False

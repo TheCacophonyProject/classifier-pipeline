@@ -10,9 +10,9 @@ import time
 import numpy as np
 
 from classify.trackprediction import Predictions
-from load.clip import Clip
-from load.cliptrackextractor import ClipTrackExtractor
-from load.irtrackextractor import IRTrackExtractor
+from track.clip import Clip
+from track.cliptrackextractor import ClipTrackExtractor
+from track.irtrackextractor import IRTrackExtractor
 from pathlib import Path
 from ml_tools import tools
 from ml_tools.previewer import Previewer

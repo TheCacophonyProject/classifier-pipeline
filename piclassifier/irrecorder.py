@@ -12,7 +12,7 @@ from pathlib import Path
 
 from ml_tools.mpeg_creator import MPEGCreator
 from piclassifier.recorder import Recorder
-from load.cliptrackextractor import ClipTrackExtractor
+from track.cliptrackextractor import ClipTrackExtractor
 from ml_tools.logs import init_logging
 from .eventreporter import log_event
 

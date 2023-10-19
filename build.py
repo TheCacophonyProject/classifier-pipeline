@@ -16,18 +16,22 @@ from ml_tools.logs import init_logging
 from config.config import Config
 from ml_tools.dataset import Dataset
 from ml_tools.datasetstructures import Camera
+from ml_tools.tfwriter import create_tf_records
+from ml_tools.irwriter import save_data as save_ir_data
+from ml_tools.thermalwriter import save_data as save_thermal_data
 
-from ml_tools.irwriter import create_tf_records as create_ir_records
-from ml_tools.thermalwriter import create_tf_records as create_thermal_records
 
 import numpy as np
 
-MAX_TEST_TRACKS = 10
-MAX_TEST_SAMPLES = 10
+from pathlib import Path
 
-MIN_SAMPLES = 100
-MIN_TRACKS = 100
-LOW_SAMPLES_LABELS = ["bird/kiwi"]
+MAX_TEST_TRACKS = 1
+MAX_TEST_SAMPLES = 1
+
+MIN_SAMPLES = 1
+MIN_TRACKS = 1
+# LOW_SAMPLES_LABELS = ["bird", "cat", "possum"]
+LOW_SAMPLES_LABELS = []
 
 
 def load_config(config_file):
@@ -36,9 +40,7 @@ def load_config(config_file):
 
 def parse_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "--rebuild-important", action="count", help="Rebuild important frames"
-    )
+
     parser.add_argument(
         "-m",
         "--min-samples",
@@ -53,6 +55,10 @@ def parse_args():
         type=float,
         help="Percentage of training set to add extra augmentations of",
     )
+    parser.add_argument("--split-file", help="Json file defining a split")
+    parser.add_argument(
+        "--ext", default=".hdf5", help="Extension of files to load .mp4,.cptv,.hdf5"
+    )
 
     parser.add_argument("-c", "--config-file", help="Path to config file to use")
     parser.add_argument("-d", "--date", help="Use clips after this")
@@ -63,19 +69,7 @@ def parse_args():
         default=False,
         help="Use consecutive frames for segments",
     )
-    parser.add_argument(
-        "--bb",
-        "--balance-bins",
-        action="count",
-        help="Balance bins so each track has even percentage of being picked",
-    )
-    parser.add_argument(
-        "--bl",
-        "--balance-labels",
-        action="count",
-        help="Balance labels so that they have are distributed as defined in config",
-    )
-
+    parser.add_argument("data_dir", help="Directory of hdf5 files")
     args = parser.parse_args()
     if args.date:
         if args.date == "None":
@@ -94,20 +88,38 @@ def parse_args():
         MIN_SAMPLES = args.min_samples
         MIN_TRACKS = args.min_samples
         # args.date = datetime.datetime.now() - datetime.timedelta(days=30)
-
+    if args.data_dir is not None:
+        args.data_dir = Path(args.data_dir)
     logging.info("Loading training set up to %s", args.date)
     return args
 
 
+def show_clips_breakdown(dataset):
+    print("Clips breakdown:")
+
+    for label in dataset.labels:
+        print(label)
+        lbl_samples = dataset.samples_by_label.get(label, [])
+        if dataset.label_mapping:
+            actual_labels = {}
+            for s in lbl_samples:
+                actual_labels.setdefault(s.original_label, set()).add(s.clip_id)
+            for actual, clips in actual_labels.items():
+                print("  {:<20} {} clips".format(actual, len(clips)))
+
+        else:
+            clips = [s.clip_id for s in lbl_samples]
+            clips = set(clips)
+            print("  {:<20} {} clips".format(label, len(clips)))
+
+
 def show_tracks_breakdown(dataset):
     print("Tracks breakdown:")
-    samples = dataset.samples
 
     for label in dataset.labels:
         lbl_samples = dataset.samples_by_label.get(label, [])
         tracks = [s.unique_track_id for s in lbl_samples]
         tracks = set(tracks)
-        print("labels are", label)
         print("  {:<20} {} tracks".format(label, len(tracks)))
 
 
@@ -122,13 +134,55 @@ def show_cameras_tracks(dataset):
 def show_cameras_breakdown(dataset):
     print("Cameras breakdown")
     samples_by_camera = {}
-    for sample in dataset.samples:
-        if sample.camera not in samples_by_camera:
-            samples_by_camera[sample.camera] = []
-        samples_by_camera[sample.camera].append(sample)
+    for clip in dataset.clips:
+        if clip.camera not in samples_by_camera:
+            samples_by_camera[clip.camera] = []
+
+        for track in clip.tracks:
+            samples_by_camera[clip.camera].extend(track.samples)
 
     for camera, samples in samples_by_camera.items():
-        print("{:<20} {}".format(camera, len(samples)))
+        print(
+            "Camera: {:<20} {}".format(
+                "None" if camera is None else camera, len(samples)
+            )
+        )
+
+
+def show_bins_breakdown(dataset):
+    print("Bins breakdown")
+    samples_by_bins = {}
+    for clip in dataset.clips:
+        for t in clip.tracks:
+            for sample in t.samples:
+                if sample.bin_id not in samples_by_bins:
+                    samples_by_bins[sample.bin_id] = []
+                samples_by_bins[sample.bin_id].append(sample)
+
+    for bin_id, samples in samples_by_bins.items():
+        print(
+            "Bin Id: {:<20} {}".format(
+                "None" if bin_id is None else bin_id, len(samples)
+            )
+        )
+
+
+def show_stations_breakdown(dataset):
+    print("Stations breakdown")
+    samples_by_station = {}
+    for clip in dataset.clips:
+        if clip.station_id not in samples_by_station:
+            samples_by_station[clip.station_id] = []
+
+        for track in clip.tracks:
+            samples_by_station[clip.station_id].extend(track.samples)
+
+    for station, samples in samples_by_station.items():
+        print(
+            "StationId: {:<20} {}".format(
+                "None" if station is None else station, len(samples)
+            )
+        )
 
 
 def show_samples_breakdown(dataset):
@@ -151,14 +205,14 @@ def print_cameras(train, validation, test):
     print()
 
 
-def print_counts(dataset, train, validation, test):
+def print_counts(train, validation, test):
     print("Counts per class:")
     print("-" * 90)
     print("{:<20} {:<21} {:<21} {:<21}".format("Class", "Train", "Validation", "Test"))
     print("-" * 90)
     print("Samples / Tracks/ Bins/ weight")
     # display the dataset summary
-    for label in dataset.labels:
+    for label in train.labels:
         print(
             "{:<20} {:<20} {:<20} {:<20}".format(
                 label,
@@ -170,98 +224,153 @@ def print_counts(dataset, train, validation, test):
     print()
 
 
-def split_label(dataset, label, existing_test_count=0, max_samples=None):
+# default split is by stationid, but some labels dont have many stations so best to just split by clip
+split_by_clip = ["penguin", "wallaby"]
+
+
+def split_label(
+    dataset,
+    label,
+    counts,
+    train_count,
+    validation_count,
+    test_count,
+    existing_test_count=0,
+    max_samples=None,
+    use_test=True,
+):
     # split a label from dataset such that vlaidation is 15% or MIN_TRACKS
+    # dont split these by location and camera
+    logging.info(
+        "Splitting %s have counts (Tracks/Samples/Bins) %s already have (Tracks/Samples) in train %s validation %s and in test %s",
+        label,
+        counts,
+        train_count,
+        validation_count,
+        test_count,
+    )
+
     samples = dataset.samples_by_label.get(label, [])
-    if max_samples is not None:
-        samples = np.random.choice(
-            samples, min(len(samples), max_samples), replace=False
-        )
-    samples_by_bin = {}
-    total_tracks = set()
-    for sample in samples:
-        total_tracks.add(sample.track_id)
-        if sample.bin_id not in samples_by_bin:
-            samples_by_bin[sample.bin_id] = []
-        samples_by_bin[sample.bin_id].append(sample)
-    total_tracks = len(total_tracks)
-    sample_bins = [sample.bin_id for sample in samples]
+    sample_bins = set([sample.bin_id for sample in samples])
+
+    if counts[2] < 4 or counts[0] < 100:
+        global split_by_clip
+        split_by_clip.append(label)
+
+    if label in split_by_clip:
+        sample_bins = set([sample.clip_id for sample in samples])
+        print(label, " Splitting by clip")
+        samples_by_bin = {}
+        for clip in dataset.clips:
+            if clip.clip_id in sample_bins:
+                samples_by_bin[clip.clip_id] = clip.get_samples()
+    else:
+        samples_by_bin = dataset.samples_by_bin
     if len(sample_bins) == 0:
         return None, None, None
 
-    # sample_bins duplicates
-    sample_bins = list(set(sample_bins))
+    if max_samples is not None:
+        sample_bins = np.random.choice(
+            sample_bins, min(len(sample_bins), max_samples), replace=False
+        )
+
+    sample_count = counts[1]
+    total_tracks = counts[0]
+
+    sample_bins = list(sample_bins)
 
     random.shuffle(sample_bins)
-    train_c = Camera("{}-Train".format(label))
-    validate_c = Camera("{}-Val".format(label))
-    test_c = Camera("{}-Test".format(label))
+    train_c = []
+    validate_c = []
+    test_c = [] if use_test else None
 
     camera_type = "validate"
     add_to = validate_c
     last_index = 0
     label_count = 0
-    total = len(samples)
     min_t = MIN_SAMPLES
 
     if label in LOW_SAMPLES_LABELS:
         min_t = 10
-    num_validate_samples = max(total * 0.15, min_t)
+    num_validate_samples = max(sample_count * 0.15, min_t) - validation_count[1]
     num_test_samples = (
-        min(MAX_TEST_SAMPLES, max(total * 0.05, min_t)) - existing_test_count
+        min(MAX_TEST_SAMPLES, max(sample_count * 0.05, min_t)) - test_count[1]
     )
-    # should have test covered by test set
 
     min_t = MIN_TRACKS
 
     if label in LOW_SAMPLES_LABELS:
         min_t = 10
 
-    num_validate_tracks = max(total_tracks * 0.15, min_t)
+    num_validate_tracks = max(total_tracks * 0.15, min_t) - validation_count[0]
     num_test_tracks = (
-        min(MAX_TEST_TRACKS, max(total_tracks * 0.05, min_t)) - existing_test_count
+        min(MAX_TEST_TRACKS, max(total_tracks * 0.05, min_t)) - test_count[0]
     )
     track_limit = num_validate_tracks
     sample_limit = num_validate_samples
     tracks = set()
-    print(
-        f"{label} - looking for val {num_validate_tracks} tracks out of {total_tracks} tracks and {num_validate_samples} samples from a total of {total} samples  with {num_test_tracks} test tracks and {num_test_samples} test samples"
+    logging.info(
+        f"{label} - looking for val {num_validate_tracks} tracks out of {total_tracks} tracks and {num_validate_samples} samples from a total of {sample_count} samples  with {num_test_tracks} test tracks and {num_test_samples} test samples"
     )
-    for i, sample_bin in enumerate(sample_bins):
-        samples = samples_by_bin[sample_bin]
-        for sample in samples:
-            if sample.label == label:
-                tracks.add(sample.track_id)
-                label_count += 1
+    # if sample_limit < 0 and track_limit < 0:
+    #     add_to = test_c
+    #     camera_type = "test"
+    #     sample_limit = num_test_samples
+    #     track_limit = num_test_tracks
+    #     label_count = 0
+    #     tracks = set()
+    if sample_limit > 0 and track_limit > 0:
+        for i, sample_bin in enumerate(sample_bins):
+            samples = samples_by_bin[sample_bin]
+            for sample in samples:
+                if sample.label == label:
+                    tracks.add(sample.track_id)
+                    label_count += 1
 
-            sample.camera = "{}-{}".format(sample.camera, camera_type)
-            add_to.add_sample(sample)
-        samples_by_bin[sample_bin] = []
-        last_index = i
-        track_count = len(tracks)
-        if label_count >= sample_limit and track_count >= track_limit:
-            # 100 more for test
-            if add_to == validate_c:
-                add_to = test_c
-                camera_type = "test"
-                if num_test_samples <= 0:
+                # sample.camera = "{}-{}".format(sample.camera, camera_type)
+                add_to.append(sample)
+
+                if label in split_by_clip:
+                    dataset.remove_sample(sample)
+            if label not in split_by_clip:
+                while len(samples) > 0:
+                    dataset.remove_sample(samples[0])
+            samples_by_bin[sample_bin] = []
+            last_index = i
+            track_count = len(tracks)
+            if label_count >= sample_limit and track_count >= track_limit:
+                # 100 more for test
+                if add_to == validate_c:
+                    add_to = test_c
+                    camera_type = "test"
+                    if num_test_samples <= 0:
+                        break
+                    sample_limit = num_test_samples
+                    track_limit = num_test_tracks
+                    label_count = 0
+                    tracks = set()
+                    if use_test is False:
+                        break
+                else:
                     break
-                sample_limit = num_test_samples
-                track_limit = num_test_tracks
-                label_count = 0
-                tracks = set()
-            else:
-                break
 
-    sample_bins = sample_bins[last_index + 1 :]
+    # sample_bins = sample_bins[last_index + 1 :]
+    # clearining anyway
     camera_type = "train"
     added = 0
     for i, sample_bin in enumerate(sample_bins):
         samples = samples_by_bin[sample_bin]
         for sample in samples:
-            sample.camera = "{}-{}".format(sample.camera, camera_type)
-            train_c.add_sample(sample)
+            # sample.camera = "{}-{}".format(sample.camera, camera_type)
+            train_c.append(sample)
             added += 1
+
+            if label in split_by_clip:
+                dataset.remove_sample(sample)
+        if label not in split_by_clip:
+            while len(samples) > 0:
+                dataset.remove_sample(samples[0])
+
         samples_by_bin[sample_bin] = []
     return train_c, validate_c, test_c
 
@@ -269,29 +378,95 @@ def split_label(dataset, label, existing_test_count=0, max_samples=None):
 def get_test_set_camera(dataset, test_clips, after_date):
     # load test set camera from tst_clip ids and all clips after a date
     test_c = Camera("Test-Set-Camera")
-    test_samples = [
+    print("after date is", after_date)
+    test_clips = [
         sample
-        for sample in dataset.samples
-        if sample.clip_id in test_clips
+        for clip in dataset.clips
+        if clip.clip_id in test_clips
         or after_date is not None
-        and sample.start_time.replace(tzinfo=pytz.utc) > after_date
+        and clip.rec_time.replace(tzinfo=pytz.utc) > after_date
     ]
-    for sample in test_samples:
-        dataset.remove_sample(sample)
-        test_c.add_sample(sample)
+    for clip in test_clips:
+        for track in clip.tracks:
+            for sample in track.samples:
+                dataset.remove_sample(sample)
+                test_c.add_sample(sample)
     return test_c
 
 
-def split_randomly(db_file, dataset, config, args, test_clips=[], balance_bins=True):
+def split_by_file(dataset, config, split_file, base_dir):
+    base_dir = Path(base_dir)
+    with open(split_file, "r") as f:
+        split = json.load(f)
+
+    samples_by_source = {}
+    for s in dataset.samples_by_id.values():
+        samples_by_source.setdefault(s.source_file.name, []).append(s)
+    datasets = []
+    for name in ["train", "validation", "test"]:
+        logging.info("Loading %s", name)
+        split_dataset = Dataset(
+            dataset.dataset_dir, name, config, label_mapping=dataset.label_mapping
+        )
+        if name == "train":
+            split_dataset.enable_augmentation = True
+        elif name == "test":
+            split_dataset.skip_ffc = False
+        split_files = split.get(name, [])
+        for f in split_files:
+            # print("loading", base_dir / f["source"])
+            # continue
+            file = base_dir / f["source"]
+            if file.exists():
+                try:
+                    # can filter crappy segments here, or can do at train stage to have some way of testing different thresholds
+                    split_dataset.load_clip(file, dont_filter_segment=True)
+                except:
+                    logging.error("Could not load %s", file, exc_info=True)
+            else:
+                pass
+                # logging.warn("No source file %s found for %s", f, name)
+        datasets.append(split_dataset)
+
+    print_counts(*datasets)
+    train, val, test = split_randomly(datasets[0], config, None, use_test=False)
+    datasets = [train, val, datasets[2]]
+    return datasets
+
+
+def split_randomly(dataset, config, date, test_clips=[], use_test=True):
     # split data randomly such that a clip is only in one dataset
     # have tried many ways to split i.e. location and cameras found this is simplest
     # and the results are the same
-    train = Dataset(db_file, "train", config)
+    train = Dataset(
+        dataset.dataset_dir,
+        "train",
+        config,
+        label_mapping=dataset.label_mapping,
+        raw=dataset.raw,
+        ext=dataset.ext,
+    )
     train.enable_augmentation = True
-    validation = Dataset(db_file, "validation", config)
-    test = Dataset(db_file, "test", config)
-    test_c = get_test_set_camera(dataset, test_clips, args.date)
-    test_cameras = [test_c]
+    validation = Dataset(
+        dataset.dataset_dir,
+        "validation",
+        config,
+        label_mapping=dataset.label_mapping,
+        raw=dataset.raw,
+        ext=dataset.ext,
+    )
+    test = None
+    if use_test:
+        test_c = get_test_set_camera(dataset, test_clips, date)
+        test_cameras = [test_c]
+        test = Dataset(
+            dataset.dataset_dir,
+            "test",
+            config,
+            label_mapping=dataset.label_mapping,
+            raw=dataset.raw,
+            ext=dataset.ext,
+        )
     validate_cameras = []
     train_cameras = []
     min_label = None
@@ -301,66 +476,224 @@ def split_randomly(db_file, dataset, config, args, test_clips=[], balance_bins=T
             continue
         if min_label is None or label_count < min_label[1]:
             min_label = (label, label_count)
-    for label in dataset.labels:
-        existing_test_count = len(test.samples_by_label.get(label, []))
+    lbl_order = sorted(
+        dataset.labels,
+        key=lambda lbl: len(dataset.samples_by_label.get(lbl, [])),
+    )
+    if "wallaby" in lbl_order:
+        # make sure we do wallaby first so we get a good split
+        lbl_order.remove("wallaby")
+        lbl_order.insert(0, "wallaby")
+    if "pest" in lbl_order:
+        # make sure its last
+        lbl_order.remove("pest")
+        lbl_order.append("pest")
+
+    lbl_counts = {}
+    for lbl in dataset.labels:
+        samples = dataset.samples_by_label.get(lbl, [])
+        tracks = set([s.track_id for s in samples])
+        bins = set([s.bin_id for s in samples])
+
+        lbl_counts[lbl] = (len(tracks), len(samples), len(bins))
+
+    logging.debug("lbl order is %s", lbl_order)
+    train_counts = {}
+    validation_counts = {}
+    test_counts = {}
+    existing_test_count = 0
+    for label in lbl_order:
+        # existing_test_count = len(test.samples_by_label.get(label, []))
         train_c, validate_c, test_c = split_label(
             dataset,
             label,
+            counts=lbl_counts[label],
+            train_count=train_counts.get(label, (0, 0)),
+            validation_count=validation_counts.get(label, (0, 0)),
+            test_count=test_counts.get(label, (0, 0)),
             existing_test_count=existing_test_count,
+            use_test=use_test,
             # max_samples=min_label[1],
         )
         if train_c is not None:
-            train_cameras.append(train_c)
+            add_samples(dataset.labels, train, train_c, train_counts)
         if validate_c is not None:
-            validate_cameras.append(validate_c)
+            add_samples(dataset.labels, validation, validate_c, validation_counts)
         if test_c is not None:
-            test_cameras.append(test_c)
+            add_samples(dataset.labels, test, test_c, test_counts)
+        logging.debug("Train counts %s", train_counts)
+        logging.debug("val counts %s", validation_counts)
 
-    add_camera_samples(dataset.labels, train, train_cameras, balance_bins)
-    add_camera_samples(dataset.labels, validation, validate_cameras, balance_bins)
-    add_camera_samples(dataset.labels, test, test_cameras, balance_bins)
     return train, validation, test
 
 
-def add_camera_samples(
+def add_samples(
     labels,
     dataset,
-    cameras,
-    balance_bins=None,
+    samples,
+    counts,
 ):
-    # add camera tracks to the daaset and calculate segments and bins
-    all_samples = []
-    for label in labels:
-        for camera in cameras:
-            samples = camera.label_to_samples.get(label, {}).values()
-            all_samples.extend(list(samples))
-    dataset.add_samples(all_samples)
-    dataset.balance_bins()
+    by_labels = {}
+    counts = {}
+    for s in samples:
+        if s.label not in by_labels:
+            by_labels[s.label] = []
+        by_labels[s.label].append(s)
+
+    for label, samples in by_labels.items():
+        track_count = len(set([s.track_id for s in samples]))
+        counts[label] = (
+            track_count,
+            len(samples),
+        )
+    dataset.add_samples(samples)
 
 
-def validate_datasets(datasets, test_clips, date):
+def validate_datasets(datasets, test_bins, date):
     # check that clips are only in one dataset
     # that only test set has clips after date
     # that test set is the only dataset with test_clips
-    for dataset in datasets[:2]:
-        for track in dataset.tracks:
-            assert track.start_time < date
+
+    # for dataset in datasets[:2]:
+    #     for track in dataset.tracks:
+    #         assert track.start_time < date
 
     for i, dataset in enumerate(datasets):
-        clips = set([sample.clip_id for sample in dataset.samples])
-        if test_clips is not None and dataset.name != "test":
+        dont_check = set(
+            [
+                sample.bin_id
+                for sample in dataset.samples_by_id.values()
+                if sample.label in split_by_clip
+            ]
+        )
+        bins = set([sample.bin_id for sample in dataset.samples_by_id.values()])
+        clips = set([sample.clip_id for sample in dataset.samples_by_id.values()])
+
+        bins = bins - dont_check
+        if test_bins is not None and dataset.name != "test":
             assert (
-                len(clips.intersection(set(test_clips))) == 0
-            ), "test clips should only be in test set"
-        if len(clips) == 0:
+                len(bins.intersection(set(test_bins))) == 0
+            ), "test bins should only be in test set"
+        if len(bins) == 0:
             continue
         for other in datasets[(i + 1) :]:
             if dataset.name == other.name:
                 continue
-            other_clips = set([sample.clip_id for sample in other.samples])
-            # other_tracks = set([track.track_id for track in other.tracks])
+            dont_check = set(
+                [
+                    sample.bin_id
+                    for sample in other.samples_by_id.values()
+                    if sample.label in split_by_clip
+                ]
+            )
+            other_bins = set([sample.bin_id for sample in other.samples_by_id.values()])
+            other_bins = other_bins - dont_check
+            other_clips = set(
+                [sample.clip_id for sample in other.samples_by_id.values()]
+            )
 
-            assert clips != other_clips, "clips should only be in one set"
+            intersection = bins.intersection(set(other_bins))
+
+            assert (
+                len(bins.intersection(set(other_bins))) == 0
+            ), "bins should only be in one set"
+
+            assert (
+                len(clips.intersection(set(other_clips))) == 0
+            ), "clips should only be in one set"
+
+
+land_birds = [
+    "pukeko",
+    "california quail",
+    "brown quail",
+    "black swan",
+    "quail",
+    "pheasant",
+    "penguin",
+    "duck",
+    "chicken",
+    "rooster",
+]
+
+label_paths_dl = "https://raw.githubusercontent.com/TheCacophonyProject/cacophony-web/main/api/classifications/label_paths.json"
+
+
+def dl_mappings():
+    import requests
+
+    logging.info("Downloading mappings file from %s ", label_paths_dl)
+    response = requests.get(label_paths_dl)
+    response.raise_for_status()
+
+    mapping_content = response.content.decode()
+    print(mapping_content)
+    with open("label_paths.json", "w") as f:
+        f.write(mapping_content)
+    return mapping_content
+
+
+def get_mappings():
+    labels_path = Path("label_paths.json")
+    if not labels_path.exists():
+        label_paths = json.loads(dl_mappings())
+    with open("label_paths.json", "r") as f:
+        label_paths = json.load(f)
+    regroup = {}
+    for l, path in label_paths.items():
+        if l in land_birds:
+            regroup[l] = l
+            continue
+        split_path = path.split(".")
+        if len(split_path) == 1:
+            regroup[l] = l
+        elif path.startswith("all.mammal"):
+            if len(split_path) == 4:
+                regroup[l] = split_path[-2]
+            else:
+                regroup[l] = l
+        else:
+            # print("l", l, " has ", path)
+            parent = split_path[-2]
+            # print("Parent is", parent, path)
+            if parent == "kiwi" or split_path[-1] == "kiwi":
+                regroup[l] = "kiwi"
+            elif parent == "other":
+                regroup[l] = l
+
+            else:
+                if "bird." in path:
+                    regroup[l] = "bird"
+
+                elif len(split_path) > 2:
+                    regroup[l] = split_path[-3]
+                else:
+                    regroup[l] = split_path[-1]
+
+    return regroup
+
+
+def dump_split_ids(datasets, out_file="datasplit.json"):
+    splits = {}
+    logging.info("Wrinting split ids to %s", out_file)
+    for d in datasets:
+        samples_by_source = d.get_samples_by_source()
+        clips = []
+        for source, samples in samples_by_source.items():
+            tags = set([s.label for s in samples])
+            clips.append(
+                {
+                    "clip_id": samples[0].clip_id,
+                    "source": source.name,
+                    "station_id": "{}".format(samples[0].station_id),
+                    "tags": list(tags),
+                }
+            )
+        # clips = set(clips)
+        splits[d.name] = clips
+    with open(out_file, "w") as f:
+        json.dump(splits, f)
+    return
 
 
 def main():
@@ -368,58 +701,87 @@ def main():
     args = parse_args()
     config = load_config(args.config_file)
     logging.info("Building for type %s", config.train.type)
+
     test_clips = config.build.test_clips()
     if test_clips is None:
         test_clips = []
     logging.info("# of test clips are %s", len(test_clips))
-    db_file = os.path.join(config.tracks_folder, "dataset.hdf5")
-    dataset = Dataset(
-        db_file, "dataset", config, consecutive_segments=args.consecutive_segments
+    label_mapping = get_mappings()
+    master_dataset = Dataset(
+        args.data_dir,
+        "dataset",
+        config,
+        consecutive_segments=args.consecutive_segments,
+        label_mapping=label_mapping,
+        raw=False if args.ext == ".hdf5" else True,
+        ext=args.ext,
     )
+    base_dir = Path(config.tracks_folder)
+    record_dir = base_dir / "training-data"
+    record_dir.mkdir(parents=True, exist_ok=True)
 
-    tracks_loaded, total_tracks = dataset.load_clips()
-    # return
-    dataset.labels.sort()
-    print(
-        "Loaded {}/{} tracks, found {:.1f}k samples".format(
-            tracks_loaded, total_tracks, len(dataset.samples) / 1000
+    if args.split_file:
+        logging.info("Loading datasets from split file %s", args.split_file)
+        datasets = split_by_file(master_dataset, config, args.split_file, args.data_dir)
+        labels = set()
+        for dataset in datasets:
+            labels.update(dataset.labels)
+        labels = list(labels)
+        labels.sort()
+        for dataset in datasets:
+            dataset.labels = labels
+    else:
+        tracks_loaded, total_tracks = master_dataset.load_clips(
+            dont_filter_segment=True
         )
-    )
-    for key, value in dataset.filtered_stats.items():
-        if value != 0:
-            print("  {} filtered {}".format(key, value))
 
-    print()
-    show_tracks_breakdown(dataset)
-    print()
-    show_samples_breakdown(dataset)
-    print()
-    show_cameras_breakdown(dataset)
-    print()
-    print("Splitting data set into train / validation")
-    datasets = split_randomly(db_file, dataset, config, args, test_clips)
-    validate_datasets(datasets, test_clips, args.date)
+        master_dataset.labels.sort()
+        print(
+            "Loaded {}/{} tracks, found {:.1f}k samples".format(
+                tracks_loaded, total_tracks, len(master_dataset.clips) / 1000
+            )
+        )
+        for key, value in master_dataset.filtered_stats.items():
+            if value != 0:
+                print("  {} filtered {}".format(key, value))
 
-    print_counts(dataset, *datasets)
+        print()
+        show_clips_breakdown(master_dataset)
+        print()
+        show_samples_breakdown(master_dataset)
+        print()
+        show_cameras_breakdown(master_dataset)
+        print()
+        show_stations_breakdown(master_dataset)
+        print()
+        show_bins_breakdown(master_dataset)
+        print()
+        print("Splitting data set into train / validation")
+
+        datasets = split_randomly(master_dataset, config, args.date, test_clips)
+        validate_datasets(datasets, test_clips, args.date)
+        dump_split_ids(datasets, record_dir / "datasplit.json")
+
+    print_counts(*datasets)
     print("split data")
-    base_dir = config.tracks_folder
-    record_dir = os.path.join(base_dir, "training-data/")
+
     dataset_counts = {}
-    create_tf_records = create_thermal_records
+    # create_tf_records = create_thermal_records
     if config.train.type == "IR":
         threshold = (
             config.tracking[config.train.type]
             .motion.threshold_for_model(config.train.type)
             .background_thresh
         )
-
-        create_tf_records = create_ir_records
+        # create_tf_records = create_ir_records
     else:
         threshold = None
 
-    train_set = datasets[0]
+    # create pre augmented records if samples are very low
+    # not in use probably needs to be re tested if used
     aug_percent = args.aug_percent
     if aug_percent is not None:
+        train_set = datasets[0]
         for l, samples in train_set.samples_by_label.items():
             track_dic = {}
             for s in samples:
@@ -440,16 +802,46 @@ def main():
                     new_samples.append(new)
                 train_set.add_samples(new_samples)
         print("Count post augmentation")
-        print_counts(dataset, *datasets)
+        print_counts(*datasets)
+
     for dataset in datasets:
         dir = os.path.join(record_dir, dataset.name)
-        create_tf_records(dataset, dir, datasets[0].labels, threshold, num_shards=100)
+        if config.train.type == "IR":
+            create_tf_records(
+                dataset,
+                dir,
+                datasets[0].labels,
+                save_ir_data,
+                num_shards=100,
+                back_thresh=threshold,
+            )
+        else:
+            extra_args = None
+            if args.ext != ".hdf5":
+                extra_args = {
+                    "segment_frame_spacing": master_dataset.segment_spacing * 9,
+                    "segment_width": master_dataset.segment_length,
+                    "segment_type": master_dataset.segment_type,
+                    "segment_min_avg_mass": master_dataset.segment_min_avg_mass,
+                    "max_segments": master_dataset.max_segments,
+                    "dont_filter_segment": True,
+                    "skip_ffc": True,
+                    "tag_precedence": config.load.tag_precedence,
+                }
+            create_tf_records(
+                dataset,
+                dir,
+                datasets[0].labels,
+                save_thermal_data,
+                num_shards=100,
+                num_frames=dataset.segment_length,
+                **extra_args,
+            )
         counts = {}
         for label in dataset.labels:
             count = len(dataset.samples_by_label.get(label, []))
             counts[label] = count
         dataset_counts[dataset.name] = counts
-        # dataset.saveto_numpy(os.path.join(base_dir))
     # dont need dataset anymore just need some meta
     meta_filename = f"{base_dir}/training-meta.json"
     meta_data = {

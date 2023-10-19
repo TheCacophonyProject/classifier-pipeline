@@ -7,35 +7,19 @@ The output is a TensorFlow model that can identify thermal video clips of animal
 
 # Scripts
 
-### load.py
-Processes CPTV clips and metadata, extracts the tagged frames (supplied by the metadata) and adds them to the hdf5 database.
-
-The tracking algorithm tries to distinguish between animal tracks and false positives, but is not 100% reliable.  For this reason the output of the tracking algorithm should be checked by hand.
-
 
 ### build.py
 Creates training, validation and testing datasets from database of clips & tracks.
-Datasets contain frames and segments ( e.g. 45 frames).
+Datasets contain frames or segments ( e.g. 45 frames).
 
 Frames (important frames) are calculated by choosing frames with a mass ( the count of pixels that have been deemed an object by track extraction) between the lower and upper quartiles of a tracks mass distribution.
 
-Frames are also checked to see if they are noisy frames.
-This attempts to remove the following types of noisy frames:
-- Frames where it has bad tracking e.g. in the middle of an animal
-- Frames where only part of the animal is shown (maybe leaving the cameras field of vision)
-- Frames where nothing is there but noise
-
-Segments are calculated either by (depending on config):
-
-Choosing random permutations of the important frames.
-- Number of Segments (# of important frames - segment duration) // 9 segments are selected
-
-or by choosing segment duration consecutive frames whose mass is above a certain amount        
+Segments are calculated  by choosing segment duration consecutive frames whose mass is above a certain amount        
 - Number of Segments up to (# of frames - segment duration) // segment-frame-spacing
 
 Datasets are split by camera and location ( to try and remove any bias that may occur from using a camera in multiple sets).
 
-Some labels have low amounts of data so a single camera is split into 2 cameras e.g. Wallabies and Leoparidaes
+Some labels have low amounts of data so they are split by clip_id i.e. wallaby and penguin
 
 ### train.py
 Trains a neural net using a provided test / train / validation dataset.
@@ -64,8 +48,8 @@ Choose the region with greatest mass if any regions exist (these are points of i
 
 Otherwise take the frame with the highest mean pixel value and find the highest mean pixel 64 x64 region
 
-### evaluate.py
-Evaluates the performance of a classify.py run and generates reports.
+### modelevaluate.py
+Evaluates the performance of a model
 
 # Setup
 
@@ -97,15 +81,11 @@ CPTV files can be downloaded using the [cptv-downloader](https://github.com/TheC
 
 First download the CPTV files by running
 
-`python cptv-download.py --user x --password x`
-
-Next load the track files.  This can take some time
-
-`python load.py all -v -p`
+`python cptv-download.py <dir> <user> <password>`
 
 Now we can build the data set
 
-`python build.py`
+`python build.py <dir> --ext ".cptv"`
 
 And finally train the model
 

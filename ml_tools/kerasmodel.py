@@ -19,17 +19,16 @@ import cv2
 from ml_tools import tools
 from ml_tools.datasetstructures import SegmentType
 
-from ml_tools.preprocess import preprocess_movement, preprocess_frame, preprocess_ir
+from ml_tools.preprocess import (
+    preprocess_movement,
+    preprocess_frame,
+)
 from ml_tools.interpreter import Interpreter
 from classify.trackprediction import TrackPrediction
 from ml_tools.hyperparams import HyperParams
 from ml_tools import thermaldataset
+from ml_tools.resnet.wr_resnet import WRResNet
 
-# import (
-#    get_resampled_by_label as get_thermal_dataset_by_label,
-#    get_dataset as get_thermal_dataset,
-#    get_weighting,
-# )
 from ml_tools import irdataset
 from ml_tools.tfdataset import get_weighting, get_distribution, get_dataset as get_tf
 import tensorflow_decision_forests as tfdf
@@ -85,30 +84,34 @@ class KerasModel(Interpreter):
     def shape(self):
         if self.model is None:
             return None
-        return self.model.get_config()["layers"][0]["config"]["batch_input_shape"]
+        inputs = self.model.inputs
+        shape = []
+        for input in inputs:
+            shape.append(tuple(input.shape.as_list()))
+        return len(shape), shape
 
-    def get_base_model(self, input_shape, weights="imagenet"):
+    def get_base_model(self, input, weights="imagenet"):
         pretrained_model = self.params.model_name
         if pretrained_model == "resnet":
             return (
                 tf.keras.applications.ResNet50(
                     weights=weights,
                     include_top=False,
-                    input_shape=input_shape,
+                    input_tensor=inputs,
                 ),
                 tf.keras.applications.resnet.preprocess_input,
             )
         elif pretrained_model == "resnetv2":
             return (
                 tf.keras.applications.ResNet50V2(
-                    weights=weights, include_top=False, input_shape=input_shape
+                    weights=weights, include_top=False, input_tensor=input
                 ),
                 tf.keras.applications.resnet_v2.preprocess_input,
             )
         elif pretrained_model == "resnet152":
             return (
                 tf.keras.applications.ResNet152(
-                    weights=weights, include_top=False, input_shape=input_shape
+                    weights=weights, include_top=False, input_tensor=input
                 ),
                 tf.keras.applications.resnet.preprocess_input,
             )
@@ -117,7 +120,7 @@ class KerasModel(Interpreter):
                 tf.keras.applications.VGG16(
                     weights=weights,
                     include_top=False,
-                    input_shape=input_shape,
+                    input_tensor=input,
                 ),
                 tf.keras.applications.vgg16.preprocess_input,
             )
@@ -126,7 +129,7 @@ class KerasModel(Interpreter):
                 tf.keras.applications.VGG19(
                     weights=weights,
                     include_top=False,
-                    input_shape=input_shape,
+                    input_tensor=input,
                 ),
                 tf.keras.applications.vgg19.preprocess_input,
             )
@@ -135,7 +138,7 @@ class KerasModel(Interpreter):
                 tf.keras.applications.MobileNetV2(
                     weights=weights,
                     include_top=False,
-                    input_shape=input_shape,
+                    input_tensor=input,
                 ),
                 tf.keras.applications.mobilenet_v2.preprocess_input,
             )
@@ -144,7 +147,7 @@ class KerasModel(Interpreter):
                 tf.keras.applications.DenseNet121(
                     weights=weights,
                     include_top=False,
-                    input_shape=input_shape,
+                    input_tensor=input,
                 ),
                 tf.keras.applications.densenet.preprocess_input,
             )
@@ -153,7 +156,7 @@ class KerasModel(Interpreter):
                 tf.keras.applications.InceptionResNetV2(
                     weights=weights,
                     include_top=False,
-                    input_shape=input_shape,
+                    input_tensor=input,
                 ),
                 tf.keras.applications.inception_resnet_v2.preprocess_input,
             )
@@ -162,7 +165,7 @@ class KerasModel(Interpreter):
                 tf.keras.applications.InceptionV3(
                     weights=weights,
                     include_top=False,
-                    input_shape=input_shape,
+                    input_tensor=input,
                 ),
                 tf.keras.applications.inception_v3.preprocess_input,
             )
@@ -171,7 +174,7 @@ class KerasModel(Interpreter):
                 tf.keras.applications.EfficientNetB5(
                     weights=weights,
                     include_top=False,
-                    input_shape=input_shape,
+                    input_tensor=input,
                 ),
                 None,
             )
@@ -180,7 +183,7 @@ class KerasModel(Interpreter):
                 tf.keras.applications.EfficientNetB0(
                     weights=weights,
                     include_top=False,
-                    input_shape=input_shape,
+                    input_tensor=input,
                 ),
                 None,
             )
@@ -189,17 +192,27 @@ class KerasModel(Interpreter):
                 tf.keras.applications.EfficientNetB1(
                     weights=weights,
                     include_top=False,
-                    input_shape=input_shape,
+                    input_tensor=input,
                 ),
                 None,
             )
-        raise Exception("Could not find model" + pretrained_model)
+        elif pretrained_model == "nasnet":
+            return (
+                tf.keras.applications.nasnet.NASNetLarge(
+                    weights=weights, include_top=False, input_tensor=input
+                ),
+                tf.keras.applications.nasnet.preprocess_input,
+            )
+        elif pretrained_model == "wr-resnet":
+            return WRResNet(input), None
+        raise Exception("Could not find model " + pretrained_model)
 
     def get_preprocess_fn(self):
         pretrained_model = self.params.model_name
         if pretrained_model == "resnet":
             return tf.keras.applications.resnet.preprocess_input
-
+        elif pretrained_model == "nasnet":
+            return tf.keras.applications.nasnet.preprocess_input
         elif pretrained_model == "resnetv2":
             return tf.keras.applications.resnet_v2.preprocess_input
 
@@ -256,9 +269,12 @@ class KerasModel(Interpreter):
         width = self.params.output_dim[0]
         inputs = tf.keras.Input(shape=(width, width, 3), name="input")
         weights = None if self.params.base_training else "imagenet"
-        base_model, preprocess = self.get_base_model((width, width, 3), weights=weights)
+        base_model, preprocess = self.get_base_model(inputs, weights=weights)
         self.preprocess_fn = preprocess
-        x = base_model(inputs, training=self.params.base_training)
+
+        # inputs = base_model.input
+        x = base_model.output
+        # x = base_model(inputs, training=self.params.base_training)
 
         if self.params.lstm:
             x = tf.keras.layers.GlobalAveragePooling2D()(x)
@@ -303,8 +319,13 @@ class KerasModel(Interpreter):
                     x = tf.keras.layers.Dense(i, activation="relu")(x)
             if dropout:
                 x = tf.keras.layers.Dropout(dropout)(x)
+
+            activation = "softmax"
+            if self.params.multi_label:
+                activation = "sigmoid"
+            logging.info("Using %s activation", activation)
             preds = tf.keras.layers.Dense(
-                len(self.labels), activation="softmax", name="prediction"
+                len(self.labels), activation=activation, name="prediction"
             )(x)
             self.model = tf.keras.models.Model(inputs, outputs=preds)
         if retrain_from is None:
@@ -319,11 +340,17 @@ class KerasModel(Interpreter):
                     layer.trainable = i >= retrain_from
         else:
             base_model.trainable = self.params.base_training
+
+        if self.params.multi_label:
+            acc = tf.metrics.binary_accuracy
+        else:
+            acc = tf.metrics.categorical_accuracy
+
         self.model.compile(
             optimizer=optimizer(self.params),
             loss=loss(self.params),
             metrics=[
-                "accuracy",
+                acc,
                 tf.keras.metrics.AUC(),
                 tf.keras.metrics.Recall(),
                 tf.keras.metrics.Precision(),
@@ -362,8 +389,9 @@ class KerasModel(Interpreter):
         self.model.trainable = training
         self.load_meta(dir_name)
         if weights is not None:
-            self.model.load_weights(weights).expect_partial()
-        logging.info("Loaded weight %s", weights)
+            self.model.load_weights(weights)
+            logging.info("Loaded weight %s", weights)
+        print(self.model.summary())
 
     def load_meta(self, dir_name):
         meta = json.load((dir_name / "saved_model.json").open("r"))
@@ -374,7 +402,6 @@ class KerasModel(Interpreter):
         self.label_probabilities = meta.get("label_probabilities")
         self.preprocess_fn = self.get_preprocess_fn()
         self.type = meta.get("type", "thermal")
-
         logging.debug(
             "using types r %s g %s b %s type %s",
             self.params.red_type,
@@ -460,13 +487,17 @@ class KerasModel(Interpreter):
         logging.info(
             "%s Training model for %s epochs with weights %s", run_name, epochs, weights
         )
-        self.excluded_labels, self.remapped_labels = get_excluded(self.type)
+        self.excluded_labels, self.remapped_labels = get_excluded(
+            self.type, self.params.multi_label
+        )
         train_files = os.path.join(self.data_dir, "train")
         validate_files = os.path.join(self.data_dir, "validation")
         logging.info(
             "Excluding %s remapping %s", self.excluded_labels, self.remapped_labels
         )
 
+        if self.params.multi_label:
+            self.labels.append("land-bird")
         orig_labels = self.labels.copy()
         for l in self.excluded_labels:
             if l in self.labels:
@@ -486,7 +517,7 @@ class KerasModel(Interpreter):
                 run_name=run_name,
             )
         self.model.summary()
-        self.train, remapped, new_labels = get_dataset(
+        self.train, remapped, new_labels, epoch_size = get_dataset(
             train_files,
             self.type,
             orig_labels,
@@ -500,9 +531,10 @@ class KerasModel(Interpreter):
             excluded_labels=self.excluded_labels,
             remapped_labels=self.remapped_labels,
             # dist=self.dataset_counts["train"],
+            multi_label=self.params.multi_label,
         )
         self.remapped = remapped
-        self.validate, remapped, _ = get_dataset(
+        self.validate, remapped, _, _ = get_dataset(
             validate_files,
             self.type,
             orig_labels,
@@ -514,6 +546,7 @@ class KerasModel(Interpreter):
             include_features=self.params.mvm,
             excluded_labels=self.excluded_labels,
             remapped_labels=self.remapped_labels,
+            multi_label=self.params.multi_label
             # dist=self.dataset_counts["validation"],
         )
 
@@ -549,7 +582,7 @@ class KerasModel(Interpreter):
         test_files = os.path.join(self.data_dir, "test")
 
         if len(test_files) > 0:
-            self.test, _, _ = get_dataset(
+            self.test, _, _, _ = get_dataset(
                 test_files,
                 self.type,
                 orig_labels,
@@ -562,6 +595,7 @@ class KerasModel(Interpreter):
                 resample=False,
                 excluded_labels=self.excluded_labels,
                 remapped_labels=self.remapped_labels,
+                multi_label=self.params.multi_label,
             )
             if self.test:
                 test_accuracy = self.model.evaluate(self.test)
@@ -569,6 +603,11 @@ class KerasModel(Interpreter):
         self.save(run_name, history=history, test_results=test_accuracy)
 
     def checkpoints(self, run_name):
+        checkpoint_file = os.path.join(self.checkpoint_folder, run_name, "cp.ckpt")
+
+        cp_callback = tf.keras.callbacks.ModelCheckpoint(
+            filepath=checkpoint_file, save_weights_only=True, verbose=1
+        )
         val_loss = os.path.join(self.checkpoint_folder, run_name, "val_loss")
 
         checkpoint_loss = tf.keras.callbacks.ModelCheckpoint(
@@ -579,11 +618,15 @@ class KerasModel(Interpreter):
             save_weights_only=True,
             mode="auto",
         )
-        val_acc = os.path.join(self.checkpoint_folder, run_name, "val_acc")
+        val_acc = os.path.join(
+            self.checkpoint_folder,
+            run_name,
+            "val_acc",
+        )
 
         checkpoint_acc = tf.keras.callbacks.ModelCheckpoint(
             val_acc,
-            monitor="val_accuracy",
+            monitor="val_binary_accuracy" if self.params.multi_label else "val_acc",
             verbose=1,
             save_best_only=True,
             save_weights_only=True,
@@ -601,7 +644,8 @@ class KerasModel(Interpreter):
             mode="max",
         )
         earlyStopping = tf.keras.callbacks.EarlyStopping(
-            patience=22, monitor="val_accuracy"
+            patience=22,
+            monitor="val_binary_accuracy" if self.params.multi_label else "val_acc",
         )
         # havent found much use in this just takes training time
         # file_writer_cm = tf.summary.create_file_writer(
@@ -621,9 +665,16 @@ class KerasModel(Interpreter):
         #   "verbose": 1
         # },
         reduce_lr_callback = tf.keras.callbacks.ReduceLROnPlateau(
-            monitor="val_accuracy", verbose=1
+            monitor="val_binary_accuracy" if self.params.multi_label else "val_acc",
+            verbose=1,
         )
-        return [earlyStopping, checkpoint_acc, checkpoint_loss, reduce_lr_callback]
+        return [
+            earlyStopping,
+            checkpoint_acc,
+            checkpoint_loss,
+            reduce_lr_callback,
+            cp_callback,
+        ]
 
     def regroup(self, shuffle=True):
         # can use this to put animals into groups i.e. wallaby vs not
@@ -702,64 +753,33 @@ class KerasModel(Interpreter):
         model = tf.keras.models.Model(input_layer, preds)
         return model
 
-    def classify_thermal_track(self, clip, track, keep_all=True, segment_frames=None):
-        track_data = {}
-        thermal_median = np.empty(len(track.bounds_history), dtype=np.uint16)
-        for i, region in enumerate(track.bounds_history):
-            if region.width == 0 or region.height == 0:
-                continue
-
-            frame = clip.frame_buffer.get_frame(region.frame_number)
-            if frame is None:
-                logging.error(
-                    "Clasifying clip %s track %s can't get frame %s",
-                    clip.get_id(),
-                    track.get_id(),
-                    region.frame_number,
-                )
-                raise Exception(
-                    "Clasifying clip {} track {} can't get frame {}".format(
-                        clip.get_id(), track.get_id(), region.frame_number
-                    )
-                )
-            # AI just uses a background subtraction
-            frame.filtered = frame.thermal - clip.background
-            cropped_frame = frame.crop_by_region(region)
-            thermal_median[i] = np.median(frame.thermal)
-            cropped_frame.resize_with_aspect(
-                (self.params.frame_size, self.params.frame_size),
-                clip.crop_rectangle,
-                True,
-            )
-            track_data[frame.frame_number] = cropped_frame
-
-        segments = track.get_segments(
-            clip.ffc_frames,
-            thermal_median,
-            self.params.square_width**2,
-            repeats=1,
+    def classify_track(self, clip, track, segment_frames=None):
+        # logging.debug("Classifying track %s", self.type)
+        # if self.params.square_width == 1:
+        #     frames, preprocessed, masses = self.preprocess_frames(clip, track)
+        # else:
+        #     frames, preprocessed, masses = self.preprocess_segments(
+        #         clip, track, segment_frames=segment_frames
+        #     )
+        start = time.time()
+        prediction_frames, output, masses = self.predict_track(
+            clip,
+            track,
             segment_frames=segment_frames,
-            segment_type=self.params.segment_type,
+            frames_per_classify=self.params.square_width**2,
         )
-        features = None
-        if self.params.mvm:
-            features = forestmodel.process_track(clip, track, normalize=True)
-        return self.classify_track_data(
-            track.get_id(),
-            track_data,
-            segments,
-            features,
+        track_prediction = TrackPrediction(track.get_id(), self.labels)
+        # self.model.predict(preprocessed)
+        masses = np.array(masses)
+        masses = masses[:, None]
+        track_prediction.classified_clip(
+            output, output * output * masses, prediction_frames
         )
+        track_prediction.classify_time = time.time() - start
+        return track_prediction
 
-    def classify_track(self, clip, track, keep_all=True, segment_frames=None):
-        logging.debug("Classifying track %s", self.type)
-        if self.type == "IR":
-            return self.classify_ir(clip, track)
-        return self.classify_thermal_track(clip, track, keep_all, segment_frames)
-
-    def classify_ir(self, clip, track, keep_all=True, segment_frames=None):
+    def classify_ir(self, clip, track, segment_frames=None):
         data = []
-        crop = True
         thermal_median = np.empty(len(track.bounds_history), dtype=np.uint16)
         frames_used = []
         for i, region in enumerate(track.bounds_history):
@@ -794,12 +814,11 @@ class KerasModel(Interpreter):
                 region,
             )
             preprocessed = preprocess_ir(
-                frame.copy(),
+                frame,
                 (
                     self.params.frame_size,
                     self.params.frame_size,
                 ),
-                crop,
                 region,
                 self.preprocess_fn,
                 save_info=f"{region.frame_number} - {region}",
@@ -822,87 +841,106 @@ class KerasModel(Interpreter):
         track_prediction.normalize_score()
         return track_prediction
 
-    def classify_track_data(
-        self,
-        track_id,
-        data,
-        segments,
-        features=None,
-    ):
-        track_prediction = TrackPrediction(track_id, self.labels)
-        start = time.time()
-        predictions = []
-        smoothed_predictions = []
-        predict_me = []
-        prediction_frames = []
-        mass = []
-        for segment in segments:
-            segment_frames = []
-            median = np.zeros((len(segment.frame_indices)))
-            for frame_i in segment.frame_indices:
-                f = data[frame_i]
-                segment_frames.append(f.copy())
-            frames = preprocess_movement(
-                segment_frames,
-                self.params.square_width,
-                self.params.frame_size,
-                self.params.red_type,
-                self.params.green_type,
-                self.params.blue_type,
-                self.preprocess_fn,
-                reference_level=segment.frame_temp_median,
-                keep_edge=self.params.keep_edge,
-            )
-            if frames is None:
-                logging.warn("No frames to predict on")
-                continue
-
-            predict_me.append(frames)
-            prediction_frames.append(segment.frame_indices)
-            mass.append(segment.mass)
-        if len(predict_me) > 0:
-            mass = np.array(mass)
-            mass = mass[:, None]
-            predict_me = np.array(predict_me)
-            if self.params.mvm:
-                features = features[np.newaxis, :]
-                features = np.repeat(features, len(predict_me), axis=0)
-                output = self.model.predict([predict_me, features])
-            else:
-                output = self.model.predict(predict_me)
-
-            track_prediction.classified_clip(
-                output, output * output * mass, prediction_frames
-            )
-
-        track_prediction.classify_time = time.time() - start
-        return track_prediction
+    #
+    # def classify_track_data(
+    #     self,
+    #     track_id,
+    #     data,
+    #     segments,
+    #     features=None,
+    # ):
+    #     track_prediction = TrackPrediction(track_id, self.labels)
+    #     start = time.time()
+    #     predictions = []
+    #     smoothed_predictions = []
+    #     predict_me = []
+    #     prediction_frames = []
+    #     mass = []
+    #     for segment in segments:
+    #         segment_frames = []
+    #         for frame_i in segment.frame_indices:
+    #             f = data[frame_i]
+    #             segment_frames.append(f.copy())
+    #         frames = preprocess_movement(
+    #             segment_frames,
+    #             self.params.square_width,
+    #             self.params.frame_size,
+    #             self.params.red_type,
+    #             self.params.green_type,
+    #             self.params.blue_type,
+    #             self.preprocess_fn,
+    #         )
+    #         if frames is None:
+    #             logging.warn("No frames to predict on")
+    #             continue
+    #
+    #         predict_me.append(frames)
+    #         prediction_frames.append(segment.frame_indices)
+    #         mass.append(segment.mass)
+    #     if len(predict_me) > 0:
+    #         mass = np.array(mass)
+    #         mass = mass[:, None]
+    #         predict_me = np.float32(predict_me)
+    #         if self.params.mvm:
+    #             features = features[np.newaxis, :]
+    #             features = np.repeat(features, len(predict_me), axis=0)
+    #             output = self.model.predict([predict_me, features])
+    #         else:
+    #             output = self.model.predict(predict_me)
+    #
+    #         track_prediction.classified_clip(
+    #             output, output * output * mass, prediction_frames
+    #         )
+    #
+    #     track_prediction.classify_time = time.time() - start
+    #     return track_prediction
 
     def predict(self, frames):
         return self.model.predict(frames)
 
-    def classify_frame(self, frame, thermal_median, preprocess=True):
-        if preprocess:
-            frame = preprocess_frame(
-                frame,
-                False,
-                thermal_median,
-                0,
-                self.params.output_dim,
-                preprocess_fn=self.preprocess_fn,
-            )
-            if frame is None:
-                return None
-        output = self.model.predict(frame[np.newaxis, :])
-        return output[0]
-
     def confusion_tfrecords(self, dataset, filename):
         true_categories = tf.concat([y for x, y in dataset], axis=0)
         if len(true_categories) > 1:
-            true_categories = np.int64(tf.argmax(true_categories, axis=1))
+            if self.params.multi_label:
+                # multi = []
+                # for y in true_categories:
+                # multi.append(tf.where(y).numpy().ravel())
+                # print(y, tf.where(y))
+                # true_categories = np.int64(true_categories)
+                pass
+            else:
+                true_categories = np.int64(tf.argmax(true_categories, axis=1))
         y_pred = self.model.predict(dataset)
+        if self.params.multi_label:
+            self.labels.append("nothing")
+            # predicted_categori/es = []
+            # for p in y_pred:
+            # predicted_categories.append(tf.where(p >= 0.8).numpy().ravel())
+            # predicted_categories = np.int64(predicted_categories)
 
-        predicted_categories = np.int64(tf.argmax(y_pred, axis=1))
+            flat_p = []
+            flat_y = []
+            for y, p in zip(true_categories, y_pred):
+                index = 0
+                for y_l, p_l in zip(y, p):
+                    predicted = p_l >= 0.8
+                    if y_l == 0 and predicted:
+                        flat_y.append(len(self.labels) - 1)
+                        flat_p.append(index)
+                    elif y_l == 1 and predicted:
+                        flat_y.append(index)
+                        flat_p.append(index)
+                    elif y_l == 1 and not predicted:
+                        flat_y.append(index)
+                        flat_p.append(len(self.labels) - 1)
+                    # elif y_l == 0 and not predicted:
+                    # all good
+                    # continue
+                    index += 1
+            true_categories = np.int64(flat_p)
+            predicted_categories = np.int64(flat_y)
+        else:
+            predicted_categories = np.int64(tf.argmax(y_pred, axis=1))
 
         cm = confusion_matrix(
             true_categories, predicted_categories, labels=np.arange(len(self.labels))
@@ -932,88 +970,89 @@ class KerasModel(Interpreter):
         test_accuracy = self.model.evaluate(dataset)
         logging.info("Test accuracy is %s", test_accuracy)
 
-    # needs to be updated to work with tfrecord datagen
-    def track_accuracy(self, dataset, confusion="confusion.png"):
-        dataset.set_read_only(True)
-        dataset.use_segments = self.params.use_segments
-        predictions = []
-        actual = []
-        raw_predictions = []
-        total = 0
-        correct = 0
-        samples_by_label = {}
-        incorrect_labels = {}
-        for sample in dataset.segments:
-            label_samples = samples_by_label.setdefault(sample.label, {})
-            if sample.track_id in label_samples:
-                label_samples[sample.track_id].append(sample)
-            else:
-                label_samples[sample.track_id] = [sample]
-        bird_tracks = len(label_samples.get("bird", []))
-
-        for label in dataset.label_mapping.keys():
-            incorrect = {}
-            incorrect_labels[label] = incorrect
-            track_samples = samples_by_label.get(label)
-            if not track_samples:
-                logging.warn("No samples for %s", label)
-                continue
-            track_samples = track_samples.values()
-            if label == "insect" or label == "false-positive":
-                track_samples = np.random.choice(
-                    list(track_samples),
-                    min(len(track_samples), bird_tracks),
-                    replace=False,
-                )
-            logging.info("taking %s tracks for %s", len(track_samples), label)
-            mapped_label = dataset.mapped_label(label)
-            for track_segments in track_samples:
-                segment_db = dataset.numpy_data.load_segments(track_segments)
-                frame_db = {}
-                for frames in segment_db.values():
-                    for f in frames:
-                        frame_db[f.frame_number] = f
-                track_prediction = self.classify_track_data(
-                    track_segments[0].track_id,
-                    frame_db,
-                    segments=track_segments,
-                )
-
-                total += 1
-                if track_prediction is None or len(track_prediction.predictions) == 0:
-                    logging.warn("No predictions for %s", track_segments[0].track_id)
-                    continue
-                avg = np.mean(track_prediction.predictions, axis=0)
-                actual.append(self.labels.index(mapped_label))
-                predictions.append(track_prediction.best_label_index)
-
-                raw_predictions.append(avg)
-                if actual[-1] == predictions[-1]:
-                    correct += 1
-                else:
-                    if track_prediction.predicted_tag() in incorrect:
-                        incorrect[track_prediction.predicted_tag()].append(
-                            track_segments[0].unique_track_id
-                        )
-                    else:
-                        incorrect[track_prediction.predicted_tag()] = [
-                            track_segments[0].unique_track_id
-                        ]
-
-                if total % 50 == 0:
-                    logging.info("Processed %s", total)
-        for label, incorrect in incorrect_labels.items():
-            logging.info("Incorrect ************ %s", label)
-            logging.info(incorrect.get("false-positive"))
-        logging.info("Predicted correctly %s", round(100 * correct / total))
-        self.f1(actual, raw_predictions)
-
-        if confusion is not None:
-            cm = confusion_matrix(
-                actual, predictions, labels=np.arange(len(self.labels))
-            )
-            figure = plot_confusion_matrix(cm, class_names=self.labels)
-            plt.savefig(confusion, format="png")
+    #
+    # # needs to be updated to work with tfrecord datagen
+    # def track_accuracy(self, dataset, confusion="confusion.png"):
+    #     dataset.set_read_only(True)
+    #     dataset.use_segments = self.params.use_segments
+    #     predictions = []
+    #     actual = []
+    #     raw_predictions = []
+    #     total = 0
+    #     correct = 0
+    #     samples_by_label = {}
+    #     incorrect_labels = {}
+    #     for sample in dataset.segments:
+    #         label_samples = samples_by_label.setdefault(sample.label, {})
+    #         if sample.track_id in label_samples:
+    #             label_samples[sample.track_id].append(sample)
+    #         else:
+    #             label_samples[sample.track_id] = [sample]
+    #     bird_tracks = len(label_samples.get("bird", []))
+    #
+    #     for label in dataset.label_mapping.keys():
+    #         incorrect = {}
+    #         incorrect_labels[label] = incorrect
+    #         track_samples = samples_by_label.get(label)
+    #         if not track_samples:
+    #             logging.warn("No samples for %s", label)
+    #             continue
+    #         track_samples = track_samples.values()
+    #         if label == "insect" or label == "false-positive":
+    #             track_samples = np.random.choice(
+    #                 list(track_samples),
+    #                 min(len(track_samples), bird_tracks),
+    #                 replace=False,
+    #             )
+    #         logging.info("taking %s tracks for %s", len(track_samples), label)
+    #         mapped_label = dataset.mapped_label(label)
+    #         for track_segments in track_samples:
+    #             segment_db = dataset.numpy_data.load_segments(track_segments)
+    #             frame_db = {}
+    #             for frames in segment_db.values():
+    #                 for f in frames:
+    #                     frame_db[f.frame_number] = f
+    #             track_prediction = self.classify_track_data(
+    #                 track_segments[0].track_id,
+    #                 frame_db,
+    #                 segments=track_segments,
+    #             )
+    #
+    #             total += 1
+    #             if track_prediction is None or len(track_prediction.predictions) == 0:
+    #                 logging.warn("No predictions for %s", track_segments[0].track_id)
+    #                 continue
+    #             avg = np.mean(track_prediction.predictions, axis=0)
+    #             actual.append(self.labels.index(mapped_label))
+    #             predictions.append(track_prediction.best_label_index)
+    #
+    #             raw_predictions.append(avg)
+    #             if actual[-1] == predictions[-1]:
+    #                 correct += 1
+    #             else:
+    #                 if track_prediction.predicted_tag() in incorrect:
+    #                     incorrect[track_prediction.predicted_tag()].append(
+    #                         track_segments[0].unique_track_id
+    #                     )
+    #                 else:
+    #                     incorrect[track_prediction.predicted_tag()] = [
+    #                         track_segments[0].unique_track_id
+    #                     ]
+    #
+    #             if total % 50 == 0:
+    #                 logging.info("Processed %s", total)
+    #     for label, incorrect in incorrect_labels.items():
+    #         logging.info("Incorrect ************ %s", label)
+    #         logging.info(incorrect.get("false-positive"))
+    #     logging.info("Predicted correctly %s", round(100 * correct / total))
+    #     self.f1(actual, raw_predictions)
+    #
+    #     if confusion is not None:
+    #         cm = confusion_matrix(
+    #             actual, predictions, labels=np.arange(len(self.labels))
+    #         )
+    #         figure = plot_confusion_matrix(cm, class_names=self.labels)
+    #         plt.savefig(confusion, format="png")
 
 
 # from tensorflow examples
@@ -1089,10 +1128,13 @@ def plot_to_image(figure):
 
 
 def loss(params):
-    softmax = tf.keras.losses.CategoricalCrossentropy(
+    if params.multi_label:
+        return tf.keras.losses.BinaryCrossentropy(
+            label_smoothing=params.label_smoothing,
+        )
+    return tf.keras.losses.CategoricalCrossentropy(
         label_smoothing=params.label_smoothing,
     )
-    return softmax
 
 
 def optimizer(params):
@@ -1326,9 +1368,9 @@ class ClearMemory(Callback):
         tf.keras.backend.clear_session()
 
 
-def get_excluded(type):
+def get_excluded(type, multi_label=False):
     if type == "thermal":
-        return thermaldataset.get_excluded(), thermaldataset.get_remapped()
+        return thermaldataset.get_excluded(), thermaldataset.get_remapped(multi_label)
     else:
         return irdataset.get_excluded(), irdataset.get_remapped()
 

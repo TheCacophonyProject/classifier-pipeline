@@ -24,22 +24,65 @@ fp = None
 
 
 def get_excluded():
-    return []
+    return [
+        "goat",
+        "lizard",
+        "not identifiable",
+        "other",
+        "pest",
+        "pig",
+        "sealion",
+    ]
 
 
-def get_remapped():
-    return {"insect": "false-positive"}
+def get_remapped(multi_label=False):
+    land_bird = "land-bird" if multi_label else "bird"
+    return {
+        "insect": "false-positive",
+        "allbirds": "bird",
+        "black swan": land_bird,
+        "brown quail": land_bird,
+        "california quail": land_bird,
+        "duck": land_bird,
+        "pheasant": land_bird,
+        "pukeko": land_bird,
+        "quail": land_bird,
+    }
+
+
+def get_extra_mappings(labels):
+    land_birds = ["land-bird"]
+    if "bird" not in labels:
+        return None
+    bird_index = labels.index("bird")
+    values = []
+    keys = []
+    for l in land_birds:
+        if l in labels:
+            l_i = labels.index(l)
+            keys.append(l_i)
+            values.append(bird_index)
+    extra_label_map = tf.lookup.StaticHashTable(
+        initializer=tf.lookup.KeyValueTensorInitializer(
+            keys=tf.constant(keys),
+            values=tf.constant(values),
+        ),
+        default_value=tf.constant(-1),
+        name="extra_label_map",
+    )
+    logging.info("Extra label mapping is %s to %s ", keys, values)
+    return extra_label_map
 
 
 def load_dataset(filenames, remap_lookup, labels, args):
     deterministic = args.get("deterministic", False)
-
     ignore_order = tf.data.Options()
     ignore_order.experimental_deterministic = (
         deterministic  # disable order, increase speed
     )
-    dataset = tf.data.TFRecordDataset(filenames)
-
+    dataset = tf.data.TFRecordDataset(
+        filenames, compression_type="GZIP", num_parallel_reads=4
+    )
     dataset = dataset.with_options(
         ignore_order
     )  # uses data as soon as it streams in, rather than in its original order
@@ -52,19 +95,23 @@ def load_dataset(filenames, remap_lookup, labels, args):
     only_features = args.get("only_features", False)
     one_hot = args.get("one_hot", True)
     dataset = dataset.apply(tf.data.experimental.ignore_errors())
-
+    extra_label_map = None
+    if args.get("multi_label"):
+        extra_label_map = get_extra_mappings(labels)
+        logging.info("Using multi label")
     dataset = dataset.map(
         partial(
             read_tfrecord,
             image_size=image_size,
             remap_lookup=remap_lookup,
-            num_labels=len(new_labels),
+            num_labels=len(labels),
             labeled=labeled,
             augment=augment,
             preprocess_fn=preprocess_fn,
             include_features=include_features,
             only_features=only_features,
             one_hot=one_hot,
+            extra_label_map=extra_label_map,
         ),
         num_parallel_calls=AUTOTUNE,
         deterministic=deterministic,
@@ -76,10 +123,21 @@ def load_dataset(filenames, remap_lookup, labels, args):
 
     dataset = dataset.filter(filter_nan)
 
-    filter_excluded = lambda x, y: not tf.math.equal(tf.math.count_nonzero(y), 0)
-    dataset = dataset.filter(filter_excluded)
+    return dataset
 
-    return dataset, remapped, new_labels
+
+rotation_augmentation = tf.keras.Sequential(
+    [
+        tf.keras.layers.RandomRotation(0.1, fill_mode="nearest", fill_value=0),
+    ]
+)
+data_augmentation = tf.keras.Sequential(
+    [
+        tf.keras.layers.RandomFlip("horizontal"),
+        tf.keras.layers.RandomBrightness(0.2),  # better per frame or per sequence??
+        tf.keras.layers.RandomContrast(0.5),
+    ]
+)
 
 
 def read_tfrecord(
@@ -93,6 +151,7 @@ def read_tfrecord(
     only_features=False,
     one_hot=True,
     include_features=False,
+    extra_label_map=None,
 ):
     logging.info(
         "Read tf record with image %s lbls %s labeld %s aug  %s  prepr %s only features %s one hot %s include fetures %s",
@@ -130,11 +189,7 @@ def read_tfrecord(
         thermals = tf.reshape(thermalencoded, [25, 32, 32, 1])
         filtered = tf.reshape(filteredencoded, [25, 32, 32, 1])
         rgb_images = tf.concat((thermals, thermals, filtered), axis=3)
-        rotation_augmentation = tf.keras.Sequential(
-            [
-                tf.keras.layers.RandomRotation(0.1, fill_mode="nearest", fill_value=0),
-            ]
-        )
+
         # rotation augmentation before tiling
         if augment:
             logging.info("Augmenting")
@@ -143,15 +198,6 @@ def read_tfrecord(
         image = tile_images(rgb_images)
 
         if augment:
-            data_augmentation = tf.keras.Sequential(
-                [
-                    tf.keras.layers.RandomFlip("horizontal"),
-                    tf.keras.layers.RandomBrightness(
-                        0.2
-                    ),  # better per frame or per sequence??
-                    tf.keras.layers.RandomContrast(0.5),
-                ]
-            )
             image = data_augmentation(image)
         if preprocess_fn is not None:
             logging.info(
@@ -163,12 +209,13 @@ def read_tfrecord(
     if labeled:
         label = tf.cast(example["image/class/label"], tf.int32)
         label = remap_lookup.lookup(label)
-
+        if extra_label_map is not None:
+            extra = extra_label_map.lookup(label)
+            label = tf.stack([label, extra], axis=0)
         if one_hot:
-            if tf.math.equal(label, -1):
-                label = tf.zeros(num_labels)
-            else:
-                label = tf.one_hot(label, num_labels)
+            label = tf.one_hot(label, num_labels)
+            if extra_label_map is not None:
+                label = tf.reduce_max(label, axis=0)
         if include_features or only_features:
             features = example["image/features"]
             if only_features:
@@ -214,6 +261,8 @@ from collections import Counter
 def main():
     init_logging()
     config = Config.load_from_file()
+    from .tfdataset import get_dataset, get_distribution
+
     # file = "/home/gp/cacophony/classifier-data/thermal-training/cp-training/training-meta.json"
     file = f"{config.tracks_folder}/training-meta.json"
     with open(file, "r") as f:
@@ -221,29 +270,26 @@ def main():
     labels = meta.get("labels", [])
     datasets = []
 
-    resampled_ds, remapped, labels = get_dataset(
+    resampled_ds, remapped, labels, epoch_size = get_dataset(
         # dir,
-        f"{config.tracks_folder}/training-data/validation",
+        load_dataset,
+        f"{config.tracks_folder}/training-data/train",
         labels,
         batch_size=32,
         image_size=(160, 160),
         # augment=True,
         # preprocess_fn=tf.keras.applications.inception_v3.preprocess_input,
         resample=False,
-        include_features=True,
+        include_features=False,
+        remapped_labels=get_remapped(),
+        excluded_labels=get_excluded(),
     )
-    # print(get_distribution(resampled_ds))
-    #
+    print("Ecpoh size is", epoch_size)
+    print(get_distribution(resampled_ds, len(labels)))
+    # return
     #
     for e in range(2):
         print("epoch", e)
-        true_categories = [y for x, y in resampled_ds]
-        true_categories = tf.concat(true_categories, axis=0)
-        true_categories = np.int64(tf.argmax(true_categories, axis=1))
-        c = Counter(list(true_categories))
-        print("epoch is size", len(true_categories))
-        for i in range(len(labels)):
-            print("after have", labels[i], c[i])
         for x, y in resampled_ds:
             show_batch(x, y, labels)
 
@@ -251,7 +297,6 @@ def main():
 
 
 def show_batch(image_batch, label_batch, labels):
-    image_batch = image_batch[0]
     plt.figure(figsize=(10, 10))
     print("images in batch", len(image_batch), len(label_batch))
     num_images = min(len(image_batch), 25)

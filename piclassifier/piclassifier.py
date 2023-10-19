@@ -9,10 +9,10 @@ import logging
 from pathlib import Path
 
 from classify.trackprediction import Predictions
-from load.clip import Clip
-from load.irtrackextractor import IRTrackExtractor
+from track.clip import Clip
+from track.irtrackextractor import IRTrackExtractor
 
-from load.cliptrackextractor import ClipTrackExtractor
+from track.cliptrackextractor import ClipTrackExtractor
 
 from ml_tools.previewer import Previewer, add_last_frame_tracking
 from ml_tools import tools
@@ -219,21 +219,21 @@ class PiClassifier(Processor):
             self.classifier = get_interpreter(model)
 
             if self.classifier.TYPE == ForestModel.TYPE:
-                self.last_x_frames = 5 * headers.fps
-                self.frames_per_classify = self.last_x_frames
+                self.predict_from_last = 5 * headers.fps
+                self.frames_per_classify = self.predict_from_last
                 PiClassifier.SKIP_FRAMES = 30
                 # probably could be even more
 
             else:
                 # self.preprocess_fn = self.get_preprocess_fn()
 
-                self.last_x_frames = 1
+                self.predict_from_last = 1
                 self.frames_per_classify = (
                     self.classifier.params.square_width
                     * self.classifier.params.square_width
                 )
                 if self.frames_per_classify > 1:
-                    self.last_x_frames = self.frames_per_classify * 2
+                    self.predict_from_last = self.frames_per_classify * 2
 
             self.max_keep_frames = (
                 self.frames_per_classify * 2 if not preview_type else None
@@ -332,9 +332,14 @@ class PiClassifier(Processor):
 
     def startup_classifier(self):
         # classifies an empty frame to force loading of the model into memory
-        in_shape = self.classifier.shape()[1:]
-        p_frame = np.zeros((1, *in_shape), np.float32)
-        self.classifier.predict(p_frame)
+        num_inputs, in_shape = self.classifier.shape()
+        if num_inputs > 1:
+            zero_input = []
+            for shape in in_shape:
+                zero_input.append(np.zeros((1, *shape[1:]), np.float32))
+        else:
+            zero_input = np.zeros((1, *in_shape[1:]), np.float32)
+        self.classifier.predict(zero_input)
 
     def get_active_tracks(self):
         """
@@ -417,9 +422,10 @@ class PiClassifier(Processor):
             frames, prediction, mass = self.classifier.predict_track(
                 clip,
                 track,
-                last_x_frames=self.last_x_frames,
+                predict_from_last=self.predict_from_last,
                 scale=self.track_extractor.scale,
                 frames_per_classify=self.frames_per_classify,
+                num_predictions=1,
             )
             if prediction is None:
                 track_prediction.last_frame_classified = self.clip.current_frame

@@ -23,11 +23,13 @@ class HyperParams(dict):
         self["use_segments"] = self.use_segments
         self["square_width"] = self.square_width
         self["frame_size"] = self.frame_size
+        self["segment_width"] = self.segment_width
 
         self["shuffle"] = self.shuffle
         self["channel"] = self.channel
         self["type"] = self.type
         self["segment_type"] = self.segment_type
+        self["multi_label"] = False
 
     @property
     def output_dim(self):
@@ -40,6 +42,10 @@ class HyperParams(dict):
         return (self.frame_size, self.frame_size, 3)
 
     @property
+    def multi_label(self):
+        return self.get("multi_label", False)
+
+    @property
     def keep_aspect(self):
         return self.get("keep_aspect", False)
 
@@ -50,6 +56,10 @@ class HyperParams(dict):
     @property
     def keep_edge(self):
         return self.get("keep_edge", False)
+
+    @property
+    def segment_width(self):
+        return self.get("segment_width", 25 if self.use_segments else 1)
 
     @property
     def segment_type(self):

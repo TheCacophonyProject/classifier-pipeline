@@ -25,7 +25,7 @@ class Interpreter(ABC):
 
     @abstractmethod
     def shape(self):
-        """Prediction shape"""
+        """Num Inputs, Prediction shape"""
         ...
 
     @abstractmethod
@@ -33,126 +33,215 @@ class Interpreter(ABC):
         """predict"""
         ...
 
+    def preprocess(self, clip, track, **args):
+        scale = args.get("scale", None)
+        num_predictions = args.get("num_predictions", None)
+        predict_from_last = args.get("predict_from_last", None)
+        segment_frames = args.get("segment_frames")
+        frames_per_classify = args.get("frames_per_classify", 25)
+        available_frames = (
+            min(len(track.bounds_history), clip.frame_buffer.max_frames)
+            if clip.frame_buffer.max_frames is not None
+            else len(track.bounds_history)
+        )
+        if predict_from_last is not None:
+            predict_from_last = min(predict_from_last, available_frames)
+        # this might be a little slower as it checks some massess etc
+        # but keeps it the same for all ways of classifying
+        if frames_per_classify > 1:
+            if predict_from_last is not None and segment_frames is None:
+                logging.debug(
+                    "Prediction from last available frames %s track is of length %s",
+                    available_frames,
+                    len(track.bounds_history),
+                )
+                regions = track.bounds_history[-available_frames:]
+                valid_regions = 0
+                if available_frames > predict_from_last:
+                    # want to get rid of any blank frames
+                    predict_from_last = 0
+                    for i, r in enumerate(
+                        reversed(track.bounds_history[-available_frames:])
+                    ):
+                        if r.blank:
+                            continue
+                        valid_regions += 1
+                        predict_from_last = i + 1
+                        if valid_regions >= predict_from_last:
+                            break
+                logging.debug(
+                    "After checking blanks have predict from last %s from last available frames %s track is of length %s",
+                    predict_from_last,
+                    available_frames,
+                    len(track.bounds_history),
+                )
+            frames, preprocessed, masses = self.preprocess_segments(
+                clip,
+                track,
+                num_predictions,
+                predict_from_last,
+                segment_frames=segment_frames,
+            )
+        else:
+            frames, preprocessed, masses = self.preprocess_frames(
+                clip, track, num_predictions, segment_frames=segment_frames
+            )
+        return frames, preprocessed, masses
+
     def predict_track(self, clip, track, **args):
-        frames, preprocessed, mass = self.preprocess(clip, track, args)
-        # print("preprocess is %s", preprocessed)
+        frames, preprocessed, masses = self.preprocess(clip, track, **args)
         if preprocessed is None or len(preprocessed) == 0:
             return None, None, None
-        pred = self.predict(np.array(preprocessed))
-        return frames, pred, mass
+        pred = self.predict(preprocessed)
+        return frames, pred, masses
 
-    def preprocess(self, clip, track, args):
-        if self.TYPE == "RandomForest":
-            return
-        last_x_frames = args.get("last_x_frames", 1)
-        scale = args.get("scale", None)
+    def preprocess_frames(
+        self,
+        clip,
+        track,
+        max_frames=None,
+        segment_frames=None,
+    ):
+        from ml_tools.preprocess import preprocess_single_frame
 
-        frame_ago = 0
-        # get non blank frames
-        regions = []
-        frames = []
-        for r in reversed(track.bounds_history):
-            if not r.blank:
-                frame = clip.frame_buffer.get_frame_ago(frame_ago)
-                if frame is None:
-                    break
-                frame = frame
-                regions.append(r)
-                frames.append(frame)
-                assert frame.frame_number == r.frame_number
-                if len(regions) == last_x_frames:
-                    break
-            frame_ago += 1
-        if len(frames) == 0:
-            return None, None, None
+        data = []
+        frames_used = []
 
-        if self.data_type == "IR":
-            logging.info("Preprocess IR scale %s last_x %s", scale, last_x_frames)
-            from ml_tools.preprocess import (
-                preprocess_ir,
-            )
-
-            preprocessed = []
-            masses = []
-            for region, frame in zip(regions, frames):
-                if (
-                    frame is None
-                    or region.width == 0
-                    or region.height == 0
-                    or region.blank
-                ):
-                    continue
-                params = self.params
-
-                pre_f = preprocess_ir(
-                    frame.copy(),
-                    (
-                        params.frame_size,
-                        params.frame_size,
-                    ),
-                    region=region,
-                    preprocess_fn=self.preprocess_fn,
+        for i, region in enumerate(reversed(track.bounds_history)):
+            if region.blank:
+                continue
+            if region.width == 0 or region.height == 0:
+                logging.warn(
+                    "No width or height for frame %s regoin %s",
+                    region.frame_number,
+                    region,
                 )
-                if pre_f is None:
-                    continue
-                preprocessed.append(pre_f)
-                masses.append(1)
-            return [frame.frame_number for f in frames], preprocessed, masses
-        elif self.data_type == "thermal":
-            from ml_tools.preprocess import (
-                preprocess_movement,
-            )
-
-            frames_per_classify = args.get("frames_per_classify", 25)
-            logging.info(
-                "Preprocess thermal scale %s frames_per_classify %s last_x %s",
-                scale,
-                frames_per_classify,
-                last_x_frames,
-            )
-
-            indices = np.random.choice(
-                len(regions),
-                min(frames_per_classify, len(regions)),
-                replace=False,
-            )
-            indices.sort()
-            frames = np.array(frames)[indices]
-            regions = np.array(regions)[indices]
-
-            refs = []
-            segment_data = []
-            mass = 0
-            params = self.params
-
-            for frame, region in zip(frames, regions):
-                if region.blank:
-                    continue
-                refs.append(np.median(frame.thermal))
-                thermal_reference = np.median(frame.thermal)
-                f = frame.crop_by_region(region)
-                mass += region.mass
-                f.resize_with_aspect(
-                    (params.frame_size, params.frame_size),
-                    clip.crop_rectangle,
-                    True,
+                continue
+            frame = clip.frame_buffer.get_frame(region.frame_number)
+            if frame is None:
+                logging.error(
+                    "Clasifying clip %s track %s can't get frame %s",
+                    clip.get_id(),
+                    track.get_id(),
+                    region.frame_number,
                 )
-                segment_data.append(f)
-
-            preprocessed = preprocess_movement(
-                segment_data,
-                params.square_width,
-                params.frame_size,
-                red_type=params.red_type,
-                green_type=params.green_type,
-                blue_type=params.blue_type,
-                preprocess_fn=self.preprocess_fn,
-                reference_level=refs,
-                keep_edge=params.keep_edge,
+                raise Exception(
+                    "Clasifying clip {} track {} can't get frame {}".format(
+                        clip.get_id(), track.get_id(), region.frame_number
+                    )
+                )
+            logging.debug(
+                "classifying single frame with preprocess %s size %s crop? %s f shape %s region %s",
+                self.preprocess_fn.__module__,
+                self.params.frame_size,
+                crop,
+                frame.thermal.shape,
+                region,
             )
-            if preprocessed is None:
-                return None, None, mass
-            return [f.frame_number for f in frames], [preprocessed], [mass]
+            preprocessed = preprocess_single_frame(
+                frame,
+                (
+                    self.params.frame_size,
+                    self.params.frame_size,
+                ),
+                region,
+                self.preprocess_fn,
+                save_info=f"{region.frame_number} - {region}",
+            )
+
+            frames_used.append(region.frame_number)
+            data.append(preprocessed)
+            if max_frames is not None and len(data) >= max_frames:
+                break
+        return frames_used, np.array(data), mass
+
+    def preprocess_segments(
+        self,
+        clip,
+        track,
+        max_segments=None,
+        predict_from_last=None,
+        segment_frames=None,
+    ):
+        from ml_tools.preprocess import preprocess_frame, preprocess_movement
+
+        track_data = {}
+        segments = track.get_segments(
+            clip.ffc_frames,
+            self.params.square_width**2,
+            repeats=1,
+            segment_frames=segment_frames,
+            segment_type=self.params.segment_type,
+            from_last=predict_from_last,
+            max_segments=max_segments,
+        )
+        frame_indices = set()
+        for segment in segments:
+            frame_indices.update(set(segment.frame_indices))
+        frame_indices = list(frame_indices)
+        frame_indices.sort()
+        for frame_index in frame_indices:
+            region = track.bounds_history[frame_index - track.start_frame]
+
+            frame = clip.frame_buffer.get_frame(region.frame_number)
+            # filtered is calculated slightly different for tracking, set to null so preprocess can recalc it
+            if frame is None:
+                logging.error(
+                    "Clasifying clip %s track %s can't get frame %s",
+                    clip.get_id(),
+                    track.get_id(),
+                    region.frame_number,
+                )
+                raise Exception(
+                    "Clasifying clip {} track {} can't get frame {}".format(
+                        clip.get_id(), track.get_id(), region.frame_number
+                    )
+                )
+            cropped_frame = preprocess_frame(
+                frame,
+                (self.params.frame_size, self.params.frame_size),
+                region,
+                clip.background,
+                clip.crop_rectangle,
+            )
+            track_data[frame.frame_number] = cropped_frame
+        features = None
+        if self.params.mvm:
+            from ml_tools.forestmodel import process_track as forest_process_track
+
+            features = forest_process_track(
+                clip, track, normalize=True, predict_from_last=predict_from_last
+            )
+
+        preprocessed = []
+        masses = []
+        for segment in segments:
+            segment_frames = []
+            for frame_i in segment.frame_indices:
+                f = track_data[frame_i]
+                # probably no need to copy
+                segment_frames.append(f.copy())
+            frames = preprocess_movement(
+                segment_frames,
+                self.params.square_width,
+                self.params.frame_size,
+                self.params.red_type,
+                self.params.green_type,
+                self.params.blue_type,
+                self.preprocess_fn,
+            )
+            if frames is None:
+                logging.warn("No frames to predict on")
+                continue
+            preprocessed.append(frames)
+            masses.append(segment.mass)
+        preprocessed = np.array(preprocessed)
+        if self.params.mvm:
+            features = features[np.newaxis, :]
+            features = np.repeat(features, len(preprocessed), axis=0)
+            preprocessed = [preprocessed, features]
+
+        return [s.frame_indices for s in segments], preprocessed, masses
 
 
 class NeuralInterpreter(Interpreter):
@@ -193,7 +282,7 @@ class NeuralInterpreter(Interpreter):
         return res
 
     def shape(self):
-        return self.input_shape
+        return 1, self.input_shape
 
 
 class LiteInterpreter(Interpreter):
@@ -225,7 +314,7 @@ class LiteInterpreter(Interpreter):
         return pred
 
     def shape(self):
-        return self.input["shape"]
+        return 1, self.input["shape"]
 
 
 def inc3_preprocess(x):

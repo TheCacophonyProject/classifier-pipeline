@@ -131,7 +131,7 @@ class ClipTrackExtractor(ClipTracker):
             self.apply_track_filtering(clip)
 
         if self.calc_stats:
-            clip.stats.completed(clip.current_frame, clip.res_y, clip.res_x)
+            clip.stats.completed()
         self._tracking_time = time.time() - start
         return True
 

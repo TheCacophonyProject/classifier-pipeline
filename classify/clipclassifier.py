@@ -8,12 +8,11 @@ import numpy as np
 
 import cv2
 from classify.trackprediction import Predictions
-from load.clip import Clip
-from load.cliptrackextractor import ClipTrackExtractor, is_affected_by_ffc
+from track.clip import Clip
+from track.cliptrackextractor import ClipTrackExtractor, is_affected_by_ffc
 from ml_tools import tools
 from ml_tools.kerasmodel import KerasModel
-from load.irtrackextractor import IRTrackExtractor
-from ml_tools.preprocess import preprocess_segment
+from track.irtrackextractor import IRTrackExtractor
 from ml_tools.previewer import Previewer
 from track.track import Track
 

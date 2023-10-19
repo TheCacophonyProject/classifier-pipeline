@@ -429,16 +429,26 @@ class Track:
     def get_segments(
         self,
         ffc_frames,
-        frame_temp_median,
+        # frame_temp_median,
         segment_width,
         segment_frame_spacing=9,
         repeats=1,
         min_frames=0,
         segment_frames=None,
         segment_type=SegmentType.ALL_RANDOM,
+        from_last=None,
+        max_segments=None,
     ):
-        regions = np.array(self.bounds_history)
-        frame_temp_median = np.uint16(frame_temp_median)
+        if from_last is not None:
+            if from_last == 0:
+                return []
+            regions = np.array(self.bounds_history[-from_last:])
+            start_frame = regions[0].frame_number
+        else:
+            start_frame = self.start_frame
+            regions = np.array(self.bounds_history)
+
+        # frame_temp_median = np.uint16(frame_temp_median)
         segments = []
         if segment_frames is not None:
             mass_history = np.uint16([region.mass for region in regions])
@@ -449,33 +459,31 @@ class Track:
                 segment = SegmentHeader(
                     self.clip_id,
                     self._id,
-                    start_frame=self.start_frame,
+                    start_frame=start_frame,
                     frames=len(frames),
                     weight=1,
                     mass=segment_mass,
                     label=None,
                     regions=regions[relative_frames],
-                    frame_temp_median=frame_temp_median[relative_frames],
+                    # frame_temp_median=frame_temp_median[relative_frames],
                     frame_indices=frames,
-                    segment_type=segment_type,
                 )
                 segments.append(segment)
         else:
-            has_mass = any([region.mass for region in regions if region.mass > 0])
             segments, _ = get_segments(
                 self.clip_id,
                 self._id,
-                self.start_frame,
-                segment_frame_spacing,
-                segment_width,
+                start_frame,
+                segment_frame_spacing=segment_frame_spacing,
+                segment_width=segment_width,
                 regions=regions,
                 ffc_frames=ffc_frames,
                 repeats=repeats,
-                frame_temp_median=frame_temp_median,
+                # frame_temp_median=frame_temp_median,
                 min_frames=min_frames,
                 segment_frames=None,
-                ignore_mass=not has_mass,
                 segment_type=segment_type,
+                max_segments=max_segments,
             )
         return segments
 
