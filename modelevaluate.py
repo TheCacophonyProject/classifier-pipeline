@@ -13,6 +13,7 @@ import logging
 import pickle
 import sys
 import os
+import time
 
 os.environ["CUDA_VISIBLE_DEVICES"] = "1"
 import json
@@ -24,6 +25,8 @@ from ml_tools.kerasmodel import (
     get_dataset,
     get_excluded,
 )
+from classify.trackprediction import TrackPrediction
+
 from ml_tools import tools
 from ml_tools.trackdatabase import TrackDatabase
 from ml_tools.rawdb import RawDatabase
@@ -42,6 +45,8 @@ from ml_tools import imageprocessing
 import cv2
 from config.loadconfig import LoadConfig
 from sklearn.metrics import confusion_matrix
+from multiprocessing import Pool
+
 
 root_logger = logging.getLogger()
 for handler in root_logger.handlers:
@@ -233,6 +238,48 @@ def evalute_prod_confusion(dir, confusion_file):
     plt.savefig(confusion_file, format="png")
 
 
+EXCLUDED_TAGS = ["poor tracking", "part", "untagged", "unidentified"]
+worker_model = None
+
+
+def init_worker(model):
+    global worker_model
+    worker_model = model
+
+
+def load_clip_data(cptv_file):
+    # for clip in dataset.clips:
+    reason = {}
+    clip_db = RawDatabase(cptv_file)
+    clip = clip_db.get_clip_tracks(LoadConfig.DEFAULT_GROUPS)
+    if clip is None:
+        logging.warn("No clip for %s", cptv_file)
+        return None
+
+    if filter_clip(clip, reason):
+        logging.info("Filtering %s", cptv_file)
+        return None
+    clip.tracks = [
+        track for track in clip.tracks if not filter_track(track, EXCLUDED_TAGS, reason)
+    ]
+    if len(clip.tracks) == 0:
+        logging.info("No tracks after filtering %s", cptv_file)
+        return None
+    clip_db.load_frames()
+    segment_frame_spacing = int(round(clip.frames_per_second))
+    thermal_medians = []
+    for f in clip_db.frames:
+        thermal_medians.append(np.median(f.thermal))
+    thermal_medians = np.uint16(thermal_medians)
+    data = []
+    for track in clip.tracks:
+        frames, preprocessed, masses = worker_model.preprocess(
+            clip_db, track, frames_per_classify=25
+        )
+        data.append((track.get_id(), track.label, frames, preprocessed, masses))
+    return data
+
+
 def evaluate_dir(
     model,
     dir,
@@ -247,6 +294,26 @@ def evaluate_dir(
     y_pred = []
     files = list(dir.glob(f"**/*cptv"))
     files.sort()
+    files = files[:8]
+    with Pool(processes=4, initializer=init_worker, initargs=(model,)) as pool:
+        for clip_data in pool.imap_unordered(load_clip_data, files):
+            if clip_data is None:
+                continue
+            for data in clip_data:
+                output = model.predict(data[3])
+                track_prediction = TrackPrediction(data[0], model.labels)
+                masses = np.array(data[4])
+                masses = masses[:, None]
+                top_score = None
+                if model.params.multi_label is True:
+                    # every label could be 1 for each prediction
+                    top_score = len(output)
+                    smoothed = output
+                else:
+                    smoothed = output * output * masses
+                track_prediction.classified_clip(
+                    output, smoothed, data[2], top_score=top_score
+                )
     for cptv_file in files:
         # for clip in dataset.clips:
         clip_db = RawDatabase(cptv_file)
@@ -282,7 +349,6 @@ def evaluate_dir(
             best_args = np.where(prediction.class_best_score >= 0.8)
             predicted_labels = []
             for index in best_args[0]:
-                print("index is ", index)
                 predicted_labels.append(prediction.labels[index])
             if len(predicted_labels) == 0:
                 y_pred.append("None")
@@ -294,8 +360,6 @@ def evaluate_dir(
                 # ):
                 logging.info("Predicted  %s", predicted_labels)
                 predicted_tag = ",".join(predicted_labels)
-                if len(predicted_labels) > 1:
-                    1 / 0
                 y_pred.append(predicted_tag)
                 # else:
                 # y_pred.append("unidentified")
@@ -307,6 +371,8 @@ def evaluate_dir(
                 track.label,
                 np.round(100 * prediction.class_best_score),
             )
+            if predicted_labels not in model.labels:
+                model.labels.append(predicted_labels)
     model.labels.append("None")
     model.labels.append("unidentified")
 
