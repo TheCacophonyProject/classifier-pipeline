@@ -276,7 +276,15 @@ def load_clip_data(cptv_file):
         frames, preprocessed, masses = worker_model.preprocess(
             clip_db, track, frames_per_classify=25
         )
-        data.append((track.get_id(), track.label, frames, preprocessed, masses))
+        data.append(
+            (
+                f"{track.cliip_id}-{track.get_id()}",
+                track.label,
+                frames,
+                preprocessed,
+                masses,
+            )
+        )
     return data
 
 
@@ -329,7 +337,7 @@ def evaluate_dir(
                     predicted_tag = ",".join(predicted_labels)
                     y_pred.append(predicted_tag)
                 print(
-                    track,
+                    data[0],
                     "Got a prediction of",
                     y_pred[-1],
                     " should be ",
