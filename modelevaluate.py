@@ -347,68 +347,8 @@ def evaluate_dir(
                 )
                 if predicted_tag not in model.labels:
                     model.labels.append(predicted_tag)
-    # for cptv_file in files:
-    #     # for clip in dataset.clips:
-    #     clip_db = RawDatabase(cptv_file)
-    #     clip = clip_db.get_clip_tracks(LoadConfig.DEFAULT_GROUPS)
-    #     if clip is None:
-    #         logging.warn("No clip for %s", cptv_file)
-    #         continue
-    #
-    #     if filter_clip(clip, reason):
-    #         logging.info("Filtering %s", cptv_file)
-    #         continue
-    #     clip.tracks = [
-    #         track
-    #         for track in clip.tracks
-    #         if not filter_track(track, config.load.excluded_tags, reason)
-    #     ]
-    #     if len(clip.tracks) == 0:
-    #         logging.info("No tracks after filtering %s", cptv_file)
-    #         continue
-    #     clip_db.load_frames()
-    #     # clip.background = clip_db.get_clip_background()
-    #     # clip.frames = clip_db.frames
-    #     segment_frame_spacing = int(round(clip.frames_per_second))
-    #     thermal_medians = []
-    #     for f in clip_db.frames:
-    #         thermal_medians.append(np.median(f.thermal))
-    #     thermal_medians = np.uint16(thermal_medians)
-    #
-    #     for track in clip.tracks:
-    #         prediction = model.classify_track(clip_db, track)
-    #
-    #         y_true.append(label_mapping.get(track.label, track.label))
-    #         best_args = np.where(prediction.class_best_score >= 0.8)
-    #         predicted_labels = []
-    #         for index in best_args[0]:
-    #             predicted_labels.append(prediction.labels[index])
-    #         if len(predicted_labels) == 0:
-    #             y_pred.append("None")
-    #         else:
-    #             # to compare to prod add conf rules
-    #             # if (
-    #             # prediction.clarity > min_tag_clarity
-    #             # and prediction.max_score > min_tag_confidence
-    #             # ):
-    #             logging.info("Predicted  %s", predicted_labels)
-    #             predicted_tag = ",".join(predicted_labels)
-    #             y_pred.append(predicted_tag)
-    #             # else:
-    #             # y_pred.append("unidentified")
-    #         print(
-    #             track,
-    #             "Got a prediction of",
-    #             y_pred[-1],
-    #             " should be ",
-    #             track.label,
-    #             np.round(100 * prediction.class_best_score),
-    #         )
-    #         if predicted_labels not in model.labels:
-    #             model.labels.append(predicted_labels)
     model.labels.append("None")
     model.labels.append("unidentified")
-    logging.info("Took %s", time.time() - start)
     cm = confusion_matrix(y_true, y_pred, labels=model.labels)
     # Log the confusion matrix as an image summary.
     figure = plot_confusion_matrix(cm, class_names=model.labels)
