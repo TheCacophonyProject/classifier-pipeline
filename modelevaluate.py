@@ -302,6 +302,7 @@ def evaluate_dir(
             if clip_data is None:
                 continue
             for data in clip_data:
+                label = data[1]
                 output = model.predict(data[3])
                 track_prediction = TrackPrediction(data[0], model.labels)
                 masses = np.array(data[4])
@@ -316,7 +317,7 @@ def evaluate_dir(
                 track_prediction.classified_clip(
                     output, smoothed, data[2], top_score=top_score
                 )
-                y_true.append(label_mapping.get(track.label, track.label))
+                y_true.append(label_mapping.get(label, label))
                 best_args = np.where(prediction.class_best_score >= 0.8)
                 predicted_labels = []
                 for index in best_args[0]:
@@ -332,7 +333,7 @@ def evaluate_dir(
                     "Got a prediction of",
                     y_pred[-1],
                     " should be ",
-                    track.label,
+                    label,
                     np.round(100 * prediction.class_best_score),
                 )
                 if predicted_labels not in model.labels:
