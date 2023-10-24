@@ -242,17 +242,6 @@ def evaluate_dir(
     with open("label_paths.json", "r") as f:
         label_paths = json.load(f)
     label_mapping = get_mappings(label_paths)
-    # dataset = Dataset(
-    #     dir,
-    #     "dataset",
-    #     config,
-    #     consecutive_segments=False,
-    #     label_mapping=label_mapping,
-    #     raw=True,
-    #     ext=".cptv",
-    # )
-    #
-    # tracks_loaded, total_tracks = dataset.load_clips(dont_filter_segment=True)
     reason = {}
     y_true = []
     y_pred = []
@@ -289,7 +278,7 @@ def evaluate_dir(
         for track in clip.tracks:
             prediction = model.classify_track(clip_db, track)
 
-            y_true.append(track.label)
+            y_true.append(label_mapping.get(track.label, track.label))
             best_args = np.where(prediction.class_best_score >= 0.8)
             predicted_labels = []
             for index in best_args[0]:
