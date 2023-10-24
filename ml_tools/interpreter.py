@@ -40,8 +40,8 @@ class Interpreter(ABC):
         segment_frames = args.get("segment_frames")
         frames_per_classify = args.get("frames_per_classify", 25)
         available_frames = (
-            min(len(track.bounds_history), clip.frame_buffer.max_frames)
-            if clip.frame_buffer.max_frames is not None
+            min(len(track.bounds_history), clip.frames_kept())
+            if clip.frames_kept() is not None
             else len(track.bounds_history)
         )
         if predict_from_last is not None:
@@ -167,8 +167,8 @@ class Interpreter(ABC):
 
         track_data = {}
         segments = track.get_segments(
-            clip.ffc_frames,
             self.params.square_width**2,
+            ffc_frames=clip.ffc_frames,
             repeats=1,
             segment_frames=segment_frames,
             segment_type=self.params.segment_type,
@@ -183,7 +183,7 @@ class Interpreter(ABC):
         for frame_index in frame_indices:
             region = track.bounds_history[frame_index - track.start_frame]
 
-            frame = clip.frame_buffer.get_frame(region.frame_number)
+            frame = clip.get_frame(region.frame_number)
             # filtered is calculated slightly different for tracking, set to null so preprocess can recalc it
             if frame is None:
                 logging.error(

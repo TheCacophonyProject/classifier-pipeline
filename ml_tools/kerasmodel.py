@@ -389,7 +389,7 @@ class KerasModel(Interpreter):
         self.model.trainable = training
         self.load_meta(dir_name)
         if weights is not None:
-            self.model.load_weights(weights)
+            self.model.load_weights(weights).expect_partial()
             logging.info("Loaded weight %s", weights)
         print(self.model.summary())
 
@@ -772,8 +772,15 @@ class KerasModel(Interpreter):
         # self.model.predict(preprocessed)
         masses = np.array(masses)
         masses = masses[:, None]
+        top_score = None
+        if self.params.multi_label is True:
+            # every label could be 1 for each prediction
+            top_score = len(output)
+            smoothed = output
+        else:
+            smoothed = output * output * masses
         track_prediction.classified_clip(
-            output, output * output * masses, prediction_frames
+            output, smoothed, prediction_frames, top_score=top_score
         )
         track_prediction.classify_time = time.time() - start
         return track_prediction

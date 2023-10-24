@@ -98,6 +98,12 @@ class Clip:
 
         self.rescaled = None
 
+    def get_frame(self, frame_number):
+        return self.frame_buffer.get_frame(frame_number)
+
+    def frames_kept(self):
+        return self.frame_buffer.max_frames
+
     def rescaled_background(self, dims):
         if self.rescaled is not None:
             if self.rescaled[0] == self.current_frame:

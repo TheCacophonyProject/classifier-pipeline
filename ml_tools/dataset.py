@@ -210,9 +210,9 @@ class Dataset:
                     round(self.segment_spacing * clip_header.frames_per_second)
                 )
                 segment_width = self.segment_length
-                track_header.calculate_segments(
-                    segment_frame_spacing,
+                track_header.get_segments(
                     segment_width,
+                    segment_frame_spacing,
                     self.segment_type,
                     self.segment_min_avg_mass,
                     max_segments=self.max_segments,

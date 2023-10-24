@@ -83,10 +83,7 @@ class TrackPrediction:
         self.tracking = False
 
     def classified_clip(
-        self,
-        predictions,
-        smoothed_predictions,
-        prediction_frames,
+        self, predictions, smoothed_predictions, prediction_frames, top_score=None
     ):
         self.num_frames_classified = len(predictions)
         self.smoothed_predictions = smoothed_predictions
@@ -95,9 +92,13 @@ class TrackPrediction:
         if self.num_frames_classified > 0:
             self.class_best_score = np.sum(self.smoothed_predictions, axis=0)
             # normalize so it sums to 1
-            self.class_best_score = self.class_best_score / np.sum(
-                self.class_best_score
-            )
+            if top_score is None:
+                self.class_best_score = self.class_best_score / np.sum(
+                    self.class_best_score
+                )
+            else:
+                # possibility it doesn't sum to 1 i.e multi label model
+                self.class_best_score /= top_score
 
     def normalize_score(self):
         # normalize so it sums to 1

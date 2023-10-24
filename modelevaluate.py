@@ -36,7 +36,7 @@ from sklearn.metrics import confusion_matrix
 import matplotlib.pyplot as plt
 import numpy as np
 from pathlib import Path
-from ml_tools.preprocess import preprocess_ir, preprocess_frame
+from ml_tools.preprocess import preprocess_frame
 from ml_tools.frame import Frame
 from ml_tools import imageprocessing
 import cv2
@@ -278,6 +278,8 @@ def evaluate_dir(
             logging.info("No tracks after filtering %s", cptv_file)
             continue
         clip_db.load_frames()
+        # clip.background = clip_db.get_clip_background()
+        # clip.frames = clip_db.frames
         segment_frame_spacing = int(round(clip.frames_per_second))
         thermal_medians = []
         for f in clip_db.frames:
@@ -285,77 +287,36 @@ def evaluate_dir(
         thermal_medians = np.uint16(thermal_medians)
 
         for track in clip.tracks:
-            track.calculate_segments(
-                segment_frame_spacing * 2,
-                model.params.square_width**2,
-                segment_min_mass=10,
-                segment_type=SegmentType.ALL_SECTIONS,
-                ffc_frames=clip_db.ffc_frames,
-            )
-            frame_indices = set()
-            for sample in track.samples:
-                frame_indices.update(set(sample.frame_indices))
-                sample.remapped_label = label_mapping.get(
-                    sample.original_label, sample.original_label
-                )
-                track.label = sample.remapped_label
-            frame_indices = list(frame_indices)
-            frame_indices.sort()
-            track_frames = {}
-            # frames = []
-            for i in frame_indices:
-                f = clip_db.frames[i]
-                f.region = track.regions_by_frame[f.frame_number]
-                pre_f = preprocess_frame(
-                    f, (32, 32), f.region, clip_db.background, crop_rectangle
-                )
-                track_frames[i] = pre_f
+            prediction = model.classify_track(clip_db, track)
 
-            # for f in frames:
-            #     region = track.regions_by_frame[f.frame_number]
-            #     track_frame = f.crop_by_region(region)
-            #     track_frame.region = region
-            #     track_frames[region.frame_number] = track_frame
-            #
-            # min_diff, max_diff = filter_diffs(track_frames.values(), clip_db.background)
-            # for f in track_frames.values():
-            #     f.float_arrays()
-            #     f.filtered = f.thermal - f.region.subimage(clip_db.background)
-            #     f.filtered, stats = imageprocessing.normalize(
-            #         f.filtered, min=min_diff, max=max_diff, new_max=255
-            #     )
-            #     f.thermal -= thermal_medians[f.frame_number]
-            #     np.clip(f.thermal, a_min=0, a_max=None, out=f.thermal)
-            #     f.thermal, stats = imageprocessing.normalize(f.thermal, new_max=255)
-            #     if f.thermal.size > 0:
-            #         f.resize_with_aspect(
-            #             (32, 32),
-            #             crop_rectangle,
-            #             True,
-            #         )
-
-            prediction = model.classify_track_data(
-                track.track_id, track_frames, track.samples
-            )
             y_true.append(track.label)
-            if prediction.predicted_tag() is None:
+            best_args = np.where(prediction.class_best_score >= 0.8)
+            predicted_labels = []
+            for index in best_args[0]:
+                print("index is ", index)
+                predicted_labels.append(prediction.labels[index])
+            if len(predicted_labels) == 0:
                 y_pred.append("None")
             else:
                 # to compare to prod add conf rules
-                if (
-                    prediction.clarity > min_tag_clarity
-                    and prediction.max_score > min_tag_confidence
-                ):
-                    y_pred.append(prediction.predicted_tag())
-                else:
-                    y_pred.append("unidentified")
+                # if (
+                # prediction.clarity > min_tag_clarity
+                # and prediction.max_score > min_tag_confidence
+                # ):
+                logging.info("Predicted  %s", predicted_labels)
+                predicted_tag = ",".join(predicted_labels)
+                if len(predicted_labels) > 1:
+                    1 / 0
+                y_pred.append(predicted_tag)
+                # else:
+                # y_pred.append("unidentified")
             print(
                 track,
                 "Got a prediction of",
                 y_pred[-1],
                 " should be ",
                 track.label,
-                np.round(100 * prediction.predictions),
+                np.round(100 * prediction.class_best_score),
             )
     model.labels.append("None")
     model.labels.append("unidentified")
