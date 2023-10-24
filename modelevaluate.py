@@ -344,8 +344,8 @@ def evaluate_dir(
                     label,
                     np.round(100 * prediction.class_best_score),
                 )
-                if predicted_labels not in model.labels:
-                    model.labels.append(predicted_labels)
+                if predicted_tag not in model.labels:
+                    model.labels.append(predicted_tag)
     # for cptv_file in files:
     #     # for clip in dataset.clips:
     #     clip_db = RawDatabase(cptv_file)
