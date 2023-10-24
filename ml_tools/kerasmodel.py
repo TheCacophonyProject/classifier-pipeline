@@ -242,7 +242,7 @@ class KerasModel(Interpreter):
 
     def get_forest_model(self, run_name):
         train_files = os.path.join(self.data_dir, "train")
-        train, remapped = get_dataset(
+        train, remapped, _, _ = get_dataset(
             train_files,
             self.type,
             self.labels,
@@ -259,7 +259,6 @@ class KerasModel(Interpreter):
         rf = tfdf.keras.RandomForestModel()
         rf.fit(train)
         rf.save(os.path.join(self.checkpoint_folder, run_name, "rf"))
-
         return rf
 
     def build_model(
