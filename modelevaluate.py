@@ -304,7 +304,7 @@ def evaluate_dir(
             for data in clip_data:
                 label = data[1]
                 output = model.predict(data[3])
-                track_prediction = TrackPrediction(data[0], model.labels)
+                prediction = TrackPrediction(data[0], model.labels)
                 masses = np.array(data[4])
                 masses = masses[:, None]
                 top_score = None
@@ -314,7 +314,7 @@ def evaluate_dir(
                     smoothed = output
                 else:
                     smoothed = output * output * masses
-                track_prediction.classified_clip(
+                prediction.classified_clip(
                     output, smoothed, data[2], top_score=top_score
                 )
                 y_true.append(label_mapping.get(label, label))
