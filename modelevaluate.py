@@ -328,6 +328,7 @@ def evaluate_dir(
                 y_true.append(label_mapping.get(label, label))
                 best_args = np.where(prediction.class_best_score >= 0.8)
                 predicted_labels = []
+                predicted_tag = "None"
                 for index in best_args[0]:
                     predicted_labels.append(prediction.labels[index])
                 if len(predicted_labels) == 0:
