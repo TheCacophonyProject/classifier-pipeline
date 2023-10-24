@@ -67,6 +67,40 @@ land_birds = [
 ]
 
 
+# basic formula to give a number to compare models
+def model_score(cm, labels):
+    cm = np.around(cm.astype("float") / cm.sum(axis=1)[:, np.newaxis], decimals=2)
+    cm = np.nan_to_num(cm)
+
+    fp_index = labels.index("false-positive")
+    none_index = None
+    unid_index = None
+    if "None" in labels:
+        none_index = labels.index("None")
+    if "unidentified" in labels:
+        unid_index = labels.index("unidentified")
+    score = 0
+    for l_i, l in enumerate(labels):
+        fp_acc = cm[l_i][fp_index]
+        none_acc = 0
+        unid_acc = 0
+        accuracy = cm[l_i][l_i]
+        if none_index:
+            none_acc = cm[l_i][none_index]
+        if unid_index:
+            unid_acc = cm[l_i][unid_index]
+        if l == "bird":
+            other_animals = 1 - (fp_acc + none_acc + unid_acc)
+            score += accuracy * 1.2 - other_animals
+        elif l in ["vehicle", "wallaby"]:
+            score += accuracy * 0.8
+        elif l in ["mustelid", "human"]:
+            score += accuracy * 0.9
+        elif l not in ["None", "unidentified"]:
+            score += accuracy * 1
+    logging.info("Model accuracy score is %s", score)
+
+
 def get_mappings(label_paths):
     regroup = {}
     for l, path in label_paths.items():
@@ -236,6 +270,9 @@ def evalute_prod_confusion(dir, confusion_file):
     # Log the confusion matrix as an image summary.
     figure = plot_confusion_matrix(cm, class_names=labels)
     plt.savefig(confusion_file, format="png")
+    # cm = np.around(cm.astype("float") / cm.sum(axis=1)[:, np.newaxis], decimals=2)
+    # cm = np.nan_to_num(cm)
+    model_score(cm, labels)
 
 
 EXCLUDED_TAGS = ["poor tracking", "part", "untagged", "unidentified"]
@@ -353,6 +390,7 @@ def evaluate_dir(
     # Log the confusion matrix as an image summary.
     figure = plot_confusion_matrix(cm, class_names=model.labels)
     plt.savefig(confusion_file, format="png")
+    model_score(cm.model.labels)
 
 
 min_tag_clarity = 0.2
@@ -430,7 +468,8 @@ def main():
     args = load_args()
     init_logging()
     config = Config.load_from_file(args.config_file)
-    # evalute_prod_confusion(args.evaluate_dir, args.confusion)
+    evalute_prod_confusion(args.evaluate_dir, args.confusion)
+    return
     print("LOading config", args.config_file)
     weights = None
     if args.model_file:
@@ -477,127 +516,6 @@ def main():
             model.labels,
         )
         model.confusion_tfrecords(dataset, args.confusion)
-
-
-def evaluate_db_clips(model, config, after_date, confusion_file="tracks-confusion"):
-    type = model.type
-    if confusion_file is None:
-        confusion_file = "tracks-confusion"
-    db_file = os.path.join(config.tracks_folder, "dataset.hdf5")
-    dataset = Dataset(db_file, "dataset", config)
-    dataset.segment_type = SegmentType.ALL_SECTIONS
-    tracks_loaded, total_tracks = dataset.load_clips(after_date=after_date)
-    logging.info("Samples / Tracks/ Bins/ weight")
-
-    for label in dataset.labels:
-        logging.info("%s %s %s %s %s", label, *dataset.get_counts(label))
-
-    samples_by_track = {}
-    for s in dataset.samples:
-        key = f"{s.clip_id}-{s.track_id}"
-        if key in samples_by_track:
-            samples_by_track[key].append(s)
-        else:
-            samples_by_track[key] = [s]
-
-    actual = []
-    predicted = []
-    probs = []
-    for samples in samples_by_track.values():
-        s = samples[0]
-        background = dataset.db.get_clip_background(s.clip_id)
-        track_data = dataset.db.get_track(s.clip_id, s.track_id, channels=[0])
-        if type == "IR":
-            for frame in track_data:
-                preprocessed = preprocess_ir(
-                    frame.copy(),
-                    (
-                        model.params.frame_size,
-                        model.params.frame_size,
-                    ),
-                    False,
-                    frame.region,
-                    model.preprocess_fn,
-                    save_info=f"{frame.region.frame_number} - {frame.region}",
-                )
-                predictions = model.model.predict(preprocessed[np.newaxis, :])
-                best_res = np.argmax(predictions[0])
-                prediction = model.labels[best_res]
-                if prediction != s.label:
-                    if prediction == "false-positive":
-                        out_dir = "animal-fp"
-                    else:
-                        out_dir = "diff-animal"
-
-                    cv2.imwrite(
-                        f"{out_dir}/{s.clip_id}-{s.track_id}-{frame.frame_number}-{s.label}-pred-{prediction}.png",
-                        frame.thermal,
-                    )
-                # 1 / 0
-
-        else:
-            for f in track_data:
-                sub_back = f.region.subimage(background)
-                f.filtered = f.thermal - sub_back
-                f.resize_with_aspect(
-                    (model.params.frame_size, model.params.frame_size),
-                    crop_rectangle,
-                    True,
-                )
-            logging.debug(
-                f"Evaluating {s.clip_id}-{s.track_id} as {s.label} with {len(samples)} samples"
-            )
-            for s in samples:
-                # make relative
-                s.frame_numbers = s.frame_numbers - s.start_frame
-            prediction = model.classify_track_data(s.track_id, track_data, samples)
-            logging.debug(prediction.description())
-            actual.append(s.label)
-            predicted.append(prediction.predicted_tag())
-            probs.append(prediction.max_score)
-    actual = np.array(actual)
-    predicted = np.array(predicted)
-    probs = np.array(probs)
-    logging.info("Saving confusion matrix to %s.png", confusion_file)
-    cm = confusion_matrix(actual, predicted, labels=model.labels)
-    figure = plot_confusion_matrix(cm, class_names=model.labels)
-    plt.savefig(f"{confusion_file}.png", format="png")
-
-    logging.info(
-        "Saving predictions above %s confusion matrix to %s-confident.png",
-        PROB_THRESHOLD,
-        confusion_file,
-    )
-
-    probs_mask = probs < PROB_THRESHOLD
-    # set all below threshold to be wrong
-    predicted[probs_mask] = -1
-    cm = confusion_matrix(actual, predicted, labels=model.labels)
-    figure = plot_confusion_matrix(cm, class_names=model.labels)
-    plt.savefig(f"{confusion_file}-confident.png", format="png")
-
-
-def evaluate_db_clip(model, db, classifier, clip_id, track_id=None):
-    logging.info("Prediction tracks %s", track)
-    clip_meta = db.get_clip_meta(clip_id)
-    if track_id is None:
-        tracks = db.get_clip_tracks(clip_id)
-    else:
-        tracks = [track_id]
-    for track_id in tracks:
-        track_meta = db.get_track_meta(clip_id, track_id)
-        track_data = db.get_track(clip_id, track_id)
-
-        regions = []
-        medians = clip_meta["frame_temp_median"][
-            track_meta["start_frame"] : track_meta["start_frame"] + track_meta["frames"]
-        ]
-        for region in track_meta.track_bounds:
-            regions.append(tools.Rectangle.from_ltrb(*region))
-        track_prediction = model.classify_track_data(
-            track_id, track_data, medians, regions=regions
-        )
-        logging.info("Predicted %s", track_prediction.predicted_tag(model.labels))
 
 
 if __name__ == "__main__":

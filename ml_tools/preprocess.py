@@ -158,7 +158,7 @@ def preprocess_single_frame(
     return image
 
 
-index = 0
+# index = 0
 
 
 #
@@ -200,12 +200,12 @@ def preprocess_movement(
     )
     #
     # # # # # for testing
-    global index
-    index += 1
-    tools.saveclassify_image(
-        data,
-        f"samples/{index}",
-    )
+    # global index
+    # index += 1
+    # tools.saveclassify_image(
+    #     data,
+    #     f"samples/{index}",
+    # )
 
     if preprocess_fn:
         data = preprocess_fn(data)
