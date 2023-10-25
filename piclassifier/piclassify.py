@@ -417,7 +417,7 @@ def take_snapshots(window, process_queue):
 
 def handle_connection(connection, config, thermal_config_file, process_queue):
     headers, extra_b = handle_headers(connection)
-    thermal_config = ThermalConfig.load_from_file(thermal_config_file, headers.model)
+    thermal_config, _ = ThermalConfig.load_from_file(thermal_config_file, headers.model)
     logging.info(
         "parsed camera headers %s running with config %s", headers, thermal_config
     )
