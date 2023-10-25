@@ -174,7 +174,7 @@ def parse_file(file, config, thermal_config_file, preview_type):
 
 
 def parse_ir(file, config, thermal_config_file, preview_type):
-    thermal_config = ThermalConfig.load_from_file(
+    thermal_config, _ = ThermalConfig.load_from_file(
         thermal_config_file, IRTrackExtractor.TYPE
     )
     from piclassifier import irmotiondetector
@@ -241,7 +241,7 @@ def parse_cptv(file, config, thermal_config_file, preview_type):
             serial="",
             firmware="",
         )
-        thermal_config = ThermalConfig.load_from_file(
+        thermal_config, _ = ThermalConfig.load_from_file(
             thermal_config_file, headers.model
         )
         pi_classifier = PiClassifier(
