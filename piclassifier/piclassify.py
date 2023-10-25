@@ -90,10 +90,11 @@ def main():
 
     process_queue = multiprocessing.Queue()
 
+    # get a cloned window so we dont update it
     snapshot_thread = Thread(
         target=take_snapshots,
         args=(
-            thermal_config.recorder.rec_window,
+            thermal_config.recorder.rec_window.clone(),
             process_queue,
         ),
     )
@@ -371,9 +372,12 @@ def next_snapshot(window, prev_window_type=None):
     current_status = None
     if prev_window_type is None:
         current_status = window.window_status()
-
+    if window.non_stop:
+        if prev_window_type is not None:
+            window.next_window()
+        return (window.start.dt, WindowStatus.non_stop)
     if current_status == WindowStatus.before or (
-        prev_window_type == WindowStatus.new or prev_window_type == WindowStatus.after
+        prev_window_type == WindowStatus.after
     ):
         started = window.next_start()
         return (window.next_start(), WindowStatus.before)
@@ -395,9 +399,15 @@ def next_snapshot(window, prev_window_type=None):
 
 
 def take_snapshots(window, process_queue):
+    if window.non_stop:
+        window.start.dt = datetime.now()
+        window.end.dt = datetime.now()
     next_snap = next_snapshot(window, None)
     while True:
-        snap_time = next_snap[0] - timedelta(minutes=2)
+        if next_snap is None:
+            snap_time = datetime.now()
+        else:
+            snap_time = next_snap[0] - timedelta(minutes=2)
         time_until = (snap_time - datetime.now()).total_seconds()
         if time_until > 0:
             logging.info("Taking snapshot at %s", snap_time)
