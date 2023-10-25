@@ -772,12 +772,8 @@ class KerasModel(Interpreter):
         masses = np.array(masses)
         masses = masses[:, None]
         top_score = None
-        if self.params.multi_label is True:
-            # every label could be 1 for each prediction
-            top_score = len(output)
-            smoothed = output
-        else:
-            smoothed = output * output * masses
+
+        smoothed = output * output * masses
         track_prediction.classified_clip(
             output, smoothed, prediction_frames, top_score=top_score
         )
