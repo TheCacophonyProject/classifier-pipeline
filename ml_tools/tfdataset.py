@@ -116,8 +116,11 @@ def get_dataset(load_function, base_dir, labels, **args):
         random.shuffle(filenames)
 
     dataset = load_function(filenames, remap_lookup, new_labels, args)
+    if not args.get("one_hot"):
+        filter_excluded = lambda x, y: not tf.math.less(y, 0)
 
-    filter_excluded = lambda x, y: not tf.math.equal(tf.math.count_nonzero(y), 0)
+    else:
+        filter_excluded = lambda x, y: not tf.math.equal(tf.math.count_nonzero(y), 0)
     dataset = dataset.filter(filter_excluded)
     if dataset is None:
         logging.warn("No dataset for %s", filenames)
