@@ -26,7 +26,7 @@ def main():
     init_logging()
 
     config = Config.load_from_file(args.config_file)
-    thermal_config = ThermalConfig.load_from_file(args.thermal_config_file)
+    thermal_config, _ = ThermalConfig.load_from_file(args.thermal_config_file)
     print("detecting on  " + args.cptv)
 
     with open(args.cptv, "rb") as f:
