@@ -43,9 +43,9 @@ STOP_SIGNAL = "stop"
 
 SKIP_SIGNAL = "skip"
 SNAPSHOT_SIGNAL = "snap"
+
 restart_pending = False
 connected = False
-# TODO abstract interpreter class
 
 
 def parse_args():
@@ -86,9 +86,7 @@ def main():
     )
 
     if args.file:
-        return parse_file(
-            args.file, config, args.thermal_config_file, args.preview_type
-        )
+        return parse_file(args.file, config, thermal_config, args.preview_type)
 
     process_queue = multiprocessing.Queue()
 
@@ -164,19 +162,16 @@ def file_changed(event):
         os._exit(0)
 
 
-def parse_file(file, config, thermal_config_file, preview_type):
+def parse_file(file, config, thermal_config, preview_type):
     _, ext = os.path.splitext(file)
 
     if ext == ".cptv":
-        parse_cptv(file, config, thermal_config_file, preview_type)
+        parse_cptv(file, config, thermal_config, preview_type)
     else:
-        parse_ir(file, config, thermal_config_file, preview_type)
+        parse_ir(file, config, thermal_config, preview_type)
 
 
-def parse_ir(file, config, thermal_config_file, preview_type):
-    thermal_config, _ = ThermalConfig.load_from_file(
-        thermal_config_file, IRTrackExtractor.TYPE
-    )
+def parse_ir(file, config, thermal_config, preview_type):
     from piclassifier import irmotiondetector
 
     irmotiondetector.MIN_FRAMES = 0
@@ -226,7 +221,7 @@ def parse_ir(file, config, thermal_config_file, preview_type):
     pi_classifier.disconnected()
 
 
-def parse_cptv(file, config, thermal_config_file, preview_type):
+def parse_cptv(file, config, thermal_config, preview_type):
     with open(file, "rb") as f:
         reader = CPTVReader(f)
 
@@ -240,9 +235,6 @@ def parse_cptv(file, config, thermal_config_file, preview_type):
             pixel_bits=16,
             serial="",
             firmware="",
-        )
-        thermal_config, _ = ThermalConfig.load_from_file(
-            thermal_config_file, headers.model
         )
         pi_classifier = PiClassifier(
             config,
