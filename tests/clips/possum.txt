@@ -665,7 +665,7 @@
             ],
             "predictions": [
                 {
-                    "classify_time": 2.2,
+                    "classify_time": 0.1,
                     "label": "possum",
                     "confident_tag": "possum",
                     "confidence": 1.0,
@@ -697,48 +697,21 @@
                             48,
                             49,
                             50,
-                            51,
-                            53,
-                            54,
-                            55,
-                            56,
-                            57,
-                            58,
-                            59,
-                            60,
-                            61,
-                            62,
-                            63,
-                            64,
-                            65,
-                            66,
-                            67
-                        ],
-                        [
-                            51,
                             52,
                             53,
-                            53,
                             54,
-                            54,
-                            55,
                             55,
                             56,
                             57,
-                            57,
-                            58,
                             58,
                             59,
                             60,
                             61,
                             62,
-                            62,
-                            63,
                             63,
                             64,
                             65,
                             66,
-                            67,
                             67
                         ]
                     ],
@@ -754,23 +727,7 @@
                             0,
                             0,
                             0,
-                            9990,
-                            0,
-                            0,
-                            0
-                        ],
-                        [
-                            0,
-                            0,
-                            0,
-                            0,
-                            0,
-                            0,
-                            0,
-                            0,
-                            0,
-                            0,
-                            13214,
+                            10071,
                             0,
                             0,
                             0
@@ -1440,9 +1397,9 @@
     "models": [
         {
             "id": 2,
-            "name": "Inc3",
-            "type": "keras",
-            "model_file": "/home/gp/cacophony/classifier-data/thermal-training/15082022/seg5_TEST/",
+            "name": "Thermal WR",
+            "type": "TFLite",
+            "model_file": "./thermal-model/converted_model.tflite",
             "model_weights": null,
             "wallaby": false,
             "tag_scores": {
@@ -1450,7 +1407,9 @@
             },
             "ignored_tags": [],
             "thumbnail_model": false,
-            "classify_time": 30.1
+            "reclassify": null,
+            "submodel": false,
+            "classify_time": 0.1
         }
     ],
     "thumbnail_region": {

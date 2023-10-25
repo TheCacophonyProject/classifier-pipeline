@@ -51,8 +51,8 @@ class ClipClassifier:
         """
         if model.id in self.models:
             return self.models[model.id]
-        if model.type != KerasModel.TYPE:
-            raise Exception("Can only classify with kerasmodel right now")
+        # if model.type != KerasModel.TYPE:
+        # raise Exception("Can only classify with kerasmodel right now")
         load_start = time.time()
         logging.info("classifier loading %s", model.model_file)
         classifier = get_interpreter(model)

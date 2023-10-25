@@ -259,6 +259,7 @@ class KerasModel(Interpreter):
         rf = tfdf.keras.RandomForestModel()
         rf.fit(train)
         rf.save(os.path.join(self.checkpoint_folder, run_name, "rf"))
+        save_metadata(self)
         return rf
 
     def build_model(
@@ -771,11 +772,8 @@ class KerasModel(Interpreter):
         # self.model.predict(preprocessed)
         masses = np.array(masses)
         masses = masses[:, None]
-        top_score = None
-
-        smoothed = output * output * masses
         track_prediction.classified_clip(
-            output, smoothed, prediction_frames, top_score=top_score
+            output, output * output * masses, prediction_frames
         )
         track_prediction.classify_time = time.time() - start
         return track_prediction

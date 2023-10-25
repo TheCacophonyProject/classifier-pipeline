@@ -131,17 +131,20 @@ def get_dataset(load_function, base_dir, labels, **args):
         )
     # tf refues to run if epoch sizes change so we must decide a costant epoch size even though with reject res
     # it will chang eeach epoch, to ensure this take this repeat data and always take epoch_size elements
-    dist = get_distribution(dataset, num_labels, batched=False)
-    for label, d in zip(new_labels, dist):
-        logging.info("Have %s: %s", label, d)
-    epoch_size = np.sum(dist)
-    logging.info("Setting dataset size to %s", epoch_size)
-    if not args.get("only_features", False):
-        dataset = dataset.repeat(2)
-    scale_epoch = args.get("scale_epoch", None)
-    if scale_epoch:
-        epoch_size = epoch_size // scale_epoch
-    dataset = dataset.take(epoch_size)
+    if not args.get("only_features"):
+        dist = get_distribution(dataset, num_labels, batched=False)
+        for label, d in zip(new_labels, dist):
+            logging.info("Have %s: %s", label, d)
+        epoch_size = np.sum(dist)
+        logging.info("Setting dataset size to %s", epoch_size)
+        if not args.get("only_features", False):
+            dataset = dataset.repeat(2)
+        scale_epoch = args.get("scale_epoch", None)
+        if scale_epoch:
+            epoch_size = epoch_size // scale_epoch
+            dataset = dataset.take(epoch_size)
+    else:
+        epoch_size = 1
     dataset = dataset.prefetch(buffer_size=AUTOTUNE)
     batch_size = args.get("batch_size", None)
     if batch_size is not None:
