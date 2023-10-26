@@ -10,6 +10,7 @@ RUN apt install -y python3.10-dev
 RUN python3 get-pip.py
 RUN pip3 install --upgrade pip
 RUN pip3 install cmake
+RUN pip3 install numpy
 RUN pip3 install -r requirements.txt
 
 
