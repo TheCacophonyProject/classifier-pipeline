@@ -197,7 +197,7 @@ class ThermalConfig:
         if not filename:
             filename = ThermalConfig.find_config()
         with LockSafeConfig(filename) as stream:
-            return cls.load_from_stream(stream, model)
+            return cls.load_from_stream(stream, model), filename
 
     @classmethod
     def load_from_stream(cls, stream, model=None):

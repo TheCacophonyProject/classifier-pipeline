@@ -8,6 +8,7 @@ import socket
 import time
 import cv2
 import json
+import sys
 
 # fixes logging not showing up in tensorflow
 
@@ -30,8 +31,10 @@ import multiprocessing
 from cptv import Frame
 from .eventreporter import log_event
 from track.irtrackextractor import IRTrackExtractor
-
 from track.cliptrackextractor import ClipTrackExtractor
+
+from piclassifier.monitorconfig import monitor_file
+
 
 SOCKET_NAME = "/var/run/lepton-frames"
 VOSPI_DATA_SIZE = 160
@@ -41,8 +44,8 @@ STOP_SIGNAL = "stop"
 SKIP_SIGNAL = "skip"
 SNAPSHOT_SIGNAL = "snap"
 
-
-# TODO abstract interpreter class
+restart_pending = False
+connected = False
 
 
 def parse_args():
@@ -71,32 +74,38 @@ def main():
     args = parse_args()
 
     config = Config.load_from_file(args.config_file)
-    thermal_config = ThermalConfig.load_from_file(args.thermal_config_file)
+    thermal_config, thermal_file = ThermalConfig.load_from_file(
+        args.thermal_config_file
+    )
+    monitor_thread = Thread(target=monitor_file, args=(file_changed, thermal_file))
+    monitor_thread.daemon = True
+    monitor_thread.start()
     thermal_config.recorder.rec_window.set_location(
         *thermal_config.location.get_lat_long(use_default=True),
         thermal_config.location.altitude,
     )
 
     if args.file:
-        return parse_file(
-            args.file, config, args.thermal_config_file, args.preview_type
-        )
+        return parse_file(args.file, config, thermal_config, args.preview_type)
 
     process_queue = multiprocessing.Queue()
 
+    # get a cloned window so we dont update it
     snapshot_thread = Thread(
         target=take_snapshots,
         args=(
-            thermal_config,
+            thermal_config.recorder.rec_window.clone(),
             process_queue,
         ),
     )
+    snapshot_thread.daemon = True
     snapshot_thread.start()
-
     if args.ir or thermal_config.device_setup.ir:
         while True:
+            if restart_pending:
+                break
             try:
-                read = ir_camera(config, args.thermal_config_file, process_queue)
+                read = ir_camera(config, thermal_config, process_queue)
                 if read == 0:
                     logging.error("Error reading camera try again in 10")
                     time.sleep(10)
@@ -117,9 +126,15 @@ def main():
     sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     sock.bind(SOCKET_NAME)
     sock.listen(1)
+
+    global connected
     while True:
+        if restart_pending:
+            sock.close()
+            break
         logging.info("waiting for a connection")
         connection, client_address = sock.accept()
+        connected = True
         logging.info("connection from %s", client_address)
         log_event("camera-connected", {"type": ClipTrackExtractor.TYPE})
         try:
@@ -136,21 +151,28 @@ def main():
                 connection.close()
             except:
                 pass
+        connected = False
 
 
-def parse_file(file, config, thermal_config_file, preview_type):
+def file_changed(event):
+    logging.info("Received file changed event %s restarting", event)
+    global restart_pending
+    restart_pending = True
+    if not connected:
+        logging.info("Not conencted so closing")
+        os._exit(0)
+
+
+def parse_file(file, config, thermal_config, preview_type):
     _, ext = os.path.splitext(file)
 
     if ext == ".cptv":
-        parse_cptv(file, config, thermal_config_file, preview_type)
+        parse_cptv(file, config, thermal_config, preview_type)
     else:
-        parse_ir(file, config, thermal_config_file, preview_type)
+        parse_ir(file, config, thermal_config, preview_type)
 
 
-def parse_ir(file, config, thermal_config_file, preview_type):
-    thermal_config = ThermalConfig.load_from_file(
-        thermal_config_file, IRTrackExtractor.TYPE
-    )
+def parse_ir(file, config, thermal_config, preview_type):
     from piclassifier import irmotiondetector
 
     irmotiondetector.MIN_FRAMES = 0
@@ -200,7 +222,7 @@ def parse_ir(file, config, thermal_config_file, preview_type):
     pi_classifier.disconnected()
 
 
-def parse_cptv(file, config, thermal_config_file, preview_type):
+def parse_cptv(file, config, thermal_config, preview_type):
     with open(file, "rb") as f:
         reader = CPTVReader(f)
 
@@ -214,9 +236,6 @@ def parse_cptv(file, config, thermal_config_file, preview_type):
             pixel_bits=16,
             serial="",
             firmware="",
-        )
-        thermal_config = ThermalConfig.load_from_file(
-            thermal_config_file, headers.model
         )
         pi_classifier = PiClassifier(
             config,
@@ -266,7 +285,7 @@ def handle_headers(connection):
     return HeaderInfo.parse_header(headers), left_over
 
 
-def ir_camera(config, thermal_config_file, process_queue):
+def ir_camera(config, thermal_config, process_queue):
     FPS = 10
     logging.info("Starting ir video capture")
     cap = cv2.VideoCapture(0)
@@ -286,15 +305,28 @@ def ir_camera(config, thermal_config_file, process_queue):
             serial="",
             firmware="",
         )
-        thermal_config = ThermalConfig.load_from_file(
-            thermal_config_file, headers.model
-        )
+
+        global connected
+        connected = True
         processor = get_processor(process_queue, config, thermal_config, headers)
         processor.start()
         drop_frame = None
         dropped = 0
         start_dropping = None
+
         while True:
+            if restart_pending:
+                logging.info("Restarting as config changed")
+                process_queue.put(STOP_SIGNAL)
+                # give it time to clean up
+                processor.join(5)
+                if processor.is_alive():
+                    logging.info("Killing process")
+                    try:
+                        processor.kill()
+                    except:
+                        pass
+                break
             returned, frame = cap.read()
             if not processor.is_alive():
                 logging.info("Processor stopped, restarting %s", processor.is_alive())
@@ -330,19 +362,22 @@ def ir_camera(config, thermal_config_file, process_queue):
                 drop_frame = None
                 start_dropping = None
     finally:
-        time.sleep(5)
-        processor.terminate()
+        if processor is not None:
+            time.sleep(5)
+            processor.kill()
     return frames
 
 
-def next_snapshot(thermal_config, prev_window_type=None):
-    window = thermal_config.recorder.rec_window
+def next_snapshot(window, prev_window_type=None):
     current_status = None
     if prev_window_type is None:
         current_status = window.window_status()
-
+    if window.non_stop:
+        if prev_window_type is not None:
+            window.next_window()
+        return (window.start.dt, WindowStatus.non_stop)
     if current_status == WindowStatus.before or (
-        prev_window_type == WindowStatus.new or prev_window_type == WindowStatus.after
+        prev_window_type == WindowStatus.after
     ):
         started = window.next_start()
         return (window.next_start(), WindowStatus.before)
@@ -363,22 +398,28 @@ def next_snapshot(thermal_config, prev_window_type=None):
         return (window.next_start(), WindowStatus.before)
 
 
-def take_snapshots(thermal_config, process_queue):
-    next_snap = next_snapshot(thermal_config, None)
+def take_snapshots(window, process_queue):
+    if window.non_stop:
+        window.start.dt = datetime.now()
+        window.end.dt = datetime.now()
+    next_snap = next_snapshot(window, None)
     while True:
-        snap_time = next_snap[0] - timedelta(minutes=2)
+        if next_snap is None:
+            snap_time = datetime.now()
+        else:
+            snap_time = next_snap[0] - timedelta(minutes=2)
         time_until = (snap_time - datetime.now()).total_seconds()
         if time_until > 0:
             logging.info("Taking snapshot at %s", snap_time)
             time.sleep(time_until)
         logging.info("Sending snapshot signal")
         process_queue.put(SNAPSHOT_SIGNAL)
-        next_snap = next_snapshot(thermal_config, next_snap[1])
+        next_snap = next_snapshot(window, next_snap[1])
 
 
 def handle_connection(connection, config, thermal_config_file, process_queue):
     headers, extra_b = handle_headers(connection)
-    thermal_config = ThermalConfig.load_from_file(thermal_config_file, headers.model)
+    thermal_config, _ = ThermalConfig.load_from_file(thermal_config_file, headers.model)
     logging.info(
         "parsed camera headers %s running with config %s", headers, thermal_config
     )
@@ -394,6 +435,18 @@ def handle_connection(connection, config, thermal_config_file, process_queue):
     read = 0
     try:
         while True:
+            if restart_pending:
+                logging.info("Restarting as config changed")
+                process_queue.put(STOP_SIGNAL)
+                # give it time to clean up
+                processor.join(5)
+                if processor.is_alive():
+                    logging.info("Killing process")
+                    try:
+                        processor.kill()
+                    except:
+                        pass
+                break
             if not processor.is_alive():
                 logging.info("Processor stopped restarting")
                 processor = get_processor(

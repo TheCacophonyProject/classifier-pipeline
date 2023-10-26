@@ -47,6 +47,7 @@ def run_classifier(
     frame_queue, config, thermal_config, headers, classify=True, detect_after=None
 ):
     init_logging()
+    pi_classifier = None
     try:
         pi_classifier = PiClassifier(
             config, thermal_config, headers, classify, detect_after
@@ -66,7 +67,8 @@ def run_classifier(
                 pi_classifier.process_frame(frame[0], frame[1])
     except:
         logging.error("Error running classifier restarting ..", exc_info=True)
-        pi_classifier.disconnected()
+        if pi_classifier is not None:
+            pi_classifier.disconnected()
         return
 
 
