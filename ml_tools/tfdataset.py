@@ -32,7 +32,7 @@ def get_weighting(
     return weights
 
 
-def get_distribution(dataset, num_labels, batched=True):
+def get_distribution(dataset, num_labels, batched=True, one_hot=True):
     true_categories = [y for x, y in dataset]
     dist = np.zeros((num_labels), dtype=np.float32)
     if len(true_categories) == 0:
@@ -42,9 +42,12 @@ def get_distribution(dataset, num_labels, batched=True):
     if len(true_categories) == 0:
         return dist
     classes = []
-    for y in true_categories:
-        non_zero = tf.where(y).numpy()
-        classes.extend(non_zero.flatten())
+    if one_hot:
+        for y in true_categories:
+            non_zero = tf.where(y).numpy()
+            classes.extend(non_zero.flatten())
+    else:
+        classes = true_categories.flatten()
     classes = np.array(classes)
 
     c = Counter(list(classes))
@@ -116,7 +119,7 @@ def get_dataset(load_function, base_dir, labels, **args):
         random.shuffle(filenames)
 
     dataset = load_function(filenames, remap_lookup, new_labels, args)
-    if not args.get("one_hot"):
+    if not args.get("one_hot", True):
         filter_excluded = lambda x, y: not tf.math.less(y, 0)
 
     else:
@@ -135,7 +138,9 @@ def get_dataset(load_function, base_dir, labels, **args):
     # tf refues to run if epoch sizes change so we must decide a costant epoch size even though with reject res
     # it will chang eeach epoch, to ensure this take this repeat data and always take epoch_size elements
     if not args.get("only_features"):
-        dist = get_distribution(dataset, num_labels, batched=False)
+        dist = get_distribution(
+            dataset, num_labels, batched=False, one_hot=args.get("one_hot", True)
+        )
         for label, d in zip(new_labels, dist):
             logging.info("Have %s: %s", label, d)
         epoch_size = np.sum(dist)
