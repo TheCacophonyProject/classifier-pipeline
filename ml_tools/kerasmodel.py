@@ -68,6 +68,7 @@ class KerasModel(Interpreter):
         self.ds_by_label = True
         self.excluded_labels = []
         self.remapped_labels = []
+        self.orig_labels = None
 
     def load_training_meta(self, base_dir):
         file = f"{base_dir}/training-meta.json"
@@ -245,7 +246,7 @@ class KerasModel(Interpreter):
         train, remapped, _, _ = get_dataset(
             train_files,
             self.type,
-            self.labels,
+            self.orig_labels,
             batch_size=self.params.batch_size,
             image_size=self.params.output_dim[:2],
             preprocess_fn=self.preprocess_fn,
@@ -254,6 +255,8 @@ class KerasModel(Interpreter):
             stop_on_empty_dataset=False,
             only_features=True,
             one_hot=False,
+            excluded_labels=self.excluded_labels,
+            remapped_labels=self.remapped_labels,
         )
         # have to run fit firest
         rf = tfdf.keras.RandomForestModel()
@@ -275,6 +278,11 @@ class KerasModel(Interpreter):
         # inputs = base_model.input
         x = base_model.output
         # x = base_model(inputs, training=self.params.base_training)
+        if self.params.get("model_merge"):
+            cnn = tf.keras.models.load_model(self.params.get("model_cnn"))
+            model_rf = tf.keras.models.load_model(self.params.get("model_rf"))
+            inputs = [cnn.input, model_rf.input]
+            model = tf.keras.layers.Concatenate()(cnn.outputs, model_rf.outputs)
 
         if self.params.lstm:
             x = tf.keras.layers.GlobalAveragePooling2D()(x)
@@ -481,7 +489,7 @@ class KerasModel(Interpreter):
         del self.test
         gc.collect()
 
-    def train_model_tfrecords(
+    def train_model(
         self, epochs, run_name, weights=None, rebalance=False, resample=False
     ):
         logging.info(
@@ -498,7 +506,7 @@ class KerasModel(Interpreter):
 
         if self.params.multi_label:
             self.labels.append("land-bird")
-        orig_labels = self.labels.copy()
+        self.orig_labels = self.labels.copy()
         for l in self.excluded_labels:
             if l in self.labels:
                 self.labels.remove(l)
@@ -520,7 +528,7 @@ class KerasModel(Interpreter):
         self.train, remapped, new_labels, epoch_size = get_dataset(
             train_files,
             self.type,
-            orig_labels,
+            self.orig_labels,
             batch_size=self.params.batch_size,
             image_size=self.params.output_dim[:2],
             preprocess_fn=self.preprocess_fn,
@@ -537,7 +545,7 @@ class KerasModel(Interpreter):
         self.validate, remapped, _, _ = get_dataset(
             validate_files,
             self.type,
-            orig_labels,
+            self.orig_labels,
             batch_size=self.params.batch_size,
             image_size=self.params.output_dim[:2],
             preprocess_fn=self.preprocess_fn,
@@ -585,7 +593,7 @@ class KerasModel(Interpreter):
             self.test, _, _, _ = get_dataset(
                 test_files,
                 self.type,
-                orig_labels,
+                self.orig_labels,
                 batch_size=self.params.batch_size,
                 image_size=self.params.output_dim[:2],
                 preprocess_fn=self.preprocess_fn,
