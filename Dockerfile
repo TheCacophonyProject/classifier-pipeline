@@ -1,7 +1,7 @@
 FROM tensorflow/tensorflow:2.14.0
 COPY . .
 RUN apt-get update
-RUN apt install  -y ffmpeg build-essential libdbus-glib-1-dev libgirepository1.0-dev tzdata libcairo2-dev libjpeg-dev python-cairo libhdf5-dev libopencv-dev cmake supervisor
+RUN apt install  -y ffmpeg build-essential libdbus-glib-1-dev libgirepository1.0-dev tzdata libcairo2-dev libjpeg-dev python3-gi-cairo libhdf5-dev libopencv-dev cmake supervisor
 RUN sed "s/tensorflow~=*/#tensorflow~=/" requirements.txt -i
 RUN pip3 install --upgrade pip
 RUN pip3 install -r requirements.txt

@@ -279,12 +279,32 @@ class KerasModel(Interpreter):
         x = base_model.output
         # x = base_model(inputs, training=self.params.base_training)
         if self.params.get("model_merge"):
+            logging.info(
+                "Loading cnn rf model %s %s",
+                self.params.get("model_cnn"),
+                self.params.get("model_rf"),
+            )
             cnn = tf.keras.models.load_model(self.params.get("model_cnn"))
+            cnn.load_weights(
+                Path(self.params.get("model_cnn")) / "val_acc"
+            ).expect_partial()
+            feature_input = tf.keras.Input(shape=(188), name="feature_input")
             model_rf = tf.keras.models.load_model(self.params.get("model_rf"))
-            inputs = [cnn.input, model_rf.input]
-            model = tf.keras.layers.Concatenate()(cnn.outputs, model_rf.outputs)
-
-        if self.params.lstm:
+            rf = model_rf(feature_input)
+            inputs = [cnn.input, feature_input]
+            cnn.summary()
+            model_rf.summary()
+            print("Outputs", cnn.outputs, rf)
+            x = tf.keras.layers.Concatenate()([cnn.outputs[0], rf])
+            activation = "softmax"
+            if self.params.multi_label:
+                activation = "sigmoid"
+            logging.info("Using %s activation", activation)
+            preds = tf.keras.layers.Dense(
+                len(self.labels), activation=activation, name="merged-prediction"
+            )(x)
+            self.model = tf.keras.models.Model(inputs, outputs=preds)
+        elif self.params.lstm:
             x = tf.keras.layers.GlobalAveragePooling2D()(x)
             for i in dense_sizes:
                 x = tf.keras.layers.Dense(i, activation="relu")(x)
