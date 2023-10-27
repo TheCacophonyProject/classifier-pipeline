@@ -186,7 +186,7 @@ def read_tfrecord(
 
     if include_features or only_features:
         tfrecord_format["image/features"] = tf.io.FixedLenSequenceFeature(
-            [36 * 5 + 8], dtype=tf.float32, allow_missing=False
+            [36 * 5 + 8], dtype=tf.float32, allow_missing=True
         )
     example = tf.io.parse_single_example(example, tfrecord_format)
     if load_images:
