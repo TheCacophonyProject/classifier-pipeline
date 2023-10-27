@@ -123,6 +123,13 @@ def load_dataset(filenames, remap_lookup, labels, args):
 
     dataset = dataset.filter(filter_nan)
 
+    # if features are missing they wil be 0 size
+    if args.get("only_features"):
+        filter_none = lambda x, y: not tf.size(x) > 0
+        dataset = dataset.filter(filter_none)
+    elif args.get("include_features"):
+        filter_none = lambda x, y: not tf.size(x[1]) > 0
+        dataset = dataset.filter(filter_none)
     return dataset
 
 
@@ -178,8 +185,8 @@ def read_tfrecord(
         )
 
     if include_features or only_features:
-        tfrecord_format["image/features"] = tf.io.FixedLenFeature(
-            [36 * 5 + 8], dtype=tf.float32
+        tfrecord_format["image/features"] = tf.io.FixedLenSequenceFeature(
+            [36 * 5 + 8], dtype=tf.float32, allow_missing=False
         )
     example = tf.io.parse_single_example(example, tfrecord_format)
     if load_images:
@@ -217,15 +224,15 @@ def read_tfrecord(
             if extra_label_map is not None:
                 label = tf.reduce_max(label, axis=0)
         if include_features or only_features:
-            features = example["image/features"]
+            features = tf.squeeze(example["image/features"])
             if only_features:
                 return features, label
             return (image, features), label
         return image, label
     if only_features:
-        return example["image/features"]
+        return tf.squeeze(example["image/features"])
     elif include_features:
-        return (image, example["image/features"])
+        return (image, tf.squeeze(example["image/features"]))
     return image
 
 
