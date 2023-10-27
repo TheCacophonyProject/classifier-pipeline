@@ -468,8 +468,8 @@ def main():
     args = load_args()
     init_logging()
     config = Config.load_from_file(args.config_file)
-    evalute_prod_confusion(args.evaluate_dir, args.confusion)
-    return
+    # evalute_prod_confusion(args.evaluate_dir, args.confusion)
+    # return
     print("LOading config", args.config_file)
     weights = None
     if args.model_file:
