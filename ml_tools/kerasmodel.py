@@ -33,6 +33,7 @@ from ml_tools import irdataset
 from ml_tools.tfdataset import get_weighting, get_distribution, get_dataset as get_tf
 import tensorflow_decision_forests as tfdf
 from ml_tools import forestmodel
+from ml_tools.preprocess import FrameTypes
 
 classify_i = 0
 
@@ -1418,6 +1419,6 @@ def get_dataset(
 
 class MetaJSONEncoder(json.JSONEncoder):
     def default(self, obj):
-        if isinstance(obj, SegmentType):
+        if isinstance(obj, SegmentType) or isinstance(obj, FrameTypes):
             return obj.name
         return json.JSONEncoder.default(self, obj)

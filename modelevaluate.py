@@ -309,7 +309,6 @@ def load_clip_data(cptv_file):
         thermal_medians.append(np.median(f.thermal))
     thermal_medians = np.uint16(thermal_medians)
     data = []
-    features = None
     for track in clip.tracks:
         frames, preprocessed, masses = worker_model.preprocess(
             clip_db, track, frames_per_classify=25
@@ -349,7 +348,6 @@ def evaluate_dir(
                 continue
             for data in clip_data:
                 label = data[1]
-                features = data[5]
                 preprocessed = data[3]
                 output = model.predict(preprocessed)
                 prediction = TrackPrediction(data[0], model.labels)

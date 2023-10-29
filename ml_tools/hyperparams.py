@@ -24,6 +24,9 @@ class HyperParams(dict):
         self["square_width"] = self.square_width
         self["frame_size"] = self.frame_size
         self["segment_width"] = self.segment_width
+        self["red_type"] = self.red_type
+        self["green_type"] = self.green_type
+        self["blue_type"] = self.blue_type
 
         self["shuffle"] = self.shuffle
         self["channel"] = self.channel
