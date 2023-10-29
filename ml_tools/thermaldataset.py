@@ -125,10 +125,10 @@ def load_dataset(filenames, remap_lookup, labels, args):
 
     # if features are missing they wil be 0 size
     if args.get("only_features"):
-        filter_none = lambda x, y: not tf.size(x) > 0
+        filter_none = lambda x, y: tf.size(x) > 0
         dataset = dataset.filter(filter_none)
     elif args.get("include_features"):
-        filter_none = lambda x, y: not tf.size(x[1]) > 0
+        filter_none = lambda x, y: tf.size(x[1]) > 0
         dataset = dataset.filter(filter_none)
     return dataset
 
