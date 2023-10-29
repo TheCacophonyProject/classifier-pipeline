@@ -208,38 +208,39 @@ class KerasModel(Interpreter):
             return WRResNet(input), None
         raise Exception("Could not find model " + pretrained_model)
 
-    def get_preprocess_fn(self):
-        pretrained_model = self.params.model_name
-        if pretrained_model == "resnet":
-            return tf.keras.applications.resnet.preprocess_input
-        elif pretrained_model == "nasnet":
-            return tf.keras.applications.nasnet.preprocess_input
-        elif pretrained_model == "resnetv2":
-            return tf.keras.applications.resnet_v2.preprocess_input
-
-        elif pretrained_model == "resnet152":
-            return tf.keras.applications.resnet.preprocess_input
-
-        elif pretrained_model == "vgg16":
-            return tf.keras.applications.vgg16.preprocess_input
-
-        elif pretrained_model == "vgg19":
-            return tf.keras.applications.vgg19.preprocess_input
-
-        elif pretrained_model == "mobilenet":
-            return tf.keras.applications.mobilenet_v2.preprocess_input
-
-        elif pretrained_model == "densenet121":
-            return tf.keras.applications.densenet.preprocess_input
-
-        elif pretrained_model == "inceptionresnetv2":
-            return tf.keras.applications.inception_resnet_v2.preprocess_input
-        elif pretrained_model == "inceptionv3":
-            return tf.keras.applications.inception_v3.preprocess_input
-        logging.warn(
-            "pretrained model %s has no preprocessing function", pretrained_model
-        )
-        return None
+    #
+    # def get_preprocess_fn(self):
+    #     pretrained_model = self.params.model_name
+    #     if pretrained_model == "resnet":
+    #         return tf.keras.applications.resnet.preprocess_input
+    #     elif pretrained_model == "nasnet":
+    #         return tf.keras.applications.nasnet.preprocess_input
+    #     elif pretrained_model == "resnetv2":
+    #         return tf.keras.applications.resnet_v2.preprocess_input
+    #
+    #     elif pretrained_model == "resnet152":
+    #         return tf.keras.applications.resnet.preprocess_input
+    #
+    #     elif pretrained_model == "vgg16":
+    #         return tf.keras.applications.vgg16.preprocess_input
+    #
+    #     elif pretrained_model == "vgg19":
+    #         return tf.keras.applications.vgg19.preprocess_input
+    #
+    #     elif pretrained_model == "mobilenet":
+    #         return tf.keras.applications.mobilenet_v2.preprocess_input
+    #
+    #     elif pretrained_model == "densenet121":
+    #         return tf.keras.applications.densenet.preprocess_input
+    #
+    #     elif pretrained_model == "inceptionresnetv2":
+    #         return tf.keras.applications.inception_resnet_v2.preprocess_input
+    #     elif pretrained_model == "inceptionv3":
+    #         return tf.keras.applications.inception_v3.preprocess_input
+    #     logging.warn(
+    #         "pretrained model %s has no preprocessing function", pretrained_model
+    #     )
+    #     return None
 
     def get_forest_model(self, run_name):
         train_files = os.path.join(self.data_dir, "train")

@@ -10,7 +10,7 @@ from config.config import Config
 import pickle
 from pathlib import Path
 import shutil
-from piclassifier.piclassifier import LiteInterpreter
+from ml_tools.interpreter import LiteInterpreter
 
 MODEL_DIR = "../cptv-download/train/checkpoints"
 MODEL_NAME = "training-most-recent.sav"

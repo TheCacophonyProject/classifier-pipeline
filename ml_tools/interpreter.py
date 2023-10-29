@@ -34,6 +34,48 @@ class Interpreter(ABC):
         """predict"""
         ...
 
+    def get_preprocess_fn(self):
+        model_name = self.params.model_name
+        if model_name == "inceptionv3":
+            # no need to use tf module, if train other model types may have to add
+            #  preprocess definitions
+            return inc3_preprocess
+        elif model_name == "wr-resnet":
+            return None
+        else:
+            import tensorflow as tf
+
+            if pretrained_model == "resnet":
+                return tf.keras.applications.resnet.preprocess_input
+            elif pretrained_model == "nasnet":
+                return tf.keras.applications.nasnet.preprocess_input
+            elif pretrained_model == "resnetv2":
+                return tf.keras.applications.resnet_v2.preprocess_input
+
+            elif pretrained_model == "resnet152":
+                return tf.keras.applications.resnet.preprocess_input
+
+            elif pretrained_model == "vgg16":
+                return tf.keras.applications.vgg16.preprocess_input
+
+            elif pretrained_model == "vgg19":
+                return tf.keras.applications.vgg19.preprocess_input
+
+            elif pretrained_model == "mobilenet":
+                return tf.keras.applications.mobilenet_v2.preprocess_input
+
+            elif pretrained_model == "densenet121":
+                return tf.keras.applications.densenet.preprocess_input
+
+            elif pretrained_model == "inceptionresnetv2":
+                return tf.keras.applications.inception_resnet_v2.preprocess_input
+        logging.warn(
+            "pretrained model %s has no preprocessing function", pretrained_model
+        )
+        return None
+        logging.info("No preprocess defined for %s", model_name)
+        return None
+
     def preprocess(self, clip, track, **args):
         scale = args.get("scale", None)
         num_predictions = args.get("num_predictions", None)
@@ -322,14 +364,18 @@ class LiteInterpreter(Interpreter):
             0
         ]  # Model has single output.
         self.input = self.interpreter.get_input_details()[0]  # Model has single input.
-        self.preprocess_fn = inc3_preprocess
+        self.preprocess_fn = self.get_preprocess_fn()
+        # inc3_preprocess
 
     def predict(self, input_x):
         input_x = np.float32(input_x)
-
-        self.interpreter.set_tensor(self.input["index"], input_x)
-        self.interpreter.invoke()
-        pred = self.interpreter.get_tensor(self.output["index"])
+        preds = []
+        # only works on input of 1
+        for data in input_x:
+            self.interpreter.set_tensor(self.input["index"], data[np.newaxis, :])
+            self.interpreter.invoke()
+            pred = self.interpreter.get_tensor(self.output["index"])
+            preds.append(pred)
         return pred
 
     def shape(self):

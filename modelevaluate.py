@@ -408,24 +408,9 @@ def test_model(model_file, weights, config):
     tf.random.set_seed(1)
     model = KerasModel(train_config=config.train)
     model.load_model(model_file.parent)
-    # model.model.save_weights(model_file.parent / "final_weights")
-    # model.build_model(dropout=0.3)
 
-    # model.model.load_weights(str(weights))
-    # print("Loading weigfhts", weights)
-    model.model.load_weights(weights)
+    model.model.load_weights(weights).expect_partial()
     model = model.model
-
-    output = model.layers[1].output
-    for new_l in model.layers[2:]:
-        print(new_l.name)
-        output = new_l(output)
-    new_model = tf.keras.models.Model(model.layers[1].input, outputs=output)
-
-    print("Saving", model_file.parent / "re_save")
-    new_model.summary()
-    new_model.save(model_file.parent / "re_save")
-    return
     for _ in range(2):
         test = np.ones((1, 160, 160, 3), dtype=np.float32)
         test = test / 2.0
@@ -453,7 +438,7 @@ def re_save(model_file, weights, config):
     # model.model.load_weights(str(weights))
     # print("Loading weigfhts", weights)
     # model.model.save_weight(model_file.parent / "final_weights")
-    model.model.load_weights(weights)
+    model.model.load_weights(weights).expect_partial()
     model = model.model
 
     output = model.layers[1].output
