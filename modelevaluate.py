@@ -309,7 +309,12 @@ def load_clip_data(cptv_file):
         thermal_medians.append(np.median(f.thermal))
     thermal_medians = np.uint16(thermal_medians)
     data = []
+    features = None
     for track in clip.tracks:
+        if worker_model.params.mvm:
+            from ml_tools.forestmodel import process_track as forest_process_track
+
+            features = forest_process_track(clip_db, track, normalize=True)
         frames, preprocessed, masses = worker_model.preprocess(
             clip_db, track, frames_per_classify=25
         )
@@ -320,6 +325,7 @@ def load_clip_data(cptv_file):
                 frames,
                 preprocessed,
                 masses,
+                features,
             )
         )
     return data
@@ -348,7 +354,14 @@ def evaluate_dir(
                 continue
             for data in clip_data:
                 label = data[1]
-                output = model.predict(data[3])
+                features = data[5]
+                preprocessed = data[3]
+                if model.params.mvm:
+                    features = features[np.newaxis, :]
+                    features = np.repeat(features, len(preprocessed), axis=0)
+                    preprocessed = [preprocessed, features]
+
+                output = model.predict(preprocessed)
                 prediction = TrackPrediction(data[0], model.labels)
                 masses = np.array(data[4])
                 masses = masses[:, None]

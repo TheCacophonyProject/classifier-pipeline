@@ -84,6 +84,8 @@ class FrameBuffer:
             return self.cache.get_frame(frame_number)
         if self.current_frame is None:
             return None
+        if frame_number > self.current_frame.frame_number:
+            return None
         # this supports max frames etc
         frame_ago = self.current_frame.frame_number - frame_number
         frame = self.get_frame_ago(frame_ago)

@@ -186,7 +186,7 @@ def process_track(
         # else:
         data_bounds[i] = bounds[i]
         if all_frames is None:
-            frame = clip.frame_buffer.get_frame(r.frame_number)
+            frame = clip.get_frame(r.frame_number)
         else:
             frame = all_frames[i]
         thermal = frame.thermal

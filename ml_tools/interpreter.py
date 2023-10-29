@@ -136,7 +136,7 @@ class Interpreter(ABC):
                     region,
                 )
                 continue
-            frame = clip.frame_buffer.get_frame(region.frame_number)
+            frame = clip.get_frame(region.frame_number)
             if frame is None:
                 logging.error(
                     "Clasifying clip %s track %s can't get frame %s",
