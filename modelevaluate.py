@@ -393,7 +393,7 @@ def evaluate_dir(
     # Log the confusion matrix as an image summary.
     figure = plot_confusion_matrix(cm, class_names=model.labels)
     plt.savefig(confusion_file, format="png")
-    model_score(cm.model.labels)
+    model_score(cm, model.labels)
 
 
 min_tag_clarity = 0.2
