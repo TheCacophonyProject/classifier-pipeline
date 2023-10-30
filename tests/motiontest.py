@@ -1,6 +1,7 @@
 import argparse
 
 from cptv import CPTVReader
+
 from config.config import Config
 from src.classifier.ml_tools.logs import init_logging
 from src.classifier.piclassifier.cptvmotiondetector import CPTVMotionDetector

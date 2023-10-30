@@ -55,7 +55,11 @@ hello = "classifier:hello"
 "Homepage" = "https://github.com/TheCacophonyProject/classifier-pipeline"
 "Bug Tracker" = "https://github.com/pypa/sampleproject/issues"
 
+
+[tool.pytest.ini_options]
+pythonpath = "src"
+
 [tool.setuptools]
 package-dir = {"" = "src"}
 
-packages = ["classifier", "classifier.piclassifier", "classifier.config"]
+packages = [ "piclassifier", "config", "track"]
