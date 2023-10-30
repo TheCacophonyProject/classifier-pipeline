@@ -354,22 +354,22 @@ def evaluate_dir(
                 masses = np.array(data[4])
                 masses = masses[:, None]
                 top_score = None
-                if model.params.multi_label is True:
-                    # every label could be 1 for each prediction
-                    top_score = len(output)
-                    smoothed = output
-                else:
-                    smoothed = output * output * masses
+                # if model.params.multi_label is True:
+                #     # every label could be 1 for each prediction
+                #     top_score = len(output)
+                #     smoothed = output
+                # else:
+                smoothed = output * output * masses
                 prediction.classified_clip(
                     output, smoothed, data[2], top_score=top_score
                 )
                 y_true.append(label_mapping.get(label, label))
-                best_args = np.where(prediction.class_best_score >= 0.8)
-                predicted_labels = []
+                predicted_labels = [prediction.predicted_tag()]
+                confidence = prediction.max_score
                 predicted_tag = "None"
-                for index in best_args[0]:
-                    predicted_labels.append(prediction.labels[index])
-                if len(predicted_labels) == 0:
+                if confidence < 0.8:
+                    y_pred.append("unidentified")
+                elif len(predicted_labels) == 0:
                     y_pred.append("None")
                 else:
                     logging.info("Predicted  %s", predicted_labels)
@@ -383,8 +383,8 @@ def evaluate_dir(
                     label,
                     np.round(100 * prediction.class_best_score),
                 )
-                if predicted_tag not in model.labels:
-                    model.labels.append(predicted_tag)
+                # if predicted_tag not in model.labels:
+                # model.labels.append(predicted_tag)
     model.labels.append("None")
     model.labels.append("unidentified")
     cm = confusion_matrix(y_true, y_pred, labels=model.labels)
