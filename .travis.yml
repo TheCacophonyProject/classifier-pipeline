@@ -16,8 +16,8 @@ before_script:
 script:
 - pytest -s
 - "./check-style"
-- python3 build.py -c tests/test-config.yaml tests --ext ".cptv"
-- python3 motiontest.py --thermal-config-file tests/config.toml -c tests/test-config.yaml
+- python3 src/cacophony/build.py -c tests/test-config.yaml tests --ext ".cptv"
+- python3 tests/motiontest.py --thermal-config-file tests/config.toml -c tests/test-config.yaml
   tests/clips/possum.cptv
 - sudo mkdir /var/spool/cptv
 - sudo chmod -R 777 /var/spool/cptv

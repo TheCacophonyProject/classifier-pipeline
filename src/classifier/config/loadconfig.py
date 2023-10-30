@@ -19,7 +19,7 @@ along with this program. If not, see <http://www.gnu.org/licenses/>.
 
 import attr
 
-from config.defaultconfig import DefaultConfig
+from .defaultconfig import DefaultConfig
 
 
 @attr.s
