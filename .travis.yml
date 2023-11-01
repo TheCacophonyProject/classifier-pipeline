@@ -30,6 +30,9 @@ script:
 before_deploy:
 - python3 -m pip install --upgrade build
 - pip install twine
+# somethings broken with twine 3.9
+- pip install urllib3==1.26.15 requests-toolbelt==0.10.1
+
 - echo $'[pypi]\nusername = __token__\npassword = '$PYPI_TOKEN > ~/.pypirc
 deploy:
   provider: script
@@ -43,3 +46,4 @@ deploy:
   script:  bash ./pypi_push.sh
   on:
     branch: pypi2
+  skip_cleanup: 'true'

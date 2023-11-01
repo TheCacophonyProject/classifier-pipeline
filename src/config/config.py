@@ -47,7 +47,7 @@ class Config(DefaultConfig):
 
     @classmethod
     def load_from_file(cls, filename=None):
-        if not Path(filename).exists():
+        if filename is None or not Path(filename).exists():
             filename = find_config()
         with open(filename) as stream:
             return cls.load_from_stream(stream)
