@@ -39,6 +39,6 @@ deploy:
   skip_cleanup: 'true'
 deploy:
   provider: script
-  script:  bash ./docker_push.sh
+  script:  bash ./pypi_push.sh
   on:
     branch: pypi2
