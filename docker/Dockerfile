@@ -1,6 +1,6 @@
 FROM tensorflow/tensorflow:2.10.1
-COPY ../src/* .
-COPY ../requirements.txt .
+COPY ./src/ .
+COPY ./requirements.txt .
 COPY docker/classifier-docker.yaml .
 RUN apt-get update
 RUN apt install  -y ffmpeg build-essential libdbus-glib-1-dev libgirepository1.0-dev tzdata libcairo2-dev libjpeg-dev python-cairo libhdf5-dev libopencv-dev cmake supervisor
