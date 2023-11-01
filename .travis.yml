@@ -7,26 +7,26 @@ python:
 install:
 - sudo apt-get update
 - python -m pip install --upgrade pip
-# - pip install cmake
-# - sudo apt install -y python3-dbus ffmpeg build-essential libdbus-glib-1-dev libgirepository1.0-dev tzdata libcairo2-dev libjpeg-dev python-cairo libhdf5-dev libopencv-dev cmake
-# - pip install -r requirements.txt
-# before_script:
-# - pip install black --upgrade
-# - pip install gdown
-# script:
-# - pytest -s
-# - "./check-style"
-# - python3 src/build.py -c tests/test-config.yaml tests --ext ".cptv"
-# - sudo mkdir /var/spool/cptv
-# - sudo chmod -R 777 /var/spool/cptv
-# - wget -O thermal-model.tar https://github.com/TheCacophonyProject/AI-Model/releases/download/v0.3/inc3-19012023-tflite.tar
-# - mkdir thermal-model
-# - tar xzvf thermal-model.tar -C thermal-model --strip-components=1
-# # going to fix shortly GP
-# # - python3 classify.py -c tests/test-config.yaml ./tests/clips/
-# - pip install tflite-runtime==2.11.0
-# - python3 src/piclassify.py --file tests/clips/possum.cptv  --thermal-config-file tests/config.toml
-#   -c tests/test-config.yaml
+- pip install cmake
+- sudo apt install -y python3-dbus ffmpeg build-essential libdbus-glib-1-dev libgirepository1.0-dev tzdata libcairo2-dev libjpeg-dev python-cairo libhdf5-dev libopencv-dev cmake
+- pip install -r requirements.txt
+before_script:
+- pip install black --upgrade
+- pip install gdown
+script:
+- pytest -s
+- "./check-style"
+- python3 src/build.py -c tests/test-config.yaml tests --ext ".cptv"
+- sudo mkdir /var/spool/cptv
+- sudo chmod -R 777 /var/spool/cptv
+- wget -O thermal-model.tar https://github.com/TheCacophonyProject/AI-Model/releases/download/v0.3/inc3-19012023-tflite.tar
+- mkdir thermal-model
+- tar xzvf thermal-model.tar -C thermal-model --strip-components=1
+# going to fix shortly GP
+# - python3 classify.py -c tests/test-config.yaml ./tests/clips/
+- pip install tflite-runtime==2.11.0
+- python3 src/piclassify.py --file tests/clips/possum.cptv  --thermal-config-file tests/config.toml
+  -c tests/test-config.yaml
 before_deploy:
 - pip install twine
 - echo $'[pypi]\nusername = __token__\npassword = '$PYPI_TOKEN > ~/.pypirc

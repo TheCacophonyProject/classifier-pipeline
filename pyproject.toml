@@ -23,7 +23,7 @@ classifiers = [
     "Operating System :: OS Independent",
 ]
 dependencies = [
-  "tflite-runtime==2.14.0",
+  "tflite-runtime==2.13.0",
   "matplotlib==3.6.3",
   "pytz==2022.7.1",
   "cptv==1.5.4",
