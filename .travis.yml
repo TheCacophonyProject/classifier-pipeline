@@ -7,26 +7,29 @@ python:
 install:
 - sudo apt-get update
 - python -m pip install --upgrade pip
-- pip install cmake
-- sudo apt install -y python3-dbus ffmpeg build-essential libdbus-glib-1-dev libgirepository1.0-dev tzdata libcairo2-dev libjpeg-dev python-cairo libhdf5-dev libopencv-dev cmake
-- pip install -r requirements.txt
-before_script:
-- pip install black --upgrade
-- pip install gdown
-script:
-- pytest -s
-- "./check-style"
-- python3 src/build.py -c tests/test-config.yaml tests --ext ".cptv"
-- sudo mkdir /var/spool/cptv
-- sudo chmod -R 777 /var/spool/cptv
-- wget -O thermal-model.tar https://github.com/TheCacophonyProject/AI-Model/releases/download/v0.3/inc3-19012023-tflite.tar
-- mkdir thermal-model
-- tar xzvf thermal-model.tar -C thermal-model --strip-components=1
-# going to fix shortly GP
-# - python3 classify.py -c tests/test-config.yaml ./tests/clips/
-- pip install tflite-runtime==2.11.0
-- python3 src/piclassify.py --file tests/clips/possum.cptv  --thermal-config-file tests/config.toml
-  -c tests/test-config.yaml
+# - pip install cmake
+# - sudo apt install -y python3-dbus ffmpeg build-essential libdbus-glib-1-dev libgirepository1.0-dev tzdata libcairo2-dev libjpeg-dev python-cairo libhdf5-dev libopencv-dev cmake
+# - pip install -r requirements.txt
+# before_script:
+# - pip install black --upgrade
+# - pip install gdown
+# script:
+# - pytest -s
+# - "./check-style"
+# - python3 src/build.py -c tests/test-config.yaml tests --ext ".cptv"
+# - sudo mkdir /var/spool/cptv
+# - sudo chmod -R 777 /var/spool/cptv
+# - wget -O thermal-model.tar https://github.com/TheCacophonyProject/AI-Model/releases/download/v0.3/inc3-19012023-tflite.tar
+# - mkdir thermal-model
+# - tar xzvf thermal-model.tar -C thermal-model --strip-components=1
+# # going to fix shortly GP
+# # - python3 classify.py -c tests/test-config.yaml ./tests/clips/
+# - pip install tflite-runtime==2.11.0
+# - python3 src/piclassify.py --file tests/clips/possum.cptv  --thermal-config-file tests/config.toml
+#   -c tests/test-config.yaml
+before_deploy:
+- pip install twine
+- echo $'[pypi]\nusername = __token__\npassword = '$PYPI_TOKEN > ~/.pypirc
 deploy:
   provider: script
   script: bash ./docker_push.sh
@@ -35,9 +38,7 @@ deploy:
     tags: true
   skip_cleanup: 'true'
 deploy:
-  provider: pypi
-  username: __token__
-  password:
-    secure: mPvO5qCarHJHx0zJTTb4RQRbY5sTme/2ir7K0ZTbMmqoQXD5j91Mx+g5TTpcQb25hC8LRsIJLptsBAMi5QAwhqYS5i8w4A5DQywyFFFaDyTjWrk6jI7tK7hgw7sX7aWujw1OSdK/+kTXGUjBrLkYLrjJVsn63+8cOD1pFljMXBT9+kv5eUO5bXtZQyHMzqC5lkIwrseAcDrr9pRny3sQv1ujmVBGoVMPC3WkdfXF3erWTKEjPYAtasPi2iOehYZnoI1SX8vidLMlnovZJIKXDl2CkrW59AgwzRtzVCoAmvEcLOsyxheeQletHYtMOFU3+iXPLxRYqlkdhaZzidnvZLODbX2SgwnYdr8+cEQEgfN5lMrklbpPsGy59BhgjaZ1aGCH5+EsZeL+cAoPmD0zf3x9a2z0AflxlTEreJCe4DGHChuMBDH64JK18kYXojX5QXvnHw9X0c97K0OXiCXuXC9X9rQrG9/en3t2lGF+1q9Tu7Rtv+zsiPaqoohcypYfYawA6ow+/xoSa2pfqNpsSaamwDlpxG1PMSzEcKoIFdjrelmndsKGnN9X3K5iRXrAOeylWWP0nur6Y5yMUCC/m8uTJK6Uu6vGc8C8+lz0vSYk2UccL5EQgYYgKLBUcaIpWuHV1/Uca/oon89l+RQay/P4P8pT3LrAjYBdqRWO96o=
+  provider: script
+  script:  bash ./docker_push.sh
   on:
     branch: pypi2
