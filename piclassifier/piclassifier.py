@@ -736,12 +736,18 @@ def on_track_trapped(track):
 def on_recording_stopping(filename):
     global clip, track_extractor, predictions
 
-    if predictions is not None:
-        for track_prediction in predictions.prediction_per_track.values():
-            track_prediction.normalize_score()
-
     if clip and track_extractor:
         track_extractor.apply_track_filtering(clip)
+        if predictions is not None:
+            valid_preds = {}
+            for track in clip.tracks:
+                if track.get_id() in predictions.prediction_per_track:
+                    valid_preds[track.get_id()] = predictions.prediction_per_track[
+                        track.get_id()
+                    ]
+                    valid_preds[track.get_id()].normalize_score()
+            predictions.prediction_per_track = valid_preds
+
         # filter criteria has been scaled so resize after
         # if track_extractor.scale is not None:
         #     for track in clip.tracks:
