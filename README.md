@@ -191,3 +191,9 @@ Will save to <path to saved model>/tflite/converted_model.tflite
 - Will need the intel tools from `https://www.intel.com/content/www/us/en/developer/articles/guide/get-started-with-neural-compute-stick.html`
 - Tested on Inceptionv3 models `python3 ~/intel/openvino_<VERSION>/deployment_tools/model_optimizer/mo_tf.py --saved_model_dir <Path to dir with weights saved to saved_model.pb> --input_shape [1,<width>,<height>,3]`
 - Make sure to also copy the metadata.txt to go with this converted file, this should be renamed to the same as te converted model .txt, by default it saves as saved_model.xml so metadata.txt should be copied to saved_model.txt
+
+
+## PYPI
+- To run the tracking and classification on a pi can use the pre build package by running `pip install classifier-pipeline`.
+This will install the executable `pi_classify` which can be used to connect to leptond or an ir camera
+- In order to build a new version the version number in pyproject.toml must be updated and the code pushed to the pi-classifier branch

@@ -45,5 +45,5 @@ deploy:
   provider: script
   script:  bash ./pypi_push.sh
   on:
-    branch: pypi2
+    branch: pi-classifier
   skip_cleanup: 'true'
