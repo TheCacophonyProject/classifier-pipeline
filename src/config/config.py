@@ -2,6 +2,7 @@ from pathlib import Path
 import os.path as path
 
 import attr
+import logging
 import yaml
 
 from .loadconfig import LoadConfig
@@ -46,7 +47,7 @@ class Config(DefaultConfig):
 
     @classmethod
     def load_from_file(cls, filename=None):
-        if not filename:
+        if not Path(filename).exists():
             filename = find_config()
         with open(filename) as stream:
             return cls.load_from_stream(stream)
@@ -113,6 +114,7 @@ class Config(DefaultConfig):
 def find_config():
     for directory in CONFIG_DIRS:
         p = directory / CONFIG_FILENAME
+        logging.info("Looking for config %s", p)
         if p.is_file():
             return str(p)
     raise FileNotFoundError(
