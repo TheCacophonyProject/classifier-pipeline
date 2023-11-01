@@ -13,7 +13,7 @@ authors = [
   { name="Giampaolo Ferraro", email="giampaolo@cacophony.org.nz" },
 ]
 description = "Classifier Pipeline"
-readme = "README.md"
+readme = "PI-README.md"
 requires-python = ">=3.7"
 classifiers = [
     "Programming Language :: Python :: 3.10",
@@ -56,7 +56,7 @@ pi_classify = "piclassifier:pi_classify"
 "Bug Tracker" = "https://github.com/pypa/sampleproject/issues"
 
 [tool.hatch.build.targets.wheel.force-include]
-"./pi-classifier.yaml" = "pi-classifier.yaml"
+"./pi-classifier.yaml" = "classifier.yaml"
 
 [tool.hatch.build.targets.wheel]
 packages = [ "src/piclassifier", "src/config", "src/track", "src/ml_tools","src/classify"]

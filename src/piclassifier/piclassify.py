@@ -59,7 +59,7 @@ def parse_args():
     parser.add_argument(
         "-c",
         "--config-file",
-        default="pi-classifier.yaml",
+        default="classifier.yaml",
         help="Path to config file to use",
     )
 
