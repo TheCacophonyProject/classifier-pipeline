@@ -13,7 +13,7 @@ from .buildconfig import BuildConfig
 from .defaultconfig import DefaultConfig, deep_copy_map_if_key_not_exist
 
 CONFIG_FILENAME = "classifier.yaml"
-CONFIG_DIRS = [Path(__file__).parent.parent, Path("/etc/cacophony")]
+CONFIG_DIRS = [Path("/etc/cacophony"), Path(__file__).parent.parent]
 
 
 @attr.s
