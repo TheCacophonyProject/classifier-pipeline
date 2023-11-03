@@ -63,7 +63,7 @@ def train_model(
     print(model.hyperparams_string)
     print()
     try:
-        model.train_model_tfrecords(
+        model.train_model(
             epochs=conf.train.epochs,
             run_name=run_name + "_" + "TEST",
             weights=weights,

@@ -13,6 +13,7 @@ import logging
 import pickle
 import sys
 import os
+import time
 
 os.environ["CUDA_VISIBLE_DEVICES"] = "1"
 import json
@@ -24,6 +25,8 @@ from ml_tools.kerasmodel import (
     get_dataset,
     get_excluded,
 )
+from classify.trackprediction import TrackPrediction
+
 from ml_tools import tools
 from ml_tools.trackdatabase import TrackDatabase
 from ml_tools.rawdb import RawDatabase
@@ -36,12 +39,14 @@ from sklearn.metrics import confusion_matrix
 import matplotlib.pyplot as plt
 import numpy as np
 from pathlib import Path
-from ml_tools.preprocess import preprocess_ir, preprocess_frame
+from ml_tools.preprocess import preprocess_frame
 from ml_tools.frame import Frame
 from ml_tools import imageprocessing
 import cv2
 from config.loadconfig import LoadConfig
 from sklearn.metrics import confusion_matrix
+from multiprocessing import Pool
+
 
 root_logger = logging.getLogger()
 for handler in root_logger.handlers:
@@ -60,6 +65,40 @@ land_birds = [
     "penguin",
     "duck",
 ]
+
+
+# basic formula to give a number to compare models
+def model_score(cm, labels):
+    cm = np.around(cm.astype("float") / cm.sum(axis=1)[:, np.newaxis], decimals=2)
+    cm = np.nan_to_num(cm)
+
+    fp_index = labels.index("false-positive")
+    none_index = None
+    unid_index = None
+    if "None" in labels:
+        none_index = labels.index("None")
+    if "unidentified" in labels:
+        unid_index = labels.index("unidentified")
+    score = 0
+    for l_i, l in enumerate(labels):
+        fp_acc = cm[l_i][fp_index]
+        none_acc = 0
+        unid_acc = 0
+        accuracy = cm[l_i][l_i]
+        if none_index:
+            none_acc = cm[l_i][none_index]
+        if unid_index:
+            unid_acc = cm[l_i][unid_index]
+        if l == "bird":
+            other_animals = 1 - (fp_acc + none_acc + unid_acc)
+            score += accuracy * 1.2 - other_animals
+        elif l in ["vehicle", "wallaby"]:
+            score += accuracy * 0.8
+        elif l in ["mustelid", "human"]:
+            score += accuracy * 0.9
+        elif l not in ["None", "unidentified"]:
+            score += accuracy * 1
+    logging.info("Model accuracy score is %s", score)
 
 
 def get_mappings(label_paths):
@@ -231,6 +270,59 @@ def evalute_prod_confusion(dir, confusion_file):
     # Log the confusion matrix as an image summary.
     figure = plot_confusion_matrix(cm, class_names=labels)
     plt.savefig(confusion_file, format="png")
+    # cm = np.around(cm.astype("float") / cm.sum(axis=1)[:, np.newaxis], decimals=2)
+    # cm = np.nan_to_num(cm)
+    model_score(cm, labels)
+
+
+EXCLUDED_TAGS = ["poor tracking", "part", "untagged", "unidentified"]
+worker_model = None
+
+
+def init_worker(model):
+    global worker_model
+    worker_model = model
+
+
+def load_clip_data(cptv_file):
+    # for clip in dataset.clips:
+    reason = {}
+    clip_db = RawDatabase(cptv_file)
+    clip = clip_db.get_clip_tracks(LoadConfig.DEFAULT_GROUPS)
+    if clip is None:
+        logging.warn("No clip for %s", cptv_file)
+        return None
+
+    if filter_clip(clip, reason):
+        logging.info("Filtering %s", cptv_file)
+        return None
+    clip.tracks = [
+        track for track in clip.tracks if not filter_track(track, EXCLUDED_TAGS, reason)
+    ]
+    if len(clip.tracks) == 0:
+        logging.info("No tracks after filtering %s", cptv_file)
+        return None
+    clip_db.load_frames()
+    segment_frame_spacing = int(round(clip.frames_per_second))
+    thermal_medians = []
+    for f in clip_db.frames:
+        thermal_medians.append(np.median(f.thermal))
+    thermal_medians = np.uint16(thermal_medians)
+    data = []
+    for track in clip.tracks:
+        frames, preprocessed, masses = worker_model.preprocess(
+            clip_db, track, frames_per_classify=25
+        )
+        data.append(
+            (
+                f"{track.clip_id}-{track.get_id()}",
+                track.label,
+                frames,
+                preprocessed,
+                masses,
+            )
+        )
+    return data
 
 
 def evaluate_dir(
@@ -242,188 +334,76 @@ def evaluate_dir(
     with open("label_paths.json", "r") as f:
         label_paths = json.load(f)
     label_mapping = get_mappings(label_paths)
-    # dataset = Dataset(
-    #     dir,
-    #     "dataset",
-    #     config,
-    #     consecutive_segments=False,
-    #     label_mapping=label_mapping,
-    #     raw=True,
-    #     ext=".cptv",
-    # )
-    #
-    # tracks_loaded, total_tracks = dataset.load_clips(dont_filter_segment=True)
     reason = {}
     y_true = []
     y_pred = []
     files = list(dir.glob(f"**/*cptv"))
     files.sort()
-    for cptv_file in files:
-        # for clip in dataset.clips:
-        clip_db = RawDatabase(cptv_file)
-        clip = clip_db.get_clip_tracks(LoadConfig.DEFAULT_GROUPS)
-        if clip is None:
-            logging.warn("No clip for %s", cptv_file)
-            continue
-
-        if filter_clip(clip, reason):
-            logging.info("Filtering %s", cptv_file)
-            continue
-        clip.tracks = [
-            track
-            for track in clip.tracks
-            if not filter_track(track, config.load.excluded_tags, reason)
-        ]
-        if len(clip.tracks) == 0:
-            logging.info("No tracks after filtering %s", cptv_file)
-            continue
-        clip_db.load_frames()
-        segment_frame_spacing = int(round(clip.frames_per_second))
-        thermal_medians = []
-        for f in clip_db.frames:
-            thermal_medians.append(np.median(f.thermal))
-        thermal_medians = np.uint16(thermal_medians)
-
-        for track in clip.tracks:
-            track.calculate_segments(
-                segment_frame_spacing * 2,
-                model.params.square_width**2,
-                segment_min_mass=10,
-                segment_type=SegmentType.ALL_SECTIONS,
-                ffc_frames=clip_db.ffc_frames,
-            )
-            frame_indices = set()
-            for sample in track.samples:
-                frame_indices.update(set(sample.frame_indices))
-                sample.remapped_label = label_mapping.get(
-                    sample.original_label, sample.original_label
+    # files = files[:8]
+    start = time.time()
+    # quite faster with just one process for loading and using main process for predicting
+    with Pool(processes=1, initializer=init_worker, initargs=(model,)) as pool:
+        for clip_data in pool.imap_unordered(load_clip_data, files):
+            if clip_data is None:
+                continue
+            for data in clip_data:
+                label = data[1]
+                preprocessed = data[3]
+                output = model.predict(preprocessed)
+                prediction = TrackPrediction(data[0], model.labels)
+                masses = np.array(data[4])
+                masses = masses[:, None]
+                top_score = None
+                # if model.params.multi_label is True:
+                #     # every label could be 1 for each prediction
+                #     top_score = len(output)
+                #     smoothed = output
+                # else:
+                smoothed = output * output * masses
+                prediction.classified_clip(
+                    output, smoothed, data[2], top_score=top_score
                 )
-                track.label = sample.remapped_label
-            frame_indices = list(frame_indices)
-            frame_indices.sort()
-            track_frames = {}
-            # frames = []
-            for i in frame_indices:
-                f = clip_db.frames[i]
-                f.region = track.regions_by_frame[f.frame_number]
-                pre_f = preprocess_frame(
-                    f, (32, 32), f.region, clip_db.background, crop_rectangle
-                )
-                track_frames[i] = pre_f
-
-            # for f in frames:
-            #     region = track.regions_by_frame[f.frame_number]
-            #     track_frame = f.crop_by_region(region)
-            #     track_frame.region = region
-            #     track_frames[region.frame_number] = track_frame
-            #
-            # min_diff, max_diff = filter_diffs(track_frames.values(), clip_db.background)
-            # for f in track_frames.values():
-            #     f.float_arrays()
-            #     f.filtered = f.thermal - f.region.subimage(clip_db.background)
-            #     f.filtered, stats = imageprocessing.normalize(
-            #         f.filtered, min=min_diff, max=max_diff, new_max=255
-            #     )
-            #     f.thermal -= thermal_medians[f.frame_number]
-            #     np.clip(f.thermal, a_min=0, a_max=None, out=f.thermal)
-            #     f.thermal, stats = imageprocessing.normalize(f.thermal, new_max=255)
-            #     if f.thermal.size > 0:
-            #         f.resize_with_aspect(
-            #             (32, 32),
-            #             crop_rectangle,
-            #             True,
-            #         )
-
-            prediction = model.classify_track_data(
-                track.track_id, track_frames, track.samples
-            )
-            y_true.append(track.label)
-            if prediction.predicted_tag() is None:
-                y_pred.append("None")
-            else:
-                # to compare to prod add conf rules
-                if (
-                    prediction.clarity > min_tag_clarity
-                    and prediction.max_score > min_tag_confidence
-                ):
-                    y_pred.append(prediction.predicted_tag())
-                else:
+                y_true.append(label_mapping.get(label, label))
+                predicted_labels = [prediction.predicted_tag()]
+                confidence = prediction.max_score
+                predicted_tag = "None"
+                if confidence < 0.8:
                     y_pred.append("unidentified")
-            print(
-                track,
-                "Got a prediction of",
-                y_pred[-1],
-                " should be ",
-                track.label,
-                np.round(100 * prediction.predictions),
-            )
+                elif len(predicted_labels) == 0:
+                    y_pred.append("None")
+                else:
+                    logging.info("Predicted  %s", predicted_labels)
+                    predicted_tag = ",".join(predicted_labels)
+                    y_pred.append(predicted_tag)
+                print(
+                    data[0],
+                    "Got a prediction of",
+                    y_pred[-1],
+                    " should be ",
+                    label,
+                    np.round(100 * prediction.class_best_score),
+                )
+                # if predicted_tag not in model.labels:
+                # model.labels.append(predicted_tag)
     model.labels.append("None")
     model.labels.append("unidentified")
-
     cm = confusion_matrix(y_true, y_pred, labels=model.labels)
     # Log the confusion matrix as an image summary.
     figure = plot_confusion_matrix(cm, class_names=model.labels)
     plt.savefig(confusion_file, format="png")
+    model_score(cm, model.labels)
 
 
 min_tag_clarity = 0.2
 min_tag_confidence = 0.8
 
 
-# trying to figre out differing predictions
-def test_model(model_file, weights, config):
-    import tensorflow.keras.backend as K
-
-    model = None
-    tf.random.set_seed(1)
-    model = KerasModel(train_config=config.train)
-    model.load_model(model_file.parent)
-    # model.model.save_weights(model_file.parent / "final_weights")
-    # model.build_model(dropout=0.3)
-
-    # model.model.load_weights(str(weights))
-    # print("Loading weigfhts", weights)
-    model.model.load_weights(weights)
-    model = model.model
-
-    output = model.layers[1].output
-    for new_l in model.layers[2:]:
-        print(new_l.name)
-        output = new_l(output)
-    new_model = tf.keras.models.Model(model.layers[1].input, outputs=output)
-
-    print("Saving", model_file.parent / "re_save")
-    new_model.summary()
-    new_model.save(model_file.parent / "re_save")
-    return
-    for _ in range(2):
-        test = np.ones((1, 160, 160, 3), dtype=np.float32)
-        test = test / 2.0
-        print("RUN")
-        print("RUN")
-        print("RUN")
-        print("RUN")
-
-        # for l, o in zip(model.layers[1].layers, layer_outs):
-        #     print(l.name)
-        #     for x in np.array(o).ravel():
-        #         print(x)
-        print(model.predict(test))
-        # print(layer_outs)
-    return
-
-
+# was used to save model architecture differently so that the predictions were the same
 def re_save(model_file, weights, config):
     tf.random.set_seed(1)
     model = KerasModel(train_config=config.train)
     model.load_model(model_file.parent)
-    # model.model.save_weights(model_file.parent / "final_weights")
-    # model.build_model(dropout=0.3)
-
-    # model.model.load_weights(str(weights))
-    # print("Loading weigfhts", weights)
-    # model.model.save_weight(model_file.parent / "final_weights")
-    model.model.load_weights(weights)
+    model.model.load_weights(weights).expect_partial()
     model = model.model
 
     output = model.layers[1].output
@@ -441,17 +421,13 @@ def main():
     args = load_args()
     init_logging()
     config = Config.load_from_file(args.config_file)
-    # evalute_prod_confusion(args.evaluate_dir, args.confusion)
     print("LOading config", args.config_file)
     weights = None
     if args.model_file:
         model_file = Path(args.model_file)
     if args.weights:
         weights = model_file / args.weights
-    # test_model(model_file, Path(weights), config)
-    # return
     base_dir = config.tracks_folder
-    tf.random.set_seed(1)
 
     model = KerasModel(train_config=config.train)
     model.load_model(model_file, training=False, weights=weights)
@@ -488,127 +464,6 @@ def main():
             model.labels,
         )
         model.confusion_tfrecords(dataset, args.confusion)
-
-
-def evaluate_db_clips(model, config, after_date, confusion_file="tracks-confusion"):
-    type = model.type
-    if confusion_file is None:
-        confusion_file = "tracks-confusion"
-    db_file = os.path.join(config.tracks_folder, "dataset.hdf5")
-    dataset = Dataset(db_file, "dataset", config)
-    dataset.segment_type = SegmentType.ALL_SECTIONS
-    tracks_loaded, total_tracks = dataset.load_clips(after_date=after_date)
-    logging.info("Samples / Tracks/ Bins/ weight")
-
-    for label in dataset.labels:
-        logging.info("%s %s %s %s %s", label, *dataset.get_counts(label))
-
-    samples_by_track = {}
-    for s in dataset.samples:
-        key = f"{s.clip_id}-{s.track_id}"
-        if key in samples_by_track:
-            samples_by_track[key].append(s)
-        else:
-            samples_by_track[key] = [s]
-
-    actual = []
-    predicted = []
-    probs = []
-    for samples in samples_by_track.values():
-        s = samples[0]
-        background = dataset.db.get_clip_background(s.clip_id)
-        track_data = dataset.db.get_track(s.clip_id, s.track_id, channels=[0])
-        if type == "IR":
-            for frame in track_data:
-                preprocessed = preprocess_ir(
-                    frame.copy(),
-                    (
-                        model.params.frame_size,
-                        model.params.frame_size,
-                    ),
-                    False,
-                    frame.region,
-                    model.preprocess_fn,
-                    save_info=f"{frame.region.frame_number} - {frame.region}",
-                )
-                predictions = model.model.predict(preprocessed[np.newaxis, :])
-                best_res = np.argmax(predictions[0])
-                prediction = model.labels[best_res]
-                if prediction != s.label:
-                    if prediction == "false-positive":
-                        out_dir = "animal-fp"
-                    else:
-                        out_dir = "diff-animal"
-
-                    cv2.imwrite(
-                        f"{out_dir}/{s.clip_id}-{s.track_id}-{frame.frame_number}-{s.label}-pred-{prediction}.png",
-                        frame.thermal,
-                    )
-                # 1 / 0
-
-        else:
-            for f in track_data:
-                sub_back = f.region.subimage(background)
-                f.filtered = f.thermal - sub_back
-                f.resize_with_aspect(
-                    (model.params.frame_size, model.params.frame_size),
-                    crop_rectangle,
-                    True,
-                )
-            logging.debug(
-                f"Evaluating {s.clip_id}-{s.track_id} as {s.label} with {len(samples)} samples"
-            )
-            for s in samples:
-                # make relative
-                s.frame_numbers = s.frame_numbers - s.start_frame
-            prediction = model.classify_track_data(s.track_id, track_data, samples)
-            logging.debug(prediction.description())
-            actual.append(s.label)
-            predicted.append(prediction.predicted_tag())
-            probs.append(prediction.max_score)
-    actual = np.array(actual)
-    predicted = np.array(predicted)
-    probs = np.array(probs)
-    logging.info("Saving confusion matrix to %s.png", confusion_file)
-    cm = confusion_matrix(actual, predicted, labels=model.labels)
-    figure = plot_confusion_matrix(cm, class_names=model.labels)
-    plt.savefig(f"{confusion_file}.png", format="png")
-
-    logging.info(
-        "Saving predictions above %s confusion matrix to %s-confident.png",
-        PROB_THRESHOLD,
-        confusion_file,
-    )
-
-    probs_mask = probs < PROB_THRESHOLD
-    # set all below threshold to be wrong
-    predicted[probs_mask] = -1
-    cm = confusion_matrix(actual, predicted, labels=model.labels)
-    figure = plot_confusion_matrix(cm, class_names=model.labels)
-    plt.savefig(f"{confusion_file}-confident.png", format="png")
-
-
-def evaluate_db_clip(model, db, classifier, clip_id, track_id=None):
-    logging.info("Prediction tracks %s", track)
-    clip_meta = db.get_clip_meta(clip_id)
-    if track_id is None:
-        tracks = db.get_clip_tracks(clip_id)
-    else:
-        tracks = [track_id]
-    for track_id in tracks:
-        track_meta = db.get_track_meta(clip_id, track_id)
-        track_data = db.get_track(clip_id, track_id)
-
-        regions = []
-        medians = clip_meta["frame_temp_median"][
-            track_meta["start_frame"] : track_meta["start_frame"] + track_meta["frames"]
-        ]
-        for region in track_meta.track_bounds:
-            regions.append(tools.Rectangle.from_ltrb(*region))
-        track_prediction = model.classify_track_data(
-            track_id, track_data, medians, regions=regions
-        )
-        logging.info("Predicted %s", track_prediction.predicted_tag(model.labels))
 
 
 if __name__ == "__main__":

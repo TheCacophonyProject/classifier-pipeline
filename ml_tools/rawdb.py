@@ -20,6 +20,7 @@ from ml_tools.datasetstructures import TrackHeader, ClipHeader
 from track.track import Track
 from track.cliptrackextractor import is_affected_by_ffc
 from cptv import CPTVReader
+from ml_tools.tools import Rectangle
 
 special_datasets = [
     "tag_frames",
@@ -38,6 +39,15 @@ class RawDatabase:
         self.background = None
         self.ffc_frames = None
         self.frames = None
+        self.crop_rectangle = Rectangle(1, 1, 160 - 2, 140 - 2)
+
+    def frames_kept(self):
+        return None
+
+    def get_frame(self, frame_number):
+        if self.frames is None or frame_number > len(self.frames):
+            return None
+        return self.frames[frame_number]
 
     def get_frames(self):
         return self.frames
@@ -90,6 +100,14 @@ class RawDatabase:
         metadata = self.meta_data
         if metadata is None:
             return None
+        edge_pixels = metadata.get("edgePixels", 1)
+        resx = metadata.get("resX", 160)
+        resy = metadata.get("resY", 140)
+
+        self.crop_rectangle = Rectangle(
+            edge_pixels, edge_pixels, resx - edge_pixels * 2, resy - edge_pixels * 2
+        )
+
         clip_header = ClipHeader(
             clip_id=int(metadata["id"]),
             station_id=metadata.get("stationId"),

@@ -32,7 +32,7 @@ def get_weighting(
     return weights
 
 
-def get_distribution(dataset, num_labels, batched=True):
+def get_distribution(dataset, num_labels, batched=True, one_hot=True):
     true_categories = [y for x, y in dataset]
     dist = np.zeros((num_labels), dtype=np.float32)
     if len(true_categories) == 0:
@@ -42,9 +42,12 @@ def get_distribution(dataset, num_labels, batched=True):
     if len(true_categories) == 0:
         return dist
     classes = []
-    for y in true_categories:
-        non_zero = tf.where(y).numpy()
-        classes.extend(non_zero.flatten())
+    if one_hot:
+        for y in true_categories:
+            non_zero = tf.where(y).numpy()
+            classes.extend(non_zero.flatten())
+    else:
+        classes = true_categories.flatten()
     classes = np.array(classes)
 
     c = Counter(list(classes))
@@ -116,8 +119,11 @@ def get_dataset(load_function, base_dir, labels, **args):
         random.shuffle(filenames)
 
     dataset = load_function(filenames, remap_lookup, new_labels, args)
+    if not args.get("one_hot", True):
+        filter_excluded = lambda x, y: not tf.math.less(y, 0)
 
-    filter_excluded = lambda x, y: not tf.math.equal(tf.math.count_nonzero(y), 0)
+    else:
+        filter_excluded = lambda x, y: not tf.math.equal(tf.math.count_nonzero(y), 0)
     dataset = dataset.filter(filter_excluded)
     if dataset is None:
         logging.warn("No dataset for %s", filenames)
@@ -131,17 +137,22 @@ def get_dataset(load_function, base_dir, labels, **args):
         )
     # tf refues to run if epoch sizes change so we must decide a costant epoch size even though with reject res
     # it will chang eeach epoch, to ensure this take this repeat data and always take epoch_size elements
-    dist = get_distribution(dataset, num_labels, batched=False)
-    for label, d in zip(new_labels, dist):
-        logging.info("Have %s: %s", label, d)
-    epoch_size = np.sum(dist)
-    logging.info("Setting dataset size to %s", epoch_size)
-    if not args.get("only_features", False):
-        dataset = dataset.repeat(2)
-    scale_epoch = args.get("scale_epoch", None)
-    if scale_epoch:
-        epoch_size = epoch_size // scale_epoch
-    dataset = dataset.take(epoch_size)
+    if not args.get("only_features"):
+        dist = get_distribution(
+            dataset, num_labels, batched=False, one_hot=args.get("one_hot", True)
+        )
+        for label, d in zip(new_labels, dist):
+            logging.info("Have %s: %s", label, d)
+        epoch_size = np.sum(dist)
+        logging.info("Setting dataset size to %s", epoch_size)
+        if not args.get("only_features", False):
+            dataset = dataset.repeat(2)
+        scale_epoch = args.get("scale_epoch", None)
+        if scale_epoch:
+            epoch_size = epoch_size // scale_epoch
+            dataset = dataset.take(epoch_size)
+    else:
+        epoch_size = 1
     dataset = dataset.prefetch(buffer_size=AUTOTUNE)
     batch_size = args.get("batch_size", None)
     if batch_size is not None:

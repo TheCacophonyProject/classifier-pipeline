@@ -91,7 +91,8 @@ def basic_block(X, f, filters, stage, block, stride=1):
 
 
 def main():
-    WRResNet()
+    wr = WRResNet(tf.keras.Input(shape=(160, 160, 1), name="input"))
+    wr.summary()
 
 
 if __name__ == "__main__":
