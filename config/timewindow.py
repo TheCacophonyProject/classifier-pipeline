@@ -11,10 +11,10 @@ from ml_tools import tools
 class WindowStatus(enum.Enum):
     """Types of frames"""
 
-    new = -1
     before = 0
     inside = 1
     after = 2
+    non_stop = 3
 
 
 class TimeWindow:
@@ -24,6 +24,13 @@ class TimeWindow:
         self.location = None
         self.last_sunrise_check = None
         self.non_stop = not self.use_sunrise_sunset() and self.start.dt == self.end.dt
+
+    def clone(self):
+        new_window = TimeWindow(self.start.clone(), self.end.clone())
+        new_window.location = self.location
+        new_window.last_sunrise_check = self.last_sunrise_check
+        new_window.non_stop = self.non_stop
+        return new_window
 
     def next_start(self):
         return next_time(self.start)
@@ -35,6 +42,8 @@ class TimeWindow:
         return self.start.is_relative or self.end.is_relative
 
     def window_status(self):
+        if self.non_stop:
+            return WindowStatus.non_stop
         if self.use_sunrise_sunset():
             self.update_sun_times()
         if self.start.is_before():
@@ -48,8 +57,10 @@ class TimeWindow:
             # update to tomorrows times
             self.update_sun_times(True)
         else:
-            self.start.dt = self.start.dt + timedelta(days=1)
-            self.end.dt = self.end.dt + timedelta(days=1)
+            if self.start.dt is not None:
+                self.start.dt = self.start.dt + timedelta(days=1)
+            if self.end.dt is not None:
+                self.end.dt = self.end.dt + timedelta(days=1)
         logging.info(
             "Updated to next window start %s end %s", self.start.dt, self.end.dt
         )
@@ -134,7 +145,6 @@ class RelAbsTime:
         self.offset_s = None
         self.dt = None
         self.any_time = False
-
         if time_str == "" or (
             time_str is None and default_offset is None and default_time is None
         ):
@@ -157,6 +167,14 @@ class RelAbsTime:
                 self.dt = default_time
             else:
                 self.is_relative = True
+
+    def clone(self):
+        new_time = RelAbsTime("")
+        new_time.is_relative = self.is_relative
+        new_time.offset_s = self.offset_s
+        new_time.dt = self.dt
+        new_time.any_time = self.any_time
+        return new_time
 
     @property
     def time(self):

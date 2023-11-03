@@ -47,6 +47,7 @@ def run_classifier(
     frame_queue, config, thermal_config, headers, classify=True, detect_after=None
 ):
     init_logging()
+    pi_classifier = None
     try:
         pi_classifier = PiClassifier(
             config, thermal_config, headers, classify, detect_after
@@ -66,7 +67,8 @@ def run_classifier(
                 pi_classifier.process_frame(frame[0], frame[1])
     except:
         logging.error("Error running classifier restarting ..", exc_info=True)
-        pi_classifier.disconnected()
+        if pi_classifier is not None:
+            pi_classifier.disconnected()
         return
 
 
@@ -734,12 +736,18 @@ def on_track_trapped(track):
 def on_recording_stopping(filename):
     global clip, track_extractor, predictions
 
-    if predictions is not None:
-        for track_prediction in predictions.prediction_per_track.values():
-            track_prediction.normalize_score()
-
     if clip and track_extractor:
         track_extractor.apply_track_filtering(clip)
+        if predictions is not None:
+            valid_preds = {}
+            for track in clip.tracks:
+                if track.get_id() in predictions.prediction_per_track:
+                    valid_preds[track.get_id()] = predictions.prediction_per_track[
+                        track.get_id()
+                    ]
+                    valid_preds[track.get_id()].normalize_score()
+            predictions.prediction_per_track = valid_preds
+
         # filter criteria has been scaled so resize after
         # if track_extractor.scale is not None:
         #     for track in clip.tracks:
