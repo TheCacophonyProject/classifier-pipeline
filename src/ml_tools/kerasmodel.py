@@ -33,6 +33,7 @@ from ml_tools import irdataset
 from ml_tools.tfdataset import get_weighting, get_distribution, get_dataset as get_tf
 import tensorflow_decision_forests as tfdf
 from ml_tools import forestmodel
+from ml_tools.preprocess import FrameTypes
 
 classify_i = 0
 
@@ -68,6 +69,7 @@ class KerasModel(Interpreter):
         self.ds_by_label = True
         self.excluded_labels = []
         self.remapped_labels = []
+        self.orig_labels = None
 
     def load_training_meta(self, base_dir):
         file = f"{base_dir}/training-meta.json"
@@ -207,45 +209,12 @@ class KerasModel(Interpreter):
             return WRResNet(input), None
         raise Exception("Could not find model " + pretrained_model)
 
-    def get_preprocess_fn(self):
-        pretrained_model = self.params.model_name
-        if pretrained_model == "resnet":
-            return tf.keras.applications.resnet.preprocess_input
-        elif pretrained_model == "nasnet":
-            return tf.keras.applications.nasnet.preprocess_input
-        elif pretrained_model == "resnetv2":
-            return tf.keras.applications.resnet_v2.preprocess_input
-
-        elif pretrained_model == "resnet152":
-            return tf.keras.applications.resnet.preprocess_input
-
-        elif pretrained_model == "vgg16":
-            return tf.keras.applications.vgg16.preprocess_input
-
-        elif pretrained_model == "vgg19":
-            return tf.keras.applications.vgg19.preprocess_input
-
-        elif pretrained_model == "mobilenet":
-            return tf.keras.applications.mobilenet_v2.preprocess_input
-
-        elif pretrained_model == "densenet121":
-            return tf.keras.applications.densenet.preprocess_input
-
-        elif pretrained_model == "inceptionresnetv2":
-            return tf.keras.applications.inception_resnet_v2.preprocess_input
-        elif pretrained_model == "inceptionv3":
-            return tf.keras.applications.inception_v3.preprocess_input
-        logging.warn(
-            "pretrained model %s has no preprocessing function", pretrained_model
-        )
-        return None
-
     def get_forest_model(self, run_name):
         train_files = os.path.join(self.data_dir, "train")
-        train, remapped = get_dataset(
+        train, remapped, _, _ = get_dataset(
             train_files,
             self.type,
-            self.labels,
+            self.orig_labels,
             batch_size=self.params.batch_size,
             image_size=self.params.output_dim[:2],
             preprocess_fn=self.preprocess_fn,
@@ -254,12 +223,14 @@ class KerasModel(Interpreter):
             stop_on_empty_dataset=False,
             only_features=True,
             one_hot=False,
+            excluded_labels=self.excluded_labels,
+            remapped_labels=self.remapped_labels,
         )
         # have to run fit firest
         rf = tfdf.keras.RandomForestModel()
         rf.fit(train)
         rf.save(os.path.join(self.checkpoint_folder, run_name, "rf"))
-
+        save_metadata(self)
         return rf
 
     def build_model(
@@ -275,8 +246,33 @@ class KerasModel(Interpreter):
         # inputs = base_model.input
         x = base_model.output
         # x = base_model(inputs, training=self.params.base_training)
-
-        if self.params.lstm:
+        if self.params.get("model_merge"):
+            logging.info(
+                "Loading cnn rf model %s %s",
+                self.params.get("model_cnn"),
+                self.params.get("model_rf"),
+            )
+            cnn = tf.keras.models.load_model(self.params.get("model_cnn"))
+            cnn.load_weights(
+                Path(self.params.get("model_cnn")) / "val_acc"
+            ).expect_partial()
+            feature_input = tf.keras.Input(shape=(188), name="feature_input")
+            model_rf = tf.keras.models.load_model(self.params.get("model_rf"))
+            rf = model_rf(feature_input)
+            inputs = [cnn.input, feature_input]
+            cnn.summary()
+            model_rf.summary()
+            print("Outputs", cnn.outputs, rf)
+            x = tf.keras.layers.Concatenate()([cnn.outputs[0], rf])
+            activation = "softmax"
+            if self.params.multi_label:
+                activation = "sigmoid"
+            logging.info("Using %s activation", activation)
+            preds = tf.keras.layers.Dense(
+                len(self.labels), activation=activation, name="merged-prediction"
+            )(x)
+            self.model = tf.keras.models.Model(inputs, outputs=preds)
+        elif self.params.lstm:
             x = tf.keras.layers.GlobalAveragePooling2D()(x)
             for i in dense_sizes:
                 x = tf.keras.layers.Dense(i, activation="relu")(x)
@@ -389,7 +385,7 @@ class KerasModel(Interpreter):
         self.model.trainable = training
         self.load_meta(dir_name)
         if weights is not None:
-            self.model.load_weights(weights)
+            self.model.load_weights(weights).expect_partial()
             logging.info("Loaded weight %s", weights)
         print(self.model.summary())
 
@@ -481,7 +477,7 @@ class KerasModel(Interpreter):
         del self.test
         gc.collect()
 
-    def train_model_tfrecords(
+    def train_model(
         self, epochs, run_name, weights=None, rebalance=False, resample=False
     ):
         logging.info(
@@ -498,7 +494,7 @@ class KerasModel(Interpreter):
 
         if self.params.multi_label:
             self.labels.append("land-bird")
-        orig_labels = self.labels.copy()
+        self.orig_labels = self.labels.copy()
         for l in self.excluded_labels:
             if l in self.labels:
                 self.labels.remove(l)
@@ -520,7 +516,7 @@ class KerasModel(Interpreter):
         self.train, remapped, new_labels, epoch_size = get_dataset(
             train_files,
             self.type,
-            orig_labels,
+            self.orig_labels,
             batch_size=self.params.batch_size,
             image_size=self.params.output_dim[:2],
             preprocess_fn=self.preprocess_fn,
@@ -537,7 +533,7 @@ class KerasModel(Interpreter):
         self.validate, remapped, _, _ = get_dataset(
             validate_files,
             self.type,
-            orig_labels,
+            self.orig_labels,
             batch_size=self.params.batch_size,
             image_size=self.params.output_dim[:2],
             preprocess_fn=self.preprocess_fn,
@@ -585,7 +581,7 @@ class KerasModel(Interpreter):
             self.test, _, _, _ = get_dataset(
                 test_files,
                 self.type,
-                orig_labels,
+                self.orig_labels,
                 batch_size=self.params.batch_size,
                 image_size=self.params.output_dim[:2],
                 preprocess_fn=self.preprocess_fn,
@@ -1389,6 +1385,6 @@ def get_dataset(
 
 class MetaJSONEncoder(json.JSONEncoder):
     def default(self, obj):
-        if isinstance(obj, SegmentType):
+        if isinstance(obj, SegmentType) or isinstance(obj, FrameTypes):
             return obj.name
         return json.JSONEncoder.default(self, obj)

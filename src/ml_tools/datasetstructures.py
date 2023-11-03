@@ -311,10 +311,10 @@ class TrackHeader:
                 self.frame_velocity.append((x - prev[0], y - prev[1]))
             prev = (x, y)
 
-    def calculate_segments(
+    def get_segments(
         self,
-        segment_frame_spacing,
         segment_width,
+        segment_frame_spacing=9,
         segment_type=SegmentType.ALL_RANDOM,
         segment_min_mass=None,
         repeats=1,
@@ -323,7 +323,11 @@ class TrackHeader:
         skip_ffc=True,
         ffc_frames=None,
         location=None,
+        segment_frames=None,
+        from_last=None,
     ):
+        if segment_frames is not None:
+            raise Exception("Have not implement this path")
         min_frames = segment_width
         if self.label == "vehicle" or self.label == "human":
             min_frames = segment_width / 4.0
@@ -354,6 +358,7 @@ class TrackHeader:
         # but might be best to keep samples independent for ease
         for s in self.samples:
             s._track_median_mass = self.median_mass
+        return self.samples
 
     @property
     def camera_id(self):
@@ -452,6 +457,9 @@ class TrackHeader:
 
     def __repr__(self):
         return self.unique_id
+
+    def get_id(self):
+        return self.track_id
 
 
 class Camera:

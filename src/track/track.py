@@ -428,7 +428,6 @@ class Track:
 
     def get_segments(
         self,
-        ffc_frames,
         # frame_temp_median,
         segment_width,
         segment_frame_spacing=9,
@@ -438,6 +437,7 @@ class Track:
         segment_type=SegmentType.ALL_RANDOM,
         from_last=None,
         max_segments=None,
+        ffc_frames=None,
     ):
         if from_last is not None:
             if from_last == 0:

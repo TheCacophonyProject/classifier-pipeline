@@ -16,7 +16,7 @@ from cptv import CPTVReader
 import numpy as np
 from threading import Thread
 
-from config.timewindow import WindowStatus
+from config.timewindow import WindowStatus, TimeWindow, RelAbsTime
 from config.config import Config
 from config.thermalconfig import ThermalConfig
 from .cptvrecorder import CPTVRecorder
@@ -169,6 +169,10 @@ def file_changed(event):
 
 def parse_file(file, config, thermal_config, preview_type):
     _, ext = os.path.splitext(file)
+    thermal_config.recorder.rec_window = rec_window = TimeWindow(
+        RelAbsTime(""),
+        RelAbsTime(""),
+    )
 
     if ext == ".cptv":
         parse_cptv(file, config, thermal_config, preview_type)

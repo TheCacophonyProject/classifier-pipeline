@@ -1,10 +1,11 @@
 from abc import ABC, abstractmethod
-
+import time
 import json
 import logging
 import numpy as np
 from ml_tools.hyperparams import HyperParams
 from pathlib import Path
+from classify.trackprediction import TrackPrediction
 
 
 class Interpreter(ABC):
@@ -33,6 +34,48 @@ class Interpreter(ABC):
         """predict"""
         ...
 
+    def get_preprocess_fn(self):
+        model_name = self.params.model_name
+        if model_name == "inceptionv3":
+            # no need to use tf module, if train other model types may have to add
+            #  preprocess definitions
+            return inc3_preprocess
+        elif model_name == "wr-resnet":
+            return None
+        else:
+            import tensorflow as tf
+
+            if pretrained_model == "resnet":
+                return tf.keras.applications.resnet.preprocess_input
+            elif pretrained_model == "nasnet":
+                return tf.keras.applications.nasnet.preprocess_input
+            elif pretrained_model == "resnetv2":
+                return tf.keras.applications.resnet_v2.preprocess_input
+
+            elif pretrained_model == "resnet152":
+                return tf.keras.applications.resnet.preprocess_input
+
+            elif pretrained_model == "vgg16":
+                return tf.keras.applications.vgg16.preprocess_input
+
+            elif pretrained_model == "vgg19":
+                return tf.keras.applications.vgg19.preprocess_input
+
+            elif pretrained_model == "mobilenet":
+                return tf.keras.applications.mobilenet_v2.preprocess_input
+
+            elif pretrained_model == "densenet121":
+                return tf.keras.applications.densenet.preprocess_input
+
+            elif pretrained_model == "inceptionresnetv2":
+                return tf.keras.applications.inception_resnet_v2.preprocess_input
+        logging.warn(
+            "pretrained model %s has no preprocessing function", pretrained_model
+        )
+        return None
+        logging.info("No preprocess defined for %s", model_name)
+        return None
+
     def preprocess(self, clip, track, **args):
         scale = args.get("scale", None)
         num_predictions = args.get("num_predictions", None)
@@ -40,8 +83,8 @@ class Interpreter(ABC):
         segment_frames = args.get("segment_frames")
         frames_per_classify = args.get("frames_per_classify", 25)
         available_frames = (
-            min(len(track.bounds_history), clip.frame_buffer.max_frames)
-            if clip.frame_buffer.max_frames is not None
+            min(len(track.bounds_history), clip.frames_kept())
+            if clip.frames_kept() is not None
             else len(track.bounds_history)
         )
         if predict_from_last is not None:
@@ -88,6 +131,24 @@ class Interpreter(ABC):
             )
         return frames, preprocessed, masses
 
+    def classify_track(self, clip, track, segment_frames=None):
+        start = time.time()
+        prediction_frames, output, masses = self.predict_track(
+            clip,
+            track,
+            segment_frames=segment_frames,
+            frames_per_classify=self.params.square_width**2,
+        )
+        track_prediction = TrackPrediction(track.get_id(), self.labels)
+        # self.model.predict(preprocessed)
+        masses = np.array(masses)
+        masses = masses[:, None]
+        track_prediction.classified_clip(
+            output, output * output * masses, prediction_frames
+        )
+        track_prediction.classify_time = time.time() - start
+        return track_prediction
+
     def predict_track(self, clip, track, **args):
         frames, preprocessed, masses = self.preprocess(clip, track, **args)
         if preprocessed is None or len(preprocessed) == 0:
@@ -117,7 +178,7 @@ class Interpreter(ABC):
                     region,
                 )
                 continue
-            frame = clip.frame_buffer.get_frame(region.frame_number)
+            frame = clip.get_frame(region.frame_number)
             if frame is None:
                 logging.error(
                     "Clasifying clip %s track %s can't get frame %s",
@@ -167,8 +228,8 @@ class Interpreter(ABC):
 
         track_data = {}
         segments = track.get_segments(
-            clip.ffc_frames,
             self.params.square_width**2,
+            ffc_frames=clip.ffc_frames,
             repeats=1,
             segment_frames=segment_frames,
             segment_type=self.params.segment_type,
@@ -183,7 +244,7 @@ class Interpreter(ABC):
         for frame_index in frame_indices:
             region = track.bounds_history[frame_index - track.start_frame]
 
-            frame = clip.frame_buffer.get_frame(region.frame_number)
+            frame = clip.get_frame(region.frame_number)
             # filtered is calculated slightly different for tracking, set to null so preprocess can recalc it
             if frame is None:
                 logging.error(
@@ -303,14 +364,18 @@ class LiteInterpreter(Interpreter):
             0
         ]  # Model has single output.
         self.input = self.interpreter.get_input_details()[0]  # Model has single input.
-        self.preprocess_fn = inc3_preprocess
+        self.preprocess_fn = self.get_preprocess_fn()
+        # inc3_preprocess
 
     def predict(self, input_x):
         input_x = np.float32(input_x)
-
-        self.interpreter.set_tensor(self.input["index"], input_x)
-        self.interpreter.invoke()
-        pred = self.interpreter.get_tensor(self.output["index"])
+        preds = []
+        # only works on input of 1
+        for data in input_x:
+            self.interpreter.set_tensor(self.input["index"], data[np.newaxis, :])
+            self.interpreter.invoke()
+            pred = self.interpreter.get_tensor(self.output["index"])
+            preds.append(pred)
         return pred
 
     def shape(self):

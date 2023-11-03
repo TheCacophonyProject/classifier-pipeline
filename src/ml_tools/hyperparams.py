@@ -24,7 +24,9 @@ class HyperParams(dict):
         self["square_width"] = self.square_width
         self["frame_size"] = self.frame_size
         self["segment_width"] = self.segment_width
-
+        self["red_type"] = self.red_type.name
+        self["green_type"] = self.green_type.name
+        self["blue_type"] = self.blue_type.name
         self["shuffle"] = self.shuffle
         self["channel"] = self.channel
         self["type"] = self.type
@@ -156,15 +158,15 @@ class HyperParams(dict):
 
     @property
     def red_type(self):
-        type = self.get("red_type", FrameTypes.thermal_tiled.name)
-        return FrameTypes[type]
+        ft = self.get("red_type", FrameTypes.thermal_tiled.name)
+        return FrameTypes[ft]
 
     @property
     def green_type(self):
-        type = self.get("green_type", FrameTypes.filtered_tiled.name)
-        return FrameTypes[type]
+        ft = self.get("green_type", FrameTypes.thermal_tiled.name)
+        return FrameTypes[ft]
 
     @property
     def blue_type(self):
-        type = self.get("blue_type", FrameTypes.filtered_tiled.name)
-        return FrameTypes[type]
+        ft = self.get("blue_type", FrameTypes.thermal_tiled.name)
+        return FrameTypes[ft]
