@@ -1,3 +1,69 @@
-[tool.black]
-target_version = ['py36']
-include = '\.py$'
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+#
+# [build-system]
+# requires = ["setuptools>=61.0"]
+# build-backend = "setuptools.build_meta"
+
+[project]
+name = "classifier_pipeline"
+version = "0.0.4"
+authors = [
+  { name="Giampaolo Ferraro", email="giampaolo@cacophony.org.nz" },
+]
+description = "Classifier Pipeline"
+readme = "PI-README.md"
+requires-python = ">=3.6"
+classifiers = [
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "License :: OSI Approved :: GNU Affero General Public License v3",
+    "Operating System :: OS Independent",
+]
+dependencies = [
+  "tflite-runtime==2.13.0",
+  "matplotlib==3.6.3",
+  "pytz==2022.7.1",
+  "cptv==1.5.4",
+  "numpy",
+  "scipy==1.9.3",
+  "python-dateutil",
+  "scikit-learn==1.1.3",
+  "tables==3.8.0",
+  "h5py==3.8.0",
+  "pyyaml==6.0",
+  "pillow==10.0.1",
+  "attrs==19.2.0",
+  "filelock==3.0.12",
+  "Astral==1.10.1",
+  "timezonefinder==4.1.0",
+  "portalocker==1.5.2",
+  "toml==0.10.2",
+  "cacophonyapi==0.0.2",
+  "psutil==5.6.7",
+  "PyGObject==3.44.0",
+  "dbus-python==1.3.2",
+  "importlib_resources==5.10.2",
+  "opencv-python==4.8.0.76",
+  "inotify_simple==1.3.5"
+
+]
+
+[project.scripts]
+pi_classify = "piclassifier:pi_classify"
+
+
+[project.urls]
+"Homepage" = "https://github.com/TheCacophonyProject/classifier-pipeline"
+"Bug Tracker" = "https://github.com/pypa/sampleproject/issues"
+
+[tool.hatch.build.targets.wheel.force-include]
+"./pi-classifier.yaml" = "classifier.yaml"
+
+[tool.hatch.build.targets.wheel]
+packages = [ "src/piclassifier", "src/config", "src/track", "src/ml_tools","src/classify"]
+
+[tool.pytest.ini_options]
+pythonpath = "src"
