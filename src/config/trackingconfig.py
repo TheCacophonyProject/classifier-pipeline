@@ -19,7 +19,10 @@ along with this program. If not, see <http://www.gnu.org/licenses/>.
 
 import attr
 
-from .defaultconfig import DefaultConfig, deep_copy_map_if_key_not_exist
+from .defaultconfig import (
+    DefaultConfig,
+    deep_copy_map_if_key_not_exist,
+)
 from .trackingmotionconfig import TrackingMotionConfig
 from track.cliptrackextractor import ClipTrackExtractor
 from track.track import RegionTracker

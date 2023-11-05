@@ -56,7 +56,11 @@ def parse_args():
         "--preview-type",
         help="Create MP4 previews of this type",
     )
-    parser.add_argument("-c", "--config-file", help="Path to config file to use")
+    parser.add_argument(
+        "-c",
+        "--config-file",
+        help="Path to config file to use",
+    )
 
     parser.add_argument(
         "--thermal-config-file", help="Path to pi-config file (config.toml) to use"

@@ -23,7 +23,7 @@ from collections import namedtuple
 
 from ml_tools.tools import Rectangle
 from track.region import Region
-from kalman.kalman import Kalman
+from .kalman import Kalman
 from ml_tools.tools import eucl_distance_sq
 from ml_tools.datasetstructures import get_segments, SegmentHeader, SegmentType
 import cv2
