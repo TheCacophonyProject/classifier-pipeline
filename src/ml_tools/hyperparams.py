@@ -32,6 +32,8 @@ class HyperParams(dict):
         self["type"] = self.type
         self["segment_type"] = self.segment_type
         self["multi_label"] = False
+        self["diff_norm"] = self.diff_norm
+        self["smooth_predictions"] = self.smooth_predictions
 
     @property
     def output_dim(self):
@@ -42,6 +44,14 @@ class HyperParams(dict):
                 3,
             )
         return (self.frame_size, self.frame_size, 3)
+
+    @property
+    def smooth_predictions(self):
+        return self.get("smooth_predictions", True)
+
+    @property
+    def diff_norm(self):
+        return self.get("diff_norm", True)
 
     @property
     def multi_label(self):

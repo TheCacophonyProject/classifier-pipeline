@@ -141,10 +141,18 @@ class Interpreter(ABC):
         )
         track_prediction = TrackPrediction(track.get_id(), self.labels)
         # self.model.predict(preprocessed)
-        masses = np.array(masses)
-        masses = masses[:, None]
+        top_score = None
+        smoothed_predictions = None
+        if self.params.smooth_predictions:
+            masses = np.array(masses)
+            top_score = np.sum(masses)
+            masses = masses[:, None]
+            smoothed_predictions = output * masses
         track_prediction.classified_clip(
-            output, output * output * masses, prediction_frames
+            output,
+            prediction_frames,
+            smoothed_predictions=smoothed_predictions,
+            top_score=top_score,
         )
         track_prediction.classify_time = time.time() - start
         return track_prediction
@@ -241,6 +249,30 @@ class Interpreter(ABC):
             frame_indices.update(set(segment.frame_indices))
         frame_indices = list(frame_indices)
         frame_indices.sort()
+
+        # should really be over whole track buts let just do the indices we predict of
+        #  seems to make little different to just doing a min max normalization
+        filtered_norm_limits = None
+        if self.params.diff_norm:
+            min_diff = None
+            max_diff = 0
+            for frame_index in frame_indices:
+                region = track.bounds_history[frame_index - track.start_frame]
+                f = clip.get_frame(region.frame_number)
+                if region.blank or region.width <= 0 or region.height <= 0:
+                    continue
+
+                f.float_arrays()
+                diff_frame = region.subimage(f.thermal) - region.subimage(
+                    clip.background
+                )
+                new_max = np.amax(diff_frame)
+                new_min = np.amin(diff_frame)
+                if min_diff is None or new_min < min_diff:
+                    min_diff = new_min
+                if new_max > max_diff:
+                    max_diff = new_max
+            filtered_norm_limits = (min_diff, max_diff)
         for frame_index in frame_indices:
             region = track.bounds_history[frame_index - track.start_frame]
 
@@ -264,6 +296,7 @@ class Interpreter(ABC):
                 region,
                 clip.background,
                 clip.crop_rectangle,
+                filtered_norm_limits=filtered_norm_limits,
             )
             track_data[frame.frame_number] = cropped_frame
         features = None

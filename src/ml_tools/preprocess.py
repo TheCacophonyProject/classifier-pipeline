@@ -60,6 +60,7 @@ def preprocess_frame(
     background=None,
     crop_rectangle=None,
     calculate_filtered=True,
+    filtered_norm_limits=None,
 ):
     median = np.median(frame.thermal)
     cropped_frame = frame.crop_by_region(region, only_thermal=True)
@@ -71,6 +72,7 @@ def preprocess_frame(
             )
         else:
             cropped_frame.filtered = cropped_frame.thermal - region.subimage(background)
+
     cropped_frame.resize_with_aspect(
         out_dim,
         crop_rectangle,
@@ -78,55 +80,20 @@ def preprocess_frame(
     )
     cropped_frame.thermal -= median
     np.clip(cropped_frame.thermal, 0, None, out=cropped_frame.thermal)
-    cropped_frame.normalize()
+    if calculate_filtered and filtered_norm_limits is not None:
+        cropped_frame.filtered, stats = imageprocessing.normalize(
+            cropped_frame.filtered,
+            min=filtered_norm_limits[0],
+            max=filtered_norm_limits[1],
+            new_max=255,
+        )
+        if frame.thermal is not None:
+            cropped_frame.thermal, _ = imageprocessing.normalize(
+                cropped_frame.thermal, new_max=255
+            )
+    else:
+        cropped_frame.normalize()
     return cropped_frame
-
-
-#
-#
-# def preprocess_frame(
-#     frame,
-#     frame_size,
-#     thermal_median,
-#     velocity,
-#     output_dim,
-#     preprocess_fn=None,
-#     sample=None,
-# ):
-#     processed_frame, flipped = preprocess_segment(
-#         [frame],
-#         frame_size,
-#         reference_level=[thermal_median],
-#         augment=augment,
-#         default_inset=0,
-#     )
-#     if len(processed_frame) == 0:
-#         return
-#     processed_frame = processed_frame[0]
-#     thermal = processed_frame.get_channel(TrackChannels.thermal)
-#     filtered = processed_frame.get_channel(TrackChannels.filtered)
-#     thermal, stats = imageprocessing.normalize(thermal, min=0)
-#     if not stats[0]:
-#         return None
-#     filtered, stats = imageprocessing.normalize(filtered, min=0)
-#     if not stats[0]:
-#         return None
-#
-#     data = np.empty((*thermal.shape, 3))
-#     data[:, :, 0] = thermal
-#     data[:, :, 1] = filtered
-#     data[:, :, 2] = filtered
-#     # for testing
-#     # tools.saveclassify_image(
-#     #     data,
-#     #     f"samples/{sample.label}-{sample.clip_id}-{sample.track_id}",
-#     # )
-#
-#     # preprocess expects values in range 0-255
-#     if preprocess_fn:
-#         data = data * 255
-#         data = preprocess_fn(data)
-#     return data
 
 
 index = 0

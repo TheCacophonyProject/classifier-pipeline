@@ -83,10 +83,12 @@ class TrackPrediction:
         self.tracking = False
 
     def classified_clip(
-        self, predictions, smoothed_predictions, prediction_frames, top_score=None
+        self, predictions, prediction_frames, smoothed_predictions=None, top_score=None
     ):
         self.num_frames_classified = len(predictions)
-        self.smoothed_predictions = smoothed_predictions
+        self.smoothed_predictions = (
+            predictions if smoothed_predictions is None else smoothed_predictions
+        )
         self.predictions = predictions
         self.prediction_frames = prediction_frames
         if self.num_frames_classified > 0:

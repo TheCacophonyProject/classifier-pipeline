@@ -749,31 +749,6 @@ class KerasModel(Interpreter):
         model = tf.keras.models.Model(input_layer, preds)
         return model
 
-    def classify_track(self, clip, track, segment_frames=None):
-        # logging.debug("Classifying track %s", self.type)
-        # if self.params.square_width == 1:
-        #     frames, preprocessed, masses = self.preprocess_frames(clip, track)
-        # else:
-        #     frames, preprocessed, masses = self.preprocess_segments(
-        #         clip, track, segment_frames=segment_frames
-        #     )
-        start = time.time()
-        prediction_frames, output, masses = self.predict_track(
-            clip,
-            track,
-            segment_frames=segment_frames,
-            frames_per_classify=self.params.square_width**2,
-        )
-        track_prediction = TrackPrediction(track.get_id(), self.labels)
-        # self.model.predict(preprocessed)
-        masses = np.array(masses)
-        masses = masses[:, None]
-        track_prediction.classified_clip(
-            output, output * output * masses, prediction_frames
-        )
-        track_prediction.classify_time = time.time() - start
-        return track_prediction
-
     def classify_ir(self, clip, track, segment_frames=None):
         data = []
         thermal_median = np.empty(len(track.bounds_history), dtype=np.uint16)
