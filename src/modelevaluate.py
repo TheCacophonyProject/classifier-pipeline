@@ -331,7 +331,7 @@ def evaluate_dir(
     config,
     confusion_file,
 ):
-    with open("label_paths.json", "r") as f:
+    with open("src/label_paths.json", "r") as f:
         label_paths = json.load(f)
     label_mapping = get_mappings(label_paths)
     reason = {}
