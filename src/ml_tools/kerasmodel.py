@@ -528,6 +528,7 @@ class KerasModel(Interpreter):
             remapped_labels=self.remapped_labels,
             # dist=self.dataset_counts["train"],
             multi_label=self.params.multi_label,
+            num_frames=self.params.square_width**2,
         )
         self.remapped = remapped
         self.validate, remapped, _, _ = get_dataset(
@@ -542,7 +543,8 @@ class KerasModel(Interpreter):
             include_features=self.params.mvm,
             excluded_labels=self.excluded_labels,
             remapped_labels=self.remapped_labels,
-            multi_label=self.params.multi_label
+            multi_label=self.params.multi_label,
+            num_frames=self.params.square_width**2,
             # dist=self.dataset_counts["validation"],
         )
 
@@ -592,6 +594,7 @@ class KerasModel(Interpreter):
                 excluded_labels=self.excluded_labels,
                 remapped_labels=self.remapped_labels,
                 multi_label=self.params.multi_label,
+                num_frames=self.params.square_width**2,
             )
             if self.test:
                 test_accuracy = self.model.evaluate(self.test)

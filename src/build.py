@@ -816,18 +816,21 @@ def main():
                 back_thresh=threshold,
             )
         else:
-            extra_args = None
+            extra_args = {"use_segments": master_dataset.use_segments}
             if args.ext != ".hdf5":
-                extra_args = {
-                    "segment_frame_spacing": master_dataset.segment_spacing * 9,
-                    "segment_width": master_dataset.segment_length,
-                    "segment_type": master_dataset.segment_type,
-                    "segment_min_avg_mass": master_dataset.segment_min_avg_mass,
-                    "max_segments": master_dataset.max_segments,
-                    "dont_filter_segment": True,
-                    "skip_ffc": True,
-                    "tag_precedence": config.load.tag_precedence,
-                }
+                extra_args.update(
+                    {
+                        "segment_frame_spacing": master_dataset.segment_spacing * 9,
+                        "segment_width": master_dataset.segment_length,
+                        "segment_type": master_dataset.segment_type,
+                        "segment_min_avg_mass": master_dataset.segment_min_avg_mass,
+                        "max_segments": master_dataset.max_segments,
+                        "dont_filter_segment": True,
+                        "skip_ffc": True,
+                        "tag_precedence": config.load.tag_precedence,
+                        "min_mass": master_dataset.min_frame_mass,
+                    }
+                )
             create_tf_records(
                 dataset,
                 dir,

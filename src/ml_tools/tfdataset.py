@@ -73,7 +73,6 @@ def get_dataset(load_function, base_dir, labels, **args):
         "chicken",
         "rooster",
     ]
-    logging.info("Args are %s", args)
     excluded_labels = args.get("excluded_labels", [])
     to_remap = args.get("remapped_labels", {})
     logging.info("Excluding %s", excluded_labels)

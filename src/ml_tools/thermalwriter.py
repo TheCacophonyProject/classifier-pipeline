@@ -208,19 +208,29 @@ def get_data(clip_samples, extra_args):
                         "Cannot find track %s in clip %s", track_id, clip_meta.clip_id
                     )
                     continue
-
                 # GP All assumes we dont have a track over multiple bins (Whcih we probably never want)
-
-                track.calculate_segments(
-                    extra_args.get("segment_frame_spacing", 9),
-                    extra_args.get("segment_width", 25),
-                    extra_args.get("segment_type"),
-                    extra_args.get("segment_min_avg_mass"),
-                    max_segments=extra_args.get("max_segments"),
-                    dont_filter=extra_args.get("dont_filter_segment", False),
-                    skip_ffc=extra_args.get("skip_ffc", True),
-                    ffc_frames=clip_meta.ffc_frames,
-                )
+                if extra_args.get("use_segments", True):
+                    track.calculate_segments(
+                        extra_args.get("segment_frame_spacing", 9),
+                        extra_args.get("segment_width", 25),
+                        extra_args.get("segment_type"),
+                        extra_args.get("segment_min_avg_mass"),
+                        max_segments=extra_args.get("max_segments"),
+                        dont_filter=extra_args.get("dont_filter_segment", False),
+                        skip_ffc=extra_args.get("skip_ffc", True),
+                        ffc_frames=clip_meta.ffc_frames,
+                    )
+                else:
+                    filter_by_lq = extra_args.get("filter_by_lq", False)
+                    track.calculate_sample_frames(
+                        min_mass=extra_args.get("min_mass")
+                        if not filter_by_lq
+                        else track_header.lower_mass,
+                        max_mass=extra_args.get("max_mass")
+                        if not filter_by_lq
+                        else track_header.upper_mass,
+                        ffc_frames=clip_meta.ffc_frames,
+                    )
                 samples = track.samples
                 frame_temp_median = {}
                 track_frames = []

@@ -113,6 +113,7 @@ def load_dataset(filenames, remap_lookup, labels, args):
             one_hot=one_hot,
             extra_label_map=extra_label_map,
             include_track=args.get("include_track", False),
+            num_frames=args.get("num_frames", 25),
         ),
         num_parallel_calls=AUTOTUNE,
         deterministic=deterministic,
@@ -161,6 +162,7 @@ def read_tfrecord(
     include_features=False,
     extra_label_map=None,
     include_track=False,
+    num_frames=25,
 ):
     logging.info(
         "Read tf record with image %s lbls %s labeld %s aug  %s  prepr %s only features %s one hot %s include fetures %s",
@@ -179,11 +181,11 @@ def read_tfrecord(
     }
     if load_images:
         tfrecord_format["image/thermalencoded"] = tf.io.FixedLenFeature(
-            [25 * 32 * 32], dtype=tf.float32
+            [num_frames * 32 * 32], dtype=tf.float32
         )
 
         tfrecord_format["image/filteredencoded"] = tf.io.FixedLenFeature(
-            [25 * 32 * 32], dtype=tf.float32
+            [num_frames * 32 * 32], dtype=tf.float32
         )
     if include_track:
         tfrecord_format["image/track_id"] = tf.io.FixedLenFeature((), tf.int64, -1)
@@ -197,17 +199,19 @@ def read_tfrecord(
     if load_images:
         thermalencoded = example["image/thermalencoded"]
         filteredencoded = example["image/filteredencoded"]
-
-        thermals = tf.reshape(thermalencoded, [25, 32, 32, 1])
-        filtered = tf.reshape(filteredencoded, [25, 32, 32, 1])
+        thermals = tf.reshape(thermalencoded, [num_frames, 32, 32, 1])
+        filtered = tf.reshape(filteredencoded, [num_frames, 32, 32, 1])
         rgb_images = tf.concat((thermals, thermals, filtered), axis=3)
 
         # rotation augmentation before tiling
         if augment:
             logging.info("Augmenting")
             rgb_images = rotation_augmentation(rgb_images)
-        rgb_images = tf.ensure_shape(rgb_images, (25, 32, 32, 3))
-        image = tile_images(rgb_images)
+        rgb_images = tf.ensure_shape(rgb_images, (num_frames, 32, 32, 3))
+        if num_frames == 1:
+            image = tf.squeeze(rgb_images)
+        else:
+            image = tile_images(rgb_images)
 
         if augment:
             image = data_augmentation(image)
@@ -299,10 +303,11 @@ def main():
         include_features=False,
         remapped_labels=get_remapped(),
         excluded_labels=get_excluded(),
-        include_track=True,
+        include_track=False,
+        num_frames=1,
     )
     print("Ecpoh size is", epoch_size)
-    print(get_distribution(resampled_ds, len(labels), extra_meta=True))
+    print(get_distribution(resampled_ds, len(labels), extra_meta=False))
     # return
     #
     for e in range(2):

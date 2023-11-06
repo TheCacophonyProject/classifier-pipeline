@@ -70,8 +70,10 @@ class Dataset:
                 self.segment_length = 1
             else:
                 self.use_segments = config.train.hyper_params.get("use_segments", True)
-                self.segment_length = config.build.segment_length
-
+                if self.use_segments:
+                    elf.segment_length = config.build.segment_length
+                else:
+                    self.segment_length = 1
             # number of seconds segments are spaced apart
             self.segment_spacing = config.build.segment_spacing
             self.banned_clips = config.build.banned_clips
@@ -84,14 +86,18 @@ class Dataset:
             self.max_segments = config.build.max_segments
         else:
             self.tag_precedence = LoadConfig.DEFAULT_GROUPS
-            self.filter_by_lq = True
+            self.filter_by_lq = False
             # number of seconds each segment should be
-            self.segment_length = 25
+            if self.use_segments:
+                self.segment_length = 25
+            else:
+                self.segment_length = 1
             # number of seconds segments are spaced apart
             self.segment_spacing = 1
             self.segment_min_avg_mass = 10
             self.min_frame_mass = 16
             self.segment_type = SegmentType.ALL_RANDOM
+        self.max_frame_mass = None
         self.filtered_stats = {
             "confidence": 0,
             "trap": 0,
@@ -230,8 +236,12 @@ class Dataset:
                     # a lot of ir clips have bad tracking near end so just reduce track length
                     skip_last = 0.1
                 track_header.calculate_sample_frames(
-                    min_mass=None if not self.filter_by_lq else track_header.lower_mass,
-                    max_mass=None if not self.filter_by_lq else track_header.upper_mass,
+                    min_mass=self.min_frame_mass
+                    if not self.filter_by_lq
+                    else track_header.lower_mass,
+                    max_mass=self.max_frame_mass
+                    if not self.filter_by_lq
+                    else track_header.upper_mass,
                     ffc_frames=clip_header.ffc_frames,
                     skip_last=skip_last,
                 )
