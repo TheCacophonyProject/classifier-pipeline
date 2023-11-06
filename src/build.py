@@ -406,7 +406,12 @@ def split_by_file(dataset, config, split_file, base_dir):
     for name in ["train", "validation", "test"]:
         logging.info("Loading %s", name)
         split_dataset = Dataset(
-            dataset.dataset_dir, name, config, label_mapping=dataset.label_mapping
+            dataset.dataset_dir,
+            name,
+            config,
+            label_mapping=dataset.label_mapping,
+            ext=dataset.ext,
+            raw=dataset.raw,
         )
         if name == "train":
             split_dataset.enable_augmentation = True
