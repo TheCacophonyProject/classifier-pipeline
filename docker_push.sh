@@ -1,7 +1,7 @@
 #!/bin/bash
 set -xe
 hub_repo="cacophonyproject/classifier"
-docker build -t $hub_repo . -f docker/DockerFile
+docker build -t $hub_repo . -f docker/Dockerfile
 
 docker tag $hub_repo $hub_repo:$TRAVIS_TAG
 

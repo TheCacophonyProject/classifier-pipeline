@@ -434,7 +434,7 @@ def split_by_file(dataset, config, split_file, base_dir):
         datasets.append(split_dataset)
 
     print_counts(*datasets)
-    train, val, test = split_randomly(datasets[0], config, None, use_test=False)
+    train, val, _ = split_randomly(datasets[0], config, None, use_test=False)
     datasets = [train, val, datasets[2]]
     return datasets
 

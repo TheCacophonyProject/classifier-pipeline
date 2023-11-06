@@ -663,8 +663,6 @@ class FrameSample(Sample):
             rec_time=self.rec_time,
             track_median_mass=self.track_median_mass,
         )
-        FrameSample._frame_id += 1
-
         return f
 
     @property
