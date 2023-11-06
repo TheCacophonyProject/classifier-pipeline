@@ -161,6 +161,8 @@ def load_args():
 
     parser.add_argument("-d", "--date", help="Use clips after this")
 
+    parser.add_argument("--split-file", help="Use split for evaluation")
+
     parser.add_argument(
         "confusion",
         help="Confusion matrix filename, used if you want to save confusion matrix image",
@@ -325,11 +327,14 @@ def load_clip_data(cptv_file):
     return data
 
 
+def load_split_file(split_file):
+    with open(split_file, "r") as f:
+        split = json.load(f)
+    return split
+
+
 def evaluate_dir(
-    model,
-    dir,
-    config,
-    confusion_file,
+    model, dir, config, confusion_file, split_file=None, split_dataset="test"
 ):
     with open("src/label_paths.json", "r") as f:
         label_paths = json.load(f)
@@ -337,7 +342,18 @@ def evaluate_dir(
     reason = {}
     y_true = []
     y_pred = []
-    files = list(dir.glob(f"**/*cptv"))
+    if split_file is not None:
+        split_json = load_split_file(split_file)
+        files = split_json.get(split_dataset)
+        files = [dir / f["source"] for f in files]
+        logging.info(
+            "Splitting on %s dataset %s files %s ...",
+            split_file,
+            split_dataset,
+            files[:2],
+        )
+    else:
+        files = list(dir.glob(f"**/*cptv"))
     files.sort()
     # files = files[:8]
     start = time.time()
@@ -430,10 +446,17 @@ def main():
     base_dir = config.tracks_folder
 
     model = KerasModel(train_config=config.train)
-    model.load_model(model_file, training=False, weights=weights)
+    # model.load_model(model_file, training=False, weights=weights)
 
     if args.evaluate_dir:
-        evaluate_dir(model, Path(args.evaluate_dir), config, args.confusion)
+        evaluate_dir(
+            model,
+            Path(args.evaluate_dir),
+            config,
+            args.confusion,
+            args.split_file,
+            args.dataset,
+        )
     elif args.dataset:
         model.load_training_meta(base_dir)
         if model.params.multi_label:
