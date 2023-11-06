@@ -293,7 +293,7 @@ def main():
     resampled_ds, remapped, labels, epoch_size = get_dataset(
         # dir,
         load_dataset,
-        f"{config.tracks_folder}/training-data/train",
+        f"{config.tracks_folder}/training-data/test",
         labels,
         batch_size=32,
         image_size=(160, 160),

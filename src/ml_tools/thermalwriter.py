@@ -174,7 +174,7 @@ def get_data(clip_samples, extra_args):
         return None
     data = []
     crop_rectangle = tools.Rectangle(2, 2, 160 - 2 * 2, 140 - 2 * 2)
-    if clip_samples[0].source_file.stem == ".hdf5":
+    if clip_samples[0].source_file.suffix == ".hdf5":
         db = TrackDatabase(clip_samples[0].source_file)
     else:
         db = RawDatabase(clip_samples[0].source_file)
@@ -198,7 +198,7 @@ def get_data(clip_samples, extra_args):
 
         for track_id in samples_by_track.keys():
             samples = samples_by_track[track_id]
-            if clip_samples[0].source_file.stem != ".hdf5":
+            if clip_samples[0].source_file.suffix != ".hdf5":
                 track = next(
                     (track for track in clip_meta.tracks if track.track_id == track_id),
                     None,
