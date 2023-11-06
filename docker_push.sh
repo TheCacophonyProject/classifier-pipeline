@@ -1,4 +1,5 @@
 #!/bin/bash
+set -xe
 hub_repo="cacophonyproject/classifier"
 docker build -t $hub_repo . -f docker/DockerFile
 
