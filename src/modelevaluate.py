@@ -456,6 +456,8 @@ def main():
             excluded_labels=excluded,
             remapped_labels=remapped,
             multi_label=model.params.multi_label,
+            include_track=True,
+            cache=True,
         )
         model.labels = new_labels
         logging.info(
@@ -463,7 +465,7 @@ def main():
             args.dataset,
             model.labels,
         )
-        model.confusion_tfrecords(dataset, args.confusion)
+        model.confusion_tfrecords_track(dataset, args.confusion)
 
 
 if __name__ == "__main__":

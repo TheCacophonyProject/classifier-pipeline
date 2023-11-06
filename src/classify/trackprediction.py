@@ -81,14 +81,13 @@ class TrackPrediction:
         self.labels = labels
         self.classify_time = None
         self.tracking = False
+        self.masses = []
 
     def classified_clip(
-        self, predictions, prediction_frames, smoothed_predictions=None, top_score=None
+        self, predictions, smoothed_predictions, prediction_frames, top_score=None
     ):
         self.num_frames_classified = len(predictions)
-        self.smoothed_predictions = (
-            predictions if smoothed_predictions is None else smoothed_predictions
-        )
+        self.smoothed_predictions = smoothed_predictions
         self.predictions = predictions
         self.prediction_frames = prediction_frames
         if self.num_frames_classified > 0:
@@ -130,7 +129,8 @@ class TrackPrediction:
         self.prediction_frames.append([frame_number])
         self.last_frame_classified = frame_number
         self.num_frames_classified += 1
-        smoothed_prediction = prediction * mass
+        self.masses.append(mass)
+        smoothed_prediction = prediction * prediction * mass
         if self.keep_all:
             self.predictions.append(prediction)
             self.smoothed_predictions.append(smoothed_prediction)

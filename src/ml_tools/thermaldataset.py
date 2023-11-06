@@ -112,6 +112,7 @@ def load_dataset(filenames, remap_lookup, labels, args):
             only_features=only_features,
             one_hot=one_hot,
             extra_label_map=extra_label_map,
+            include_track=args.get("include_track", False),
         ),
         num_parallel_calls=AUTOTUNE,
         deterministic=deterministic,
@@ -159,6 +160,7 @@ def read_tfrecord(
     one_hot=True,
     include_features=False,
     extra_label_map=None,
+    include_track=False,
 ):
     logging.info(
         "Read tf record with image %s lbls %s labeld %s aug  %s  prepr %s only features %s one hot %s include fetures %s",
@@ -183,6 +185,9 @@ def read_tfrecord(
         tfrecord_format["image/filteredencoded"] = tf.io.FixedLenFeature(
             [25 * 32 * 32], dtype=tf.float32
         )
+    if include_track:
+        tfrecord_format["image/track_id"] = tf.io.FixedLenFeature((), tf.int64, -1)
+        tfrecord_format["image/avg_mass"] = tf.io.FixedLenFeature((), tf.int64, -1)
 
     if include_features or only_features:
         tfrecord_format["image/features"] = tf.io.FixedLenSequenceFeature(
@@ -223,6 +228,10 @@ def read_tfrecord(
             label = tf.one_hot(label, num_labels)
             if extra_label_map is not None:
                 label = tf.reduce_max(label, axis=0)
+        if include_track:
+            track_id = tf.cast(example["image/track_id"], tf.int32)
+            avg_mass = tf.cast(example["image/avg_mass"], tf.int32)
+            label = (label, track_id, avg_mass)
         if include_features or only_features:
             features = tf.squeeze(example["image/features"])
             if only_features:
@@ -290,9 +299,10 @@ def main():
         include_features=False,
         remapped_labels=get_remapped(),
         excluded_labels=get_excluded(),
+        include_track=True,
     )
     print("Ecpoh size is", epoch_size)
-    print(get_distribution(resampled_ds, len(labels)))
+    print(get_distribution(resampled_ds, len(labels), extra_meta=True))
     # return
     #
     for e in range(2):

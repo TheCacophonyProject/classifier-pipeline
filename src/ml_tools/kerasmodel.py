@@ -869,6 +869,84 @@ class KerasModel(Interpreter):
     def predict(self, frames):
         return self.model.predict(frames)
 
+    def confusion_tfrecords_track(self, dataset, filename, threshold=0.8):
+        true_categories = []
+        track_ids = []
+        avg_mass = []
+        for x, y in dataset:
+            true_categories.extend(y[0].numpy())
+            # dataset_y[0]
+            track_ids.extend(y[1].numpy())
+            avg_mass.extend(y[2].numpy())
+        if len(true_categories) > 1:
+            if self.params.multi_label:
+                # multi = []
+                # for y in true_categories:
+                # multi.append(tf.where(y).numpy().ravel())
+                # print(y, tf.where(y))
+                # true_categories = np.int64(true_categories)
+                pass
+            else:
+                true_categories = np.int64(tf.argmax(true_categories, axis=1))
+        y_pred = self.model.predict(dataset)
+        pred_per_track = {}
+
+        # if self.params.multi_label:
+        self.labels.append("nothing")
+        # predicted_categori/es = []
+        # for p in y_pred:
+        # predicted_categories.append(tf.where(p >= 0.8).numpy().ravel())
+        # predicted_categories = np.int64(predicted_categories)
+
+        flat_y = []
+        for y, track_id, mass, p in zip(true_categories, track_ids, avg_mass, y_pred):
+            y_max = np.argmax(y)
+            track_pred = pred_per_track.setdefault(
+                track_id, (y_max, TrackPrediction(track_id, self.labels))
+            )
+            track_pred[1].classified_frame(None, p, mass)
+
+        results = [
+            ("No Smoothing", []),
+            ("Old Smoothing", []),
+            ("New Smoothing", []),
+        ]
+        for y, pred in pred_per_track.values():
+            pred.normalize_score()
+            no_smoothing = np.mean(pred.predictions, axis=0)
+            masses = np.array(pred.masses)[:, None]
+            old_smoothing = pred.class_best_score
+            new_smooth = pred.predictions * masses
+            new_smooth = np.sum(new_smooth, axis=0)
+            new_smooth /= np.sum(masses)
+            logging.info(
+                "Smoothing %s with masses %s", np.round(100 * pred.predictions), masses
+            )
+            logging.info(
+                "N smooth %s old %s new %s",
+                np.round(100 * no_smoothing),
+                np.round(100 * old_smoothing),
+                np.round(100 * new_smooth),
+            )
+            for i, pred_type in enumerate([no_smoothing, old_smoothing, new_smooth]):
+                best_pred = np.argmax(pred_type)
+                confidence = pred_type[best_pred]
+                if confidence < threshold:
+                    best_pred = len(self.labels) - 1  # Nothing
+                results[i][1].append(best_pred)
+            flat_y.append(y)
+
+        true_categories = np.int64(flat_y)
+        # else:
+        #     predicted_categories = np.int64(tf.argmax(y_pred, axis=1))
+        for result in results:
+            cm = confusion_matrix(
+                true_categories, np.int64(result[1]), labels=np.arange(len(self.labels))
+            )
+            # Log the confusion matrix as an image summary.
+            figure = plot_confusion_matrix(cm, class_names=self.labels)
+            plt.savefig(f"{result[0]}-{filename}", format="png")
+
     def confusion_tfrecords(self, dataset, filename):
         true_categories = tf.concat([y for x, y in dataset], axis=0)
         if len(true_categories) > 1:

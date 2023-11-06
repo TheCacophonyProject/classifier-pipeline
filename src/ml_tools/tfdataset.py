@@ -32,8 +32,12 @@ def get_weighting(
     return weights
 
 
-def get_distribution(dataset, num_labels, batched=True, one_hot=True):
-    true_categories = [y for x, y in dataset]
+def get_distribution(dataset, num_labels, batched=True, one_hot=True, extra_meta=False):
+    if extra_meta:
+        true_categories = [y[0] for x, y in dataset]
+    else:
+        true_categories = [y for x, y in dataset]
+
     dist = np.zeros((num_labels), dtype=np.float32)
     if len(true_categories) == 0:
         return dist
@@ -69,6 +73,7 @@ def get_dataset(load_function, base_dir, labels, **args):
         "chicken",
         "rooster",
     ]
+    logging.info("Args are %s", args)
     excluded_labels = args.get("excluded_labels", [])
     to_remap = args.get("remapped_labels", {})
     logging.info("Excluding %s", excluded_labels)
@@ -121,15 +126,23 @@ def get_dataset(load_function, base_dir, labels, **args):
     dataset = load_function(filenames, remap_lookup, new_labels, args)
     if not args.get("one_hot", True):
         filter_excluded = lambda x, y: not tf.math.less(y, 0)
-
     else:
-        filter_excluded = lambda x, y: not tf.math.equal(tf.math.count_nonzero(y), 0)
+        if not args.get("include_track", False):
+            filter_excluded = lambda x, y: not tf.math.equal(
+                tf.math.count_nonzero(y), 0
+            )
+        else:
+            filter_excluded = lambda x, y: not tf.math.equal(
+                tf.math.count_nonzero(y[0]), 0
+            )
+
     dataset = dataset.filter(filter_excluded)
     if dataset is None:
         logging.warn("No dataset for %s", filenames)
         return None, None
 
-    # dataset = dataset.cache()
+    if args.get("cache", False):
+        dataset = dataset.cache()
     if not args.get("only_features") and args.get("shuffle", True):
         logging.info("shuffling data")
         dataset = dataset.shuffle(
@@ -139,7 +152,11 @@ def get_dataset(load_function, base_dir, labels, **args):
     # it will chang eeach epoch, to ensure this take this repeat data and always take epoch_size elements
     if not args.get("only_features"):
         dist = get_distribution(
-            dataset, num_labels, batched=False, one_hot=args.get("one_hot", True)
+            dataset,
+            num_labels,
+            batched=False,
+            one_hot=args.get("one_hot", True),
+            extra_meta=args.get("include_track", False),
         )
         for label, d in zip(new_labels, dist):
             logging.info("Have %s: %s", label, d)
