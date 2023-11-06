@@ -71,7 +71,7 @@ class Dataset:
             else:
                 self.use_segments = config.train.hyper_params.get("use_segments", True)
                 if self.use_segments:
-                    elf.segment_length = config.build.segment_length
+                    self.segment_length = config.build.segment_length
                 else:
                     self.segment_length = 1
             # number of seconds segments are spaced apart

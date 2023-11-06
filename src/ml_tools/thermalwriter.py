@@ -210,7 +210,7 @@ def get_data(clip_samples, extra_args):
                     continue
                 # GP All assumes we dont have a track over multiple bins (Whcih we probably never want)
                 if extra_args.get("use_segments", True):
-                    track.calculate_segments(
+                    track.get_segments(
                         extra_args.get("segment_frame_spacing", 9),
                         extra_args.get("segment_width", 25),
                         extra_args.get("segment_type"),
