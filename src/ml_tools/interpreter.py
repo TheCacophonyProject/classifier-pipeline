@@ -150,8 +150,8 @@ class Interpreter(ABC):
             smoothed_predictions = output * masses
         track_prediction.classified_clip(
             output,
+            smoothed_predictions,
             prediction_frames,
-            smoothed_predictions=smoothed_predictions,
             top_score=top_score,
         )
         track_prediction.classify_time = time.time() - start

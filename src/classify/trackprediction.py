@@ -87,9 +87,13 @@ class TrackPrediction:
         self, predictions, smoothed_predictions, prediction_frames, top_score=None
     ):
         self.num_frames_classified = len(predictions)
-        self.smoothed_predictions = smoothed_predictions
+        if smoothed_predictions is None:
+            self.smoothed_predictions = predictions
+        else:
+            self.smoothed_predictions = smoothed_predictions
         self.predictions = predictions
         self.prediction_frames = prediction_frames
+
         if self.num_frames_classified > 0:
             self.class_best_score = np.sum(self.smoothed_predictions, axis=0)
             # normalize so it sums to 1
