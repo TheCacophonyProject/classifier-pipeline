@@ -593,7 +593,6 @@ def filter_track(track_header, excluded_tags, filtered_stats={}):
     if track_header.confidence <= 0.6:
         filtered_stats.setdefault("confidence", 0)
         filtered_stats["confidence"] += 1
-        logging.info("Low confidence")
         return True
 
     return False
