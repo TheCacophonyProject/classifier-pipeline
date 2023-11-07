@@ -558,7 +558,7 @@ def filter_track(track_header, excluded_tags, filtered_stats={}):
         filtered_stats.setdefault("notags", 0)
         filtered_stats["notags"] += 1
         return True
-    logging.info("Filering tag in %s", excluded_tags)
+
     if track_header.label in excluded_tags:
         filtered_stats.setdefault("tags", 0)
 
