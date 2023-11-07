@@ -52,7 +52,7 @@ class Dataset:
         self.name = name
         # list of our tracks
         self.samples_by_bin = {}
-        self.samples = []
+        # self.samples = []
         self.samples_by_id = {}
         self.clips = []
 
@@ -115,6 +115,10 @@ class Dataset:
         self.numpy_data = None
 
         self.skip_ffc = True
+
+    @property
+    def samples(self):
+        return self.samples_by_id.values()
 
     @property
     def sample_count(self):
@@ -206,7 +210,7 @@ class Dataset:
         clip_header.tracks = [
             track
             for track in clip_header.tracks
-            if not filter_track(track, self.filtered_stats)
+            if not filter_track(track, self.excluded_tags, self.filtered_stats)
         ]
         self.clips.append(clip_header)
         for track_header in clip_header.tracks:
@@ -273,7 +277,7 @@ class Dataset:
 
     def add_clip_sample_mappings(self, sample):
         self.samples_by_id[sample.id] = sample
-        self.samples.append(sample)
+        # self.samples[sample.id] = sample
 
         if self.label_mapping:
             sample.remapped_label = self.label_mapping.get(
@@ -282,8 +286,9 @@ class Dataset:
 
         if sample.label not in self.labels:
             self.labels.append(sample.label)
-        bins = self.samples_by_bin.setdefault(sample.bin_id, [])
-        bins.append(sample)
+        bins = self.samples_by_bin.setdefault(sample.bin_id, {})
+        bins[sample.id] = sample
+        # (sample)
         return True
 
     def epoch_samples(
@@ -458,7 +463,8 @@ class Dataset:
             samples = self.samples_by_label[lbl]
             for s in samples:
                 s.remapped_label = remapped_lbl
-                samples_by_bin.setdefault(s.bin_id, []).append(s)
+                samples_by_bin.setdefault(s.bin_id, {})[s.id] = s
+                # .append(s)
             samples_by_label.setdefault(remapped_lbl, []).extend(samples)
 
         self.labels = list(groups.keys())
@@ -518,7 +524,7 @@ class Dataset:
         del self.samples_by_id[sample.id]
         try:
             # not nessesarily there if splitting by clip hack
-            self.samples_by_bin[sample.bin_id].remove(sample)
+            del self.samples_by_bin[sample.bin_id][sample.id]
         except:
             pass
 
@@ -552,12 +558,14 @@ def filter_track(track_header, excluded_tags, filtered_stats={}):
         filtered_stats.setdefault("notags", 0)
         filtered_stats["notags"] += 1
         return True
+    logging.info("Filering tag in %s", excluded_tags)
     if track_header.label in excluded_tags:
         filtered_stats.setdefault("tags", 0)
 
         filtered_stats["tags"] += 1
         filter_tags = filtered_stats.setdefault("tag_names", set())
         filter_tags.add(track_header.label)
+
         return True
 
     if track_header.human_tags is not None:

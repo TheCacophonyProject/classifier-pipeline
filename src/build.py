@@ -263,7 +263,11 @@ def split_label(
         samples_by_bin = {}
         for clip in dataset.clips:
             if clip.clip_id in sample_bins:
-                samples_by_bin[clip.clip_id] = clip.get_samples()
+                samples = clip.get_samples()
+                by_id = {}
+                for s in samples:
+                    by_id[s.id] = s
+                samples_by_bin[clip.clip_id] = by_id
     else:
         samples_by_bin = dataset.samples_by_bin
     if len(sample_bins) == 0:
@@ -321,7 +325,7 @@ def split_label(
     #     tracks = set()
     if sample_limit > 0 and track_limit > 0:
         for i, sample_bin in enumerate(sample_bins):
-            samples = samples_by_bin[sample_bin]
+            samples = samples_by_bin[sample_bin].values()
             for sample in samples:
                 if sample.label == label:
                     tracks.add(sample.track_id)
@@ -335,7 +339,7 @@ def split_label(
             if label not in split_by_clip:
                 while len(samples) > 0:
                     dataset.remove_sample(samples[0])
-            samples_by_bin[sample_bin] = []
+            samples_by_bin[sample_bin] = {}
             last_index = i
             track_count = len(tracks)
             if label_count >= sample_limit and track_count >= track_limit:
@@ -359,7 +363,7 @@ def split_label(
     camera_type = "train"
     added = 0
     for i, sample_bin in enumerate(sample_bins):
-        samples = samples_by_bin[sample_bin]
+        samples = samples_by_bin[sample_bin].values()
         for sample in samples:
             # sample.camera = "{}-{}".format(sample.camera, camera_type)
             train_c.append(sample)
