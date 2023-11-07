@@ -495,7 +495,6 @@ class TrackDatabase:
 
     def get_frames(
         self,
-        clip_id,
         frame_numbers=None,
         channels=None,
     ):
