@@ -519,6 +519,13 @@ class Dataset:
     #         filtered_stats,
     #         time.time() - start,
     #     )
+    def remove_sample_by_id(self, id, bin_id):
+        del self.samples_by_id[id]
+        try:
+            # not nessesarily there if splitting by clip hack
+            del self.samples_by_bin[bin_id][id]
+        except:
+            pass
 
     def remove_sample(self, sample):
         del self.samples_by_id[sample.id]

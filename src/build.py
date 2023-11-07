@@ -337,8 +337,10 @@ def split_label(
                 if label in split_by_clip:
                     dataset.remove_sample(sample)
             if label not in split_by_clip:
-                while len(samples) > 0:
-                    dataset.remove_sample(samples[0])
+                # while len(samples) > 0:
+                sample_ids = [(s.id, s.bin_id) for s in samples]
+                for id, bin_id in sample_ids:
+                    dataset.remove_sample_by_id(id, bin_id)
             samples_by_bin[sample_bin] = {}
             last_index = i
             track_count = len(tracks)
