@@ -362,7 +362,10 @@ class TrackPrediction:
         if self.prediction_frames is not None:
             prediction_meta["prediction_frames"] = self.prediction_frames
 
-        prediction_meta["predictions"] = np.uint32(np.round(self.smoothed_predictions))
+        # for ease always multiply by 100, depending on smoothing applied values might be large
+        prediction_meta["predictions"] = np.uint32(
+            np.round(100 * self.smoothed_predictions)
+        )
         if self.class_best_score is not None:
             for i, value in enumerate(self.class_best_score):
                 label = self.labels[i]
