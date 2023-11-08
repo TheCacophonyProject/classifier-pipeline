@@ -11,6 +11,7 @@ from ml_tools.logs import init_logging
 import logging
 
 from ml_tools.featurenorms import mean_v, std_v
+from ml_tools.frame import TrackChannels
 
 # seed = 1341
 # tf.random.set_seed(seed)
@@ -114,6 +115,7 @@ def load_dataset(filenames, remap_lookup, labels, args):
             extra_label_map=extra_label_map,
             include_track=args.get("include_track", False),
             num_frames=args.get("num_frames", 25),
+            channels=args.get("channels", TrackChannels.thermal.name),
         ),
         num_parallel_calls=AUTOTUNE,
         deterministic=deterministic,
@@ -163,6 +165,7 @@ def read_tfrecord(
     extra_label_map=None,
     include_track=False,
     num_frames=25,
+    channels=[TrackChannels.thermal.name, TrackChannels.filtered.name],
 ):
     logging.info(
         "Read tf record with image %s lbls %s labeld %s aug  %s  prepr %s only features %s one hot %s include fetures %s",
@@ -180,13 +183,15 @@ def read_tfrecord(
         "image/class/label": tf.io.FixedLenFeature((), tf.int64, -1),
     }
     if load_images:
-        tfrecord_format["image/thermalencoded"] = tf.io.FixedLenFeature(
-            [num_frames * 32 * 32], dtype=tf.float32
-        )
+        if TrackChannels.filtered.name in channels:
+            tfrecord_format["image/filteredencoded"] = tf.io.FixedLenFeature(
+                [num_frames * 32 * 32], dtype=tf.float32
+            )
+        if TrackChannels.thermal.name in channels:
+            tfrecord_format["image/thermalencoded"] = tf.io.FixedLenFeature(
+                [num_frames * 32 * 32], dtype=tf.float32
+            )
 
-        tfrecord_format["image/filteredencoded"] = tf.io.FixedLenFeature(
-            [num_frames * 32 * 32], dtype=tf.float32
-        )
     if include_track:
         tfrecord_format["image/track_id"] = tf.io.FixedLenFeature((), tf.int64, -1)
         tfrecord_format["image/avg_mass"] = tf.io.FixedLenFeature((), tf.int64, -1)
@@ -197,31 +202,46 @@ def read_tfrecord(
         )
     example = tf.io.parse_single_example(example, tfrecord_format)
     if load_images:
-        thermalencoded = example["image/thermalencoded"]
-        filteredencoded = example["image/filteredencoded"]
-        thermals = tf.reshape(thermalencoded, [num_frames, 32, 32, 1])
-        filtered = tf.reshape(filteredencoded, [num_frames, 32, 32, 1])
-        rgb_images = tf.concat((thermals, thermals, filtered), axis=3)
-
+        if TrackChannels.thermal.name in channels:
+            thermalencoded = example["image/thermalencoded"]
+            thermals = tf.reshape(thermalencoded, [num_frames, 32, 32, 1])
+            logging.info("Adding thermal")
+        if TrackChannels.filtered.name in channels:
+            filteredencoded = example["image/filteredencoded"]
+            filtered = tf.reshape(filteredencoded, [num_frames, 32, 32, 1])
+            logging.info("Adding filtered")
+        rgb_image = None
+        for type in channels:
+            if type == TrackChannels.thermal.name:
+                image = thermals
+            elif type == TrackChannels.filtered.name:
+                image = filtered
+            if rgb_image is None:
+                rgb_image = image
+            else:
+                rgb_image = tf.concat((rgb_image, image), axis=3)
+        logging.info("RGB is %s", rgb_image.shape)
         # rotation augmentation before tiling
         if augment:
             logging.info("Augmenting")
-            rgb_images = rotation_augmentation(rgb_images)
-        rgb_images = tf.ensure_shape(rgb_images, (num_frames, 32, 32, 3))
-        if num_frames == 1:
-            image = tf.squeeze(rgb_images)
-        else:
-            image = tile_images(rgb_images)
+            rgb_image = rotation_augmentation(rgb_image)
+        rgb_image = tf.ensure_shape(rgb_image, (num_frames, 32, 32, len(channels)))
+        if num_frames > 1:
+            rgb_image = tile_images(rgb_image)
 
         if augment:
-            image = data_augmentation(image)
+            rgb_image = data_augmentation(rgb_image)
+        if num_frames == 1:
+            # remove the leading axis
+            rgb_image = tf.squeeze(rgb_image)
+
         if preprocess_fn is not None:
             logging.info(
                 "Preprocessing with %s.%s",
                 preprocess_fn.__module__,
                 preprocess_fn.__name__,
             )
-            image = preprocess_fn(image)
+            rgb_image = preprocess_fn(rgb_image)
     if labeled:
         label = tf.cast(example["image/class/label"], tf.int32)
         label = remap_lookup.lookup(label)
@@ -240,13 +260,13 @@ def read_tfrecord(
             features = tf.squeeze(example["image/features"])
             if only_features:
                 return features, label
-            return (image, features), label
-        return image, label
+            return (rgb_image, features), label
+        return rgb_image, label
     if only_features:
         return tf.squeeze(example["image/features"])
     elif include_features:
-        return (image, tf.squeeze(example["image/features"]))
-    return image
+        return (rgb_image, tf.squeeze(example["image/features"]))
+    return rgb_image
 
 
 def decode_image(thermals, filtereds, image_size):
@@ -324,7 +344,16 @@ def show_batch(image_batch, label_batch, labels):
     num_images = min(len(image_batch), 25)
     for n in range(num_images):
         ax = plt.subplot(5, 5, n + 1)
-        plt.imshow(np.uint8(image_batch[n]))
+        img = np.uint8(image_batch[n])
+        channels = img.shape[-1]
+        repeat = 3 - channels
+        while repeat > 0:
+            img = np.concatenate((img, img[:, :, :1]), axis=2)
+            repeat -= 1
+            print("NOw", img.shape)
+        # if repeat > 0:
+        # print(img.shape, " repeating", repeat)
+        plt.imshow(img)
         plt.title("C-" + str(image_batch[n]))
         plt.title(labels[np.argmax(label_batch[n])])
         plt.axis("off")

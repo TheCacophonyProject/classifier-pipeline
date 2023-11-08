@@ -24,16 +24,20 @@ class HyperParams(dict):
         self["square_width"] = self.square_width
         self["frame_size"] = self.frame_size
         self["segment_width"] = self.segment_width
-        self["red_type"] = self.red_type.name
-        self["green_type"] = self.green_type.name
-        self["blue_type"] = self.blue_type.name
+
         self["shuffle"] = self.shuffle
-        self["channel"] = self.channel
         self["type"] = self.type
         self["segment_type"] = self.segment_type
         self["multi_label"] = False
         self["diff_norm"] = self.diff_norm
         self["smooth_predictions"] = self.smooth_predictions
+        self["channels"] = self.channels
+
+    @property
+    def channels(self):
+        return self.get(
+            "channels", [TrackChannels.thermal.name, TrackChannels.filtered.name]
+        )
 
     @property
     def output_dim(self):
@@ -99,10 +103,6 @@ class HyperParams(dict):
         return self.get("model_name", "resnetv2")
 
     @property
-    def channel(self):
-        return self.get("channel", TrackChannels.thermal)
-
-    @property
     def dense_sizes(self):
         return self.get("dense_sizes", None)
 
@@ -166,17 +166,18 @@ class HyperParams(dict):
     def maximum_preload(self):
         return self.get("maximum_preload", 1000)
 
-    @property
-    def red_type(self):
-        ft = self.get("red_type", FrameTypes.thermal_tiled.name)
-        return FrameTypes[ft]
-
-    @property
-    def green_type(self):
-        ft = self.get("green_type", FrameTypes.thermal_tiled.name)
-        return FrameTypes[ft]
-
-    @property
-    def blue_type(self):
-        ft = self.get("blue_type", FrameTypes.thermal_tiled.name)
-        return FrameTypes[ft]
+    #
+    # @property
+    # def red_type(self):
+    #     ft = self.get("red_type", FrameTypes.thermal_tiled.name)
+    #     return FrameTypes[ft]
+    #
+    # @property
+    # def green_type(self):
+    #     ft = self.get("green_type", FrameTypes.thermal_tiled.name)
+    #     return FrameTypes[ft]
+    #
+    # @property
+    # def blue_type(self):
+    #     ft = self.get("blue_type", FrameTypes.thermal_tiled.name)
+    #     return FrameTypes[ft]

@@ -206,7 +206,12 @@ class KerasModel(Interpreter):
                 tf.keras.applications.nasnet.preprocess_input,
             )
         elif pretrained_model == "wr-resnet":
-            return WRResNet(input), None
+            return (
+                WRResNet(
+                    input, k=self.params.get("k", 4), depth=self.params.get("depth", 22)
+                ),
+                None,
+            )
         raise Exception("Could not find model " + pretrained_model)
 
     def get_forest_model(self, run_name):
@@ -238,7 +243,9 @@ class KerasModel(Interpreter):
     ):
         # width = self.params.frame_size
         width = self.params.output_dim[0]
-        inputs = tf.keras.Input(shape=(width, width, 3), name="input")
+        inputs = tf.keras.Input(
+            shape=(width, width, len(self.params.channels)), name="input"
+        )
         weights = None if self.params.base_training else "imagenet"
         base_model, preprocess = self.get_base_model(inputs, weights=weights)
         self.preprocess_fn = preprocess
@@ -398,13 +405,13 @@ class KerasModel(Interpreter):
         self.label_probabilities = meta.get("label_probabilities")
         self.preprocess_fn = self.get_preprocess_fn()
         self.type = meta.get("type", "thermal")
-        logging.debug(
-            "using types r %s g %s b %s type %s",
-            self.params.red_type,
-            self.params.green_type,
-            self.params.blue_type,
-            self.type,
-        )
+        # logging.debug(
+        #     "using types r %s g %s b %s type %s",
+        #     self.params.red_type,
+        #     self.params.green_type,
+        #     self.params.blue_type,
+        #     self.type,
+        # )
 
     def save(self, run_name=None, history=None, test_results=None):
         # create a save point
@@ -513,6 +520,7 @@ class KerasModel(Interpreter):
                 run_name=run_name,
             )
         self.model.summary()
+
         self.train, remapped, new_labels, epoch_size = get_dataset(
             train_files,
             self.type,
@@ -529,6 +537,7 @@ class KerasModel(Interpreter):
             # dist=self.dataset_counts["train"],
             multi_label=self.params.multi_label,
             num_frames=self.params.square_width**2,
+            channels=self.params.channels,
         )
         self.remapped = remapped
         self.validate, remapped, _, _ = get_dataset(
@@ -545,6 +554,7 @@ class KerasModel(Interpreter):
             remapped_labels=self.remapped_labels,
             multi_label=self.params.multi_label,
             num_frames=self.params.square_width**2,
+            channels=self.params.channels,
             # dist=self.dataset_counts["validation"],
         )
 
@@ -595,6 +605,7 @@ class KerasModel(Interpreter):
                 remapped_labels=self.remapped_labels,
                 multi_label=self.params.multi_label,
                 num_frames=self.params.square_width**2,
+                channels=self.params.channels,
             )
             if self.test:
                 test_accuracy = self.model.evaluate(self.test)

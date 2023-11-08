@@ -1,6 +1,9 @@
 import tensorflow as tf
 
 
+GROUPS = 1
+
+
 # https://arxiv.org/pdf/1605.07146.pdf
 def WRResNet(X_input, depth=22, k=4):
     filters = [16, 16 * k, 32 * k, 64 * k]
@@ -16,6 +19,7 @@ def WRResNet(X_input, depth=22, k=4):
                 padding="same",
                 name=f"conv1_{stage+1}",
                 kernel_initializer=tf.keras.initializers.GlorotUniform(seed=0),
+                groups=GROUPS,
             )(X_input)
         else:
             X = wr_block(
@@ -62,6 +66,7 @@ def basic_block(X, f, filters, stage, block, stride=1):
         padding="same",
         name=conv_name_base + "2a",
         kernel_initializer=tf.keras.initializers.GlorotUniform(seed=0),
+        groups=GROUPS,
     )(X)
 
     X = tf.keras.layers.Dropout(rate=0.1)(X)
@@ -77,12 +82,16 @@ def basic_block(X, f, filters, stage, block, stride=1):
         padding="same",
         name=conv_name_base + "2b",
         kernel_initializer=tf.keras.initializers.GlorotUniform(seed=0),
+        groups=GROUPS,
     )(X)
     if X.shape[-1] == X_shortcut.shape[-1]:
         X_shortcut = tf.keras.layers.Identity()(X_shortcut)
     else:
         X_shortcut = tf.keras.layers.Conv2D(
-            X.shape[-1], strides=(stride, stride), kernel_size=1
+            X.shape[-1],
+            strides=(stride, stride),
+            kernel_size=1,
+            groups=GROUPS,
         )(X_shortcut)
     # Final step: Add shortcut value to main path, and pass it through a RELU activation
     X = tf.keras.layers.Add()([X, X_shortcut])
@@ -91,7 +100,7 @@ def basic_block(X, f, filters, stage, block, stride=1):
 
 
 def main():
-    wr = WRResNet(tf.keras.Input(shape=(160, 160, 1), name="input"))
+    wr = WRResNet(tf.keras.Input(shape=(32, 32, 1), name="input"), depth=16, k=4)
     wr.summary()
 
 
