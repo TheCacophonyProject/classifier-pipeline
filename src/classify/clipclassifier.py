@@ -188,7 +188,7 @@ class ClipClassifier:
 
         for i, track in enumerate(clip.tracks):
             segment_frames = None
-            if reuse_frames and classifier.type == "thermal":
+            if reuse_frames:
                 tracks = meta_data.get("tracks")
                 meta_track = next(
                     (x for x in tracks if x["id"] == track.get_id()), None
