@@ -106,7 +106,7 @@ def create_tf_records(
     logging.info(
         "writing to output path: %s for %s samples", output_path, len(samples_by_source)
     )
-    num_processes = 1
+    num_processes = 8
     try:
         job_queue = Queue()
         processes = []
