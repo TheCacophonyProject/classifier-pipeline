@@ -719,6 +719,7 @@ def main():
         test_clips = []
     logging.info("# of test clips are %s", len(test_clips))
     label_mapping = get_mappings()
+    logging.info("Using mappings %s", label_mapping)
     master_dataset = Dataset(
         args.data_dir,
         "dataset",
@@ -740,6 +741,7 @@ def main():
             labels.update(dataset.labels)
         labels = list(labels)
         labels.sort()
+        logging.info("Setting labels to %s", dataset.labels)
         for dataset in datasets:
             dataset.labels = labels
     else:

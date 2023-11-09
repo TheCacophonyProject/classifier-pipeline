@@ -83,14 +83,15 @@ First download the CPTV files by running
 
 `python cptv-download.py <dir> <user> <password>`
 
-Now we can build the data set
+Now we can build the data set. Move to the src directory.
 
 `python build.py <dir> --ext ".cptv"`
 
-And finally train the model
+And train the model
 
 `python train.py <build name>`
 
+This will build a model under the default parameters which reflect the production model
 ## Database format
 
 Load.py will create a hdf5 file (dataset.hdf5) The format of this is described here:
