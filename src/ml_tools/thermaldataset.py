@@ -205,11 +205,9 @@ def read_tfrecord(
         if TrackChannels.thermal.name in channels:
             thermalencoded = example["image/thermalencoded"]
             thermals = tf.reshape(thermalencoded, [num_frames, 32, 32, 1])
-            logging.info("Adding thermal")
         if TrackChannels.filtered.name in channels:
             filteredencoded = example["image/filteredencoded"]
             filtered = tf.reshape(filteredencoded, [num_frames, 32, 32, 1])
-            logging.info("Adding filtered")
         rgb_image = None
         for type in channels:
             if type == TrackChannels.thermal.name:
@@ -220,7 +218,6 @@ def read_tfrecord(
                 rgb_image = image
             else:
                 rgb_image = tf.concat((rgb_image, image), axis=3)
-        logging.info("RGB is %s", rgb_image.shape)
         # rotation augmentation before tiling
         if augment:
             logging.info("Augmenting")

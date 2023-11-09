@@ -3,7 +3,7 @@ from ml_tools.kerasmodel import KerasModel, grid_search
 import pickle
 import os
 from ml_tools.logs import init_logging
-
+from pathlib import Path
 import absl.logging
 import sys
 
@@ -41,14 +41,15 @@ def train_model(
 ):
     init_logging()
     """Trains a model with the given hyper parameters."""
+    data_dir = Path(conf.base_folder) / "training-data"
     model = KerasModel(
         train_config=conf.train,
         labels=conf.labels,
-        data_dir=os.path.join(conf.tracks_folder, "training-data"),
+        data_dir=data_dir,
     )
 
-    logging.info("Importing datasets from %s ", conf.tracks_folder)
-    model.load_training_meta(conf.tracks_folder)
+    logging.info("Importing datasets from %s ", data_dir)
+    model.load_training_meta(data_dir)
 
     if do_grid_search:
         print("Searching hparams")

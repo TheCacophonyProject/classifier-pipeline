@@ -53,9 +53,9 @@ class KerasModel(Interpreter):
         self.type = None
         self.data_dir = data_dir
         if train_config:
-            self.log_base = os.path.join(train_config.train_dir, "logs")
+            self.log_base = train_config.train_dir / "logs"
             self.log_dir = self.log_base
-            self.checkpoint_folder = os.path.join(train_config.train_dir, "checkpoints")
+            self.checkpoint_folder = train_config.train_dir / "checkpoints"
             self.params.update(train_config.hyper_params)
             self.type = train_config.type
         self.labels = labels
@@ -215,7 +215,7 @@ class KerasModel(Interpreter):
         raise Exception("Could not find model " + pretrained_model)
 
     def get_forest_model(self, run_name):
-        train_files = os.path.join(self.data_dir, "train")
+        train_files = self.data_dir / "train"
         train, remapped, _, _ = get_dataset(
             train_files,
             self.type,
@@ -234,7 +234,7 @@ class KerasModel(Interpreter):
         # have to run fit firest
         rf = tfdf.keras.RandomForestModel()
         rf.fit(train)
-        rf.save(os.path.join(self.checkpoint_folder, run_name, "rf"))
+        rf.save(str(self.checkpoint_folder / run_name / "rf"))
         save_metadata(self)
         return rf
 
@@ -417,7 +417,7 @@ class KerasModel(Interpreter):
         # create a save point
         if run_name is None:
             run_name = self.params.model_name
-        self.model.save(os.path.join(self.checkpoint_folder, run_name))
+        self.model.save(str(self.checkpoint_folder / run_name))
         self.save_metadata(run_name, history, test_results)
 
     def save_metadata(self, run_name=None, history=None, test_results=None):
@@ -451,15 +451,12 @@ class KerasModel(Interpreter):
         if test_results:
             model_stats["test_loss"] = test_results[0]
             model_stats["test_acc"] = test_results[1]
-        run_dir = os.path.join(self.checkpoint_folder, run_name)
-        if not os.path.exists(run_dir):
-            os.mkdir(run_dir)
+        run_dir = self.checkpoint_folder / run_name
+        if not run_dir.exists:
+            run_dir.mkdir()
         json.dump(
             model_stats,
-            open(
-                os.path.join(run_dir, "saved_model.json"),
-                "w",
-            ),
+            (run_dir / "saved_model.json").open("w"),
             indent=4,
             cls=MetaJSONEncoder,
         )
@@ -493,8 +490,8 @@ class KerasModel(Interpreter):
         self.excluded_labels, self.remapped_labels = get_excluded(
             self.type, self.params.multi_label
         )
-        train_files = os.path.join(self.data_dir, "train")
-        validate_files = os.path.join(self.data_dir, "validation")
+        train_files = self.data_dir / "train"
+        validate_files = self.data_dir / "validation"
         logging.info(
             "Excluding %s remapping %s", self.excluded_labels, self.remapped_labels
         )
@@ -508,9 +505,8 @@ class KerasModel(Interpreter):
         for l in self.remapped_labels.keys():
             if l in self.labels:
                 self.labels.remove(l)
-        os.makedirs(self.log_base, exist_ok=True)
-        self.log_dir = os.path.join(self.log_base, run_name)
-        os.makedirs(self.log_base, exist_ok=True)
+        self.log_dir = self.log_base / run_name
+        self.log_dir.mkdir(parents=True, exist_ok=True)
 
         if not self.model:
             self.build_model(
@@ -587,9 +583,9 @@ class KerasModel(Interpreter):
         )
         history = history.history
         test_accuracy = None
-        test_files = os.path.join(self.data_dir, "test")
+        test_files = self.data_dir / "test"
 
-        if len(test_files) > 0:
+        if len(list(test_files.glob("*.tfrecord"))) > 0:
             self.test, _, _, _ = get_dataset(
                 test_files,
                 self.type,
@@ -613,12 +609,12 @@ class KerasModel(Interpreter):
         self.save(run_name, history=history, test_results=test_accuracy)
 
     def checkpoints(self, run_name):
-        checkpoint_file = os.path.join(self.checkpoint_folder, run_name, "cp.ckpt")
+        checkpoint_file = self.checkpoint_folder / run_name / "cp.ckpt"
 
         cp_callback = tf.keras.callbacks.ModelCheckpoint(
             filepath=checkpoint_file, save_weights_only=True, verbose=1
         )
-        val_loss = os.path.join(self.checkpoint_folder, run_name, "val_loss")
+        val_loss = self.checkpoint_folder / run_name / "val_loss"
 
         checkpoint_loss = tf.keras.callbacks.ModelCheckpoint(
             val_loss,
@@ -628,11 +624,7 @@ class KerasModel(Interpreter):
             save_weights_only=True,
             mode="auto",
         )
-        val_acc = os.path.join(
-            self.checkpoint_folder,
-            run_name,
-            "val_acc",
-        )
+        val_acc = self.checkpoint_folder / run_name / "val_acc"
 
         checkpoint_acc = tf.keras.callbacks.ModelCheckpoint(
             val_acc,
@@ -643,7 +635,7 @@ class KerasModel(Interpreter):
             mode="max",
         )
 
-        val_precision = os.path.join(self.checkpoint_folder, run_name, "val_recall")
+        val_precision = self.checkpoint_folder / run_name / "val_recall"
 
         checkpoint_recall = tf.keras.callbacks.ModelCheckpoint(
             val_precision,
@@ -685,58 +677,6 @@ class KerasModel(Interpreter):
             reduce_lr_callback,
             cp_callback,
         ]
-
-    def regroup(self, shuffle=True):
-        # can use this to put animals into groups i.e. wallaby vs not
-        if not self.mapped_labels:
-            logging.warn("Cant regroup without specifying mapped_labels")
-            return
-        for dataset in self.datasets.values():
-            dataset.regroup(self.mapped_labels, shuffle=shuffle)
-            dataset.labels.sort()
-        self.labels = self.train_dataset.labels.copy()
-
-    def import_dataset(self, base_dir, ignore_labels=None, lbl_p=None):
-        """
-        Import dataset.
-        :param dataset_filename: path and filename of the dataset
-        :param ignore_labels: (optional) these labels will be removed from the dataset.
-        :param lbl_p: (optional) probably for each label
-        :return:
-        """
-        self.label_probabilities = lbl_p
-        datasets = ["train", "validation", "test"]
-        self.datasets = {}
-        for i, name in enumerate(datasets):
-            self.datasets[name] = joblib.load(
-                open(f"{os.path.join(base_dir, name)}.dat", "rb")
-            )
-
-        for dataset in self.datasets.values():
-            dataset.labels.sort()
-            dataset.set_read_only(True)
-            dataset.lbl_p = lbl_p
-            dataset.use_segments = self.params.use_segments
-
-            if ignore_labels:
-                for label in ignore_labels:
-                    dataset.remove_label(label)
-        self.labels = self.train_dataset.labels
-
-        if self.mapped_labels:
-            self.regroup()
-
-    @property
-    def test_dataset(self):
-        return self.datasets["test"]
-
-    @property
-    def validation_dataset(self):
-        return self.datasets["validation"]
-
-    @property
-    def train_dataset(self):
-        return self.datasets["train"]
 
     @property
     def hyperparams_string(self):
@@ -825,60 +765,6 @@ class KerasModel(Interpreter):
         track_prediction.classified_clip(output, output, np.array(frames_used))
         track_prediction.normalize_score()
         return track_prediction
-
-    #
-    # def classify_track_data(
-    #     self,
-    #     track_id,
-    #     data,
-    #     segments,
-    #     features=None,
-    # ):
-    #     track_prediction = TrackPrediction(track_id, self.labels)
-    #     start = time.time()
-    #     predictions = []
-    #     smoothed_predictions = []
-    #     predict_me = []
-    #     prediction_frames = []
-    #     mass = []
-    #     for segment in segments:
-    #         segment_frames = []
-    #         for frame_i in segment.frame_indices:
-    #             f = data[frame_i]
-    #             segment_frames.append(f.copy())
-    #         frames = preprocess_movement(
-    #             segment_frames,
-    #             self.params.square_width,
-    #             self.params.frame_size,
-    #             self.params.red_type,
-    #             self.params.green_type,
-    #             self.params.blue_type,
-    #             self.preprocess_fn,
-    #         )
-    #         if frames is None:
-    #             logging.warn("No frames to predict on")
-    #             continue
-    #
-    #         predict_me.append(frames)
-    #         prediction_frames.append(segment.frame_indices)
-    #         mass.append(segment.mass)
-    #     if len(predict_me) > 0:
-    #         mass = np.array(mass)
-    #         mass = mass[:, None]
-    #         predict_me = np.float32(predict_me)
-    #         if self.params.mvm:
-    #             features = features[np.newaxis, :]
-    #             features = np.repeat(features, len(predict_me), axis=0)
-    #             output = self.model.predict([predict_me, features])
-    #         else:
-    #             output = self.model.predict(predict_me)
-    #
-    #         track_prediction.classified_clip(
-    #             output, output * output * mass, prediction_frames
-    #         )
-    #
-    #     track_prediction.classify_time = time.time() - start
-    #     return track_prediction
 
     def predict(self, frames):
         return self.model.predict(frames)
@@ -1218,10 +1104,7 @@ def optimizer(params):
 
 
 def validate_model(model_file):
-    path, ext = os.path.splitext(model_file)
-    if not os.path.exists(model_file):
-        return False
-    return True
+    return Path(model_file).exists()
 
 
 # HYPER PARAM TRAINING OF A MODEL

@@ -401,7 +401,7 @@ def get_test_set_camera(dataset, test_clips, after_date):
     return test_c
 
 
-def split_by_file(dataset, config, split_file, base_dir):
+def split_by_file(dataset, config, split_file, base_dir, make_val=True):
     base_dir = Path(base_dir)
     with open(split_file, "r") as f:
         split = json.load(f)
@@ -441,8 +441,9 @@ def split_by_file(dataset, config, split_file, base_dir):
         datasets.append(split_dataset)
 
     print_counts(*datasets)
-    train, val, _ = split_randomly(datasets[0], config, None, use_test=False)
-    datasets = [train, val, datasets[2]]
+    if make_val:
+        train, val, _ = split_randomly(datasets[0], config, None, use_test=False)
+        datasets = [train, val, datasets[2]]
     return datasets
 
 
@@ -696,7 +697,7 @@ def dump_split_ids(datasets, out_file="datasplit.json"):
             clips.append(
                 {
                     "clip_id": samples[0].clip_id,
-                    "source": source.name,
+                    "source": str(source),
                     "station_id": "{}".format(samples[0].station_id),
                     "tags": list(tags),
                 }
@@ -728,7 +729,7 @@ def main():
         raw=False if args.ext == ".hdf5" else True,
         ext=args.ext,
     )
-    base_dir = Path(config.tracks_folder)
+    base_dir = Path(config.base_folder)
     record_dir = base_dir / "training-data"
     record_dir.mkdir(parents=True, exist_ok=True)
 
@@ -858,7 +859,7 @@ def main():
             counts[label] = count
         dataset_counts[dataset.name] = counts
     # dont need dataset anymore just need some meta
-    meta_filename = f"{base_dir}/training-meta.json"
+    meta_filename = f"{record_dir}/training-meta.json"
     meta_data = {
         "labels": datasets[0].labels,
         "type": config.train.type,

@@ -5,10 +5,6 @@ labels: [bird, cat, false-positive, hedgehog, insect, leporidae, mustelid, possu
   rodent, wallaby]
 previews_colour_map: custom_colormap.dat
 verbose: false
-source_folder: cptv
-# tracks_folder is where the track data files will be created. It is
-# specified relative to base_data_folder.
-tracks_folder: tracks
 use_opt_flow: false
 worker_threads: 1
 build:
