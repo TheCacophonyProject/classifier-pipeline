@@ -452,6 +452,7 @@ class KerasModel(Interpreter):
             model_stats["test_loss"] = test_results[0]
             model_stats["test_acc"] = test_results[1]
         run_dir = self.checkpoint_folder / run_name
+        run_dir.mkdir(parents=True, exist_ok=True)
         if not run_dir.exists:
             run_dir.mkdir()
         json.dump(

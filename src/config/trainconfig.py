@@ -68,7 +68,7 @@ class TrainConfig(DefaultConfig):
             type="thermal",
             hyper_params={},
             resnet_params=None,
-            train_dir="train",
+            train_dir=Path("train"),
             epochs=30,
             use_gru=True,
             label_probabilities=TrainConfig.LABEL_PROBABILITIES,

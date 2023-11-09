@@ -37,7 +37,13 @@ def remove_fp_segments(datasets, ignore_file):
 
 
 def train_model(
-    run_name, conf, hyper_params, weights=None, do_grid_search=None, ignore=None
+    run_name,
+    conf,
+    hyper_params,
+    weights=None,
+    do_grid_search=None,
+    ignore=None,
+    epochs=None,
 ):
     init_logging()
     """Trains a model with the given hyper parameters."""
@@ -63,9 +69,10 @@ def train_model(
     print("---------------------")
     print(model.hyperparams_string)
     print()
+    print("EPOCHS ", epochs)
     try:
         model.train_model(
-            epochs=conf.train.epochs,
+            epochs=conf.train.epochs if epochs is None else epochs,
             run_name=run_name + "_" + "TEST",
             weights=weights,
             resample=False,
