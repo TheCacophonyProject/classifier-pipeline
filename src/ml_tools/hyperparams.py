@@ -25,8 +25,6 @@ class HyperParams(dict):
         self["frame_size"] = self.frame_size
         self["segment_width"] = self.segment_width
 
-        self["shuffle"] = self.shuffle
-        self["type"] = self.type
         self["segment_type"] = self.segment_type
         self["multi_label"] = False
         self["diff_norm"] = self.diff_norm
@@ -59,7 +57,7 @@ class HyperParams(dict):
 
     @property
     def multi_label(self):
-        return self.get("multi_label", False)
+        return self.get("multi_label", True)
 
     @property
     def keep_aspect(self):
@@ -71,7 +69,7 @@ class HyperParams(dict):
 
     @property
     def keep_edge(self):
-        return self.get("keep_edge", False)
+        return self.get("keep_edge", True)
 
     @property
     def segment_width(self):
@@ -85,11 +83,6 @@ class HyperParams(dict):
         else:
             return segment_type
 
-    # Model hyper paramters
-    @property
-    def type(self):
-        return self.get("type", 1)
-
     @property
     def mvm(self):
         return self.get("mvm", False)
@@ -100,7 +93,7 @@ class HyperParams(dict):
 
     @property
     def model_name(self):
-        return self.get("model_name", "resnetv2")
+        return self.get("model_name", "wr-resnet")
 
     @property
     def dense_sizes(self):
@@ -120,7 +113,7 @@ class HyperParams(dict):
 
     @property
     def dropout(self):
-        return self.get("dropout")
+        return self.get("dropout", 0.3)
 
     @property
     def learning_rate(self):
@@ -157,14 +150,6 @@ class HyperParams(dict):
     @property
     def frame_size(self):
         return self.get("frame_size", 32)
-
-    @property
-    def shuffle(self):
-        return self.get("shuffle", True)
-
-    @property
-    def maximum_preload(self):
-        return self.get("maximum_preload", 1000)
 
     #
     # @property

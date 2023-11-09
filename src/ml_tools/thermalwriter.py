@@ -203,6 +203,10 @@ def get_data(clip_samples, extra_args):
                     (track for track in clip_meta.tracks if track.track_id == track_id),
                     None,
                 )
+                if extra_args.get("label_mapping") is not None:
+                    track.remapped_label = extra_args["label_mapping"].get(
+                        track.original_label, track.original_label
+                    )
                 if track is None:
                     logging.error(
                         "Cannot find track %s in clip %s", track_id, clip_meta.clip_id

@@ -146,6 +146,7 @@ class TrackHeader:
         camera=None,
         confidence=None,
         human_tags=None,
+        remapped_lbl=None,
     ):
         self.station_id = station_id
         self.clip_id = clip_id
@@ -157,9 +158,11 @@ class TrackHeader:
         # reference to track this segment came from
         self.track_id = track_id
         # label for this track
-        self.label = label
         # date and time of the start of the track
         self.start_frame = np.uint16(start_frame)
+
+        self.original_label = label
+        self.remapped_label = remapped_lbl
 
         # thermal reference point for each frame.
         # self.frame_temp_median = np.uint16(frame_temp_median)
@@ -200,6 +203,12 @@ class TrackHeader:
             self.median_mass = np.uint16(np.median(mass_history))
             self.mean_mass = np.uint16(np.mean(mass_history))
         self.samples = []
+
+    @property
+    def label(self):
+        return (
+            self.original_label if self.remapped_label is None else self.remapped_label
+        )
 
     @property
     def bounds_history(self):

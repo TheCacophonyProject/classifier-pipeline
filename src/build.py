@@ -428,13 +428,13 @@ def split_by_file(dataset, config, split_file, base_dir, make_val=True):
         for f in split_files:
             # print("loading", base_dir / f["source"])
             # continue
-            file = base_dir / f["source"]
-            if file.exists():
+            source_file = base_dir / f["source"]
+            if source_file.exists():
                 try:
                     # can filter crappy segments here, or can do at train stage to have some way of testing different thresholds
-                    split_dataset.load_clip(file, dont_filter_segment=True)
+                    split_dataset.load_clip(source_file, dont_filter_segment=True)
                 except:
-                    logging.error("Could not load %s", file, exc_info=True)
+                    logging.error("Could not load %s", source_file, exc_info=True)
             else:
                 pass
                 # logging.warn("No source file %s found for %s", f, name)
@@ -682,7 +682,6 @@ def get_mappings():
                     regroup[l] = split_path[-3]
                 else:
                     regroup[l] = split_path[-1]
-
     return regroup
 
 
@@ -819,7 +818,12 @@ def main():
 
     for dataset in datasets:
         dir = os.path.join(record_dir, dataset.name)
+        extra_args = {
+            "use_segments": master_dataset.use_segments,
+            "label_mapping": dataset.label_mapping,
+        }
         if config.train.type == "IR":
+            extra_args["back_thresh"] = threshold
             create_tf_records(
                 dataset,
                 dir,
@@ -829,7 +833,6 @@ def main():
                 back_thresh=threshold,
             )
         else:
-            extra_args = {"use_segments": master_dataset.use_segments}
             if args.ext != ".hdf5":
                 extra_args.update(
                     {

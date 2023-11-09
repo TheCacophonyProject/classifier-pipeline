@@ -214,6 +214,10 @@ class Dataset:
         ]
         self.clips.append(clip_header)
         for track_header in clip_header.tracks:
+            if self.label_mapping:
+                track_header.remapped_label = self.label_mapping.get(
+                    track_header.original_label, track_header.original_label
+                )
             added += 1
             if self.use_segments:
                 segment_frame_spacing = int(
