@@ -206,14 +206,16 @@ def print_cameras(train, validation, test):
 
 
 def print_counts(train, validation, test):
-    print("Counts per class:")
-    print("-" * 90)
-    print("{:<20} {:<21} {:<21} {:<21}".format("Class", "Train", "Validation", "Test"))
-    print("-" * 90)
-    print("Samples / Tracks/ Bins/ weight")
+    logging.info("Counts per class:")
+    logging.info("-" * 90)
+    logging.info(
+        "{:<20} {:<21} {:<21} {:<21}".format("Class", "Train", "Validation", "Test")
+    )
+    logging.info("-" * 90)
+    logging.info("Samples / Tracks/ Bins/ weight")
     # display the dataset summary
     for label in train.labels:
-        print(
+        logging.info(
             "{:<20} {:<20} {:<20} {:<20}".format(
                 label,
                 "{}/{}/{}/{:.1f}".format(*train.get_counts(label)),
@@ -221,7 +223,7 @@ def print_counts(train, validation, test):
                 "{}/{}/{}/{:.1f}".format(*test.get_counts(label)),
             )
         )
-    print()
+    logging.info("")
 
 
 # default split is by stationid, but some labels dont have many stations so best to just split by clip
@@ -259,7 +261,7 @@ def split_label(
 
     if label in split_by_clip:
         sample_bins = set([sample.clip_id for sample in samples])
-        print(label, " Splitting by clip")
+        logging.info("%s Splitting by clip", label)
         samples_by_bin = {}
         for clip in dataset.clips:
             if clip.clip_id in sample_bins:
