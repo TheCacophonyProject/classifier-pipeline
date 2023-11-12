@@ -555,11 +555,11 @@ def add_samples(
             by_labels[s.label] = []
         by_labels[s.label].append(s)
 
-    for label, samples in by_labels.items():
-        track_count = len(set([s.track_id for s in samples]))
+    for label, lbl_samples in by_labels.items():
+        track_count = len(set([s.track_id for s in lbl_samples]))
         counts[label] = (
             track_count,
-            len(samples),
+            len(lbl_samples),
         )
     dataset.add_samples(samples)
 
