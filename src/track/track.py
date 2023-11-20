@@ -238,7 +238,13 @@ class RegionTracker(Tracker):
         return (pred_vel_x, pred_vel_y)
 
     def add_blank_frame(self):
-        if self.frames > RegionTracker.MIN_KALMAN_FRAMES:
+        kalman_amount = (
+            self.frames
+            - RegionTracker.MIN_KALMAN_FRAMES
+            - self._frames_since_target_seen * 2
+        )
+
+        if kalman_amount > 0:
             region = Region(
                 int(self.predicted_mid[0] - self.last_bound.width / 2.0),
                 int(self.predicted_mid[1] - self.last_bound.height / 2.0),
