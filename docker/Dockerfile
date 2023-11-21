@@ -20,7 +20,7 @@ RUN pip3 install -r requirements.txt
 RUN mkdir -p /var/log/supervisor
 COPY docker/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 
-RUn mkdir -p /etc/cacophony
+RUN mkdir -p /etc/cacophony
 RUN cp classifier-docker.yaml /etc/cacophony/classifier.yaml
 RUN touch /etc/cacophony/classifier
 RUN python3 latestmodel.py

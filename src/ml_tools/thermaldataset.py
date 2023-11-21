@@ -347,7 +347,6 @@ def show_batch(image_batch, label_batch, labels):
         while repeat > 0:
             img = np.concatenate((img, img[:, :, :1]), axis=2)
             repeat -= 1
-            print("NOw", img.shape)
         # if repeat > 0:
         # print(img.shape, " repeating", repeat)
         plt.imshow(img)
