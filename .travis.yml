@@ -19,7 +19,7 @@ script:
 - python3 src/build.py -c tests/test-config.yaml tests --ext ".cptv"
 - sudo mkdir /var/spool/cptv
 - sudo chmod -R 777 /var/spool/cptv
-- wget -O thermal-model.tar https://github.com/TheCacophonyProject/AI-Model/releases/download/v0.3/inc3-19012023-tflite.tar
+- wget -O thermal-model.tar https://github.com/TheCacophonyProject/AI-Model/releases/download/v0.4/inc3-19012023-tflite.tar
 - mkdir thermal-model
 - tar xzvf thermal-model.tar -C thermal-model --strip-components=1
 # going to fix shortly GP
