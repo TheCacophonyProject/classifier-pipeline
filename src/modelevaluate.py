@@ -443,7 +443,7 @@ def main():
         model_file = Path(args.model_file)
     if args.weights:
         weights = model_file / args.weights
-    base_dir = config.tracks_folder
+    base_dir = Path(config.base_folder) / "training-data"
 
     model = KerasModel(train_config=config.train)
     model.load_model(model_file, training=False, weights=weights)
@@ -462,7 +462,7 @@ def main():
         if model.params.multi_label:
             model.labels.append("land-bird")
         excluded, remapped = get_excluded(model.type)
-        files = base_dir + f"/training-data/{args.dataset}"
+        files = base_dir / args.dataset
         dataset, _, new_labels, _ = get_dataset(
             files,
             model.type,
@@ -481,6 +481,7 @@ def main():
             multi_label=model.params.multi_label,
             include_track=True,
             cache=True,
+            channels=model.params.channels,
         )
         model.labels = new_labels
         logging.info(

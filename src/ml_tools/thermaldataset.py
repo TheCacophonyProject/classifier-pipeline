@@ -115,7 +115,7 @@ def load_dataset(filenames, remap_lookup, labels, args):
             extra_label_map=extra_label_map,
             include_track=args.get("include_track", False),
             num_frames=args.get("num_frames", 25),
-            channels=args.get("channels", TrackChannels.thermal.name),
+            channels=args.get("channels", [TrackChannels.thermal.name]),
         ),
         num_parallel_calls=AUTOTUNE,
         deterministic=deterministic,
@@ -184,12 +184,12 @@ def read_tfrecord(
     }
     if load_images:
         if TrackChannels.filtered.name in channels:
-            tfrecord_format["image/filteredencoded"] = tf.io.FixedLenFeature(
-                [num_frames * 32 * 32], dtype=tf.float32
+            tfrecord_format["image/filteredencoded"] = tf.io.FixedLenSequenceFeature(
+                [num_frames * 32 * 32], dtype=tf.float32, allow_missing=True
             )
         if TrackChannels.thermal.name in channels:
-            tfrecord_format["image/thermalencoded"] = tf.io.FixedLenFeature(
-                [num_frames * 32 * 32], dtype=tf.float32
+            tfrecord_format["image/thermalencoded"] = tf.io.FixedLenSequenceFeature(
+                [num_frames * 32 * 32], dtype=tf.float32, allow_missing=True
             )
 
     if include_track:
