@@ -175,7 +175,35 @@ class Interpreter(ABC):
 
         data = []
         frames_used = []
+        filtered_norm_limits = None
+        if self.params.diff_norm:
+            min_diff = None
+            max_diff = 0
+            for i, region in enumerate(reversed(track.bounds_history)):
+                if region.blank:
+                    continue
+                if region.width == 0 or region.height == 0:
+                    logging.warn(
+                        "No width or height for frame %s regoin %s",
+                        region.frame_number,
+                        region,
+                    )
+                    continue
+                f = clip.get_frame(region.frame_number)
+                if region.blank or region.width <= 0 or region.height <= 0:
+                    continue
 
+                f.float_arrays()
+                diff_frame = region.subimage(f.thermal) - region.subimage(
+                    clip.background
+                )
+                new_max = np.amax(diff_frame)
+                new_min = np.amin(diff_frame)
+                if min_diff is None or new_min < min_diff:
+                    min_diff = new_min
+                if new_max > max_diff:
+                    max_diff = new_max
+            filtered_norm_limits = (min_diff, max_diff)
         for i, region in enumerate(reversed(track.bounds_history)):
             if region.blank:
                 continue
@@ -201,18 +229,22 @@ class Interpreter(ABC):
                 )
             logging.debug(
                 "classifying single frame with preprocess %s size %s crop? %s f shape %s region %s",
-                self.preprocess_fn.__module__,
+                "None" if self.preprocess_fn is None else self.preprocess_fn.__module__,
                 self.params.frame_size,
-                crop,
+                True,
                 frame.thermal.shape,
                 region,
             )
-            preprocessed = preprocess_single_frame(
+            cropped_frame = preprocess_frame(
                 frame,
-                (
-                    self.params.frame_size,
-                    self.params.frame_size,
-                ),
+                (self.params.frame_size, self.params.frame_size),
+                region,
+                clip.background,
+                clip.crop_rectangle,
+                filtered_norm_limits=filtered_norm_limits,
+            )
+            preprocessed = preprocess_single_frame(
+                cropped_frame,
                 region,
                 self.preprocess_fn,
                 save_info=f"{region.frame_number} - {region}",

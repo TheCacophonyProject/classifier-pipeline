@@ -100,24 +100,25 @@ index = 0
 
 
 def preprocess_single_frame(
-    frame,
-    frame_size,
-    region=None,
+    preprocessed_frame,
+    channels,
     preprocess_fn=None,
     save_info="",
 ):
-    preprocessed_frame = preprocess_frame(
-        frame,
-        frame_size,
-        region,
-    )
+    # preprocessed_frame = preprocess_frame(
+    #     frame,
+    #     frame_size,
+    #     region,
+    # )
+    data = []
+    for type in channels:
+        if type == FrameTypes.thermal_tiled:
+            data.append(preprocess_frame.thermal)
+        elif type == FrameTypes.filtered_tiled:
+            data.append(preprocess_frame.filtered)
 
     image = np.stack(
-        (
-            preprocessed_frame.thermal,
-            preprocessed_frame.thermal,
-            preprocessed_frame.thermal,
-        ),
+        (*data),
         axis=2,
     )
     if preprocess_fn:
