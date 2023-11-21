@@ -488,7 +488,7 @@ class IRTrackExtractor(ClipTracker):
             if DEBUG_TRAP:
                 if len(clip.tracks) > 0:
                     self.show_trap_info(clip, frame)
-        self.debug_tracking(frame, filtered, mask, component_details)
+        # self.debug_tracking(frame, filtered, mask, component_details)
 
     def debug_tracking(self, frame, filtered, mask, components):
         region_copy = filtered.copy()

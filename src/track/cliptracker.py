@@ -279,13 +279,12 @@ class ClipTracker(ABC):
                 continue
             # GP this needs to be checked for themals 29/06/2022
             if clip.type == "IR":
-                if delta_filtered is not None:
-                    sub_delta = region.subimage(delta_filtered)
+                if delta_thermal is not None:
+                    # filtered only 0 or 255
+                    sub_delta = region.subimage(delta_thermal)
                     previous_delta_mass = len(
                         sub_delta[sub_delta > clip.background_thresh]
                     )
-                    # GP TEST NOt sure if this will work
-                    region.mass = previous_delta_mass
                     # if previous_delta_mass == 0:
                     #     logging.info("No mass from previous so skipping")
                     #     continue
