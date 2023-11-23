@@ -125,8 +125,12 @@ def get_data(samples, back_thresh):
     if len(frames_needed) == 0:
         return []
     while True:
-        success, image = vidcap.read()
-        is_background_frame = False
+        for _ in range(2):
+            # try read first frame twice
+            success, image = vidcap.read()
+            is_background_frame = False
+            if success or frame_num > 0:
+                break
         if not success:
             break
         gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
@@ -158,7 +162,8 @@ def get_data(samples, back_thresh):
         if not stats[0]:
             continue
         data.append((sample, gray_sub, filtered))
-    logging.warning("Could not get %s for ", failed, str(samples[0].source_file))
+    if len(failed) > 0:
+        logging.warning("Could not get %s for %s", failed, str(samples[0].source_file))
 
     return data
 
