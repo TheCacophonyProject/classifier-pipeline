@@ -112,13 +112,13 @@ def preprocess_single_frame(
     # )
     data = []
     for type in channels:
-        if type == FrameTypes.thermal_tiled:
-            data.append(preprocess_frame.thermal)
-        elif type == FrameTypes.filtered_tiled:
-            data.append(preprocess_frame.filtered)
+        if type == TrackChannels.thermal:
+            data.append(preprocessed_frame.thermal)
+        elif type == TrackChannels.filtered:
+            data.append(preprocessed_frame.filtered)
 
     image = np.stack(
-        (*data),
+        data,
         axis=2,
     )
     if preprocess_fn:

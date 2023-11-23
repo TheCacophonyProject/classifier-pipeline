@@ -171,7 +171,7 @@ class Interpreter(ABC):
         max_frames=None,
         segment_frames=None,
     ):
-        from ml_tools.preprocess import preprocess_single_frame
+        from ml_tools.preprocess import preprocess_single_frame, preprocess_frame
 
         data = []
         frames_used = []
@@ -245,7 +245,7 @@ class Interpreter(ABC):
             )
             preprocessed = preprocess_single_frame(
                 cropped_frame,
-                region,
+                self.params.channels,
                 self.preprocess_fn,
                 save_info=f"{region.frame_number} - {region}",
             )
@@ -254,7 +254,7 @@ class Interpreter(ABC):
             data.append(preprocessed)
             if max_frames is not None and len(data) >= max_frames:
                 break
-        return frames_used, np.array(data), mass
+        return frames_used, np.array(data), region.mass
 
     def preprocess_segments(
         self,

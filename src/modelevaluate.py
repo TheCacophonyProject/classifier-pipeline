@@ -15,7 +15,7 @@ import sys
 import os
 import time
 
-os.environ["CUDA_VISIBLE_DEVICES"] = "1"
+# os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 import json
 import pickle
 from config.config import Config

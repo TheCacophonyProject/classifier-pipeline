@@ -147,7 +147,13 @@ class TrackHeader:
         confidence=None,
         human_tags=None,
         remapped_lbl=None,
+        mega_missed_regions=None,
     ):
+        # regions that megadetector found nothing in
+        self.mega_missed_regions = mega_missed_regions
+        if mega_missed_regions is not None:
+            print("SET MEGA ", mega_missed_regions)
+            1 / 0
         self.station_id = station_id
         self.clip_id = clip_id
         self.source_file = source_file
@@ -252,6 +258,10 @@ class TrackHeader:
             frame
             for frame in frame_numbers
             if (ffc_frames is None or frame not in ffc_frames)
+            and (
+                self.mega_missed_regions is None
+                or frame not in self.mega_missed_regions
+            )
         ]
         frame_numbers.sort()
 

@@ -100,7 +100,7 @@ def basic_block(X, f, filters, stage, block, stride=1):
 
 
 def main():
-    wr = WRResNet(tf.keras.Input(shape=(32, 32, 1), name="input"), depth=16, k=4)
+    wr = WRResNet(tf.keras.Input(shape=(32, 32, 2), name="input"), depth=22, k=4)
     wr.summary()
 
 
