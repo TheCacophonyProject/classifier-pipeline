@@ -120,7 +120,10 @@ def get_data(samples, back_thresh):
     frames = {}
     backgorund = None
     frame_num = 0
-    print("Loading ", str(samples[0].source_file))
+    frames_needed = [sample.region.frame_number for s in samples]
+    frames_needed.sort(reverse=True)
+    if len(frames_needed) == 0:
+        return []
     while True:
         success, image = vidcap.read()
         is_background_frame = False
@@ -132,10 +135,12 @@ def get_data(samples, back_thresh):
                 image[:, :, 1] == image[:, :, 2]
             )
             background = np.uint8(gray)
-        if not is_background_frame:
+        if not is_background_frame and frame_num in frames_needed:
             frames[frame_num] = gray
             frame_num += 1
             # append(gray)
+        elif frame_num > frames_needed[-1]:
+            break
     data = []
     for sample in samples:
         frame = frames[sample.region.frame_number]
@@ -146,7 +151,6 @@ def get_data(samples, back_thresh):
         if not stats[0]:
             continue
         filtered, stats = normalize(filtered, new_max=255)
-        cv2.imwrite(f"{sample.id}-{sample.track_id}-{sample.label}.png", gray_sub)
         if not stats[0]:
             continue
         data.append((sample, gray_sub, filtered))
