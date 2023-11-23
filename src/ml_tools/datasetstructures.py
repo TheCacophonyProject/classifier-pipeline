@@ -151,9 +151,6 @@ class TrackHeader:
     ):
         # regions that megadetector found nothing in
         self.mega_missed_regions = mega_missed_regions
-        if mega_missed_regions is not None:
-            print("SET MEGA ", mega_missed_regions)
-            1 / 0
         self.station_id = station_id
         self.clip_id = clip_id
         self.source_file = source_file
