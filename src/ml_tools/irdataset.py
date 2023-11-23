@@ -26,7 +26,7 @@ def get_remapped():
     # return ["insect", "cat"]
 
 
-def load_dataset(filenames, remap_lookup, num_labels, args):
+def load_dataset(filenames, remap_lookup, labels, args):
     deterministic = args.get("deterministic", False)
 
     ignore_order = tf.data.Options()
@@ -66,6 +66,17 @@ def load_dataset(filenames, remap_lookup, num_labels, args):
     return dataset
 
 
+data_augmentation = tf.keras.Sequential(
+    [
+        tf.keras.layers.RandomFlip("horizontal"),
+        tf.keras.layers.RandomRotation(0.1, fill_mode="nearest", fill_value=0),
+        tf.keras.layers.RandomZoom(0.1),
+        tf.keras.layers.RandomBrightness(0.2),
+        tf.keras.layers.RandomContrast(0.1),
+    ]
+)
+
+
 def read_irrecord(
     example,
     image_size,
@@ -85,15 +96,6 @@ def read_irrecord(
         "image/class/label": tf.io.FixedLenFeature((), tf.int64, -1),
     }
 
-    data_augmentation = tf.keras.Sequential(
-        [
-            tf.keras.layers.RandomFlip("horizontal"),
-            tf.keras.layers.RandomRotation(0.1, fill_mode="nearest", fill_value=0),
-            tf.keras.layers.RandomZoom(0.1),
-            tf.keras.layers.RandomBrightness(0.2),
-            tf.keras.layers.RandomContrast(0.1),
-        ]
-    )
     example = tf.io.parse_single_example(example, tfrecord_format)
     image = decode_image(
         example["image/thermalencoded"],
