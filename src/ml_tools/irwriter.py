@@ -120,8 +120,8 @@ def get_data(samples, back_thresh):
     frames = {}
     backgorund = None
     frame_num = 0
-    frames_needed = [sample.region.frame_number for s in samples]
-    frames_needed.sort(reverse=True)
+    frames_needed = [s.region.frame_number for s in samples]
+    frames_needed.sort()
     if len(frames_needed) == 0:
         return []
     while True:
@@ -137,12 +137,16 @@ def get_data(samples, back_thresh):
             background = np.uint8(gray)
         if not is_background_frame and frame_num in frames_needed:
             frames[frame_num] = gray
-            frame_num += 1
             # append(gray)
-        elif frame_num > frames_needed[-1]:
+        frame_num += 1
+        if frame_num > frames_needed[-1]:
             break
     data = []
+    failed = []
     for sample in samples:
+        if sample.region.frame_number not in frames:
+            failed.append(sample.region.frame_number)
+            continue
         frame = frames[sample.region.frame_number]
         gray_sub = sample.region.subimage(frame)
         back_sub = sample.region.subimage(background)
@@ -154,6 +158,7 @@ def get_data(samples, back_thresh):
         if not stats[0]:
             continue
         data.append((sample, gray_sub, filtered))
+    logging.warning("Could not get %s for ", failed, str(samples[0].source_file))
 
     return data
 
