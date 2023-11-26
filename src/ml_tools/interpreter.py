@@ -351,9 +351,7 @@ class Interpreter(ABC):
                 segment_frames,
                 self.params.square_width,
                 self.params.frame_size,
-                self.params.red_type,
-                self.params.green_type,
-                self.params.blue_type,
+                self.params.channels,
                 self.preprocess_fn,
             )
             if frames is None:
