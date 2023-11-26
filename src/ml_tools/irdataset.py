@@ -18,7 +18,7 @@ AUTOTUNE = tf.data.AUTOTUNE
 
 
 def get_excluded():
-    return ["human"]
+    return ["human", "dog", "nothing", "other", "sheep", "unknown"]
 
 
 def get_remapped():
