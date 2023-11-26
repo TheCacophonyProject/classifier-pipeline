@@ -336,7 +336,7 @@ def load_split_file(split_file):
 def evaluate_dir(
     model, dir, config, confusion_file, split_file=None, split_dataset="test"
 ):
-    with open("src/label_paths.json", "r") as f:
+    with open("label_paths.json", "r") as f:
         label_paths = json.load(f)
     label_mapping = get_mappings(label_paths)
     reason = {}

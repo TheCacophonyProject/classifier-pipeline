@@ -140,15 +140,11 @@ def preprocess_movement(
 ):
     frame_types = {}
     data = []
-    for c_type in channels:
-        if c_type == FrameTypes.thermal_tiled:
-            channel = TrackChannels.thermal
-        elif c_type == FrameTypes.filtered_tiled:
-            channel = TrackChannels.filtered
-        else:
-            raise Exception("Cannot process type %s for movement", c_type)
-        if c_type in frame_types:
-            data.append(frame_types[c_type])
+    for channel in channels:
+        if isinstance(channel, str):
+            channel = TrackChannels[channel]
+        if channel in frame_types:
+            data.append(frame_types[channel])
             continue
         channel_segment = [frame.get_channel(channel) for frame in preprocess_frames]
         channel_data, success = imageprocessing.square_clip(
@@ -162,8 +158,9 @@ def preprocess_movement(
         if not success:
             return None
         data.append(channel_data)
-        frame_types[c_type] = channel_data
+        frame_types[channel] = channel_data
     data = np.stack(data, axis=2)
+
     #
     # # # # # for testing
     # global index
