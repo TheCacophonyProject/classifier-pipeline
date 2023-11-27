@@ -43,9 +43,9 @@ class HyperParams(dict):
             return (
                 self.frame_size * self.square_width,
                 self.frame_size * self.square_width,
-                3,
+                len(self.channels),
             )
-        return (self.frame_size, self.frame_size, 3)
+        return (self.frame_size, self.frame_size, len(self.channels))
 
     @property
     def smooth_predictions(self):

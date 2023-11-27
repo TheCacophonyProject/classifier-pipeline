@@ -56,6 +56,7 @@ def load_dataset(filenames, remap_lookup, labels, args):
             augment=augment,
             preprocess_fn=preprocess_fn,
             one_hot=one_hot,
+            include_track=args.get("include_track", False),
         ),
         num_parallel_calls=AUTOTUNE,
         deterministic=deterministic,
@@ -86,6 +87,7 @@ def read_irrecord(
     augment,
     preprocess_fn=None,
     one_hot=True,
+    include_track=False,
 ):
     tfrecord_format = {
         "image/augmented": tf.io.FixedLenFeature((), tf.int64, 0),
@@ -95,6 +97,9 @@ def read_irrecord(
         "image/width": tf.io.FixedLenFeature((), tf.int64, -1),
         "image/class/label": tf.io.FixedLenFeature((), tf.int64, -1),
     }
+    if include_track:
+        tfrecord_format["image/track_id"] = tf.io.FixedLenFeature((), tf.int64, -1)
+        tfrecord_format["image/avg_mass"] = tf.io.FixedLenFeature((), tf.int64, -1)
 
     example = tf.io.parse_single_example(example, tfrecord_format)
     image = decode_image(
@@ -115,6 +120,10 @@ def read_irrecord(
         label = remap_lookup.lookup(label)
         if one_hot:
             label = tf.one_hot(label, num_labels)
+        if include_track:
+            track_id = tf.cast(example["image/track_id"], tf.int32)
+            avg_mass = tf.cast(example["image/avg_mass"], tf.int32)
+            label = (label, track_id, avg_mass)
         return image, label
     return image
 
