@@ -807,7 +807,10 @@ class KerasModel(Interpreter):
 
         flat_y = []
         for y, track_id, mass, p in zip(true_categories, track_ids, avg_mass, y_pred):
-            y_max = np.argmax(y)
+            if self.parmas.multi_label:
+                y_max = np.argmax(y)
+            else:
+                y_max = y
             track_pred = pred_per_track.setdefault(
                 track_id, (y_max, TrackPrediction(track_id, self.labels))
             )
@@ -826,15 +829,15 @@ class KerasModel(Interpreter):
             new_smooth = pred.predictions * masses
             new_smooth = np.sum(new_smooth, axis=0)
             new_smooth /= np.sum(masses)
-            logging.info(
-                "Smoothing %s with masses %s", np.round(100 * pred.predictions), masses
-            )
-            logging.info(
-                "N smooth %s old %s new %s",
-                np.round(100 * no_smoothing),
-                np.round(100 * old_smoothing),
-                np.round(100 * new_smooth),
-            )
+            # logging.info(
+            #     "Smoothing %s with masses %s", np.round(100 * pred.predictions), masses
+            # )
+            # logging.info(
+            #     "N smooth %s old %s new %s",
+            #     np.round(100 * no_smoothing),
+            #     np.round(100 * old_smoothing),
+            #     np.round(100 * new_smooth),
+            # )
             for i, pred_type in enumerate([no_smoothing, old_smoothing, new_smooth]):
                 best_pred = np.argmax(pred_type)
                 confidence = pred_type[best_pred]

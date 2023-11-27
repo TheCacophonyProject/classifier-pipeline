@@ -18,7 +18,7 @@ AUTOTUNE = tf.data.AUTOTUNE
 
 
 def get_excluded():
-    return ["human", "dog", "nothing", "other", "sheep", "unknown"]
+    return ["human", "dog", "nothing", "other", "sheep", "unknown", "rodent"]
 
 
 def get_remapped():
@@ -61,8 +61,11 @@ def load_dataset(filenames, remap_lookup, labels, args):
         num_parallel_calls=AUTOTUNE,
         deterministic=deterministic,
     )
+    if args.get("include_track", False):
+        filter_excluded = lambda x, y: not tf.math.equal(tf.math.count_nonzero(y[0]), 0)
+    else:
+        filter_excluded = lambda x, y: not tf.math.equal(tf.math.count_nonzero(y), 0)
 
-    filter_excluded = lambda x, y: not tf.math.equal(tf.math.count_nonzero(y), 0)
     dataset = dataset.filter(filter_excluded)
     return dataset
 
@@ -130,7 +133,7 @@ def read_irrecord(
 
 def decode_image(image, filtered, image_size, augment):
     image = tf.image.decode_png(image, channels=1)
-    image = tf.concat((image, image, image), axis=2)
+    image = tf.concat((image, image), axis=2)
 
     image = tf.cast(image, tf.float32)
     image = tf.image.resize_with_pad(image, image_size[0], image_size[1])
