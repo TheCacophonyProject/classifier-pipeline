@@ -147,7 +147,7 @@ def main():
 
     config = Config.load_from_file()
 
-    file = f"{config.tracks_folder}/training-meta.json"
+    file = f"{config.base_folder}/training-data/training-meta.json"
     with open(file, "r") as f:
         meta = json.load(f)
     labels = meta.get("labels", [])
@@ -155,7 +155,7 @@ def main():
     # weights = [0.5] * len(labels)
     resampled_ds, remapped, labels = get_dataset(
         load_dataset,
-        f"{config.tracks_folder}/training-data/test",
+        f"{config.base_folder}/training-data/test",
         labels,
         batch_size=1,
         image_size=(160, 160),
