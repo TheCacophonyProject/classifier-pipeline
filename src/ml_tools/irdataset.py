@@ -67,6 +67,21 @@ def load_dataset(filenames, remap_lookup, labels, args):
         filter_excluded = lambda x, y: not tf.math.equal(tf.math.count_nonzero(y), 0)
 
     dataset = dataset.filter(filter_excluded)
+    if args.get("resample"):
+        # maybe shoudld shuffle first??
+        label_ds = []
+        for i, l in enumerate(labels):
+            l_mask = np.zeros((len(labels)))
+            l_mask[i] = 1
+            # mask = tf.constant(mask, dtype=tf.float32)
+
+            l_filter = lambda x, y: tf.math.equal(y, l_mask)
+            l_dataset = dataset.filter(l_filter)
+            label_ds.append(l_dataset)
+        dataset = tf.data.Dataset.sample_from_datasets(
+            label_ds, weights=[1 / len(labels)] * len(labels)
+        )
+
     return dataset
 
 
