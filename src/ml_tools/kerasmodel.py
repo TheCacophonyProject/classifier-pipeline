@@ -807,7 +807,7 @@ class KerasModel(Interpreter):
 
         flat_y = []
         for y, track_id, mass, p in zip(true_categories, track_ids, avg_mass, y_pred):
-            if self.parmas.multi_label:
+            if self.params.multi_label:
                 y_max = np.argmax(y)
             else:
                 y_max = y

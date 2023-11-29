@@ -75,14 +75,26 @@ def load_dataset(filenames, remap_lookup, labels, args):
             l_mask[i] = 1
             # mask = tf.constant(mask, dtype=tf.float32)
 
-            l_filter = lambda x, y: tf.math.equal(y, l_mask)
+            l_filter = lambda x, y: tf.math.reduce_all(tf.math.equal(y, l_mask))
+            l_dataset = l_dataset.shuffle(4096, reshuffle_each_iteration=True)
             l_dataset = dataset.filter(l_filter)
+
             label_ds.append(l_dataset)
         dataset = tf.data.Dataset.sample_from_datasets(
             label_ds, weights=[1 / len(labels)] * len(labels)
         )
+    elif args.get("reject", False):
+        dataset = dataset.rejection_resample(
+            class_func,
+            target_dist=[1 / len(labels)] * len(labels),
+            initial_dist=fractions,
+        )
 
     return dataset
+
+
+def class_func(features, label):
+    return label
 
 
 data_augmentation = tf.keras.Sequential(
@@ -160,7 +172,7 @@ def main():
 
     from .tfdataset import get_dataset, get_distribution
 
-    config = Config.load_from_file()
+    config = Config.load_from_file("classifier-ir.yaml")
 
     file = f"{config.base_folder}/training-data/training-meta.json"
     with open(file, "r") as f:
