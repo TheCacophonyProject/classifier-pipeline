@@ -140,9 +140,33 @@ def get_dataset(load_function, base_dir, labels, **args):
         logging.warn("No dataset for %s", filenames)
         return None, None
 
+    if args.get("resample"):
+        logging.info("RESAMPLING")
+        # seems the only way to get even distribution
+        label_ds = []
+        for i, l in enumerate(labels):
+            l_mask = np.zeros((len(labels)))
+            l_mask[i] = 1
+            # mask = tf.constant(mask, dtype=tf.float32)
+
+            l_filter = lambda x, y: tf.math.reduce_all(tf.math.equal(y, l_mask))
+            l_dataset = dataset.filter(l_filter)
+            l_dataset = l_dataset.shuffle(40096, reshuffle_each_iteration=True)
+
+            label_ds.append(l_dataset)
+        dataset = tf.data.Dataset.sample_from_datasets(
+            label_ds,
+            weights=[1 / len(labels)] * len(labels),
+            stop_on_empty_dataset=True,
+            rerandomize_each_iteration=True,
+        )
     if args.get("cache", False):
         dataset = dataset.cache()
-    if not args.get("only_features") and args.get("shuffle", True):
+    if (
+        not args.get("only_features")
+        and args.get("shuffle", True)
+        and not args.get("resample")
+    ):
         logging.info("shuffling data")
         dataset = dataset.shuffle(
             4096, reshuffle_each_iteration=args.get("reshuffle", True)
