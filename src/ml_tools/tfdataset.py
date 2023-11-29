@@ -144,8 +144,8 @@ def get_dataset(load_function, base_dir, labels, **args):
         logging.info("RESAMPLING")
         # seems the only way to get even distribution
         label_ds = []
-        for i, l in enumerate(labels):
-            l_mask = np.zeros((len(labels)))
+        for i, l in enumerate(new_labels):
+            l_mask = np.zeros((len(new_labels)))
             l_mask[i] = 1
             # mask = tf.constant(mask, dtype=tf.float32)
 
@@ -156,7 +156,7 @@ def get_dataset(load_function, base_dir, labels, **args):
             label_ds.append(l_dataset)
         dataset = tf.data.Dataset.sample_from_datasets(
             label_ds,
-            weights=[1 / len(labels)] * len(labels),
+            # weights=[1 / len(new_labels)] * len(new_labels),
             stop_on_empty_dataset=True,
             rerandomize_each_iteration=True,
         )
