@@ -158,7 +158,7 @@ def decode_image(image, filtered, image_size, augment):
 def main():
     init_logging()
 
-    from .tfdataset import get_dataset
+    from .tfdataset import get_dataset, get_distribution
 
     config = Config.load_from_file()
 
@@ -168,7 +168,7 @@ def main():
     labels = meta.get("labels", [])
     datasets = []
     # weights = [0.5] * len(labels)
-    resampled_ds, remapped, labels = get_dataset(
+    resampled_ds, remapped, labels, _ = get_dataset(
         load_dataset,
         f"{config.base_folder}/training-data/test",
         labels,
@@ -187,27 +187,29 @@ def main():
     import cv2
 
     i = 0
-    for e in range(1):
-        for batch_x, batch_y in resampled_ds:
-            for x, y in zip(batch_x, batch_y):
-                lbl = np.argmax(y)
-                lbl = labels[lbl]
-                print("X is", x.shape, lbl)
-                cv2.imwrite(f"./images/{lbl}-{i}.png", x.numpy())
-                # 1 / 0
-                i += 1
-        # for x_2 in x:
-        #     print("max is", np.amax(x_2), x_2.shape)
-        #     assert np.amax(x_2) == 255
-        # show_batch(x, y, labels)
-        return
+    for e in range(2):
+        # for batch_x, batch_y in resampled_ds:
+        #     for x, y in zip(batch_x, batch_y):
+        #         lbl = np.argmax(y)
+        #         lbl = labels[lbl]
+        #         print("X is", x.shape, lbl)
+        #         cv2.imwrite(f"./images/{lbl}-{i}.png", x.numpy())
+        #         # 1 / 0
+        #         i += 1
+        # # for x_2 in x:
+        # #     print("max is", np.amax(x_2), x_2.shape)
+        # #     assert np.amax(x_2) == 255
+        # # show_batch(x, y, labels)
+        # return
         print("epoch", e)
-        true_categories = tf.concat([y for x, y in resampled_ds], axis=0)
-        true_categories = np.int64(tf.argmax(true_categories, axis=1))
-        c = Counter(list(true_categories))
-        print("epoch is size", len(true_categories))
-        for i in range(len(labels)):
-            print("after have", labels[i], c[i])
+        dist = get_distribution(resampled_ds, len(labels), extra_meta=False)
+        #
+        # true_categories = tf.concat([y for x, y in resampled_ds], axis=0)
+        # true_categories = np.int64(tf.argmax(true_categories, axis=1))
+        # c = Counter(list(true_categories))
+        # print("epoch is size", len(true_categories))
+        for l, d in zip(labels, dist):
+            print("after have", l, d)
 
 
 def show_batch(image_batch, label_batch, labels):
