@@ -254,7 +254,7 @@ class Interpreter(ABC):
             data.append(preprocessed)
             if max_frames is not None and len(data) >= max_frames:
                 break
-        return frames_used, np.array(data), region.mass
+        return frames_used, np.array(data), [region.mass]
 
     def preprocess_segments(
         self,

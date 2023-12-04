@@ -105,17 +105,11 @@ def preprocess_single_frame(
     preprocess_fn=None,
     save_info="",
 ):
-    # preprocessed_frame = preprocess_frame(
-    #     frame,
-    #     frame_size,
-    #     region,
-    # )
     data = []
-    for type in channels:
-        if type == TrackChannels.thermal:
-            data.append(preprocessed_frame.thermal)
-        elif type == TrackChannels.filtered:
-            data.append(preprocessed_frame.filtered)
+    for channel in channels:
+        if isinstance(channel, str):
+            channel = TrackChannels[channel]
+        data.append(preprocessed_frame.get_channel(channel))
 
     image = np.stack(
         data,
