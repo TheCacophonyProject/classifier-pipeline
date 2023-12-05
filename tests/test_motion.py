@@ -37,10 +37,8 @@ def test_motion(
 ):
     from pathlib import Path
 
-    ff = Path(config_file)
-    print("FILE EXISTS", ff.exists(), ff)
     config = Config.load_from_file(config_file)
-    thermal_config, _ = ThermalConfig.load_from_file(thermal_config_file)
+    thermal_config = ThermalConfig.load_from_file(thermal_config_file)
     print("detecting on  " + cptv_file)
 
     with open(cptv_file, "rb") as f:
