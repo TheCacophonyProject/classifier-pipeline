@@ -167,6 +167,12 @@ def load_args():
         "confusion",
         help="Confusion matrix filename, used if you want to save confusion matrix image",
     )
+    parser.add_argument(
+        "--threshold",
+        default = 0.5,
+        type = float,
+        help="Prediction threshold default 0.5",
+    )
     args = parser.parse_args()
     if args.date:
         args.date = parse_date(args.date)
@@ -334,8 +340,10 @@ def load_split_file(split_file):
 
 
 def evaluate_dir(
-    model, dir, config, confusion_file, split_file=None, split_dataset="test",threshold = 0.6
+    model, dir, config, confusion_file, split_file=None, split_dataset="test",threshold = 0.5
 ):
+    logging.info("Evaluating cptv files in %s with threshold %s",dir,threshold)
+
     with open("label_paths.json", "r") as f:
         label_paths = json.load(f)
     label_mapping = get_mappings(label_paths)
@@ -404,9 +412,15 @@ def evaluate_dir(
     model.labels.append("None")
     model.labels.append("unidentified")
     cm = confusion_matrix(y_true, y_pred, labels=model.labels)
+    npy_file = Path(confusion_file).with_suffix(".npy")
+    logging.info("Saving %s",npy_file)
+    np.save(str(npy_file),cm)
+
     # Log the confusion matrix as an image summary.
     figure = plot_confusion_matrix(cm, class_names=model.labels)
     plt.savefig(confusion_file, format="png")
+    logging.info("Saving %s",Path(confusion_file).with_suffix(".png"))
+
     model_score(cm, model.labels)
 
 
@@ -456,6 +470,7 @@ def main():
             args.confusion,
             args.split_file,
             args.dataset,
+            threshold = args.threshold
         )
     elif args.dataset:
         model.load_training_meta(base_dir)
@@ -489,7 +504,7 @@ def main():
             args.dataset,
             model.labels,
         )
-        model.confusion_tracks(dataset, args.confusion)
+        model.confusion_tracks(dataset, args.confusion,threshold = args.threshold)
 
 
 if __name__ == "__main__":
