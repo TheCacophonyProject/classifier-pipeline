@@ -228,7 +228,7 @@ def print_counts(train, validation, test):
 
 
 # default split is by stationid, but some labels dont have many stations so best to just split by clip
-split_by_clip = ["penguin", "wallaby"]
+split_by_clip = ["vehicle","penguin", "wallaby"]
 
 
 def split_label(
@@ -405,6 +405,7 @@ def get_test_set_camera(dataset, test_clips, after_date):
             for sample in track.samples:
                 dataset.remove_sample(sample)
                 test_samples.append(sample)
+        
     return test_samples
 
 
