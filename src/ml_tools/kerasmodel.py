@@ -817,9 +817,9 @@ class KerasModel(Interpreter):
             track_pred[1].classified_frame(None, p, mass)
 
         results = [
-            ("No Smoothing", []),
-            ("Old Smoothing", []),
-            ("New Smoothing", []),
+            ("No-Smoothing", []),
+            ("Old-Smoothing", []),
+            ("New-Smoothing", []),
         ]
         for y, pred in pred_per_track.values():
             pred.normalize_score()
