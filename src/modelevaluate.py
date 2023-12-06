@@ -334,7 +334,7 @@ def load_split_file(split_file):
 
 
 def evaluate_dir(
-    model, dir, config, confusion_file, split_file=None, split_dataset="test"
+    model, dir, config, confusion_file, split_file=None, split_dataset="test",threshold = 0.6
 ):
     with open("label_paths.json", "r") as f:
         label_paths = json.load(f)
@@ -375,15 +375,15 @@ def evaluate_dir(
                 #     top_score = len(output)
                 #     smoothed = output
                 # else:
-                smoothed = output * output * masses
+                # smoothed = output * output * masses
                 prediction.classified_clip(
-                    output, smoothed, data[2], top_score=top_score
+                    output, output, data[2], top_score=top_score
                 )
                 y_true.append(label_mapping.get(label, label))
                 predicted_labels = [prediction.predicted_tag()]
                 confidence = prediction.max_score
                 predicted_tag = "None"
-                if confidence < 0.8:
+                if confidence < threshold:
                     y_pred.append("unidentified")
                 elif len(predicted_labels) == 0:
                     y_pred.append("None")
@@ -489,7 +489,7 @@ def main():
             args.dataset,
             model.labels,
         )
-        model.confusion_tfrecords_track(dataset, args.confusion)
+        model.confusion_tracks(dataset, args.confusion)
 
 
 if __name__ == "__main__":

@@ -776,7 +776,7 @@ class KerasModel(Interpreter):
     def predict(self, frames):
         return self.model.predict(frames)
 
-    def confusion_tfrecords_track(self, dataset, filename, threshold=0.8):
+    def confusion_tracks(self, dataset, filename, threshold=0.8):
         true_categories = []
         track_ids = []
         avg_mass = []
@@ -904,6 +904,7 @@ class KerasModel(Interpreter):
         cm = confusion_matrix(
             true_categories, predicted_categories, labels=np.arange(len(self.labels))
         )
+        np.save(cm,Path(filename).with_suffix(".npy"))
         # Log the confusion matrix as an image summary.
         figure = plot_confusion_matrix(cm, class_names=self.labels)
         plt.savefig(filename, format="png")
