@@ -124,6 +124,7 @@ class Interpreter(ABC):
                 num_predictions,
                 predict_from_last,
                 segment_frames=segment_frames,
+                dont_filter = args.get("dont_filter",False)
             )
         else:
             frames, preprocessed, masses = self.preprocess_frames(
@@ -263,18 +264,20 @@ class Interpreter(ABC):
         max_segments=None,
         predict_from_last=None,
         segment_frames=None,
+        dont_filter = False,
     ):
         from ml_tools.preprocess import preprocess_frame, preprocess_movement
 
         track_data = {}
         segments = track.get_segments(
             self.params.square_width**2,
-            ffc_frames=clip.ffc_frames,
+            ffc_frames=[] if dont_filter else clip.ffc_frames ,
             repeats=1,
             segment_frames=segment_frames,
             segment_type=self.params.segment_type,
             from_last=predict_from_last,
             max_segments=max_segments,
+            dont_filter = dont_filter
         )
         frame_indices = set()
         for segment in segments:

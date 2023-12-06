@@ -313,7 +313,7 @@ def load_clip_data(cptv_file):
     data = []
     for track in clip.tracks:
         frames, preprocessed, masses = worker_model.preprocess(
-            clip_db, track, frames_per_classify=25
+            clip_db, track, frames_per_classify=25,dont_filter = True
         )
         data.append(
             (
