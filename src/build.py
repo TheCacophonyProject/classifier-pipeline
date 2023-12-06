@@ -25,8 +25,8 @@ import numpy as np
 
 from pathlib import Path
 
-MAX_TEST_TRACKS = 1
-MAX_TEST_SAMPLES = 1
+MAX_TEST_TRACKS = None
+MAX_TEST_SAMPLES = None
 
 MIN_SAMPLES = 1
 MIN_TRACKS = 1
@@ -72,13 +72,14 @@ def parse_args():
     parser.add_argument("data_dir", help="Directory of hdf5 files")
     args = parser.parse_args()
     if args.date:
-        if args.date == "None":
-            args.date = None
-        else:
-            args.date = parse_date(args.date)
-    else:
-        if args.date is None:
-            args.date = datetime.datetime.now(pytz.utc) - datetime.timedelta(days=30)
+        # if args.date == "None":
+        #     args.date = None
+        # else:
+        args.date = parse_date(args.date)
+        args.date = args.date.replace(tzinfo=pytz.utc)
+    # else:
+    #     if args.date is None:
+    #         args.date = datetime.datetime.now(pytz.utc) - datetime.timedelta(days=30)
 
     if args.min_samples is not None:
         global MAX_TEST_TRACKS, MAX_TEST_SAMPLES, MIN_SAMPLES, MIN_TRACKS
@@ -299,9 +300,11 @@ def split_label(
     if label in LOW_SAMPLES_LABELS:
         min_t = 10
     num_validate_samples = max(sample_count * 0.15, min_t) - validation_count[1]
-    num_test_samples = (
-        min(MAX_TEST_SAMPLES, max(sample_count * 0.05, min_t)) - test_count[1]
-    )
+    num_test_samples =  max(sample_count * 0.05, min_t)
+    if MAX_TEST_SAMPLES is not None:
+       num_test_samples = min(MAX_TEST_SAMPLES,num_test_samples)
+    num_test_samples-= test_count[1]
+    
 
     min_t = MIN_TRACKS
 
@@ -309,9 +312,11 @@ def split_label(
         min_t = 10
 
     num_validate_tracks = max(total_tracks * 0.15, min_t) - validation_count[0]
-    num_test_tracks = (
-        min(MAX_TEST_TRACKS, max(total_tracks * 0.05, min_t)) - test_count[0]
-    )
+    num_test_tracks = max(total_tracks * 0.05, min_t)
+    if MAX_TEST_TRACKS is not None:
+        num_test_tracks = min(MAX_TEST_TRACKS,num_test_tracks)
+    num_test_tracks-= test_count[0]
+    
     track_limit = num_validate_tracks
     sample_limit = num_validate_samples
     tracks = set()
@@ -386,10 +391,10 @@ def split_label(
 
 def get_test_set_camera(dataset, test_clips, after_date):
     # load test set camera from tst_clip ids and all clips after a date
-    test_c = Camera("Test-Set-Camera")
     print("after date is", after_date)
+    test_samples = []
     test_clips = [
-        sample
+        clip
         for clip in dataset.clips
         if clip.clip_id in test_clips
         or after_date is not None
@@ -399,8 +404,8 @@ def get_test_set_camera(dataset, test_clips, after_date):
         for track in clip.tracks:
             for sample in track.samples:
                 dataset.remove_sample(sample)
-                test_c.add_sample(sample)
-    return test_c
+                test_samples.append(sample)
+    return test_samples
 
 
 def split_by_file(dataset, config, split_file, base_dir, make_val=True):
@@ -471,9 +476,10 @@ def split_randomly(dataset, config, date, test_clips=[], use_test=True):
         ext=dataset.ext,
     )
     test = None
+    test_counts = {}
+
     if use_test:
         test_c = get_test_set_camera(dataset, test_clips, date)
-        test_cameras = [test_c]
         test = Dataset(
             dataset.dataset_dir,
             "test",
@@ -482,6 +488,8 @@ def split_randomly(dataset, config, date, test_clips=[], use_test=True):
             raw=dataset.raw,
             ext=dataset.ext,
         )
+        add_samples(dataset.labels, test, test_c, test_counts)
+
     validate_cameras = []
     train_cameras = []
     min_label = None
@@ -515,7 +523,6 @@ def split_randomly(dataset, config, date, test_clips=[], use_test=True):
     logging.debug("lbl order is %s", lbl_order)
     train_counts = {}
     validation_counts = {}
-    test_counts = {}
     existing_test_count = 0
     for label in lbl_order:
         # existing_test_count = len(test.samples_by_label.get(label, []))

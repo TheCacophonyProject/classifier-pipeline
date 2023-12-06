@@ -1032,14 +1032,20 @@ def plot_confusion_matrix(cm, class_names):
     plt.xticks(tick_marks, class_names, rotation=45)
     plt.yticks(tick_marks, class_names)
 
-    # Normalize the confusion matrix.
-    cm = np.around(cm.astype("float") / cm.sum(axis=1)[:, np.newaxis], decimals=2)
-    cm = np.nan_to_num(cm)
 
     # Use white text if squares are dark; otherwise black.
-    threshold = cm.max() / 2.0
+    counts = cm.copy()
+    threshold = counts.max() / 2.0
+    
+    print("Threshold is",threshold, " for ", cm.max())
+    # Normalize the confusion matrix.
+
+    cm = np.around(cm.astype("float") / cm.sum(axis=1)[:, np.newaxis], decimals=2)
+    cm = np.nan_to_num(cm)
+    cm = np.uint8(np.round(cm *100))
+
     for i, j in itertools.product(range(cm.shape[0]), range(cm.shape[1])):
-        color = "white" if cm[i, j] > threshold else "black"
+        color = "white" if counts[i, j] > threshold else "black"
         plt.text(j, i, cm[i, j], horizontalalignment="center", color=color)
 
     plt.tight_layout()
