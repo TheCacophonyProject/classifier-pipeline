@@ -70,7 +70,15 @@ def convert_model(args):
         out_dir.mkdir(parents=True, exist_ok=True)
 
         if args.export:
-            model.export(out_dir)
+            model.summary()
+            input_signature = get_input_sig(model)
+            export_archive = tf.keras.export.ExportArchive()
+            export_archive.track(model)
+            export_archive.add_endpoint(
+                name="predict", fn=model.call, input_signature=input_signature
+            )
+            export_archive.write_out(out_dir)
+
             print("saving model to", out_dir / "saved_model.pb")
             frozen_meta = out_dir / "saved_model.json"
 
@@ -81,6 +89,13 @@ def convert_model(args):
 
     if meta_file.exists():
         shutil.copy(meta_file, frozen_meta)
+
+
+def get_input_sig(model):
+    inputs = []
+    for input in model.inputs:
+        inputs.append(tf.TensorSpec(shape=input.shape, dtype=input.dtype))
+    return inputs
 
 
 def load_model(args):

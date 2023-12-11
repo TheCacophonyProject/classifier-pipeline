@@ -99,7 +99,7 @@ class KerasModel(Interpreter):
                 tf.keras.applications.ResNet50(
                     weights=weights,
                     include_top=False,
-                    input_tensor=inputs,
+                    input_tensor=input,
                 ),
                 tf.keras.applications.resnet.preprocess_input,
             )
@@ -365,7 +365,7 @@ class KerasModel(Interpreter):
         model_file = Path(model_file)
         super().__init__(model_file)
         logging.info("Loading %s with model weights %s", model_file, weights)
-         if args.model.suffix == ".pb":
+        if model_file.suffix == ".pb":
             self.model = tf.keras.models.load_model(model_file.parent)
         else:
             self.model = tf.keras.models.load_model(model_file)
@@ -375,7 +375,7 @@ class KerasModel(Interpreter):
         if weights is not None:
             self.model.load_weights(weights).expect_partial()
             logging.info("Loaded weight %s", weights)
-        print(self.model.summary())
+        # print(self.model.summary())
 
     def save(self, run_name=None, history=None, test_results=None):
         # create a save point
