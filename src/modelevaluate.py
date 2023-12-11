@@ -169,8 +169,8 @@ def load_args():
     )
     parser.add_argument(
         "--threshold",
-        default = 0.5,
-        type = float,
+        default=0.5,
+        type=float,
         help="Prediction threshold default 0.5",
     )
     args = parser.parse_args()
@@ -319,7 +319,7 @@ def load_clip_data(cptv_file):
     data = []
     for track in clip.tracks:
         frames, preprocessed, masses = worker_model.preprocess(
-            clip_db, track, frames_per_classify=25,dont_filter = True
+            clip_db, track, frames_per_classify=25, dont_filter=True
         )
         data.append(
             (
@@ -340,9 +340,15 @@ def load_split_file(split_file):
 
 
 def evaluate_dir(
-    model, dir, config, confusion_file, split_file=None, split_dataset="test",threshold = 0.5
+    model,
+    dir,
+    config,
+    confusion_file,
+    split_file=None,
+    split_dataset="test",
+    threshold=0.5,
 ):
-    logging.info("Evaluating cptv files in %s with threshold %s",dir,threshold)
+    logging.info("Evaluating cptv files in %s with threshold %s", dir, threshold)
 
     with open("label_paths.json", "r") as f:
         label_paths = json.load(f)
@@ -384,9 +390,7 @@ def evaluate_dir(
                 #     smoothed = output
                 # else:
                 # smoothed = output * output * masses
-                prediction.classified_clip(
-                    output, output, data[2], top_score=top_score
-                )
+                prediction.classified_clip(output, output, data[2], top_score=top_score)
                 y_true.append(label_mapping.get(label, label))
                 predicted_labels = [prediction.predicted_tag()]
                 confidence = prediction.max_score
@@ -413,13 +417,13 @@ def evaluate_dir(
     model.labels.append("unidentified")
     cm = confusion_matrix(y_true, y_pred, labels=model.labels)
     npy_file = Path(confusion_file).with_suffix(".npy")
-    logging.info("Saving %s",npy_file)
-    np.save(str(npy_file),cm)
+    logging.info("Saving %s", npy_file)
+    np.save(str(npy_file), cm)
 
     # Log the confusion matrix as an image summary.
     figure = plot_confusion_matrix(cm, class_names=model.labels)
     plt.savefig(confusion_file, format="png")
-    logging.info("Saving %s",Path(confusion_file).with_suffix(".png"))
+    logging.info("Saving %s", Path(confusion_file).with_suffix(".png"))
 
     model_score(cm, model.labels)
 
@@ -451,7 +455,7 @@ def main():
     args = load_args()
     init_logging()
     config = Config.load_from_file(args.config_file)
-    print("LOading config", args.config_file)
+    print("Loading config", args.config_file)
     weights = None
     if args.model_file:
         model_file = Path(args.model_file)
@@ -470,17 +474,17 @@ def main():
             args.confusion,
             args.split_file,
             args.dataset,
-            threshold = args.threshold
+            threshold=args.threshold,
         )
     elif args.dataset:
         model.load_training_meta(base_dir)
         if model.params.multi_label:
             model.labels.append("land-bird")
-        excluded, remapped = get_excluded(model.type)
+        excluded, remapped = get_excluded(model.data_type)
         files = base_dir / args.dataset
         dataset, _, new_labels, _ = get_dataset(
             files,
-            model.type,
+            model.data_type,
             model.labels,
             batch_size=64,
             image_size=model.params.output_dim[:2],
@@ -504,7 +508,7 @@ def main():
             args.dataset,
             model.labels,
         )
-        model.confusion_tracks(dataset, args.confusion,threshold = args.threshold)
+        model.confusion_tracks(dataset, args.confusion, threshold=args.threshold)
 
 
 if __name__ == "__main__":

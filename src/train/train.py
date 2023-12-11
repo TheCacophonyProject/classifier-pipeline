@@ -73,7 +73,7 @@ def train_model(
     try:
         model.train_model(
             epochs=conf.train.epochs if epochs is None else epochs,
-            run_name=run_name + "_" + "TEST",
+            run_name=run_name,
             weights=weights,
             resample=False,
             rebalance=False,

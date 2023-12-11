@@ -24,6 +24,10 @@ class Interpreter(ABC):
         self.params.update(metadata.get("hyperparams", {}))
         self.data_type = metadata.get("type", "thermal")
 
+        self.mapped_labels = metadata.get("mapped_labels")
+        self.label_probabilities = metadata.get("label_probabilities")
+        self.preprocess_fn = self.get_preprocess_fn()
+
     @abstractmethod
     def shape(self):
         """Num Inputs, Prediction shape"""
@@ -402,8 +406,6 @@ class NeuralInterpreter(Interpreter):
         channels_last = input_x.shape[-1] == 3
         if channels_last:
             input_x = np.moveaxis(input_x, 3, 1)
-        # input_x = np.transpose(input_x, axes=[3, 1, 2])
-        # input_x = np.array([[rearranged_arr]])
         res = self.exec_net.infer(inputs={self.input_blob: input_x})
         res = res[self.out_blob]
         return res

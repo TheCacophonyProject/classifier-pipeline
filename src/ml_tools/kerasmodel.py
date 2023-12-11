@@ -50,14 +50,14 @@ class KerasModel(Interpreter):
         self.remapped = None
         # dictionary containing current hyper parameters
         self.params = HyperParams()
-        self.type = None
+        self.data_type = None
         self.data_dir = data_dir
         if train_config:
             self.log_base = train_config.train_dir / "logs"
             self.log_dir = self.log_base
             self.checkpoint_folder = train_config.train_dir / "checkpoints"
             self.params.update(train_config.hyper_params)
-            self.type = train_config.type
+            self.data_type = train_config.type
         self.labels = labels
         self.preprocess_fn = None
         self.validate = None
@@ -77,7 +77,7 @@ class KerasModel(Interpreter):
         with open(file, "r") as f:
             meta = json.load(f)
         self.labels = meta.get("labels", [])
-        self.type = meta.get("type", "thermal")
+        self.data_type = meta.get("type", "thermal")
         self.dataset_counts = meta.get("counts")
         self.ds_by_label = meta.get("by_label", True)
         self.excluded_labels = meta.get("excluded_labels")
@@ -163,6 +163,7 @@ class KerasModel(Interpreter):
                 tf.keras.applications.inception_resnet_v2.preprocess_input,
             )
         elif pretrained_model == "inceptionv3":
+            print("Input", input)
             return (
                 tf.keras.applications.InceptionV3(
                     weights=weights,
@@ -218,7 +219,7 @@ class KerasModel(Interpreter):
         train_files = self.data_dir / "train"
         train, remapped, _, _ = get_dataset(
             train_files,
-            self.type,
+            self.data_type,
             self.orig_labels,
             batch_size=self.params.batch_size,
             image_size=self.params.output_dim[:2],
@@ -360,64 +361,28 @@ class KerasModel(Interpreter):
             ],
         )
 
-    def load_weights(self, model_path, meta=True, training=False):
-        logging.info("loading weights %s", model_path)
-        dir_name = os.path.dirname(model_path)
-
-        if meta:
-            self.load_meta(dir_name)
-
-        if not self.model:
-            self.build_model(
-                dense_sizes=self.params.dense_sizes,
-                retrain_from=self.params.retrain_layer,
-                dropout=self.params.dropout,
-            )
-        if not training:
-            self.model.trainable = False
-        # self.model.summary()
-        # self.model.load_weights(dir + "/variables/variables")
-
-    def load_model(self, model_path, training=False, weights=None):
-        model_path = Path(model_path)
-        if model_path.is_file():
-            dir_name = model_path.parent
-            super().__init__(model_path)
+    def load_model(self, model_file, training=False, weights=None):
+        model_file = Path(model_file)
+        super().__init__(model_file)
+        logging.info("Loading %s with model weights %s", model_file, weights)
+         if args.model.suffix == ".pb":
+            self.model = tf.keras.models.load_model(model_file.parent)
         else:
-            dir_name = model_path
-            super().__init__(model_path / "saved_model.pb")
+            self.model = tf.keras.models.load_model(model_file)
 
-        logging.info("Loading %s with model weight %s", model_path, weights)
-        self.model = tf.keras.models.load_model(dir_name)
         self.model.trainable = training
-        self.load_meta(dir_name)
+
         if weights is not None:
             self.model.load_weights(weights).expect_partial()
             logging.info("Loaded weight %s", weights)
         print(self.model.summary())
 
-    def load_meta(self, dir_name):
-        meta = json.load((dir_name / "saved_model.json").open("r"))
-        self.params = HyperParams()
-        self.params.update(meta["hyperparams"])
-        self.labels = meta["labels"]
-        self.mapped_labels = meta.get("mapped_labels")
-        self.label_probabilities = meta.get("label_probabilities")
-        self.preprocess_fn = self.get_preprocess_fn()
-        self.type = meta.get("type", "thermal")
-        # logging.debug(
-        #     "using types r %s g %s b %s type %s",
-        #     self.params.red_type,
-        #     self.params.green_type,
-        #     self.params.blue_type,
-        #     self.type,
-        # )
-
     def save(self, run_name=None, history=None, test_results=None):
         # create a save point
         if run_name is None:
             run_name = self.params.model_name
-        self.model.save(str(self.checkpoint_folder / run_name))
+
+        self.model.save(str(self.checkpoint_folder / run_name / f"{run_name}.keras"))
         self.save_metadata(run_name, history, test_results)
 
     def save_metadata(self, run_name=None, history=None, test_results=None):
@@ -432,7 +397,7 @@ class KerasModel(Interpreter):
         model_stats["version"] = self.VERSION
         model_stats["mapped_labels"] = self.mapped_labels
         model_stats["label_probabilities"] = self.label_probabilities
-        model_stats["type"] = self.type
+        model_stats["type"] = self.data_type
         model_stats["remapped_labels"] = self.remapped_labels
         model_stats["excluded_labels"] = self.excluded_labels
         if self.remapped is not None:
@@ -455,9 +420,10 @@ class KerasModel(Interpreter):
         run_dir.mkdir(parents=True, exist_ok=True)
         if not run_dir.exists:
             run_dir.mkdir()
+
         json.dump(
             model_stats,
-            (run_dir / "saved_model.json").open("w"),
+            (run_dir / f"{run_name}.json").open("w"),
             indent=4,
             cls=MetaJSONEncoder,
         )
@@ -489,7 +455,7 @@ class KerasModel(Interpreter):
             "%s Training model for %s epochs with weights %s", run_name, epochs, weights
         )
         self.excluded_labels, self.remapped_labels = get_excluded(
-            self.type, self.params.multi_label
+            self.data_type, self.params.multi_label
         )
         train_files = self.data_dir / "train"
         validate_files = self.data_dir / "validation"
@@ -520,7 +486,7 @@ class KerasModel(Interpreter):
 
         self.train, remapped, new_labels, epoch_size = get_dataset(
             train_files,
-            self.type,
+            self.data_type,
             self.orig_labels,
             batch_size=self.params.batch_size,
             image_size=self.params.output_dim[:2],
@@ -539,7 +505,7 @@ class KerasModel(Interpreter):
         self.remapped = remapped
         self.validate, remapped, _, _ = get_dataset(
             validate_files,
-            self.type,
+            self.data_type,
             self.orig_labels,
             batch_size=self.params.batch_size,
             image_size=self.params.output_dim[:2],
@@ -566,7 +532,7 @@ class KerasModel(Interpreter):
             )
 
         self.save_metadata(run_name)
-
+        self.save(run_name)
         checkpoints = self.checkpoints(run_name)
 
         history = self.model.fit(
@@ -589,7 +555,7 @@ class KerasModel(Interpreter):
         if len(list(test_files.glob("*.tfrecord"))) > 0:
             self.test, _, _, _ = get_dataset(
                 test_files,
-                self.type,
+                self.data_type,
                 self.orig_labels,
                 batch_size=self.params.batch_size,
                 image_size=self.params.output_dim[:2],
@@ -777,7 +743,7 @@ class KerasModel(Interpreter):
         return self.model.predict(frames)
 
     def confusion_tracks(self, dataset, filename, threshold=0.8):
-        logging.info("Calculating confusion with threshold %s",threshold)
+        logging.info("Calculating confusion with threshold %s", threshold)
         true_categories = []
         track_ids = []
         avg_mass = []
@@ -905,7 +871,7 @@ class KerasModel(Interpreter):
         cm = confusion_matrix(
             true_categories, predicted_categories, labels=np.arange(len(self.labels))
         )
-        np.save(str(Path(filename).with_suffix(".npy")),cm)
+        np.save(str(Path(filename).with_suffix(".npy")), cm)
         # Log the confusion matrix as an image summary.
         figure = plot_confusion_matrix(cm, class_names=self.labels)
         plt.savefig(filename, format="png")
@@ -1034,17 +1000,16 @@ def plot_confusion_matrix(cm, class_names):
     plt.xticks(tick_marks, class_names, rotation=45)
     plt.yticks(tick_marks, class_names)
 
-
     # Use white text if squares are dark; otherwise black.
     counts = cm.copy()
     threshold = counts.max() / 2.0
-    
-    print("Threshold is",threshold, " for ", cm.max())
+
+    print("Threshold is", threshold, " for ", cm.max())
     # Normalize the confusion matrix.
 
     cm = np.around(cm.astype("float") / cm.sum(axis=1)[:, np.newaxis], decimals=2)
     cm = np.nan_to_num(cm)
-    cm = np.uint8(np.round(cm *100))
+    cm = np.uint8(np.round(cm * 100))
 
     for i, j in itertools.product(range(cm.shape[0]), range(cm.shape[1])):
         color = "white" if counts[i, j] > threshold else "black"
