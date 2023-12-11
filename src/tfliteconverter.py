@@ -66,7 +66,7 @@ def convert_model(args):
         frozen_meta = out_dir / meta_file.name
 
     elif args.freeze or args.export:
-        out_dir = model_dir / "frozen_model"
+        out_dir = Path(args.freeze)
         out_dir.mkdir(parents=True, exist_ok=True)
 
         if args.export:
@@ -119,14 +119,13 @@ def parse_args():
     parser.add_argument(
         "-f",
         "--freeze",
-        action="store_true",
-        help="freeze model with weights supplied into <model path> / frozen_model",
+        help="freeze model with weights here",
     )
     parser.add_argument(
         "-e",
         "--export",
         action="store_true",
-        help="export model with weights supplied into <model path> / frozen_model",
+        help="export model instead of saving",
     )
     parser.add_argument("-w", "--weights", help="Weights to use")
 
