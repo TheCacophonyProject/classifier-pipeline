@@ -1,11 +1,8 @@
 import tensorflow as tf
 
 
-GROUPS = 1
-
-
 # https://arxiv.org/pdf/1605.07146.pdf
-def WRResNet(X_input, depth=22, k=4):
+def WRResNet(X_input, depth=22, k=4, groups=2):
     filters = [16, 16 * k, 32 * k, 64 * k]
     # Define the input as a tensor with shape input_shape
     # X_input = tf.keras.Input(input_shape, name="wr-input")
@@ -19,11 +16,18 @@ def WRResNet(X_input, depth=22, k=4):
                 padding="same",
                 name=f"conv1_{stage+1}",
                 kernel_initializer=tf.keras.initializers.GlorotUniform(seed=0),
-                groups=GROUPS,
+                groups=groups,
             )(X_input)
         else:
             X = wr_block(
-                X, 3, (f, f), stage=stage + 1, block="b", stride=stage, depth=n
+                X,
+                3,
+                (f, f),
+                stage=stage + 1,
+                block="b",
+                stride=stage,
+                depth=n,
+                groups=groups,
             )
     #
     X = tf.keras.layers.BatchNormalization(axis=3, name="final_bn")(X)
@@ -37,17 +41,17 @@ def WRResNet(X_input, depth=22, k=4):
     return model
 
 
-def wr_block(X, f, filters, stage, block, stride=1, depth=1):
+def wr_block(X, f, filters, stage, block, stride=1, depth=1, groups=2):
     s_block = f"{block}0"
 
-    X = basic_block(X, f, filters, stage, s_block, stride)
+    X = basic_block(X, f, filters, stage, s_block, stride, groups=groups)
     for d in range(depth - 1):
         s_block = f"{block}{d+1}"
-        X = basic_block(X, f, filters, stage, s_block, 1)
+        X = basic_block(X, f, filters, stage, s_block, 1, groups=groups)
     return X
 
 
-def basic_block(X, f, filters, stage, block, stride=1):
+def basic_block(X, f, filters, stage, block, stride=1, groups=2):
     # defining name basis
     conv_name_base = "res" + str(stage) + block + "_branch"
     bn_name_base = "bn" + str(stage) + block + "_branch"
@@ -66,7 +70,7 @@ def basic_block(X, f, filters, stage, block, stride=1):
         padding="same",
         name=conv_name_base + "2a",
         kernel_initializer=tf.keras.initializers.GlorotUniform(seed=0),
-        groups=GROUPS,
+        groups=groups,
     )(X)
 
     X = tf.keras.layers.Dropout(rate=0.1)(X)
@@ -82,7 +86,7 @@ def basic_block(X, f, filters, stage, block, stride=1):
         padding="same",
         name=conv_name_base + "2b",
         kernel_initializer=tf.keras.initializers.GlorotUniform(seed=0),
-        groups=GROUPS,
+        groups=groups,
     )(X)
     if X.shape[-1] == X_shortcut.shape[-1]:
         X_shortcut = tf.keras.layers.Identity()(X_shortcut)
@@ -91,7 +95,7 @@ def basic_block(X, f, filters, stage, block, stride=1):
             X.shape[-1],
             strides=(stride, stride),
             kernel_size=1,
-            groups=GROUPS,
+            groups=groups,
         )(X_shortcut)
     # Final step: Add shortcut value to main path, and pass it through a RELU activation
     X = tf.keras.layers.Add()([X, X_shortcut])
