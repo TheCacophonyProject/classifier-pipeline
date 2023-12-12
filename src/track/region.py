@@ -52,7 +52,7 @@ class Region(Rectangle):
     @staticmethod
     def from_ltwh(left, top, width, height):
         """Construct a rectangle from left, top, right, bottom co-ords."""
-        return Region(left, top, width=width, height=height)
+        return Region(left, top, width=width, height=height, centroid=None)
 
     def to_array(self):
         """Return rectangle as left, top, right, bottom co-ords."""

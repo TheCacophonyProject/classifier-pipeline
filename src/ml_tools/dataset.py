@@ -52,7 +52,7 @@ class Dataset:
         self.name = name
         # list of our tracks
         self.samples_by_bin = {}
-        self.samples = []
+        # self.samples = []
         self.samples_by_id = {}
         self.clips = []
 
@@ -70,8 +70,10 @@ class Dataset:
                 self.segment_length = 1
             else:
                 self.use_segments = config.train.hyper_params.get("use_segments", True)
-                self.segment_length = config.build.segment_length
-
+                if self.use_segments:
+                    self.segment_length = config.build.segment_length
+                else:
+                    self.segment_length = 1
             # number of seconds segments are spaced apart
             self.segment_spacing = config.build.segment_spacing
             self.banned_clips = config.build.banned_clips
@@ -84,14 +86,18 @@ class Dataset:
             self.max_segments = config.build.max_segments
         else:
             self.tag_precedence = LoadConfig.DEFAULT_GROUPS
-            self.filter_by_lq = True
+            self.filter_by_lq = False
             # number of seconds each segment should be
-            self.segment_length = 25
+            if self.use_segments:
+                self.segment_length = 25
+            else:
+                self.segment_length = 1
             # number of seconds segments are spaced apart
             self.segment_spacing = 1
             self.segment_min_avg_mass = 10
             self.min_frame_mass = 16
             self.segment_type = SegmentType.ALL_RANDOM
+        self.max_frame_mass = None
         self.filtered_stats = {
             "confidence": 0,
             "trap": 0,
@@ -109,6 +115,10 @@ class Dataset:
         self.numpy_data = None
 
         self.skip_ffc = True
+
+    @property
+    def samples(self):
+        return self.samples_by_id.values()
 
     @property
     def sample_count(self):
@@ -200,10 +210,14 @@ class Dataset:
         clip_header.tracks = [
             track
             for track in clip_header.tracks
-            if not filter_track(track, self.filtered_stats)
+            if not filter_track(track, self.excluded_tags, self.filtered_stats)
         ]
         self.clips.append(clip_header)
         for track_header in clip_header.tracks:
+            if self.label_mapping:
+                track_header.remapped_label = self.label_mapping.get(
+                    track_header.original_label, track_header.original_label
+                )
             added += 1
             if self.use_segments:
                 segment_frame_spacing = int(
@@ -230,8 +244,12 @@ class Dataset:
                     # a lot of ir clips have bad tracking near end so just reduce track length
                     skip_last = 0.1
                 track_header.calculate_sample_frames(
-                    min_mass=None if not self.filter_by_lq else track_header.lower_mass,
-                    max_mass=None if not self.filter_by_lq else track_header.upper_mass,
+                    min_mass=self.min_frame_mass
+                    if not self.filter_by_lq
+                    else track_header.lower_mass,
+                    max_mass=self.max_frame_mass
+                    if not self.filter_by_lq
+                    else track_header.upper_mass,
                     ffc_frames=clip_header.ffc_frames,
                     skip_last=skip_last,
                 )
@@ -263,7 +281,7 @@ class Dataset:
 
     def add_clip_sample_mappings(self, sample):
         self.samples_by_id[sample.id] = sample
-        self.samples.append(sample)
+        # self.samples[sample.id] = sample
 
         if self.label_mapping:
             sample.remapped_label = self.label_mapping.get(
@@ -272,8 +290,9 @@ class Dataset:
 
         if sample.label not in self.labels:
             self.labels.append(sample.label)
-        bins = self.samples_by_bin.setdefault(sample.bin_id, [])
-        bins.append(sample)
+        bins = self.samples_by_bin.setdefault(sample.bin_id, {})
+        bins[sample.id] = sample
+        # (sample)
         return True
 
     def epoch_samples(
@@ -448,7 +467,8 @@ class Dataset:
             samples = self.samples_by_label[lbl]
             for s in samples:
                 s.remapped_label = remapped_lbl
-                samples_by_bin.setdefault(s.bin_id, []).append(s)
+                samples_by_bin.setdefault(s.bin_id, {})[s.id] = s
+                # .append(s)
             samples_by_label.setdefault(remapped_lbl, []).extend(samples)
 
         self.labels = list(groups.keys())
@@ -503,12 +523,19 @@ class Dataset:
     #         filtered_stats,
     #         time.time() - start,
     #     )
+    def remove_sample_by_id(self, id, bin_id):
+        del self.samples_by_id[id]
+        try:
+            # not nessesarily there if splitting by clip hack
+            del self.samples_by_bin[bin_id][id]
+        except:
+            pass
 
     def remove_sample(self, sample):
         del self.samples_by_id[sample.id]
         try:
             # not nessesarily there if splitting by clip hack
-            self.samples_by_bin[sample.bin_id].remove(sample)
+            del self.samples_by_bin[sample.bin_id][sample.id]
         except:
             pass
 
@@ -542,12 +569,14 @@ def filter_track(track_header, excluded_tags, filtered_stats={}):
         filtered_stats.setdefault("notags", 0)
         filtered_stats["notags"] += 1
         return True
+
     if track_header.label in excluded_tags:
         filtered_stats.setdefault("tags", 0)
 
         filtered_stats["tags"] += 1
         filter_tags = filtered_stats.setdefault("tag_names", set())
         filter_tags.add(track_header.label)
+
         return True
 
     if track_header.human_tags is not None:
@@ -575,7 +604,6 @@ def filter_track(track_header, excluded_tags, filtered_stats={}):
     if track_header.confidence <= 0.6:
         filtered_stats.setdefault("confidence", 0)
         filtered_stats["confidence"] += 1
-        logging.info("Low confidence")
         return True
 
     return False

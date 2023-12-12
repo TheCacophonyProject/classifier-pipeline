@@ -146,7 +146,11 @@ class TrackHeader:
         camera=None,
         confidence=None,
         human_tags=None,
+        remapped_lbl=None,
+        mega_missed_regions=None,
     ):
+        # regions that megadetector found nothing in
+        self.mega_missed_regions = mega_missed_regions
         self.station_id = station_id
         self.clip_id = clip_id
         self.source_file = source_file
@@ -157,9 +161,11 @@ class TrackHeader:
         # reference to track this segment came from
         self.track_id = track_id
         # label for this track
-        self.label = label
         # date and time of the start of the track
         self.start_frame = np.uint16(start_frame)
+
+        self.original_label = label
+        self.remapped_label = remapped_lbl
 
         # thermal reference point for each frame.
         # self.frame_temp_median = np.uint16(frame_temp_median)
@@ -200,6 +206,12 @@ class TrackHeader:
             self.median_mass = np.uint16(np.median(mass_history))
             self.mean_mass = np.uint16(np.mean(mass_history))
         self.samples = []
+
+    @property
+    def label(self):
+        return (
+            self.original_label if self.remapped_label is None else self.remapped_label
+        )
 
     @property
     def bounds_history(self):
@@ -243,6 +255,10 @@ class TrackHeader:
             frame
             for frame in frame_numbers
             if (ffc_frames is None or frame not in ffc_frames)
+            and (
+                self.mega_missed_regions is None
+                or frame not in self.mega_missed_regions
+            )
         ]
         frame_numbers.sort()
 
@@ -263,6 +279,8 @@ class TrackHeader:
                 region,
                 source_file=self.source_file,
                 weight=1,
+                station_id=self.station_id,
+                track_median_mass=self.median_mass,
             )
             self.samples.append(f)
 
@@ -613,6 +631,8 @@ class FrameSample(Sample):
         weight,
         source_file,
         augment=False,
+        track_median_mass=None,
+        station_id=None,
     ):
         super().__init__(label)
         self.clip_id = clip_id
@@ -626,6 +646,16 @@ class FrameSample(Sample):
         self.weight = weight
         self.augment = augment
         self._source_file = source_file
+        self._track_median_mass = track_median_mass
+        self.station_id = station_id
+
+    @property
+    def filtered(self):
+        return False
+
+    @property
+    def track_median_mass(self):
+        return self._track_median_mass
 
     @property
     def source_file(self):
@@ -647,10 +677,13 @@ class FrameSample(Sample):
             source_file=self.source_file,
             station_id=self.station_id,
             rec_time=self.rec_time,
+            track_median_mass=self.track_median_mass,
         )
-        FrameSample._frame_id += 1
-
         return f
+
+    @property
+    def frame_numbers(self):
+        return [self.frame_number]
 
     @property
     def mass(self):

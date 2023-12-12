@@ -3,9 +3,10 @@ import cv2
 import numpy as np
 from ml_tools.tools import get_clipped_flow
 from ml_tools.imageprocessing import resize_cv, rotate, normalize, resize_and_pad
+import enum
 
 
-class TrackChannels:
+class TrackChannels(enum.Enum):
     """Indexes to channels in track."""
 
     thermal = 0

@@ -57,7 +57,7 @@ class BuildConfig(DefaultConfig):
             segment_spacing=1,
             segment_min_avg_mass=10,
             min_frame_mass=10,
-            filter_by_lq=True,
+            filter_by_lq=False,
             max_segments=5,
         )
 

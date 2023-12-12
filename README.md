@@ -77,19 +77,39 @@ Copy `classifier_TEMPLATE.yaml` to `classifier.yaml`. Edit.
 
 CPTV files can be downloaded using the [cptv-downloader](https://github.com/TheCacophonyProject/cptv-download) tool.
 
-## Training the Model
+## Training a Model
 
 First download the CPTV files by running
 
 `python cptv-download.py <dir> <user> <password>`
 
-Now we can build the data set
+Now we can build the data set. Move to the src directory.
 
 `python build.py <dir> --ext ".cptv"`
 
-And finally train the model
+And train the model
 
 `python train.py <build name>`
+
+This will build a model under the default parameters which reflect the production model
+
+### Preparing model for use
+
+Once you have trained a model use tfliteconverter script to export the model for inference.
+
+`python3 tfliteconverter.py -f <path to store model> -e -m <model_path>` -w <model_weights>
+
+This will export the model to the supplied path
+
+Tar this folder 
+
+`tar czf <datetime and model type>.tar -C <frozen model path> .`
+
+Make a release https://github.com/TheCacophonyProject/AI-Model/releases
+and attach the tar file as an asset.
+
+If this is a server side prediction model use the prefix server-<VERSION> in your release name.
+If this is a pi model use the prefix pi-<VERSION> in your release name
 
 ## Database format
 
@@ -117,29 +137,24 @@ Multi frame models use:
 
 ## Release and Update
 
-1. Create a release on GitHub (https://github.com/TheCacophonyProject/Project-Overview/wiki/Releases)
 
-2. SSH into server
+### Releasing prcoessing changes
 
-3. wget latest installer from GitHub
+1. Create a release on GitHub (https://github.com/TheCacophonyProject/classifier-pipeline)
 
-	`wget https://github.com/TheCacophonyProject/classifier-pipeline/releases/download/vx.x.x/classifier-pipeline_x.x.x_amd64.deb`
+2. SSH into processing server
 
-4. Install downloaded deb
+3. By default processing will use the latest pipeline release. If you have changed these settings, make sure that in the  config file ( Default location is `/etc/cacophony/processing.yaml` ) the key `classify_image` references the release version you just made
 
-	`sudo apt install ./classifier-pipeline_x.x.x_amd64.deb`
 
-5. Make changes to config file if needed
+### Release pi tracking code
 
-	`/etc/cacophony/classifier.yaml`
+1. In order to built a release for pi update the version in `pyproject.toml`
 
-6. Restart service
+2. Then you need to merge the changes into the `pi-classifier` branch. This will automatically create a release here
+https://pypi.org/project/classifier-pipeline/
 
-	`systemctl restart cacophony-processing.thermal@xx.service`
-
-7. View logs
-
-	`journalctl -u cacophony-processing.thermal@xx.service -f`
+3. This can then be installed on via pip
 
 # Testing Classification and Tracking
 
@@ -195,3 +210,29 @@ Will save to <path to saved model>/tflite/converted_model.tflite
 - To run the tracking and classification on a pi can use the pre build package by running `pip install classifier-pipeline`.
 This will install the executable `pi_classify` which can be used to connect to leptond or an ir camera
 - In order to build a new version the version number in pyproject.toml must be updated and the code pushed to the pi-classifier branch
+
+
+## Lila Dataset
+- A public dataset is available here [Lila Dataset] (https://lila.science/datasets/new-zealand-wildlife-thermal-imaging/)
+- This dataset can be trained on like so:
+
+1. Download the data set [Lila Dataset Download] (https://storage.googleapis.com/public-datasets-lila/nz-thermal/new-zealand-wildlife-thermal-imaging.zip)
+
+2. Download the suggested split [Dataset split] (https://storage.googleapis.com/public-datasets-lila/nz-thermal/new-zealand-wildlife-thermal-imaging-splits.zip)
+
+3. Unzip the contents of both files
+
+4. Clone this repository
+
+5. Make a python3 virtual environment if youd like and tnstall requirements `pip install -r requirements.txt`
+
+6. go into source dir `cd src`
+
+7. Build the dataset into tf records
+`python3 build.py --split-file <PATH TO DATASET SPLIT>` <PATH TO HDF5 FILES>`
+
+8. Train the model
+`python3 train.py <training name>`
+
+- This will produce similar accuracies on the test dataset to this confusion matrix
+- ![picture alt](readme/lilaTestSet-wr.png "Confusion Matrix")

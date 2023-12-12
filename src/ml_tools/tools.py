@@ -38,6 +38,8 @@ class FrameTypes(enum.Enum):
     flow_tiled = 2
     overlay = 3
     flow_rgb = 4
+    thermal = 5
+    filtered = 6
 
     @staticmethod
     def is_valid(name):

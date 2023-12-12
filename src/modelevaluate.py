@@ -15,7 +15,7 @@ import sys
 import os
 import time
 
-os.environ["CUDA_VISIBLE_DEVICES"] = "1"
+# os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 import json
 import pickle
 from config.config import Config
@@ -161,9 +161,17 @@ def load_args():
 
     parser.add_argument("-d", "--date", help="Use clips after this")
 
+    parser.add_argument("--split-file", help="Use split for evaluation")
+
     parser.add_argument(
         "confusion",
         help="Confusion matrix filename, used if you want to save confusion matrix image",
+    )
+    parser.add_argument(
+        "--threshold",
+        default=0.5,
+        type=float,
+        help="Prediction threshold default 0.5",
     )
     args = parser.parse_args()
     if args.date:
@@ -311,7 +319,7 @@ def load_clip_data(cptv_file):
     data = []
     for track in clip.tracks:
         frames, preprocessed, masses = worker_model.preprocess(
-            clip_db, track, frames_per_classify=25
+            clip_db, track, frames_per_classify=25, dont_filter=True
         )
         data.append(
             (
@@ -325,19 +333,41 @@ def load_clip_data(cptv_file):
     return data
 
 
+def load_split_file(split_file):
+    with open(split_file, "r") as f:
+        split = json.load(f)
+    return split
+
+
 def evaluate_dir(
     model,
     dir,
     config,
     confusion_file,
+    split_file=None,
+    split_dataset="test",
+    threshold=0.5,
 ):
+    logging.info("Evaluating cptv files in %s with threshold %s", dir, threshold)
+
     with open("label_paths.json", "r") as f:
         label_paths = json.load(f)
     label_mapping = get_mappings(label_paths)
     reason = {}
     y_true = []
     y_pred = []
-    files = list(dir.glob(f"**/*cptv"))
+    if split_file is not None:
+        split_json = load_split_file(split_file)
+        files = split_json.get(split_dataset)
+        files = [dir / f["source"] for f in files]
+        logging.info(
+            "Splitting on %s dataset %s files %s ...",
+            split_file,
+            split_dataset,
+            files[:2],
+        )
+    else:
+        files = list(dir.glob(f"**/*cptv"))
     files.sort()
     # files = files[:8]
     start = time.time()
@@ -359,15 +389,13 @@ def evaluate_dir(
                 #     top_score = len(output)
                 #     smoothed = output
                 # else:
-                smoothed = output * output * masses
-                prediction.classified_clip(
-                    output, smoothed, data[2], top_score=top_score
-                )
+                # smoothed = output * output * masses
+                prediction.classified_clip(output, output, data[2], top_score=top_score)
                 y_true.append(label_mapping.get(label, label))
                 predicted_labels = [prediction.predicted_tag()]
                 confidence = prediction.max_score
                 predicted_tag = "None"
-                if confidence < 0.8:
+                if confidence < threshold:
                     y_pred.append("unidentified")
                 elif len(predicted_labels) == 0:
                     y_pred.append("None")
@@ -388,9 +416,15 @@ def evaluate_dir(
     model.labels.append("None")
     model.labels.append("unidentified")
     cm = confusion_matrix(y_true, y_pred, labels=model.labels)
+    npy_file = Path(confusion_file).with_suffix(".npy")
+    logging.info("Saving %s", npy_file)
+    np.save(str(npy_file), cm)
+
     # Log the confusion matrix as an image summary.
     figure = plot_confusion_matrix(cm, class_names=model.labels)
     plt.savefig(confusion_file, format="png")
+    logging.info("Saving %s", Path(confusion_file).with_suffix(".png"))
+
     model_score(cm, model.labels)
 
 
@@ -421,28 +455,36 @@ def main():
     args = load_args()
     init_logging()
     config = Config.load_from_file(args.config_file)
-    print("LOading config", args.config_file)
+    print("Loading config", args.config_file)
     weights = None
     if args.model_file:
         model_file = Path(args.model_file)
     if args.weights:
         weights = model_file / args.weights
-    base_dir = config.tracks_folder
+    base_dir = Path(config.base_folder) / "training-data"
 
     model = KerasModel(train_config=config.train)
     model.load_model(model_file, training=False, weights=weights)
 
     if args.evaluate_dir:
-        evaluate_dir(model, Path(args.evaluate_dir), config, args.confusion)
+        evaluate_dir(
+            model,
+            Path(args.evaluate_dir),
+            config,
+            args.confusion,
+            args.split_file,
+            args.dataset,
+            threshold=args.threshold,
+        )
     elif args.dataset:
         model.load_training_meta(base_dir)
         if model.params.multi_label:
             model.labels.append("land-bird")
-        excluded, remapped = get_excluded(model.type)
-        files = base_dir + f"/training-data/{args.dataset}"
+        excluded, remapped = get_excluded(model.data_type)
+        files = base_dir / args.dataset
         dataset, _, new_labels, _ = get_dataset(
             files,
-            model.type,
+            model.data_type,
             model.labels,
             batch_size=64,
             image_size=model.params.output_dim[:2],
@@ -456,6 +498,9 @@ def main():
             excluded_labels=excluded,
             remapped_labels=remapped,
             multi_label=model.params.multi_label,
+            include_track=True,
+            cache=True,
+            channels=model.params.channels,
         )
         model.labels = new_labels
         logging.info(
@@ -463,7 +508,7 @@ def main():
             args.dataset,
             model.labels,
         )
-        model.confusion_tfrecords(dataset, args.confusion)
+        model.confusion_tracks(dataset, args.confusion, threshold=args.threshold)
 
 
 if __name__ == "__main__":

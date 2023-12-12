@@ -24,6 +24,10 @@ class Interpreter(ABC):
         self.params.update(metadata.get("hyperparams", {}))
         self.data_type = metadata.get("type", "thermal")
 
+        self.mapped_labels = metadata.get("mapped_labels")
+        self.label_probabilities = metadata.get("label_probabilities")
+        self.preprocess_fn = self.get_preprocess_fn()
+
     @abstractmethod
     def shape(self):
         """Num Inputs, Prediction shape"""
@@ -124,6 +128,7 @@ class Interpreter(ABC):
                 num_predictions,
                 predict_from_last,
                 segment_frames=segment_frames,
+                dont_filter=args.get("dont_filter", False),
             )
         else:
             frames, preprocessed, masses = self.preprocess_frames(
@@ -141,10 +146,18 @@ class Interpreter(ABC):
         )
         track_prediction = TrackPrediction(track.get_id(), self.labels)
         # self.model.predict(preprocessed)
-        masses = np.array(masses)
-        masses = masses[:, None]
+        top_score = None
+        smoothed_predictions = None
+        if self.params.smooth_predictions:
+            masses = np.array(masses)
+            top_score = np.sum(masses)
+            masses = masses[:, None]
+            smoothed_predictions = output * masses
         track_prediction.classified_clip(
-            output, output * output * masses, prediction_frames
+            output,
+            smoothed_predictions,
+            prediction_frames,
+            top_score=top_score,
         )
         track_prediction.classify_time = time.time() - start
         return track_prediction
@@ -163,11 +176,39 @@ class Interpreter(ABC):
         max_frames=None,
         segment_frames=None,
     ):
-        from ml_tools.preprocess import preprocess_single_frame
+        from ml_tools.preprocess import preprocess_single_frame, preprocess_frame
 
         data = []
         frames_used = []
+        filtered_norm_limits = None
+        if self.params.diff_norm:
+            min_diff = None
+            max_diff = 0
+            for i, region in enumerate(reversed(track.bounds_history)):
+                if region.blank:
+                    continue
+                if region.width == 0 or region.height == 0:
+                    logging.warn(
+                        "No width or height for frame %s regoin %s",
+                        region.frame_number,
+                        region,
+                    )
+                    continue
+                f = clip.get_frame(region.frame_number)
+                if region.blank or region.width <= 0 or region.height <= 0:
+                    continue
 
+                f.float_arrays()
+                diff_frame = region.subimage(f.thermal) - region.subimage(
+                    clip.background
+                )
+                new_max = np.amax(diff_frame)
+                new_min = np.amin(diff_frame)
+                if min_diff is None or new_min < min_diff:
+                    min_diff = new_min
+                if new_max > max_diff:
+                    max_diff = new_max
+            filtered_norm_limits = (min_diff, max_diff)
         for i, region in enumerate(reversed(track.bounds_history)):
             if region.blank:
                 continue
@@ -193,19 +234,23 @@ class Interpreter(ABC):
                 )
             logging.debug(
                 "classifying single frame with preprocess %s size %s crop? %s f shape %s region %s",
-                self.preprocess_fn.__module__,
+                "None" if self.preprocess_fn is None else self.preprocess_fn.__module__,
                 self.params.frame_size,
-                crop,
+                True,
                 frame.thermal.shape,
                 region,
             )
-            preprocessed = preprocess_single_frame(
+            cropped_frame = preprocess_frame(
                 frame,
-                (
-                    self.params.frame_size,
-                    self.params.frame_size,
-                ),
+                (self.params.frame_size, self.params.frame_size),
                 region,
+                clip.background,
+                clip.crop_rectangle,
+                filtered_norm_limits=filtered_norm_limits,
+            )
+            preprocessed = preprocess_single_frame(
+                cropped_frame,
+                self.params.channels,
                 self.preprocess_fn,
                 save_info=f"{region.frame_number} - {region}",
             )
@@ -214,7 +259,7 @@ class Interpreter(ABC):
             data.append(preprocessed)
             if max_frames is not None and len(data) >= max_frames:
                 break
-        return frames_used, np.array(data), mass
+        return frames_used, np.array(data), [region.mass]
 
     def preprocess_segments(
         self,
@@ -223,24 +268,50 @@ class Interpreter(ABC):
         max_segments=None,
         predict_from_last=None,
         segment_frames=None,
+        dont_filter=False,
     ):
         from ml_tools.preprocess import preprocess_frame, preprocess_movement
 
         track_data = {}
         segments = track.get_segments(
             self.params.square_width**2,
-            ffc_frames=clip.ffc_frames,
+            ffc_frames=[] if dont_filter else clip.ffc_frames,
             repeats=1,
             segment_frames=segment_frames,
             segment_type=self.params.segment_type,
             from_last=predict_from_last,
             max_segments=max_segments,
+            dont_filter=dont_filter,
         )
         frame_indices = set()
         for segment in segments:
             frame_indices.update(set(segment.frame_indices))
         frame_indices = list(frame_indices)
         frame_indices.sort()
+
+        # should really be over whole track buts let just do the indices we predict of
+        #  seems to make little different to just doing a min max normalization
+        filtered_norm_limits = None
+        if self.params.diff_norm:
+            min_diff = None
+            max_diff = 0
+            for frame_index in frame_indices:
+                region = track.bounds_history[frame_index - track.start_frame]
+                f = clip.get_frame(region.frame_number)
+                if region.blank or region.width <= 0 or region.height <= 0:
+                    continue
+
+                f.float_arrays()
+                diff_frame = region.subimage(f.thermal) - region.subimage(
+                    clip.background
+                )
+                new_max = np.amax(diff_frame)
+                new_min = np.amin(diff_frame)
+                if min_diff is None or new_min < min_diff:
+                    min_diff = new_min
+                if new_max > max_diff:
+                    max_diff = new_max
+            filtered_norm_limits = (min_diff, max_diff)
         for frame_index in frame_indices:
             region = track.bounds_history[frame_index - track.start_frame]
 
@@ -264,6 +335,7 @@ class Interpreter(ABC):
                 region,
                 clip.background,
                 clip.crop_rectangle,
+                filtered_norm_limits=filtered_norm_limits,
             )
             track_data[frame.frame_number] = cropped_frame
         features = None
@@ -286,9 +358,7 @@ class Interpreter(ABC):
                 segment_frames,
                 self.params.square_width,
                 self.params.frame_size,
-                self.params.red_type,
-                self.params.green_type,
-                self.params.blue_type,
+                self.params.channels,
                 self.preprocess_fn,
             )
             if frames is None:
@@ -336,8 +406,6 @@ class NeuralInterpreter(Interpreter):
         channels_last = input_x.shape[-1] == 3
         if channels_last:
             input_x = np.moveaxis(input_x, 3, 1)
-        # input_x = np.transpose(input_x, axes=[3, 1, 2])
-        # input_x = np.array([[rearranged_arr]])
         res = self.exec_net.infer(inputs={self.input_blob: input_x})
         res = res[self.out_blob]
         return res

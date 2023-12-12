@@ -29,14 +29,22 @@ def run_model(args):
 
 
 def convert_model(args):
-    print("converting to tflite: ", args.model)
-    model_dir = Path(args.model)
-    if model_dir.is_file():
-        model_dir = model_dir.parent
+    print("Loading: ", args.model)
+    args.model = Path(args.model)
+    model_dir = args.model.parent
     lite_dir = model_dir / "tflite"
+    import time
 
-    model = tf.keras.models.load_model(str(model_dir))
+    a = time.time()
+    if args.model.suffix == ".pb":
+        # for some reason refuses to work with absolute path
+        model = tf.keras.models.load_model(args.model.parent, compile=False)
+    else:
+        model = tf.keras.models.load_model(args.model, compile=False)
+    print(time.time() - a, " to load model")
+    # return
     model.trainable = False
+    meta_file = args.model.with_suffix(".json")
 
     if args.weights:
         print("using weights ", args.weights)
@@ -51,22 +59,43 @@ def convert_model(args):
         converter.optimizations = [tf.lite.Optimize.DEFAULT]
 
         tflite_model = converter.convert()
-        print("saving model to ", lite_dir / args.tflite_name)
-        lite_dir.mkdir(parents=True, exist_ok=True)
-        open(lite_dir / args.tflite_name, "wb").write(tflite_model)
+        print("saving model to ", out_dir / args.model.stem)
+        out_dir.mkdir(parents=True, exist_ok=True)
+        with (out_dir / args.model.stem).open("wb") as f:
+            f.write(tflite_model)
+        frozen_meta = out_dir / meta_file.name
 
-        meta_file = model_dir / "metadata.txt"
-        if meta_file.exists():
-            lite_meta = lite_dir / args.tflite_name
-            lite_meta = lite_meta.with_suffix(".txt")
-            shutil.copy(meta_file, lite_meta)
-    elif args.freeze:
-        print("saving model to", model_dir / "frozen_model")
-        model.save(model_dir / "frozen_model")
-        meta_file = model_dir / "metadata.txt"
-        if meta_file.exists():
-            frozen_meta = model_dir / "frozen_model" / "metadata.txt"
-            shutil.copy(meta_file, frozen_meta)
+    elif args.freeze or args.export:
+        out_dir = Path(args.freeze)
+        out_dir.mkdir(parents=True, exist_ok=True)
+
+        if args.export:
+            model.summary()
+            input_signature = get_input_sig(model)
+            export_archive = tf.keras.export.ExportArchive()
+            export_archive.track(model)
+            export_archive.add_endpoint(
+                name="predict", fn=model.call, input_signature=input_signature
+            )
+            export_archive.write_out(out_dir)
+
+            print("saving model to", out_dir / "saved_model.pb")
+            frozen_meta = out_dir / "saved_model.json"
+
+        else:
+            print("saving model to", out_dir / args.model.name)
+            model.save(out_dir / args.model.name)
+            frozen_meta = out_dir / meta_file.name
+
+    if meta_file.exists():
+        shutil.copy(meta_file, frozen_meta)
+
+
+def get_input_sig(model):
+    inputs = []
+    for input in model.inputs:
+        inputs.append(tf.TensorSpec(shape=input.shape, dtype=input.dtype))
+    return inputs
 
 
 def load_model(args):
@@ -90,8 +119,13 @@ def parse_args():
     parser.add_argument(
         "-f",
         "--freeze",
+        help="freeze model with weights here",
+    )
+    parser.add_argument(
+        "-e",
+        "--export",
         action="store_true",
-        help="freeze model with weights supplied into <model path> / frozen_model",
+        help="export model instead of saving",
     )
     parser.add_argument("-w", "--weights", help="Weights to use")
 
@@ -110,11 +144,7 @@ def parse_args():
         default=MODEL_DIR,
         help="Directory where meta data of the model you want to convert is stored",
     )
-    parser.add_argument(
-        "--tflite_name",
-        default=LITE_MODEL_NAME,
-        help="Name to save converted tflite model under, also used to run model",
-    )
+
     return parser.parse_args()
 
 

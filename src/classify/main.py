@@ -58,6 +58,12 @@ def main(cmd_args=None):
         help="Path to model file to use, will override config model",
     )
     parser.add_argument(
+        "-w",
+        "--model-weights",
+        help="Path to models file to use, will override config model",
+    )
+
+    parser.add_argument(
         "--reuse-prediction-frames",
         action="count",
         help="Use supplied prediction frames from metadata.txt",
@@ -92,7 +98,12 @@ def main(cmd_args=None):
     keras_model = None
     if args.model_file:
         model = ModelConfig.load(
-            {"id": 1, "model_file": args.model_file, "name": args.model_file}
+            {
+                "id": 0,
+                "model_file": args.model_file,
+                "name": args.model_file,
+                "model_weights": args.model_weights,
+            }
         )
         model.validate()
     clip_classifier = ClipClassifier(

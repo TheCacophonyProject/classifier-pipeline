@@ -24,14 +24,18 @@ class HyperParams(dict):
         self["square_width"] = self.square_width
         self["frame_size"] = self.frame_size
         self["segment_width"] = self.segment_width
-        self["red_type"] = self.red_type.name
-        self["green_type"] = self.green_type.name
-        self["blue_type"] = self.blue_type.name
-        self["shuffle"] = self.shuffle
-        self["channel"] = self.channel
-        self["type"] = self.type
+
         self["segment_type"] = self.segment_type
         self["multi_label"] = False
+        self["diff_norm"] = self.diff_norm
+        self["smooth_predictions"] = self.smooth_predictions
+        self["channels"] = self.channels
+
+    @property
+    def channels(self):
+        return self.get(
+            "channels", [TrackChannels.thermal.name, TrackChannels.filtered.name]
+        )
 
     @property
     def output_dim(self):
@@ -39,13 +43,21 @@ class HyperParams(dict):
             return (
                 self.frame_size * self.square_width,
                 self.frame_size * self.square_width,
-                3,
+                len(self.channels),
             )
-        return (self.frame_size, self.frame_size, 3)
+        return (self.frame_size, self.frame_size, len(self.channels))
+
+    @property
+    def smooth_predictions(self):
+        return self.get("smooth_predictions", True)
+
+    @property
+    def diff_norm(self):
+        return self.get("diff_norm", True)
 
     @property
     def multi_label(self):
-        return self.get("multi_label", False)
+        return self.get("multi_label", True)
 
     @property
     def keep_aspect(self):
@@ -57,7 +69,7 @@ class HyperParams(dict):
 
     @property
     def keep_edge(self):
-        return self.get("keep_edge", False)
+        return self.get("keep_edge", True)
 
     @property
     def segment_width(self):
@@ -71,11 +83,6 @@ class HyperParams(dict):
         else:
             return segment_type
 
-    # Model hyper paramters
-    @property
-    def type(self):
-        return self.get("type", 1)
-
     @property
     def mvm(self):
         return self.get("mvm", False)
@@ -86,11 +93,7 @@ class HyperParams(dict):
 
     @property
     def model_name(self):
-        return self.get("model_name", "resnetv2")
-
-    @property
-    def channel(self):
-        return self.get("channel", TrackChannels.thermal)
+        return self.get("model_name", "wr-resnet")
 
     @property
     def dense_sizes(self):
@@ -110,7 +113,7 @@ class HyperParams(dict):
 
     @property
     def dropout(self):
-        return self.get("dropout")
+        return self.get("dropout", 0.3)
 
     @property
     def learning_rate(self):
@@ -148,25 +151,18 @@ class HyperParams(dict):
     def frame_size(self):
         return self.get("frame_size", 32)
 
-    @property
-    def shuffle(self):
-        return self.get("shuffle", True)
-
-    @property
-    def maximum_preload(self):
-        return self.get("maximum_preload", 1000)
-
-    @property
-    def red_type(self):
-        ft = self.get("red_type", FrameTypes.thermal_tiled.name)
-        return FrameTypes[ft]
-
-    @property
-    def green_type(self):
-        ft = self.get("green_type", FrameTypes.thermal_tiled.name)
-        return FrameTypes[ft]
-
-    @property
-    def blue_type(self):
-        ft = self.get("blue_type", FrameTypes.thermal_tiled.name)
-        return FrameTypes[ft]
+    #
+    # @property
+    # def red_type(self):
+    #     ft = self.get("red_type", FrameTypes.thermal_tiled.name)
+    #     return FrameTypes[ft]
+    #
+    # @property
+    # def green_type(self):
+    #     ft = self.get("green_type", FrameTypes.thermal_tiled.name)
+    #     return FrameTypes[ft]
+    #
+    # @property
+    # def blue_type(self):
+    #     ft = self.get("blue_type", FrameTypes.thermal_tiled.name)
+    #     return FrameTypes[ft]

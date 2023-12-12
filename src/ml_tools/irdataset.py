@@ -18,7 +18,7 @@ AUTOTUNE = tf.data.AUTOTUNE
 
 
 def get_excluded():
-    return ["human"]
+    return ["human", "dog", "nothing", "other", "sheep", "unknown", "rodent"]
 
 
 def get_remapped():
@@ -26,7 +26,7 @@ def get_remapped():
     # return ["insect", "cat"]
 
 
-def load_dataset(filenames, remap_lookup, num_labels, args):
+def load_dataset(filenames, remap_lookup, labels, args):
     deterministic = args.get("deterministic", False)
 
     ignore_order = tf.data.Options()
@@ -56,14 +56,30 @@ def load_dataset(filenames, remap_lookup, num_labels, args):
             augment=augment,
             preprocess_fn=preprocess_fn,
             one_hot=one_hot,
+            include_track=args.get("include_track", False),
         ),
         num_parallel_calls=AUTOTUNE,
         deterministic=deterministic,
     )
+    if args.get("include_track", False):
+        filter_excluded = lambda x, y: not tf.math.equal(tf.math.count_nonzero(y[0]), 0)
+    else:
+        filter_excluded = lambda x, y: not tf.math.equal(tf.math.count_nonzero(y), 0)
 
-    filter_excluded = lambda x, y: not tf.math.equal(tf.math.count_nonzero(y), 0)
     dataset = dataset.filter(filter_excluded)
+
     return dataset
+
+
+data_augmentation = tf.keras.Sequential(
+    [
+        tf.keras.layers.RandomFlip("horizontal"),
+        tf.keras.layers.RandomRotation(0.1, fill_mode="nearest", fill_value=0),
+        tf.keras.layers.RandomZoom(0.1),
+        tf.keras.layers.RandomBrightness(0.2),
+        tf.keras.layers.RandomContrast(0.1),
+    ]
+)
 
 
 def read_irrecord(
@@ -75,6 +91,7 @@ def read_irrecord(
     augment,
     preprocess_fn=None,
     one_hot=True,
+    include_track=False,
 ):
     tfrecord_format = {
         "image/augmented": tf.io.FixedLenFeature((), tf.int64, 0),
@@ -84,16 +101,10 @@ def read_irrecord(
         "image/width": tf.io.FixedLenFeature((), tf.int64, -1),
         "image/class/label": tf.io.FixedLenFeature((), tf.int64, -1),
     }
+    if include_track:
+        tfrecord_format["image/track_id"] = tf.io.FixedLenFeature((), tf.int64, -1)
+        tfrecord_format["image/avg_mass"] = tf.io.FixedLenFeature((), tf.int64, -1)
 
-    data_augmentation = tf.keras.Sequential(
-        [
-            tf.keras.layers.RandomFlip("horizontal"),
-            tf.keras.layers.RandomRotation(0.1, fill_mode="nearest", fill_value=0),
-            tf.keras.layers.RandomZoom(0.1),
-            tf.keras.layers.RandomBrightness(0.2),
-            tf.keras.layers.RandomContrast(0.1),
-        ]
-    )
     example = tf.io.parse_single_example(example, tfrecord_format)
     image = decode_image(
         example["image/thermalencoded"],
@@ -113,13 +124,17 @@ def read_irrecord(
         label = remap_lookup.lookup(label)
         if one_hot:
             label = tf.one_hot(label, num_labels)
+        if include_track:
+            track_id = tf.cast(example["image/track_id"], tf.int32)
+            avg_mass = tf.cast(example["image/avg_mass"], tf.int32)
+            label = (label, track_id, avg_mass)
         return image, label
     return image
 
 
 def decode_image(image, filtered, image_size, augment):
     image = tf.image.decode_png(image, channels=1)
-    image = tf.concat((image, image, image), axis=2)
+    image = tf.concat((image, image), axis=2)
 
     image = tf.cast(image, tf.float32)
     image = tf.image.resize_with_pad(image, image_size[0], image_size[1])
@@ -129,19 +144,19 @@ def decode_image(image, filtered, image_size, augment):
 def main():
     init_logging()
 
-    from .tfdataset import get_dataset
+    from .tfdataset import get_dataset, get_distribution
 
-    config = Config.load_from_file()
+    config = Config.load_from_file("classifier-ir.yaml")
 
-    file = f"{config.tracks_folder}/training-meta.json"
+    file = f"{config.base_folder}/training-data/training-meta.json"
     with open(file, "r") as f:
         meta = json.load(f)
     labels = meta.get("labels", [])
     datasets = []
     # weights = [0.5] * len(labels)
-    resampled_ds, remapped, labels = get_dataset(
+    resampled_ds, remapped, labels, _ = get_dataset(
         load_dataset,
-        f"{config.tracks_folder}/training-data/test",
+        f"{config.base_folder}/training-data/test",
         labels,
         batch_size=1,
         image_size=(160, 160),
@@ -158,27 +173,29 @@ def main():
     import cv2
 
     i = 0
-    for e in range(1):
-        for batch_x, batch_y in resampled_ds:
-            for x, y in zip(batch_x, batch_y):
-                lbl = np.argmax(y)
-                lbl = labels[lbl]
-                print("X is", x.shape, lbl)
-                cv2.imwrite(f"./images/{lbl}-{i}.png", x.numpy())
-                # 1 / 0
-                i += 1
-        # for x_2 in x:
-        #     print("max is", np.amax(x_2), x_2.shape)
-        #     assert np.amax(x_2) == 255
-        # show_batch(x, y, labels)
-        return
+    for e in range(2):
+        # for batch_x, batch_y in resampled_ds:
+        #     for x, y in zip(batch_x, batch_y):
+        #         lbl = np.argmax(y)
+        #         lbl = labels[lbl]
+        #         print("X is", x.shape, lbl)
+        #         cv2.imwrite(f"./images/{lbl}-{i}.png", x.numpy())
+        #         # 1 / 0
+        #         i += 1
+        # # for x_2 in x:
+        # #     print("max is", np.amax(x_2), x_2.shape)
+        # #     assert np.amax(x_2) == 255
+        # # show_batch(x, y, labels)
+        # return
         print("epoch", e)
-        true_categories = tf.concat([y for x, y in resampled_ds], axis=0)
-        true_categories = np.int64(tf.argmax(true_categories, axis=1))
-        c = Counter(list(true_categories))
-        print("epoch is size", len(true_categories))
-        for i in range(len(labels)):
-            print("after have", labels[i], c[i])
+        dist = get_distribution(resampled_ds, len(labels), extra_meta=False)
+        #
+        # true_categories = tf.concat([y for x, y in resampled_ds], axis=0)
+        # true_categories = np.int64(tf.argmax(true_categories, axis=1))
+        # c = Counter(list(true_categories))
+        # print("epoch is size", len(true_categories))
+        for l, d in zip(labels, dist):
+            print("after have", l, d)
 
 
 def show_batch(image_batch, label_batch, labels):

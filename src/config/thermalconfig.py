@@ -191,20 +191,22 @@ class ThermalConfig:
     location = attr.ib()
     throttler = attr.ib()
     device_setup = attr.ib()
+    config_file = attr.ib()
 
     @classmethod
     def load_from_file(cls, filename=None, model=None):
         if not filename:
             filename = ThermalConfig.find_config()
         with LockSafeConfig(filename) as stream:
-            return cls.load_from_stream(stream, model), filename
+            return cls.load_from_stream(filename, stream, model)
 
     @classmethod
-    def load_from_stream(cls, stream, model=None):
+    def load_from_stream(cls, filename, stream, model=None):
         raw = toml.load(stream)
         if raw is None:
             raw = {}
         return cls(
+            config_file=filename,
             throttler=ThrottlerConfig.load(raw.get("thermal-throttler", {})),
             motion=CameraMotionConfig.load(raw.get("thermal-motion", {}), model),
             recorder=RecorderConfig.load(

@@ -120,10 +120,17 @@ def get_data(samples, back_thresh):
     frames = {}
     backgorund = None
     frame_num = 0
-    print("Loading ", str(samples[0].source_file))
+    frames_needed = [s.region.frame_number for s in samples]
+    frames_needed.sort()
+    if len(frames_needed) == 0:
+        return []
     while True:
-        success, image = vidcap.read()
-        is_background_frame = False
+        for _ in range(2):
+            # try read first frame twice
+            success, image = vidcap.read()
+            is_background_frame = False
+            if success or frame_num > 0:
+                break
         if not success:
             break
         gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
@@ -132,12 +139,18 @@ def get_data(samples, back_thresh):
                 image[:, :, 1] == image[:, :, 2]
             )
             background = np.uint8(gray)
-        if not is_background_frame:
+        if not is_background_frame and frame_num in frames_needed:
             frames[frame_num] = gray
-            frame_num += 1
             # append(gray)
+        frame_num += 1
+        if frame_num > frames_needed[-1]:
+            break
     data = []
+    failed = []
     for sample in samples:
+        if sample.region.frame_number not in frames:
+            failed.append(sample.region.frame_number)
+            continue
         frame = frames[sample.region.frame_number]
         gray_sub = sample.region.subimage(frame)
         back_sub = sample.region.subimage(background)
@@ -146,10 +159,11 @@ def get_data(samples, back_thresh):
         if not stats[0]:
             continue
         filtered, stats = normalize(filtered, new_max=255)
-        cv2.imwrite(f"{sample.id}-{sample.track_id}-{sample.label}.png", gray_sub)
         if not stats[0]:
             continue
         data.append((sample, gray_sub, filtered))
+    if len(failed) > 0:
+        logging.warning("Could not get %s for %s", failed, str(samples[0].source_file))
 
     return data
 
