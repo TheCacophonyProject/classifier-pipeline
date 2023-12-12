@@ -228,7 +228,7 @@ def print_counts(train, validation, test):
 
 
 # default split is by stationid, but some labels dont have many stations so best to just split by clip
-split_by_clip = ["vehicle","penguin", "wallaby"]
+split_by_clip = ["vehicle", "penguin", "wallaby"]
 
 
 def split_label(
@@ -300,11 +300,10 @@ def split_label(
     if label in LOW_SAMPLES_LABELS:
         min_t = 10
     num_validate_samples = max(sample_count * 0.15, min_t) - validation_count[1]
-    num_test_samples =  max(sample_count * 0.05, min_t)
+    num_test_samples = max(sample_count * 0.05, min_t)
     if MAX_TEST_SAMPLES is not None:
-       num_test_samples = min(MAX_TEST_SAMPLES,num_test_samples)
-    num_test_samples-= test_count[1]
-    
+        num_test_samples = min(MAX_TEST_SAMPLES, num_test_samples)
+    num_test_samples -= test_count[1]
 
     min_t = MIN_TRACKS
 
@@ -314,9 +313,9 @@ def split_label(
     num_validate_tracks = max(total_tracks * 0.15, min_t) - validation_count[0]
     num_test_tracks = max(total_tracks * 0.05, min_t)
     if MAX_TEST_TRACKS is not None:
-        num_test_tracks = min(MAX_TEST_TRACKS,num_test_tracks)
-    num_test_tracks-= test_count[0]
-    
+        num_test_tracks = min(MAX_TEST_TRACKS, num_test_tracks)
+    num_test_tracks -= test_count[0]
+
     track_limit = num_validate_tracks
     sample_limit = num_validate_samples
     tracks = set()
@@ -405,7 +404,7 @@ def get_test_set_camera(dataset, test_clips, after_date):
             for sample in track.samples:
                 dataset.remove_sample(sample)
                 test_samples.append(sample)
-        
+
     return test_samples
 
 

@@ -210,3 +210,23 @@ Will save to <path to saved model>/tflite/converted_model.tflite
 - To run the tracking and classification on a pi can use the pre build package by running `pip install classifier-pipeline`.
 This will install the executable `pi_classify` which can be used to connect to leptond or an ir camera
 - In order to build a new version the version number in pyproject.toml must be updated and the code pushed to the pi-classifier branch
+
+
+## Lila Dataset
+- A public dataset is available here [Lila Dataset] (https://lila.science/datasets/new-zealand-wildlife-thermal-imaging/)
+- This dataset can be trained on like so:
+
+1. Download the data set [Lila Dataset Download] (https://storage.googleapis.com/public-datasets-lila/nz-thermal/new-zealand-wildlife-thermal-imaging.zip)
+
+2. Download the suggested split [Dataset split] (https://storage.googleapis.com/public-datasets-lila/nz-thermal/new-zealand-wildlife-thermal-imaging-splits.zip)
+
+3. Unzip the contents of both files
+
+4. Build the dataset into tf records
+`python3 build.py --split-file <PATH TO DATASET SPLIT>` <PATH TO HDF5 FILES>`
+
+5. Train the model
+`python3 train.py <training name>`
+
+- This is a confusion matrix built of the dataset in this way
+- ![picture alt](readme/lilaTestSet-wr.png "Confusion Matrix")

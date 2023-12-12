@@ -69,7 +69,7 @@ class TrainConfig(DefaultConfig):
             hyper_params={},
             resnet_params=None,
             train_dir=Path("train"),
-            epochs=30,
+            epochs=60,
             use_gru=True,
             label_probabilities=TrainConfig.LABEL_PROBABILITIES,
         )
