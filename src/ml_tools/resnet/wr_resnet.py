@@ -32,11 +32,6 @@ def WRResNet(X_input, depth=22, k=4, groups=2):
     #
     X = tf.keras.layers.BatchNormalization(axis=3, name="final_bn")(X)
     X = tf.keras.layers.Activation("relu")(X)
-    # LME?
-    # X = tf.keras.layers.GlobalAveragePooling2D()(X)
-
-    # X = tf.keras.layers.Flatten()(X)
-    # X = tf.keras.layers.Dense(classes, activation="sigmoid", name="prediction")(X)
     model = tf.keras.Model(inputs=X_input, outputs=X, name="WRResNet")
     return model
 
@@ -105,7 +100,13 @@ def basic_block(X, f, filters, stage, block, stride=1, groups=2):
 
 def main():
     wr = WRResNet(tf.keras.Input(shape=(32, 32, 2), name="input"), depth=22, k=4)
-    wr.summary()
+    x = tf.keras.layers.GlobalAveragePooling2D()(wr.output)
+
+    x = tf.keras.layers.Dropout(0.3)(x)
+    output = tf.keras.layers.Dense(17, activation="sigmoid", name="prediction")(x)
+    model = tf.keras.models.Model(wr.inputs, outputs=output)
+
+    model.summary()
 
 
 if __name__ == "__main__":
