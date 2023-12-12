@@ -222,11 +222,17 @@ This will install the executable `pi_classify` which can be used to connect to l
 
 3. Unzip the contents of both files
 
-4. Build the dataset into tf records
+4. Clone this repository
+
+5. Make a python3 virtual environment if youd like and tnstall requirements `pip install -r requirements.txt`
+
+6. go into source dir `cd src`
+
+7. Build the dataset into tf records
 `python3 build.py --split-file <PATH TO DATASET SPLIT>` <PATH TO HDF5 FILES>`
 
-5. Train the model
+8. Train the model
 `python3 train.py <training name>`
 
-- This is a confusion matrix built of the dataset in this way
+- This will produce similar accuracies on the testdataset to this confusion matrix
 - ![picture alt](readme/lilaTestSet-wr.png "Confusion Matrix")
