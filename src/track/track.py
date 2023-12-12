@@ -444,7 +444,7 @@ class Track:
         from_last=None,
         max_segments=None,
         ffc_frames=None,
-        dont_filter = False,
+        dont_filter=False,
     ):
         if from_last is not None:
             if from_last == 0:
@@ -491,7 +491,7 @@ class Track:
                 segment_frames=None,
                 segment_type=segment_type,
                 max_segments=max_segments,
-                dont_filter = dont_filter
+                dont_filter=dont_filter,
             )
         return segments
 

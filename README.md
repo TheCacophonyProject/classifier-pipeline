@@ -234,5 +234,5 @@ This will install the executable `pi_classify` which can be used to connect to l
 8. Train the model
 `python3 train.py <training name>`
 
-- This will produce similar accuracies on the testdataset to this confusion matrix
+- This will produce similar accuracies on the test dataset to this confusion matrix
 - ![picture alt](readme/lilaTestSet-wr.png "Confusion Matrix")

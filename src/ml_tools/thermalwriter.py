@@ -244,7 +244,7 @@ def get_data(clip_samples, extra_args):
                     f = db.frames[frame_i]
                     region = track.regions_by_frame[frame_i]
                     frame_temp_median[frame_i] = np.median(f.thermal)
-                    cropped= f.crop_by_region(region)
+                    cropped = f.crop_by_region(region)
                     cropped.float_arrays()
                     track_frames.append(cropped)
 
