@@ -99,7 +99,7 @@ def basic_block(X, f, filters, stage, block, stride=1, groups=2):
 
 
 def main():
-    wr = WRResNet(tf.keras.Input(shape=(32, 32, 2), name="input"), depth=22, k=4)
+    wr = WRResNet(tf.keras.Input(shape=(160, 160, 2), name="input"), depth=22, k=4)
     x = tf.keras.layers.GlobalAveragePooling2D()(wr.output)
 
     x = tf.keras.layers.Dropout(0.3)(x)
