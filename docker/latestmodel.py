@@ -104,10 +104,23 @@ def main():
     print("Loading ", config_file)
     with open(config_file) as stream:
         config = yaml.safe_load(stream)
-    config_model = config["classify"]["models"][0]
-    config_model["name"] = model_name
-    config_model["model_file"] = str(model_dir / "saved_model.pb")
-    config_model["id"] = config_model["id"] + 1
+    if config is None:
+        config = {"classify": {"models": []}}
+
+    if config.get("classify") is None:
+        config["classify"] = {}
+    if len(config.get("classify", {}).get("models", [])) == 0:
+        config_model = {
+            "name": model_name,
+            "model_file": str(model_dir / "saved_model.pb"),
+            "id": 1,
+        }
+        config["classify"]["models"] = [config_model]
+    else:
+        config_model = config["classify"]["models"][0]
+        config_model["name"] = model_name
+        config_model["model_file"] = str(model_dir / "saved_model.pb")
+        config_model["id"] = config_model["id"] + 1
 
     with open(config_file, "w") as stream:
         raw = yaml.dump(config, stream)
