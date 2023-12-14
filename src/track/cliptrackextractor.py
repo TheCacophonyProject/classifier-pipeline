@@ -33,6 +33,7 @@ from track.track import Track
 from piclassifier.cptvmotiondetector import is_affected_by_ffc
 from ml_tools.imageprocessing import detect_objects, normalize
 from track.cliptracker import ClipTracker
+from track.cliptracker import ClipTracker, CVBackground, DiffBackground
 
 
 class ClipTrackExtractor(ClipTracker):
@@ -69,6 +70,7 @@ class ClipTrackExtractor(ClipTracker):
             verbose=verbose,
             do_tracking=do_tracking,
         )
+        self.tracking_alg = "mog2"
         self.use_opt_flow = use_opt_flow
         self.high_quality_optical_flow = high_quality_optical_flow
         # self.cache_to_disk = cache_to_disk
@@ -88,6 +90,8 @@ class ClipTrackExtractor(ClipTracker):
         """
         Loads a cptv file, and prepares for track extraction.
         """
+        self.background = CVBackground(self.tracking_alg)
+
         self._tracking_time = None
         start = time.time()
         clip.set_frame_buffer(
@@ -119,6 +123,28 @@ class ClipTrackExtractor(ClipTracker):
             video_start_time = reader.timestamp.astimezone(Clip.local_tz)
             clip.set_video_stats(video_start_time)
             clip.calculate_background(reader)
+
+        max_v = None
+        min_v = None
+        with open(clip.source_file, "rb") as f:
+            reader = CPTVReader(f)
+            for frame in reader:
+                if not process_background and frame.background_frame:
+                    continue
+                if max_v is None:
+                    max_v = frame.pix.max()
+                    min_v = frame.pix.min()
+                else:
+                    if frame.pix.max() > max_v:
+                        max_v = frame.pix.max()
+                    if frame.pix.min() < min_v:
+                        min_v = frame.pix.min()
+        print("Max is ", max_v, " min is ", min_v)
+        self.max_v = max_v
+        self.min_v = min_v
+        back = clip.background
+        back, stats = normalize(back, min=self.min_v, max=self.max_v, new_max=255)
+        self.background.set_background(back)
 
         with open(clip.source_file, "rb") as f:
             reader = CPTVReader(f)
@@ -153,12 +179,24 @@ class ClipTrackExtractor(ClipTracker):
         :param thermal: A numpy array of shape (height, width) and type uint16
         If specified background subtraction algorithm will be used.
         """
+        # thermal = frame.pix.copy()
+        thermal, _ = normalize(frame.pix, min=self.min_v, max=self.max_v, new_max=255)
+        self.background.update_background(thermal, learning_rate=0.00001)
+        filtered = self.background.compute_filtered(frame)
+        print("Getting cv2 filtered")
+        cv2.imshow("a", np.uint8(thermal))
+
+        cv2.imshow("f", np.uint8(filtered))
+
+        cv2.moveWindow("f", 0, 0)
+        cv2.waitKey()
+        threshold = clip.background_thresh
         ffc_affected = is_affected_by_ffc(frame)
-        thermal = frame.pix.copy()
         if ffc_affected:
             self.print_if_verbose("{} ffc_affected".format(clip.current_frame))
         clip.ffc_affected = ffc_affected
-        filtered, threshold = self._get_filtered_frame(clip, thermal)
+
+        # filtered, threshold = self._get_filtered_frame(clip, thermal)
         mask = None
         if self.do_tracking:
             _, mask, component_details, centroids = detect_objects(

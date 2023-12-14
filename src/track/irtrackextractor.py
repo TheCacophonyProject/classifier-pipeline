@@ -231,6 +231,73 @@ class IRTrackExtractor(ClipTracker):
         self._tracking_time = time.time() - start
         return True
 
+    def parse_cptv_clip(self, clip, process_background=False):
+        """
+        Loads a cptv file, and prepares for track extraction.
+        """
+        clip.type = self.type
+        self._tracking_time = None
+        start = time.time()
+        clip.set_frame_buffer(
+            False,
+            self.cache_to_disk,
+            False,
+            self.keep_frames,
+            max_frames=None
+            if self.keep_frames
+            else 51,  # enough to cover back comparison
+        )
+
+        _, ext = os.path.splitext(clip.source_file)
+        background = None
+        vidcap = cv2.VideoCapture(str(clip.source_file))
+        fail_count = 0
+
+        while True:
+            success, image = vidcap.read()
+
+            if not success:
+                if fail_count < 1:
+                    fail_count += 1
+                    # try once more if its first fail as the mp4s from pi have errors at key frames
+                    continue
+                break
+            fail_count = 0
+
+            gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+            if background is None:
+                self.res_x = gray.shape[0]
+                self.res_y = gray.shape[1]
+                clip.set_res(gray.shape[1], gray.shape[0])
+                if clip.from_metadata:
+                    for track in clip.tracks:
+                        track.crop_regions()
+
+                background = np.uint8(gray)
+                # cv2.imshow("bak", np.uint8(background))
+                # cv2.waitKey(1000)
+                # if this is grey scale it is the tracking backgorund frame
+                is_background_frame = np.all(
+                    image[:, :, 0] == image[:, :, 1]
+                ) and np.all(image[:, :, 1] == image[:, :, 2])
+                background_frames = 500 if is_background_frame else 1
+                self.start_tracking(
+                    clip, background_frame=gray, background_frames=background_frames
+                )
+                if is_background_frame:
+                    continue
+            self.process_frame(clip, gray)
+
+        vidcap.release()
+        if not clip.from_metadata and self.do_tracking:
+            self.apply_track_filtering(clip)
+
+        if self.calc_stats:
+            clip.stats.completed()
+
+        self._tracking_time = time.time() - start
+        return True
+
     def start_tracking(
         self,
         clip,

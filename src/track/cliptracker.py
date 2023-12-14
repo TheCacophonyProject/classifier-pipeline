@@ -545,6 +545,10 @@ class CVBackground(Background):
             self.algorithm = cv2.createBackgroundSubtractorMOG2(
                 history=1000, detectShadows=False
             )
+        elif tracking_alg == "knn":
+            self.algorithm = cv2.createBackgroundSubtractorKNN(
+                history=1000, detectShadows=False
+            )
         else:
             raise Exception(f"No algorihtm details found for {tracking_alg}")
             # print(self.algorithm.getBackgroundRatio(), "RATION")
@@ -568,7 +572,8 @@ class CVBackground(Background):
 
     def update_background(self, thermal, filtered=None, learning_rate=-1):
         if self.use_subsense:
-            self._background = self.algorithm.apply(thermal)
+            print("Updating back", thermal.shape, thermal.max())
+            self._background = self.algorithm.apply(np.uint8(thermal))
         else:
             self._background = self.algorithm.apply(thermal, None, learning_rate)
 
