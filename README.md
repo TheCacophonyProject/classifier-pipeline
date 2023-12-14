@@ -213,12 +213,12 @@ This will install the executable `pi_classify` which can be used to connect to l
 
 
 ## Lila Dataset
-- A public dataset is available here [Lila Dataset] (https://lila.science/datasets/new-zealand-wildlife-thermal-imaging/)
+- A public dataset is available here [Lila Dataset](https://lila.science/datasets/new-zealand-wildlife-thermal-imaging/)
 - This dataset can be trained on like so:
 
-1. Download the data set [Lila Dataset Download] (https://storage.googleapis.com/public-datasets-lila/nz-thermal/new-zealand-wildlife-thermal-imaging.zip)
+1. Download the data set [Lila Dataset Download](https://storage.googleapis.com/public-datasets-lila/nz-thermal/new-zealand-wildlife-thermal-imaging.zip)
 
-2. Download the suggested split [Dataset split] (https://storage.googleapis.com/public-datasets-lila/nz-thermal/new-zealand-wildlife-thermal-imaging-splits.zip)
+2. Download the suggested split [Dataset split](https://storage.googleapis.com/public-datasets-lila/nz-thermal/new-zealand-wildlife-thermal-imaging-splits.zip)
 
 3. Unzip the contents of both files
 
