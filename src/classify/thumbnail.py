@@ -57,8 +57,10 @@ def best_trackless_thumb(clip):
     )
 
 
+Stat = namedtuple("Stat", "region contours median_diff")
+
+
 def get_track_thumb_stats(clip, track):
-    Stat = namedtuple("Stat", "region contours median_diff")
     max_mass = 0
     max_median_diff = 0
     min_median_diff = 0
