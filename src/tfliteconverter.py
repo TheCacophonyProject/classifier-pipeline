@@ -59,11 +59,13 @@ def convert_model(args):
         converter.optimizations = [tf.lite.Optimize.DEFAULT]
 
         tflite_model = converter.convert()
-        print("saving model to ", out_dir / args.model.stem)
+        out_dir = Path(args.convert)
+
+        print("saving model to ", out_dir / f"{args.model.stem}.tflite")
         out_dir.mkdir(parents=True, exist_ok=True)
-        with (out_dir / args.model.stem).open("wb") as f:
+        with (out_dir / f"{args.model.stem}.tflite").open("wb") as f:
             f.write(tflite_model)
-        frozen_meta = out_dir / meta_file.name
+        frozen_meta = out_dir / f"{args.model.stem}.json"
 
     elif args.freeze or args.export:
         out_dir = Path(args.freeze)
@@ -88,6 +90,7 @@ def convert_model(args):
             frozen_meta = out_dir / meta_file.name
 
     if meta_file.exists():
+        print("Copying metadata to ", frozen_meta)
         shutil.copy(meta_file, frozen_meta)
 
 
@@ -130,7 +133,7 @@ def parse_args():
     parser.add_argument("-w", "--weights", help="Weights to use")
 
     parser.add_argument(
-        "-c", "--convert", action="store_true", help="Convert frozen model to tflite"
+        "-c", "--convert", help="Convert frozen model to tflite in this dir"
     )
     parser.add_argument(
         "-r",

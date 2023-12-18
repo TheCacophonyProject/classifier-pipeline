@@ -132,7 +132,7 @@ def extract_file(filename, retrack=False):
             verbose=config.verbose,
             keep_frames=True,
             # False if previewer is None else True,
-            tracking_alg="subsense",
+            # tracking_alg="subsense",
         )
 
         logging.info("Using ir extractor")

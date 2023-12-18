@@ -73,11 +73,13 @@ class CameraMotionConfig:
     run_classifier = attr.ib(default=False)
     bluetooth_beacons = attr.ib(default=False)
     tracking_events = attr.ib(default=False)
+    algorithm = attr.ib(default="diff")
 
     @classmethod
     def defaults_for(cls, model):
         if model == "lepton3.5":
             return cls(
+                algorithm="diff",
                 temp_thresh=28000,
                 delta_thresh=150,
                 count_thresh=3,
@@ -90,6 +92,7 @@ class CameraMotionConfig:
             )
         else:
             return cls(
+                algorithm="diff",
                 temp_thresh=2750,
                 delta_thresh=50,
                 count_thresh=3,
@@ -105,6 +108,7 @@ class CameraMotionConfig:
     def load(cls, motion, model=None):
         default = CameraMotionConfig.defaults_for(model)
         motion = cls(
+            algorithm=motion.get("algorithm", default.algorithm),
             temp_thresh=motion.get("temp-thresh", default.temp_thresh),
             delta_thresh=motion.get("delta-thresh", default.delta_thresh),
             count_thresh=motion.get("count-thresh", default.count_thresh),

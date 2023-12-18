@@ -39,6 +39,7 @@ class ClipTracker(ABC):
         self.calc_stats = calc_stats
         self._tracking_time = None
         self.min_dimension = config.min_dimension
+        self.tracking_alg = config.tracking_alg
         # if self.config.dilation_pixels > 0:
         #     size = self.config.dilation_pixels * 2 + 1
         #     self.dilate_kernel = np.ones((size, size), np.uint8)
@@ -81,7 +82,7 @@ class ClipTracker(ABC):
             for track in clip.active_tracks:
                 track.smooth(Rectangle(0, 0, clip.res_x, clip.res_y))
 
-    def _get_filtered_frame(self, clip, thermal):
+    def _get_filtered_frame(self, clip, thermal, normalized=False, learning_rate=-1):
         """
         Calculates filtered frame from thermal
         :param thermal: the thermal frame
@@ -89,6 +90,31 @@ class ClipTracker(ABC):
         :return: uint8 filtered frame and adjusted clip threshold for normalized frame
         """
 
+        if self.background_alg:
+            if not normalized:
+                filtered = clip.normalize(thermal.copy())
+            background = self.background_alg.background
+            # a few videos where the whole frame gets brighter / darker
+            #  from ffc or a light being turned on etc
+            #  this might handle those cases
+            min_diff = np.amin(filtered - background)
+            avg_change = int(round(np.average(filtered) - np.mean(background)))
+
+            if abs(min_diff) > 20 and clip.current_frame > 45:
+                logging.warn(
+                    "Frame %s Adjusting filtered by %s because min pixel is %s different",
+                    clip.current_frame,
+                    avg_change,
+                    min_diff,
+                )
+
+                filtered = filtered - avg_change
+                np.clip(filtered, a_min=0, a_max=None, out=filtered)
+            self.background_alg.update_background(filtered, learning_rate=learning_rate)
+            filtered = self.background_alg.compute_filtered(filtered)
+            if self.config.denoise:
+                filtered = cv2.fastNlMeansDenoising(np.uint8(filtered), None)
+            return filtered, 128
         filtered = np.float32(thermal.copy())
         avg_change = int(round(np.average(thermal) - clip.stats.mean_background_value))
         np.clip(filtered - clip.background - avg_change, 0, None, out=filtered)
@@ -534,6 +560,7 @@ class CVBackground(Background):
     def __init__(self, tracking_alg="mog2"):
         super().__init__()
         self.use_subsense = False
+        self.tracking_alg = tracking_alg
         # knn doesnt respect learning rate, but maybe mog2 is better anyway
         if tracking_alg == "subsense":
             import pybgs as bgs
@@ -545,24 +572,21 @@ class CVBackground(Background):
             self.algorithm = cv2.createBackgroundSubtractorMOG2(
                 history=1000, detectShadows=False
             )
+
         elif tracking_alg == "knn":
             self.algorithm = cv2.createBackgroundSubtractorKNN(
                 history=1000, detectShadows=False
             )
         else:
             raise Exception(f"No algorihtm details found for {tracking_alg}")
-            # print(self.algorithm.getBackgroundRatio(), "RATION")
-            # 1 / 0
-        # self.algorithm = cv2.createBackgroundSubtractorKNN(
-        #     history=1000, detectShadows=False
-        # )
+
         self._frames = 0
-        self._background = None
+        self._fg = None
 
     def set_background(self, background, frames=1):
         # seems to be better to do x times rather than just set background
-        if self.use_subsense:
-            for _ in range(10):
+        if self.tracking_alg in ["subsense"]:
+            for _ in range(frames):
                 # doesnt have a learning rate
                 self.update_background(background, learning_rate=1)
         else:
@@ -572,12 +596,16 @@ class CVBackground(Background):
 
     def update_background(self, thermal, filtered=None, learning_rate=-1):
         if self.use_subsense:
-            print("Updating back", thermal.shape, thermal.max())
-            self._background = self.algorithm.apply(np.uint8(thermal))
+            self._fg = self.algorithm.apply(np.uint8(thermal))
         else:
-            self._background = self.algorithm.apply(thermal, None, learning_rate)
+            if self.tracking_alg == "knn":
+                # has to be int
+                self._fg = self.algorithm.apply(np.uint8(thermal), None, learning_rate)
 
+            else:
+                self._fg = self.algorithm.apply(thermal, None, learning_rate)
         self._frames += 1
+        return self._fg
 
     @property
     def background(self):
@@ -587,7 +615,7 @@ class CVBackground(Background):
             return self.algorithm.getBackgroundImage()
 
     def compute_filtered(self, thermal):
-        return self._background
+        return self._fg
 
 
 class DiffBackground(Background):

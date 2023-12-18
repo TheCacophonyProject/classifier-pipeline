@@ -1,3 +1,4 @@
+
 classify:
   meta_to_stdout: True
   models:
@@ -5,3 +6,9 @@ classify:
       name : "WR"
       model_file: "/etc/cacophony/models/wr/saved_model.pb"
       thumbnail_model: True
+tracking:
+    IR:
+      preview: null
+    thermal:
+      tracking_alg: knn
+      preview: null

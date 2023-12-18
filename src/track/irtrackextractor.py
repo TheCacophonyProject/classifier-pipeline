@@ -39,7 +39,6 @@ from ml_tools.imageprocessing import (
 )
 from track.cliptracker import ClipTracker, CVBackground, DiffBackground
 
-DO_SALIENCY = False
 DEBUG_TRAP = False
 
 
@@ -152,9 +151,8 @@ class IRTrackExtractor(ClipTracker):
             scale=scale,
         )
         self.check_trapped = check_trapped
-        self.tracking_alg = tracking_alg
+        self.tracking_alg = config.tracking_alg
         self.on_trapped = on_trapped
-        self.saliency = None
         self.background = None
         self.res_x = None
         self.res_y = None
@@ -312,8 +310,6 @@ class IRTrackExtractor(ClipTracker):
         # -1 means all, 0 means none, 1 means just last frame etc
         self.res_x = clip.res_x
         self.res_y = clip.res_y
-        if DO_SALIENCY:
-            self.init_saliency()
         clip.set_model("IR")
         clip.set_video_stats(datetime.now())
         if background_alg is None:
@@ -332,7 +328,6 @@ class IRTrackExtractor(ClipTracker):
                 # self.diff_background.set_background(background, background_frames)
         else:
             self.background = background_alg
-        self.init_saliency()
         if frames is not None:
             do_tracking = self.do_tracking
             update_background = self.update_background
@@ -349,42 +344,16 @@ class IRTrackExtractor(ClipTracker):
             self.update_background = update_background
             self.do_tracking = do_tracking
 
-    def init_saliency(self):
-        res_x = self.res_x
-        res_y = self.res_y
-        if self.scale is not None:
-            res_x = int(self.res_x * self.scale)
-            res_y = int(self.res_y * self.scale)
-        if DO_SALIENCY:
-            self.saliency = cv2.saliency.MotionSaliencyBinWangApr2014_create()
-            self.saliency.setImagesize(res_x, res_y)
-            self.saliency.init()
-
     def process_frame(self, clip, frame, ffc_affected=False):
         start = time.time()
         if len(frame.shape) == 3:
             # in rgb so convert to gray
             frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        if self.saliency is None and DO_SALIENCY:
-            if self.resize_dims is not None:
-                self.init_saliency(
-                    int(self.res_x * self.scale), int(self.res_y * self.scale)
-                )
-            else:
-                self.init_saliency(clip.res_x, clip.res_y)
 
         if ffc_affected:
             self.print_if_verbose("{} ffc_affected".format(clip.current_frame))
         clip.ffc_affected = ffc_affected
         self._process_frame(clip, frame, ffc_affected)
-
-    def _get_filtered_frame_ir(self, thermal, repeats=1):
-        if not DO_SALIENCY:
-            return thermal, 0
-        for _ in range(repeats):
-            (success, saliencyMap) = self.saliency.computeSaliency(thermal)
-        saliencyMap = (saliencyMap * 255).astype("uint8")
-        return saliencyMap, 0
 
     # merge all regions that the midpoint is within the max(width,height) from the midpoint of another region
     # keep merging until no more merges are possible, tihs works paticularly well from the IR videos where
@@ -464,28 +433,11 @@ class IRTrackExtractor(ClipTracker):
             If specified background subtraction algorithm will be used.
         """
 
-        saliencyMap = None
         filtered = None
         if self.do_tracking:
             if self.background._background is None:
                 self.background.set_background(frame.copy())
-            # GP NOT using probably can remove
-            if DO_SALIENCY:
-                repeats = 1
-                if clip.current_frame < 6:
-                    # helps init the saliency, when ir tracks have a 5 second preview this shouldnt be needed
-                    repeats = 6
-                saliency_thermal = None
-                tracking_thermal = frame
-                if self.scale:
-                    tracking_thermal = cv2.resize(
-                        tracking_thermal,
-                        (int(self.res_x * self.scale), int(self.res_y * self.scale)),
-                        interpolation=cv2.INTER_AREA,
-                    )
-                saliencyMap, _ = self._get_filtered_frame_ir(
-                    tracking_thermal, repeats=repeats
-                )
+
             if self.update_background:
                 has_motion = self.background.movement_detected
                 learning_rate = 0 if has_motion else self.learning_rate
@@ -499,15 +451,8 @@ class IRTrackExtractor(ClipTracker):
                 clip.set_background(self.background.background)
 
         threshold = 0
-        if np.amin(saliencyMap) == 255:
-            num = 0
-            mask = saliencyMap.copy()
-            component_details = []
-            saliencyMap[:] = 0
-        else:
-            pass
-            # backsub = np.where(saliencyMap > 0, saliencyMap, backsub)
-        cur_frame = clip.add_frame(frame, filtered, saliencyMap, ffc_affected)
+
+        cur_frame = clip.add_frame(frame, filtered, None, ffc_affected)
 
         if not self.do_tracking:
             return

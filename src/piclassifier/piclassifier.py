@@ -22,6 +22,7 @@ from .dummyrecorder import DummyRecorder
 from .irrecorder import IRRecorder
 from .irmotiondetector import IRMotionDetector
 from .cptvmotiondetector import CPTVMotionDetector
+from .cvmotiondetector import CVMotionDetector
 
 from .motiondetector import SlidingWindow
 from .processor import Processor
@@ -181,12 +182,20 @@ class PiClassifier(Processor):
             self.snapshot_recorder = CPTVRecorder(
                 thermal_config, headers, on_recording_stopping, name="CPTV Snapshot"
             )
-            self.motion_detector = CPTVMotionDetector(
-                thermal_config,
-                self.tracking_config.motion.dynamic_thresh,
-                headers,
-                detect_after=detect_after,
-            )
+            if thermal_config.motion.algorithm == "diff":
+                self.motion_detector = CPTVMotionDetector(
+                    thermal_config,
+                    self.tracking_config.motion.dynamic_thresh,
+                    headers,
+                    detect_after=detect_after,
+                )
+            else:
+                self.motion_detector = CVMotionDetector(
+                    thermal_config,
+                    headers,
+                    detect_after=detect_after,
+                    tracking_alg=self.thermal_config.motion.algorithm,
+                )
             if thermal_config.recorder.constant_recorder:
                 self.constant_recorder = CPTVRecorder(
                     thermal_config,
@@ -299,7 +308,6 @@ class PiClassifier(Processor):
         clip = self.clip
         self.clip.video_start_time = datetime.now()
         self.clip.num_preview_frames = self.preview_frames
-
         self.clip.set_res(self.res_x, self.res_y)
         self.clip.set_frame_buffer(
             self.tracking_config.high_quality_optical_flow,
@@ -321,12 +329,17 @@ class PiClassifier(Processor):
         if self.type == IRTrackExtractor.TYPE:
             track_frames = 5
             retrack_back = True
+        else:
+            self.clip.norm_min = self.motion_detector.norm_min
+            self.clip.norm_max = self.motion_detector.norm_max
+
+            track_frames = True
             # background is calculated in motion, so already 5 frames ahead
         self.track_extractor.start_tracking(
             self.clip,
             preview_frames,
             track_frames=track_frames,
-            background_alg=self.motion_detector._background,
+            background_alg=self.motion_detector.background_alg,
             retrack_back=retrack_back,
             # background_frame=clip.background,
             # background_frames=background_frames,

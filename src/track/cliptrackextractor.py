@@ -35,6 +35,9 @@ from ml_tools.imageprocessing import detect_objects, normalize
 from track.cliptracker import ClipTracker
 from track.cliptracker import ClipTracker, CVBackground, DiffBackground
 
+MOTION_LEARNING_RATE = 1 / 10000
+# slow learning rate down once have motion
+
 
 class ClipTrackExtractor(ClipTracker):
     PREVIEW = "preview"
@@ -70,27 +73,18 @@ class ClipTrackExtractor(ClipTracker):
             verbose=verbose,
             do_tracking=do_tracking,
         )
-        self.tracking_alg = "mog2"
+        self.background_alg = None
+        if self.tracking_alg != "hotter":
+            self.background_alg = CVBackground(self.tracking_alg)
+
         self.use_opt_flow = use_opt_flow
         self.high_quality_optical_flow = high_quality_optical_flow
-        # self.cache_to_disk = cache_to_disk
-        # self.max_tracks = config.max_tracks
-        # # frame_padding < 3 causes problems when we get small areas...
-        # self.frame_padding = max(3, self.config.frame_padding)
-        # # the dilation effectively also pads the frame so take it into consideration.
-        # # self.frame_padding = max(0, self.frame_padding - self.config.dilation_pixels)
-        # self.keep_frames = keep_frames
-        # self.calc_stats = calc_stats
-        # self._tracking_time = None
-        # if self.config.dilation_pixels > 0:
-        #     size = self.config.dilation_pixels * 2 + 1
-        #     self.dilate_kernel = np.ones((size, size), np.uint8)
+        self.learning_rate = -1
 
     def parse_clip(self, clip, process_background=False):
         """
         Loads a cptv file, and prepares for track extraction.
         """
-        self.background = CVBackground(self.tracking_alg)
 
         self._tracking_time = None
         start = time.time()
@@ -124,33 +118,34 @@ class ClipTrackExtractor(ClipTracker):
             clip.set_video_stats(video_start_time)
             clip.calculate_background(reader)
 
-        max_v = None
-        min_v = None
-        with open(clip.source_file, "rb") as f:
-            reader = CPTVReader(f)
-            for frame in reader:
-                if not process_background and frame.background_frame:
-                    continue
-                if max_v is None:
-                    max_v = frame.pix.max()
-                    min_v = frame.pix.min()
-                else:
-                    if frame.pix.max() > max_v:
-                        max_v = frame.pix.max()
-                    if frame.pix.min() < min_v:
-                        min_v = frame.pix.min()
-        print("Max is ", max_v, " min is ", min_v)
-        self.max_v = max_v
-        self.min_v = min_v
-        back = clip.background
-        back, stats = normalize(back, min=self.min_v, max=self.max_v, new_max=255)
-        self.background.set_background(back)
+        if self.background_alg is not None:
+            with open(clip.source_file, "rb") as f:
+                reader = CPTVReader(f)
+                for frame in reader:
+                    if not process_background and frame.background_frame:
+                        continue
+                    f_max = frame.pix.max()
+                    f_min = frame.pix.min()
+                    if clip.norm_max is None:
+                        clip.norm_max = f_max
+                        clip.norm_min = f_min
+                    else:
+                        if f_max > clip.norm_max:
+                            clip.norm_max = f_max
+                        if f_min < clip.norm_min:
+                            clip.norm_min = f_min
+
+            back = clip.background
+            back = clip.normalize(back)
+            self.background_alg.set_background(back, frames=1000)
 
         with open(clip.source_file, "rb") as f:
             reader = CPTVReader(f)
             for frame in reader:
                 if not process_background and frame.background_frame:
                     continue
+                if self.clip.current_frame >= 10:
+                    self.learning_rate = MOTION_LEARNING_RATE
                 self.process_frame(clip, frame)
 
         if not clip.from_metadata and self.do_tracking:
@@ -167,11 +162,14 @@ class ClipTrackExtractor(ClipTracker):
 
     def start_tracking(self, clip, frames, track_frames=True, **args):
         # no need to retrack all of preview
+        if self.tracking_alg != "hotter":
+            self.background_alg.set_background(clip.background, frames=1000)
         do_tracking = self.do_tracking
         self.do_tracking = self.do_tracking and track_frames
         for frame in frames:
             self.process_frame(clip, frame)
         self.do_tracking = do_tracking
+        self.learning_rate = MOTION_LEARNING_RATE
 
     def process_frame(self, clip, frame, **args):
         """
@@ -179,29 +177,46 @@ class ClipTrackExtractor(ClipTracker):
         :param thermal: A numpy array of shape (height, width) and type uint16
         If specified background subtraction algorithm will be used.
         """
-        # thermal = frame.pix.copy()
-        thermal, _ = normalize(frame.pix, min=self.min_v, max=self.max_v, new_max=255)
-        self.background.update_background(thermal, learning_rate=0.00001)
-        filtered = self.background.compute_filtered(frame)
-        print("Getting cv2 filtered")
-        cv2.imshow("a", np.uint8(thermal))
-
-        cv2.imshow("f", np.uint8(filtered))
-
-        cv2.moveWindow("f", 0, 0)
-        cv2.waitKey()
+        thermal = frame.pix.copy()
         threshold = clip.background_thresh
         ffc_affected = is_affected_by_ffc(frame)
         if ffc_affected:
             self.print_if_verbose("{} ffc_affected".format(clip.current_frame))
         clip.ffc_affected = ffc_affected
 
+        # if clip.current_frame < 45:
+        filtered, threshold = self._get_filtered_frame(
+            clip, thermal, learning_rate=self.learning_rate
+        )
+        # else:
         # filtered, threshold = self._get_filtered_frame(clip, thermal)
         mask = None
+        if self.background_alg is not None:
+            mask = filtered.copy()
+            filtered[filtered > 0] = thermal[filtered > 0]
+
+        # # debugging code
+        resized = thermal.copy()
+        resized = clip.normalize(thermal)
+        resized = cv2.resize(resized, (160 * 4, 120 * 4))
+        cv2.imshow("a", np.uint8(resized))
+
+        cv2.imshow("f", np.uint8(filtered))
+        cv2.imshow("b", np.uint8(self.background_alg.background))
+        cv2.moveWindow("b", 600, 0)
+
+        cv2.moveWindow("f", 0, 0)
+        cv2.waitKey(100)
+
         if self.do_tracking:
-            _, mask, component_details, centroids = detect_objects(
-                filtered.copy(), otsus=False, threshold=threshold, kernel=(5, 5)
-            )
+            if self.background_alg is not None:
+                _, mask, component_details, centroids = detect_objects(
+                    mask, otsus=False, threshold=threshold, kernel=(5, 5)
+                )
+            else:
+                _, mask, component_details, centroids = detect_objects(
+                    filtered.copy(), otsus=False, threshold=threshold, kernel=(5, 5)
+                )
         cur_frame = clip.add_frame(thermal, filtered, mask, ffc_affected)
         if not self.do_tracking:
             return

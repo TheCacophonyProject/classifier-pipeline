@@ -36,7 +36,7 @@ class CPTVMotionDetector(MotionDetector):
         self.crop_rectangle = Rectangle(
             edge, edge, headers.res_x - 2 * edge, headers.res_y - 2 * edge
         )
-        self._background = WeightedBackground(
+        self.background_alg = WeightedBackground(
             edge,
             self.crop_rectangle,
             self.res_x,
@@ -64,7 +64,7 @@ class CPTVMotionDetector(MotionDetector):
 
     @property
     def temp_thresh(self):
-        return self._background.average
+        return self.background_alg.average
 
     def detect(self, clipped_frame, received_at=None):
         oldest = self.crop_rectangle.subimage(self.thermal_window.oldest_nonffc.pix)
@@ -116,7 +116,7 @@ class CPTVMotionDetector(MotionDetector):
 
     @property
     def background(self):
-        return self._background.background
+        return self.background_alg.background
 
     def get_recent_frame(self):
         return self.thermal_window.current
@@ -130,12 +130,13 @@ class CPTVMotionDetector(MotionDetector):
     def process_frame(self, cptv_frame, force_process=False):
         prev_ffc = self.ffc_affected
         self.ffc_affected = is_affected_by_ffc(cptv_frame)
+        self.update_norms(cptv_frame.pix)
         if self.can_record() or force_process:
             self.thermal_window.add(cptv_frame, self.ffc_affected)
 
             cropped_frame = np.int32(self.crop_rectangle.subimage(cptv_frame.pix))
             if not self.ffc_affected:
-                self._background.process_frame(cropped_frame)
+                self.background_alg.process_frame(cropped_frame)
             if self.ffc_affected or prev_ffc:
                 logging.debug("{} MotionDetector FFC".format(self.num_frames))
                 self.movement_detected = False

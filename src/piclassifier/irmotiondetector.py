@@ -105,6 +105,8 @@ class IRMotionDetector(MotionDetector):
 
     # Processes a frame returning True if there is motion.
     def process_frame(self, frame, force_process=False):
+        self.update_norms(frame)
+
         if self.can_record() or force_process:
             self.rgb_window.add(frame)
             gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)

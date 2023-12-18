@@ -90,6 +90,8 @@ class Clip:
         self.ffc_frames = []
         self.tags = None
         self.type = type
+        self.norm_min = None
+        self.norm_max = None
         # sets defaults
         self.set_model(model)
         if background is not None:
@@ -97,6 +99,12 @@ class Clip:
             self._background_calculated()
 
         self.rescaled = None
+
+    def normalize(self, img):
+        # print("Norm", self.norm_min, self.norm_max, img.max(), img.min())
+        np.clip(img, a_min=self.norm_min, a_max=self.norm_max, out=img)
+        img, _ = normalize(img, min=self.norm_min, max=self.norm_max, new_max=255)
+        return img
 
     def get_frame(self, frame_number):
         return self.frame_buffer.get_frame(frame_number)

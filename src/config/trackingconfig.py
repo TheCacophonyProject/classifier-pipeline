@@ -65,6 +65,7 @@ class TrackingConfig(DefaultConfig):
     # filter regions out by mass and variance before matching to a track
     filter_regions_pre_match = attr.ib()
     min_hist_diff = attr.ib()
+    tracking_alg = attr.ib()
 
     @classmethod
     def load(cls, tracking):
@@ -83,6 +84,7 @@ class TrackingConfig(DefaultConfig):
         defaults = cls.get_type_defaults(type)
         deep_copy_map_if_key_not_exist(defaults.as_dict(), tracking)
         return cls(
+            tracking_alg=tracking["tracking_alg"],
             tracker=tracking["tracker"],
             params=tracking["params"],
             type=type,
@@ -179,9 +181,11 @@ class TrackingConfig(DefaultConfig):
             },
             filter_regions_pre_match=True,
             min_hist_diff=None,
+            tracking_alg="hotter",
         )
         if type == "IR":
             # default_tracking.min_hist_diff = 0.95
+            default_tracking.tracking_alg = "subsense"
             default_tracking.filters["min_duration_secs"] = 0
             default_tracking.min_duration_secs = 0
             default_tracking.filter_regions_pre_match = False

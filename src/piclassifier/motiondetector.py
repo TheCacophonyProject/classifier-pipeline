@@ -115,6 +115,16 @@ class MotionDetector(ABC):
                 self.location_config.altitude,
             )
         self.headers = headers
+        self.norm_min = None
+        self.norm_max = None
+
+    def update_norms(self, frame):
+        f_min = np.amin(frame)
+        f_max = np.amax(frame)
+        if self.norm_min is None or f_min < self.norm_min:
+            self.norm_min = f_min
+        if self.norm_max is None or f_max > self.norm_max:
+            self.norm_max = f_max * 1.2
 
     @property
     def res_x(self):
@@ -213,6 +223,9 @@ class WeightedBackground:
             self._background[-i - 1] = self._background[-self.edge_pixels - 1]
             self._background[:, i] = self._background[:, self.edge_pixels]
             self._background[:, -i - 1] = self._background[:, -1 - self.edge_pixels]
+
+    def set_background(self, back):
+        self._background = back
 
     @property
     def background(self):
