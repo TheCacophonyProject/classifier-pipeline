@@ -1,6 +1,6 @@
 import numpy as np
 import cv2
-from .motiondetector import SlidingWindow, MotionDetector
+from .motiondetector import SlidingWindow, MotionDetector, set_background_edges
 from cptv import Frame
 import logging
 from track.cliptracker import (
@@ -23,6 +23,7 @@ TRIGGER_FRAMES = 2
 class CVMotionDetector(MotionDetector):
     def __init__(self, thermal_config, headers, tracking_alg="knn", detect_after=None):
         super().__init__(thermal_config, headers)
+        self.is_normalized = True
         self.num_frames = 0
         self.headers = headers
         self.config = thermal_config.motion
@@ -82,25 +83,18 @@ class CVMotionDetector(MotionDetector):
     def process_frame(self, frame, force_process=False):
         self.num_frames += 1
         self.ffc_affected = is_affected_by_ffc(frame)
-        self.update_norms(frame.pix)
-
+        thermal = frame.pix.copy()
+        set_background_edges(thermal, self.config.edge_pixels)
+        self.update_norms(thermal)
+        np.clip(thermal, a_min=self.norm_min, a_max=self.norm_max, out=thermal)
         thermal, _ = normalize(
-            frame.pix.copy(), min=self.norm_min, max=self.norm_max, new_max=255
+            thermal, min=self.norm_min, max=self.norm_max, new_max=255
         )
         fg = self.background_alg.update_background(thermal)
         self.thermal_window.add(frame)
 
         fg_cropped = self.crop_rectangle.subimage(fg)
         motion_pixels = len(fg_cropped[fg_cropped > 0])
-        # print(motion_pixels, self.num_frames)
-        # cv2.imshow("a", np.uint8(thermal))
-
-        # cv2.imshow("f", np.uint8(fg_cropped))
-        # cv2.imshow("b", np.uint8(self.background_alg.background))
-        # cv2.moveWindow("b", 600, 0)
-
-        # cv2.moveWindow("f", 0, 0)
-        # cv2.waitKey()
 
         if self.num_frames < MIN_FRAMES:
             return False
@@ -128,9 +122,8 @@ class CVMotionDetector(MotionDetector):
             self.triggered = 0
         if self.movement_detected:
             logging.info(
-                "{} MotionDetector motion stopped thresh {} count {}".format(
+                "{} MotionDetector motion stopped  count {}".format(
                     timedelta(seconds=self.num_frames / 9),
-                    self.temp_thresh,
                     motion_pixels,
                 )
             )

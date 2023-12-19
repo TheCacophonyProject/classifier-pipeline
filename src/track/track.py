@@ -118,7 +118,7 @@ class RegionTracker(Tracker):
 
     def match(self, regions, track):
         scores = []
-        avg_mass = track.average_mass()
+        avg_mass = track.average_mass(prev_frames=2)
         max_distances = self.get_max_distance_change(track)
         for region in regions:
             size_change = self.get_size_change(track.average_area(), region)
@@ -146,13 +146,26 @@ class RegionTracker(Tracker):
                 distances = [(distances[0] + distances[2]) / 2]
                 max_distances = max_distances[:1]
 
-            if max_mass_change and abs(avg_mass - region.mass) > max_mass_change:
+            # if on the border only check if new region has bigger mass
+            # which probably never occurs
+            if (
+                max_mass_change
+                and (
+                    not region.is_along_border
+                    or (not track.last_bound.is_along_border and region.mass > avg_mass)
+                )
+                and abs(region.mass - avg_mass) > max_mass_change
+            ):
+                logging.info("ALong border %s", region.is_along_border)
+                # return avg_mass / count
                 logging.debug(
-                    "track %s region mass %s deviates too much from %s for region %s",
+                    "%s track %s region mass %s deviates too much from %s for region %s frame %s",
+                    track.last_bound.frame_number,
                     track.get_id(),
                     region.mass,
                     avg_mass,
                     region,
+                    region.frame_number,
                 )
                 continue
             skip = False
@@ -657,7 +670,7 @@ class Track:
             return 0
         return avg_area / count
 
-    def average_mass(self):
+    def average_mass(self, prev_frames=5):
         """Average mass of last 5 frames that weren't blank"""
         avg_mass = 0
         count = 0
@@ -666,7 +679,7 @@ class Track:
             if not bound.blank:
                 avg_mass += bound.mass
                 count += 1
-            if count == 5:
+            if count == prev_frames:
                 break
         if count == 0:
             return 0

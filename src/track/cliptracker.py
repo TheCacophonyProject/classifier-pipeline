@@ -8,6 +8,7 @@ import numpy as np
 from track.track import Track
 from track.region import Region
 from ml_tools.imageprocessing import detect_objects, normalize, hist_diff
+from ml_tools.tools import Rectangle
 
 
 class ClipTracker(ABC):
@@ -20,7 +21,9 @@ class ClipTracker(ABC):
         verbose=False,
         do_tracking=True,
         scale=None,
+        debug=False,
     ):
+        self.debug = debug
         config = config.get(self.type)
         self.scale = scale
         # if scale:
@@ -93,6 +96,8 @@ class ClipTracker(ABC):
         if self.background_alg:
             if not normalized:
                 filtered = clip.normalize(thermal.copy())
+            else:
+                filtered = thermal.copy()
             background = self.background_alg.background
             # a few videos where the whole frame gets brighter / darker
             #  from ffc or a light being turned on etc
@@ -585,10 +590,10 @@ class CVBackground(Background):
 
     def set_background(self, background, frames=1):
         # seems to be better to do x times rather than just set background
-        if self.tracking_alg in ["subsense"]:
+        if self.tracking_alg in ["subsense", "knn"]:
             for _ in range(frames):
                 # doesnt have a learning rate
-                self.update_background(background, learning_rate=1)
+                self.update_background(background)
         else:
             self.update_background(background, learning_rate=1)
 

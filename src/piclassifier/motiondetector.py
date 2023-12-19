@@ -96,6 +96,15 @@ class SlidingWindow:
             self.oldest_index = None
 
 
+MIN_ADJUST = 0.05
+ADJUST_FRAMES = 9 * 60 * 60
+# adjust the norm min and max by MIN_ADJUST percent of the frame min
+# every ADJUST_FRAMES
+# i.e if current frame min is 20K adjust min by 1000  (20000 * 0.05) every (Adjust Frames) hour when comparing
+#  to current frame min, this will force the min and max to update occasionally
+# rather than getting stuck at the coolest and hottest values (although i don't think this would matter either)
+
+
 class MotionDetector(ABC):
     def __init__(self, thermal_config, headers):
         self.movement_detected = False
@@ -108,7 +117,7 @@ class MotionDetector(ABC):
         self.sunrise = None
         self.sunset = None
         self.recording = False
-
+        self.is_normalized = False
         if self.rec_window.use_sunrise_sunset():
             self.rec_window.set_location(
                 *self.location_config.get_lat_long(use_default=True),
@@ -117,14 +126,28 @@ class MotionDetector(ABC):
         self.headers = headers
         self.norm_min = None
         self.norm_max = None
+        self.norm_adjust_amount = 0
+        self.norm_adjust = 0
+
+    def get_background(self, original=True):
+        if not self.is_normalized:
+            return self.background
+        else:
+            return (np.float32(self.background) / 255) * (
+                self.norm_max - self.norm_min
+            ) + self.norm_min
 
     def update_norms(self, frame):
         f_min = np.amin(frame)
         f_max = np.amax(frame)
-        if self.norm_min is None or f_min < self.norm_min:
+        if self.norm_min is None or f_min < (self.norm_min + self.norm_adjust):
+            logging.info("Updating norm min from %s to %s", self.norm_min, f_min)
             self.norm_min = f_min
-        if self.norm_max is None or f_max > self.norm_max:
+            self.norm_adjust_amount = f_min * MIN_ADJUST / ADJUST_FRAMES
+        if self.norm_max is None or f_max > (self.norm_max - self.norm_adjust):
+            logging.info("Updating norm min from %s to %s", self.norm_max, f_max)
             self.norm_max = f_max * 1.2
+        self.norm_adjust += self.norm_adjust_amount
 
     @property
     def res_x(self):
@@ -215,14 +238,14 @@ class WeightedBackground:
                         self.average,
                     )
                 )
-            self.set_background_edges()
+            set_background_edges(self._background, self.edge_pixels)
 
-    def set_background_edges(self):
-        for i in range(self.edge_pixels):
-            self._background[i] = self._background[self.edge_pixels]
-            self._background[-i - 1] = self._background[-self.edge_pixels - 1]
-            self._background[:, i] = self._background[:, self.edge_pixels]
-            self._background[:, -i - 1] = self._background[:, -1 - self.edge_pixels]
+    # def set_background_edges(self):
+    #     for i in range(self.edge_pixels):
+    #         self._background[i] = self._background[self.edge_pixels]
+    #         self._background[-i - 1] = self._background[-self.edge_pixels - 1]
+    #         self._background[:, i] = self._background[:, self.edge_pixels]
+    #         self._background[:, -i - 1] = self._background[:, -1 - self.edge_pixels]
 
     def set_background(self, back):
         self._background = back
@@ -230,3 +253,11 @@ class WeightedBackground:
     @property
     def background(self):
         return self._background
+
+
+def set_background_edges(frame, edge_pixels):
+    for i in range(edge_pixels):
+        frame[i] = frame[edge_pixels]
+        frame[-i - 1] = frame[-edge_pixels - 1]
+        frame[:, i] = frame[:, edge_pixels]
+        frame[:, -i - 1] = frame[:, -1 - edge_pixels]

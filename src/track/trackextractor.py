@@ -122,6 +122,7 @@ def extract_file(filename, retrack=False):
             ].high_quality_optical_flow,
             verbose=config.verbose,
             keep_frames=True,
+            debug=config.debug,
         )
         logging.info("Using cptv extractor")
 
@@ -131,6 +132,7 @@ def extract_file(filename, retrack=False):
             cache_to_disk,
             verbose=config.verbose,
             keep_frames=True,
+            debug=config.debug
             # False if previewer is None else True,
             # tracking_alg="subsense",
         )

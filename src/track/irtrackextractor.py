@@ -140,6 +140,7 @@ class IRTrackExtractor(ClipTracker):
         trap_size="L",
         tracking_alg="mog2",
         check_trapped=False,
+        debug=False,
     ):
         super().__init__(
             config,
@@ -149,6 +150,7 @@ class IRTrackExtractor(ClipTracker):
             verbose,
             do_tracking=do_tracking,
             scale=scale,
+            debug=debug,
         )
         self.check_trapped = check_trapped
         self.tracking_alg = config.tracking_alg

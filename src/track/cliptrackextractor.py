@@ -64,6 +64,7 @@ class ClipTrackExtractor(ClipTracker):
         high_quality_optical_flow=False,
         verbose=False,
         do_tracking=True,
+        debug=False,
     ):
         super().__init__(
             config,
@@ -72,6 +73,7 @@ class ClipTrackExtractor(ClipTracker):
             calc_stats=calc_stats,
             verbose=verbose,
             do_tracking=do_tracking,
+            debug=debug,
         )
         self.background_alg = None
         if self.tracking_alg != "hotter":
@@ -124,6 +126,7 @@ class ClipTrackExtractor(ClipTracker):
                 for frame in reader:
                     if not process_background and frame.background_frame:
                         continue
+
                     f_max = frame.pix.max()
                     f_min = frame.pix.min()
                     if clip.norm_max is None:
@@ -137,15 +140,14 @@ class ClipTrackExtractor(ClipTracker):
 
             back = clip.background
             back = clip.normalize(back)
-            self.background_alg.set_background(back, frames=1000)
+            self.background_alg.set_background(back, frames=100)
 
+        self.learning_rate = MOTION_LEARNING_RATE
         with open(clip.source_file, "rb") as f:
             reader = CPTVReader(f)
             for frame in reader:
                 if not process_background and frame.background_frame:
                     continue
-                if self.clip.current_frame >= 10:
-                    self.learning_rate = MOTION_LEARNING_RATE
                 self.process_frame(clip, frame)
 
         if not clip.from_metadata and self.do_tracking:
@@ -163,13 +165,20 @@ class ClipTrackExtractor(ClipTracker):
     def start_tracking(self, clip, frames, track_frames=True, **args):
         # no need to retrack all of preview
         if self.tracking_alg != "hotter":
-            self.background_alg.set_background(clip.background, frames=1000)
+            self.background_alg = CVBackground(self.tracking_alg)
+            self.background_alg.set_background(clip.background, frames=10)
+            # should be able to restore existing state but not sure how for now
+            # just have to run 10 times on same frame
+            # for frame in frames[:10]:
+            #     self._get_filtered_frame(
+            #         clip, frame.pix, learning_rate=self.learning_rate
+            #     )
+        self.learning_rate = MOTION_LEARNING_RATE
         do_tracking = self.do_tracking
         self.do_tracking = self.do_tracking and track_frames
         for frame in frames:
             self.process_frame(clip, frame)
         self.do_tracking = do_tracking
-        self.learning_rate = MOTION_LEARNING_RATE
 
     def process_frame(self, clip, frame, **args):
         """
@@ -195,18 +204,9 @@ class ClipTrackExtractor(ClipTracker):
             mask = filtered.copy()
             filtered[filtered > 0] = thermal[filtered > 0]
 
-        # # debugging code
-        resized = thermal.copy()
-        resized = clip.normalize(thermal)
-        resized = cv2.resize(resized, (160 * 4, 120 * 4))
-        cv2.imshow("a", np.uint8(resized))
-
-        cv2.imshow("f", np.uint8(filtered))
-        cv2.imshow("b", np.uint8(self.background_alg.background))
-        cv2.moveWindow("b", 600, 0)
-
-        cv2.moveWindow("f", 0, 0)
-        cv2.waitKey(100)
+            # # debugging code
+            if self.debug:
+                self.debug_frames(clip, thermal, filtered)
 
         if self.do_tracking:
             if self.background_alg is not None:
@@ -241,6 +241,19 @@ class ClipTrackExtractor(ClipTracker):
                 )
                 self._apply_region_matchings(clip, regions)
             clip.region_history.append(regions)
+
+    def debug_frames(self, clip, thermal, filtered):
+        resized = thermal.copy()
+        resized = clip.normalize(thermal)
+        resized = cv2.resize(resized, (160 * 4, 120 * 4))
+        cv2.imshow("a", np.uint8(resized))
+
+        cv2.imshow("f", np.uint8(filtered))
+        cv2.imshow("b", np.uint8(self.background_alg.background))
+        cv2.moveWindow("b", 600, 0)
+
+        cv2.moveWindow("f", 0, 0)
+        cv2.waitKey()
 
 
 def get_background_filtered(background, thermal):

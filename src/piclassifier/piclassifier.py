@@ -194,7 +194,7 @@ class PiClassifier(Processor):
                     thermal_config,
                     headers,
                     detect_after=detect_after,
-                    tracking_alg=self.thermal_config.motion.algorithm,
+                    tracking_alg=thermal_config.motion.algorithm,
                 )
             if thermal_config.recorder.constant_recorder:
                 self.constant_recorder = CPTVRecorder(
@@ -334,7 +334,7 @@ class PiClassifier(Processor):
             self.clip.norm_max = self.motion_detector.norm_max
 
             track_frames = True
-            # background is calculated in motion, so already 5 frames ahead
+            # background is calculated in motion, so already 5 seconds ahead
         self.track_extractor.start_tracking(
             self.clip,
             preview_frames,
@@ -564,7 +564,7 @@ class PiClassifier(Processor):
             preview_frames = self.motion_detector.preview_frames()
             bak = self.motion_detector.background
             recording = self.recorder.start_recording(
-                self.motion_detector.background,
+                self.motion_detector.get_background(original=True),
                 preview_frames,
                 self.motion_detector.temp_thresh,
                 received_at,
