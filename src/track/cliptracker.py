@@ -256,14 +256,19 @@ class ClipTracker(ABC):
                     )
                 )
 
-    def get_delta_frame(self, clip):
+    def get_delta_frame(self, clip, normalize_filtered=True):
         frame = clip.frame_buffer.current_frame
         prev_frame = clip.frame_buffer.prev_frame
         if prev_frame is None:
             return None, None
-        filtered, _ = normalize(frame.filtered, new_max=255)
-        prev_filtered, _ = normalize(prev_frame.filtered, new_max=255)
-        delta_filtered = np.abs(np.float32(filtered) - np.float32(prev_filtered))
+        if normalize_filtered:
+            filtered, _ = normalize(frame.filtered, new_max=255)
+            prev_filtered, _ = normalize(prev_frame.filtered, new_max=255)
+            delta_filtered = np.abs(np.float32(filtered) - np.float32(prev_filtered))
+        else:
+            delta_filtered = np.abs(
+                np.float32(frame.filtered) - np.float32(prev_frame.filtered)
+            )
 
         thermal, _ = normalize(frame.thermal, new_max=255)
         prev_thermal, _ = normalize(prev_frame.thermal, new_max=255)
@@ -278,7 +283,7 @@ class ClipTracker(ABC):
         :return: regions of interest, mask frame
         """
         delta_thermal, delta_filtered = self.get_delta_frame(
-            clip,
+            clip, normalize_filtered=self.tracking_alg == "hotter"
         )
 
         # we enlarge the rects a bit, partly because we eroded them previously, and partly because we want some context.
@@ -303,7 +308,6 @@ class ClipTracker(ABC):
                 frame_number=clip.current_frame,
                 centroid=centroid,
             )
-
             if self.scale:
                 region.rescale(1 / self.scale)
             if region.width < self.min_dimension or region.height < self.min_dimension:

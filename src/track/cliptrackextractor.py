@@ -204,9 +204,9 @@ class ClipTrackExtractor(ClipTracker):
             mask = filtered.copy()
             filtered[filtered > 0] = thermal[filtered > 0]
 
-            # # debugging code
-            if self.debug:
-                self.debug_frames(clip, thermal, filtered)
+        # debugging code
+        if self.debug:
+            self.debug_frames(clip, thermal, filtered)
 
         if self.do_tracking:
             if self.background_alg is not None:
