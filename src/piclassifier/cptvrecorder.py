@@ -21,17 +21,15 @@ class CPTVRecorder(Recorder):
         self,
         thermal_config,
         headers,
-        on_recording_stopping=None,
         name="CPTVRecorder",
-        constant_recorder=False,
+        **args,
     ):
         super().__init__(
             thermal_config,
             headers,
             name,
-            constant_recorder,
             CPTV_EXT,
-            on_recording_stopping,
+            **args,
         )
 
     def new_recording(self, background_frame, preview_frames, temp_thresh, frame_time):
