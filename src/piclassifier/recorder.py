@@ -17,10 +17,12 @@ class Recorder(ABC):
         thermal_config,
         headers,
         name,
-        constant_recorder,
         file_extention,
+        constant_recorder=False,
         on_recording_stopping=None,
+        file_suffix=None,
     ):
+        self.file_suffix = file_suffix
         self.file_extention = file_extention
         self.name = name
         self.constant_recorder = constant_recorder
@@ -186,9 +188,10 @@ class Recorder(ABC):
         return True
 
     def new_temp_name(self, frame_time):
-        return self.temp_dir / datetime.fromtimestamp(frame_time).strftime(
-            "%Y%m%d-%H%M%S.%f" + self.file_extention
-        )
+        file_name = datetime.fromtimestamp(frame_time).strftime("%Y%m%d-%H%M%S.%f")
+        if self.file_suffix is not None:
+            file_name = f"{file_name}{self.file_suffix}"
+        return self.temp_dir / f"{file_name}{self.file_extention}"
 
     @abstractmethod
     def new_recording(self, background_frame, preview_frames, temp_thresh, frame_time):
