@@ -41,7 +41,7 @@ MOTION_LEARNING_RATE = 1 / 10000
 
 class ClipTrackExtractor(ClipTracker):
     PREVIEW = "preview"
-    VERSION = 10
+    VERSION = 11
     TYPE = "thermal"
 
     @property

@@ -789,8 +789,9 @@ def on_recording_stopping(filename):
             predictions_per_model = {predictions.model.id: predictions}
         meta_data = clip.get_metadata(predictions_per_model)
         meta_data["algorithm"] = {}
+        meta_data["algorithm"]["pi"] = True
         meta_data["algorithm"]["tracker_version"] = track_extractor.VERSION
-
+        meta_data["algorithm"]["tracker_alg"] = track_extractor.tracking_alg
         if predictions is not None:
             meta_data["models"] = [predictions.model.as_dict()]
             meta_data["algorithm"]["model_name"] = predictions.model.name

@@ -145,8 +145,8 @@ class MotionDetector(ABC):
             self.norm_min = f_min
             self.norm_adjust_amount = f_min * MIN_ADJUST / ADJUST_FRAMES
         if self.norm_max is None or f_max > (self.norm_max - self.norm_adjust):
-            logging.info("Updating norm min from %s to %s", self.norm_max, f_max)
-            self.norm_max = f_max * 1.2
+            logging.info("Updating norm max from %s to %s", self.norm_max, f_max)
+            self.norm_max = int(f_max * 1.2)
         self.norm_adjust += self.norm_adjust_amount
 
     @property
@@ -210,8 +210,7 @@ class WeightedBackground:
                 self.edge_pixels : res_x + self.edge_pixels,
             ] = frame
             self.average = np.average(frame)
-            self.set_background_edges()
-
+            set_background_edges(self._background, self.edge_pixels)
             return
         edgeless_back = self.crop_rectangle.subimage(self.background)
         new_background = np.where(

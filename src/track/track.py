@@ -156,7 +156,6 @@ class RegionTracker(Tracker):
                 )
                 and abs(region.mass - avg_mass) > max_mass_change
             ):
-                logging.info("ALong border %s", region.is_along_border)
                 # return avg_mass / count
                 logging.debug(
                     "%s track %s region mass %s deviates too much from %s for region %s frame %s",
