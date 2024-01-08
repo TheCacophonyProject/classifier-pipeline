@@ -166,7 +166,10 @@ class ClipTrackExtractor(ClipTracker):
         # no need to retrack all of preview
         if self.tracking_alg != "hotter":
             self.background_alg = CVBackground(self.tracking_alg)
-            self.background_alg.set_background(clip.background, frames=10)
+            norm_back = clip.background
+            if clip.background.max() > 255:
+                norm_back = clip.normalize(clip.background)
+            self.background_alg.set_background(norm_back, frames=10)
             # should be able to restore existing state but not sure how for now
             # just have to run 10 times on same frame
             # for frame in frames[:10]:

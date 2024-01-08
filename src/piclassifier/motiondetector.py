@@ -140,13 +140,21 @@ class MotionDetector(ABC):
     def update_norms(self, frame):
         f_min = np.amin(frame)
         f_max = np.amax(frame)
-        if self.norm_min is None or f_min < (self.norm_min + self.norm_adjust):
+        if (
+            f_min != self.norm_min
+            and self.norm_min is None
+            or f_min < (self.norm_min + self.norm_adjust)
+        ):
             logging.info("Updating norm min from %s to %s", self.norm_min, f_min)
             self.norm_min = f_min
             self.norm_adjust_amount = f_min * MIN_ADJUST / ADJUST_FRAMES
-        if self.norm_max is None or f_max > (self.norm_max - self.norm_adjust):
+        if (
+            f_max != self.norm_max
+            and self.norm_max is None
+            or f_max > (self.norm_max - self.norm_adjust)
+        ):
             logging.info("Updating norm max from %s to %s", self.norm_max, f_max)
-            self.norm_max = int(f_max * 1.2)
+            self.norm_max = int(f_max * 1.01)
         self.norm_adjust += self.norm_adjust_amount
 
     @property
