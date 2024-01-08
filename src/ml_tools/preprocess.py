@@ -60,6 +60,7 @@ def preprocess_frame(
     background=None,
     crop_rectangle=None,
     calculate_filtered=True,
+    filtered_norm_limits=None,
 ):
     median = np.median(frame.thermal)
     cropped_frame = frame.crop_by_region(region, only_thermal=True)
@@ -71,6 +72,7 @@ def preprocess_frame(
             )
         else:
             cropped_frame.filtered = cropped_frame.thermal - region.subimage(background)
+
     cropped_frame.resize_with_aspect(
         out_dim,
         crop_rectangle,
@@ -78,79 +80,39 @@ def preprocess_frame(
     )
     cropped_frame.thermal -= median
     np.clip(cropped_frame.thermal, 0, None, out=cropped_frame.thermal)
-    cropped_frame.normalize()
+    if calculate_filtered and filtered_norm_limits is not None:
+        cropped_frame.filtered, stats = imageprocessing.normalize(
+            cropped_frame.filtered,
+            min=filtered_norm_limits[0],
+            max=filtered_norm_limits[1],
+            new_max=255,
+        )
+        if frame.thermal is not None:
+            cropped_frame.thermal, _ = imageprocessing.normalize(
+                cropped_frame.thermal, new_max=255
+            )
+    else:
+        cropped_frame.normalize()
     return cropped_frame
-
-
-#
-#
-# def preprocess_frame(
-#     frame,
-#     frame_size,
-#     thermal_median,
-#     velocity,
-#     output_dim,
-#     preprocess_fn=None,
-#     sample=None,
-# ):
-#     processed_frame, flipped = preprocess_segment(
-#         [frame],
-#         frame_size,
-#         reference_level=[thermal_median],
-#         augment=augment,
-#         default_inset=0,
-#     )
-#     if len(processed_frame) == 0:
-#         return
-#     processed_frame = processed_frame[0]
-#     thermal = processed_frame.get_channel(TrackChannels.thermal)
-#     filtered = processed_frame.get_channel(TrackChannels.filtered)
-#     thermal, stats = imageprocessing.normalize(thermal, min=0)
-#     if not stats[0]:
-#         return None
-#     filtered, stats = imageprocessing.normalize(filtered, min=0)
-#     if not stats[0]:
-#         return None
-#
-#     data = np.empty((*thermal.shape, 3))
-#     data[:, :, 0] = thermal
-#     data[:, :, 1] = filtered
-#     data[:, :, 2] = filtered
-#     # for testing
-#     # tools.saveclassify_image(
-#     #     data,
-#     #     f"samples/{sample.label}-{sample.clip_id}-{sample.track_id}",
-#     # )
-#
-#     # preprocess expects values in range 0-255
-#     if preprocess_fn:
-#         data = data * 255
-#         data = preprocess_fn(data)
-#     return data
 
 
 index = 0
 
 
 def preprocess_single_frame(
-    frame,
-    frame_size,
-    region=None,
+    preprocessed_frame,
+    channels,
     preprocess_fn=None,
     save_info="",
 ):
-    preprocessed_frame = preprocess_frame(
-        frame,
-        frame_size,
-        region,
-    )
+    data = []
+    for channel in channels:
+        if isinstance(channel, str):
+            channel = TrackChannels[channel]
+        data.append(preprocessed_frame.get_channel(channel))
 
     image = np.stack(
-        (
-            preprocessed_frame.thermal,
-            preprocessed_frame.thermal,
-            preprocessed_frame.thermal,
-        ),
+        data,
         axis=2,
     )
     if preprocess_fn:
@@ -166,21 +128,18 @@ def preprocess_movement(
     preprocess_frames,
     frames_per_row,
     frame_size,
-    red_type,
-    green_type,
-    blue_type,
+    channels,
     preprocess_fn=None,
     sample=None,
 ):
     frame_types = {}
-    channel_types = set([green_type, blue_type, red_type])
-    for type in channel_types:
-        if type == FrameTypes.thermal_tiled:
-            channel = TrackChannels.thermal
-        elif type == FrameTypes.filtered_tiled:
-            channel = TrackChannels.filtered
-        else:
-            raise Exception("Cannot process type %s for movement", type)
+    data = []
+    for channel in channels:
+        if isinstance(channel, str):
+            channel = TrackChannels[channel]
+        if channel in frame_types:
+            data.append(frame_types[channel])
+            continue
         channel_segment = [frame.get_channel(channel) for frame in preprocess_frames]
         channel_data, success = imageprocessing.square_clip(
             channel_segment,
@@ -192,12 +151,10 @@ def preprocess_movement(
 
         if not success:
             return None
+        data.append(channel_data)
+        frame_types[channel] = channel_data
+    data = np.stack(data, axis=2)
 
-        frame_types[type] = channel_data
-
-    data = np.stack(
-        (frame_types[red_type], frame_types[green_type], frame_types[blue_type]), axis=2
-    )
     #
     # # # # # for testing
     # global index

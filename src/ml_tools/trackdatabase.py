@@ -420,7 +420,7 @@ class TrackDatabase:
                 return track["predictions"][:]
         return None
 
-    def get_clip_background(self, clip_id):
+    def get_clip_background(self):
         with HDF5Manager(self.database) as clip:
             frames = clip["frames"]
             if "background" in frames:
@@ -495,7 +495,6 @@ class TrackDatabase:
 
     def get_frames(
         self,
-        clip_id,
         frame_numbers=None,
         channels=None,
     ):

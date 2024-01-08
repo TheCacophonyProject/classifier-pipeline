@@ -32,8 +32,12 @@ def get_weighting(
     return weights
 
 
-def get_distribution(dataset, num_labels, batched=True, one_hot=True):
-    true_categories = [y for x, y in dataset]
+def get_distribution(dataset, num_labels, batched=True, one_hot=True, extra_meta=False):
+    if extra_meta:
+        true_categories = [y[0] for x, y in dataset]
+    else:
+        true_categories = [y for x, y in dataset]
+
     dist = np.zeros((num_labels), dtype=np.float32)
     if len(true_categories) == 0:
         return dist
@@ -121,16 +125,48 @@ def get_dataset(load_function, base_dir, labels, **args):
     dataset = load_function(filenames, remap_lookup, new_labels, args)
     if not args.get("one_hot", True):
         filter_excluded = lambda x, y: not tf.math.less(y, 0)
-
     else:
-        filter_excluded = lambda x, y: not tf.math.equal(tf.math.count_nonzero(y), 0)
+        if not args.get("include_track", False):
+            filter_excluded = lambda x, y: not tf.math.equal(
+                tf.math.count_nonzero(y), 0
+            )
+        else:
+            filter_excluded = lambda x, y: not tf.math.equal(
+                tf.math.count_nonzero(y[0]), 0
+            )
+
     dataset = dataset.filter(filter_excluded)
     if dataset is None:
         logging.warn("No dataset for %s", filenames)
         return None, None
 
-    # dataset = dataset.cache()
-    if not args.get("only_features") and args.get("shuffle", True):
+    if args.get("resample"):
+        logging.info("RESAMPLING")
+        # seems the only way to get even distribution
+        label_ds = []
+        for i, l in enumerate(new_labels):
+            l_mask = np.zeros((len(new_labels)))
+            l_mask[i] = 1
+            # mask = tf.constant(mask, dtype=tf.float32)
+
+            l_filter = lambda x, y: tf.math.reduce_all(tf.math.equal(y, l_mask))
+            l_dataset = dataset.filter(l_filter)
+            l_dataset = l_dataset.shuffle(40096, reshuffle_each_iteration=True)
+
+            label_ds.append(l_dataset)
+        dataset = tf.data.Dataset.sample_from_datasets(
+            label_ds,
+            # weights=[1 / len(new_labels)] * len(new_labels),
+            stop_on_empty_dataset=True,
+            rerandomize_each_iteration=True,
+        )
+    if args.get("cache", False):
+        dataset = dataset.cache()
+    if (
+        not args.get("only_features")
+        and args.get("shuffle", True)
+        and not args.get("resample")
+    ):
         logging.info("shuffling data")
         dataset = dataset.shuffle(
             4096, reshuffle_each_iteration=args.get("reshuffle", True)
@@ -139,7 +175,11 @@ def get_dataset(load_function, base_dir, labels, **args):
     # it will chang eeach epoch, to ensure this take this repeat data and always take epoch_size elements
     if not args.get("only_features"):
         dist = get_distribution(
-            dataset, num_labels, batched=False, one_hot=args.get("one_hot", True)
+            dataset,
+            num_labels,
+            batched=False,
+            one_hot=args.get("one_hot", True),
+            extra_meta=args.get("include_track", False),
         )
         for label, d in zip(new_labels, dist):
             logging.info("Have %s: %s", label, d)

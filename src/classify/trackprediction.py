@@ -81,14 +81,19 @@ class TrackPrediction:
         self.labels = labels
         self.classify_time = None
         self.tracking = False
+        self.masses = []
 
     def classified_clip(
         self, predictions, smoothed_predictions, prediction_frames, top_score=None
     ):
         self.num_frames_classified = len(predictions)
-        self.smoothed_predictions = smoothed_predictions
+        if smoothed_predictions is None:
+            self.smoothed_predictions = predictions
+        else:
+            self.smoothed_predictions = smoothed_predictions
         self.predictions = predictions
         self.prediction_frames = prediction_frames
+
         if self.num_frames_classified > 0:
             self.class_best_score = np.sum(self.smoothed_predictions, axis=0)
             # normalize so it sums to 1
@@ -128,7 +133,8 @@ class TrackPrediction:
         self.prediction_frames.append([frame_number])
         self.last_frame_classified = frame_number
         self.num_frames_classified += 1
-        smoothed_prediction = prediction * mass
+        self.masses.append(mass)
+        smoothed_prediction = prediction * prediction * mass
         if self.keep_all:
             self.predictions.append(prediction)
             self.smoothed_predictions.append(smoothed_prediction)
@@ -356,7 +362,10 @@ class TrackPrediction:
         if self.prediction_frames is not None:
             prediction_meta["prediction_frames"] = self.prediction_frames
 
-        prediction_meta["predictions"] = np.uint32(np.round(self.smoothed_predictions))
+        # for ease always multiply by 100, depending on smoothing applied values might be large
+        prediction_meta["predictions"] = np.uint32(
+            np.round(100 * self.smoothed_predictions)
+        )
         if self.class_best_score is not None:
             for i, value in enumerate(self.class_best_score):
                 label = self.labels[i]

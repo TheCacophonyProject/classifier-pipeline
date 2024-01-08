@@ -123,7 +123,7 @@ class PiClassifier(Processor):
         self.max_keep_frames = None if preview_type else 0
         if thermal_config.recorder.disable_recordings:
             self.recorder = DummyRecorder(
-                thermal_config, headers, on_recording_stopping
+                thermal_config, headers, on_recording_stopping=on_recording_stopping
             )
 
         if headers.model == IRTrackExtractor.TYPE:
@@ -145,10 +145,13 @@ class PiClassifier(Processor):
             self.type = IRTrackExtractor.TYPE
             if not thermal_config.recorder.disable_recordings:
                 self.recorder = IRRecorder(
-                    thermal_config, headers, on_recording_stopping
+                    thermal_config, headers, on_recording_stopping=on_recording_stopping
                 )
             self.snapshot_recorder = IRRecorder(
-                thermal_config, headers, on_recording_stopping, name="IR Snapshot"
+                thermal_config,
+                headers,
+                on_recording_stopping=on_recording_stopping,
+                name="IR Snapshot",
             )
             self.motion_detector = IRMotionDetector(
                 thermal_config,
@@ -158,7 +161,7 @@ class PiClassifier(Processor):
                 self.constant_recorder = IRRecorder(
                     thermal_config,
                     headers,
-                    on_recording_stopping,
+                    on_recording_stopping=on_recording_stopping,
                     name="IR Constant",
                     constant_recorder=True,
                 )
@@ -176,10 +179,15 @@ class PiClassifier(Processor):
             self.type = "thermal"
             if not thermal_config.recorder.disable_recordings:
                 self.recorder = CPTVRecorder(
-                    thermal_config, headers, on_recording_stopping
+                    thermal_config, headers, on_recording_stopping=on_recording_stopping
                 )
             self.snapshot_recorder = CPTVRecorder(
-                thermal_config, headers, on_recording_stopping, name="CPTV Snapshot"
+                thermal_config,
+                headers,
+                on_recording_stopping=on_recording_stopping,
+                constant_recorder=False,
+                name="CPTV Snapshot",
+                file_suffix="-snap",
             )
             self.motion_detector = CPTVMotionDetector(
                 thermal_config,
@@ -191,7 +199,7 @@ class PiClassifier(Processor):
                 self.constant_recorder = CPTVRecorder(
                     thermal_config,
                     headers,
-                    on_recording_stopping,
+                    on_recording_stopping=on_recording_stopping,
                     name="CPTV Constant",
                     constant_recorder=True,
                 )
@@ -206,11 +214,14 @@ class PiClassifier(Processor):
         self.max_frames = thermal_config.recorder.max_secs * headers.fps
         if thermal_config.recorder.disable_recordings:
             self.recorder = DummyRecorder(
-                thermal_config, headers, on_recording_stopping
+                thermal_config, headers, on_recording_stopping=on_recording_stopping
             )
         if thermal_config.throttler.activate:
             self.recorder = ThrottledRecorder(
-                self.recorder, thermal_config, headers, on_recording_stopping
+                self.recorder,
+                thermal_config,
+                headers,
+                on_recording_stopping=on_recording_stopping,
             )
         self.meta_dir = os.path.join(thermal_config.recorder.output_dir)
         if not os.path.exists(self.meta_dir):
@@ -320,7 +331,7 @@ class PiClassifier(Processor):
         retrack_back = True
         if self.type == IRTrackExtractor.TYPE:
             track_frames = 5
-            retrack_back = False
+            retrack_back = True
             # background is calculated in motion, so already 5 frames ahead
         self.track_extractor.start_tracking(
             self.clip,
@@ -734,6 +745,8 @@ def on_track_trapped(track):
 
 
 def on_recording_stopping(filename):
+    if "-snap" in filename.stem:
+        return
     global clip, track_extractor, predictions
 
     if clip and track_extractor:

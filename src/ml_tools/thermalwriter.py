@@ -174,7 +174,7 @@ def get_data(clip_samples, extra_args):
         return None
     data = []
     crop_rectangle = tools.Rectangle(2, 2, 160 - 2 * 2, 140 - 2 * 2)
-    if clip_samples[0].source_file.stem == ".hdf5":
+    if clip_samples[0].source_file.suffix == ".hdf5":
         db = TrackDatabase(clip_samples[0].source_file)
     else:
         db = RawDatabase(clip_samples[0].source_file)
@@ -198,29 +198,43 @@ def get_data(clip_samples, extra_args):
 
         for track_id in samples_by_track.keys():
             samples = samples_by_track[track_id]
-            if clip_samples[0].source_file.stem != ".hdf5":
+            if clip_samples[0].source_file.suffix != ".hdf5":
                 track = next(
                     (track for track in clip_meta.tracks if track.track_id == track_id),
                     None,
                 )
+                if extra_args.get("label_mapping") is not None:
+                    track.remapped_label = extra_args["label_mapping"].get(
+                        track.original_label, track.original_label
+                    )
                 if track is None:
                     logging.error(
                         "Cannot find track %s in clip %s", track_id, clip_meta.clip_id
                     )
                     continue
-
                 # GP All assumes we dont have a track over multiple bins (Whcih we probably never want)
-
-                track.calculate_segments(
-                    extra_args.get("segment_frame_spacing", 9),
-                    extra_args.get("segment_width", 25),
-                    extra_args.get("segment_type"),
-                    extra_args.get("segment_min_avg_mass"),
-                    max_segments=extra_args.get("max_segments"),
-                    dont_filter=extra_args.get("dont_filter_segment", False),
-                    skip_ffc=extra_args.get("skip_ffc", True),
-                    ffc_frames=clip_meta.ffc_frames,
-                )
+                if extra_args.get("use_segments", True):
+                    track.get_segments(
+                        extra_args.get("segment_frame_spacing", 9),
+                        extra_args.get("segment_width", 25),
+                        extra_args.get("segment_type"),
+                        extra_args.get("segment_min_avg_mass"),
+                        max_segments=extra_args.get("max_segments"),
+                        dont_filter=extra_args.get("dont_filter_segment", False),
+                        skip_ffc=extra_args.get("skip_ffc", True),
+                        ffc_frames=clip_meta.ffc_frames,
+                    )
+                else:
+                    filter_by_lq = extra_args.get("filter_by_lq", False)
+                    track.calculate_sample_frames(
+                        min_mass=extra_args.get("min_mass")
+                        if not filter_by_lq
+                        else track.lower_mass,
+                        max_mass=extra_args.get("max_mass")
+                        if not filter_by_lq
+                        else track.upper_mass,
+                        ffc_frames=clip_meta.ffc_frames,
+                    )
                 samples = track.samples
                 frame_temp_median = {}
                 track_frames = []
@@ -228,11 +242,11 @@ def get_data(clip_samples, extra_args):
                     track.start_frame, track.start_frame + track.num_frames
                 ):
                     f = db.frames[frame_i]
-                    f.region = track.regions_by_frame[frame_i]
+                    region = track.regions_by_frame[frame_i]
                     frame_temp_median[frame_i] = np.median(f.thermal)
-                    f.thermal = f.region.subimage(f.thermal)
-                    f.float_arrays()
-                    track_frames.append(f)
+                    cropped = f.crop_by_region(region)
+                    cropped.float_arrays()
+                    track_frames.append(cropped)
 
             else:
                 track_frames = db.get_track(

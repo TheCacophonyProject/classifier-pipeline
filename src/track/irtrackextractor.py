@@ -226,7 +226,7 @@ class IRTrackExtractor(ClipTracker):
             self.apply_track_filtering(clip)
 
         if self.calc_stats:
-            clip.stats.completed(clip.current_frame, clip.res_y, clip.res_x)
+            clip.stats.completed()
 
         self._tracking_time = time.time() - start
         return True
@@ -425,9 +425,9 @@ class IRTrackExtractor(ClipTracker):
                 self.background.update_background(
                     frame, learning_rate=self.learning_rate
                 )
-                # self.background.detect_motion()
 
             filtered = self.background.compute_filtered(frame)
+
             if not clip.background_calculated:
                 clip.set_background(self.background.background)
 
@@ -451,11 +451,9 @@ class IRTrackExtractor(ClipTracker):
                 (int(self.res_x * self.scale), int(self.res_y * self.scale)),
                 interpolation=cv2.INTER_AREA,
             )
-        # self.debug_tracking(frame, filtered)
         num, mask, component_details = detect_objects_ir(re_f, threshold=0)
         component_details = component_details[1:]
         component_details = self.merge_components(component_details)
-        # self.debug_tracking(frame, filtered, mask, component_details)
         if clip.from_metadata:
             for track in clip.tracks:
                 if clip.current_frame in track.frame_list:
@@ -490,10 +488,23 @@ class IRTrackExtractor(ClipTracker):
             if DEBUG_TRAP:
                 if len(clip.tracks) > 0:
                     self.show_trap_info(clip, frame)
+        # self.debug_tracking(frame, filtered, mask, component_details)
 
-    def debug_tracking(self, frame, filtered):
+    def debug_tracking(self, frame, filtered, mask, components):
+        region_copy = filtered.copy()
+        for r in components:
+            region = Region.from_ltwh(*r[:4])
+            region.rescale(4)
+            region = region.to_array()
+            cv2.rectangle(
+                region_copy,
+                (region[0], region[1]),
+                (region[2], region[3]),
+                color=(255, 255, 255),
+                thickness=3,
+            )
         cv2.imshow("gray", frame)
-        cv2.imshow("f", filtered)
+        cv2.imshow("f", region_copy)
         cv2.imshow("b", self.background.background)
         cv2.moveWindow("gray", 0, 0)
         cv2.moveWindow("f", 640, 0)
@@ -624,9 +635,14 @@ class IRTrackExtractor(ClipTracker):
     def get_delta_frame(self, clip):
         # GP used to be 50 frames ago
         frame = clip.frame_buffer.current_frame
-        prev_i = max(0, min(10, clip.current_frame - 10))
+        frame_ago = 10 if self.keep_frames is None else max(10, self.keep_frames)
+        if clip.current_frame < frame_ago:
+            prev_i = clip.current_frame - 1
+        else:
+            prev_i = frame_ago
         s = time.time()
         prev_frame = clip.frame_buffer.get_frame_ago(prev_i)
+
         if (
             prev_frame is None
             or prev_i == frame.frame_number

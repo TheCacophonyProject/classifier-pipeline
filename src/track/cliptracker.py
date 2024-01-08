@@ -255,8 +255,6 @@ class ClipTracker(ABC):
         # find regions of interest
         regions = []
         for i, component in enumerate(component_details):
-            if component[2] < self.min_dimension or component[3] < self.min_dimension:
-                continue
             if centroids is None:
                 centroid = [
                     int(component[0] + component[2] / 2),
@@ -274,17 +272,19 @@ class ClipTracker(ABC):
                 frame_number=clip.current_frame,
                 centroid=centroid,
             )
+
             if self.scale:
                 region.rescale(1 / self.scale)
+            if region.width < self.min_dimension or region.height < self.min_dimension:
+                continue
             # GP this needs to be checked for themals 29/06/2022
             if clip.type == "IR":
                 if delta_thermal is not None:
+                    # filtered only 0 or 255
                     sub_delta = region.subimage(delta_thermal)
                     previous_delta_mass = len(
                         sub_delta[sub_delta > clip.background_thresh]
                     )
-                    # GP TEST NOt sure if this will work
-                    region.mass = previous_delta_mass
                     # if previous_delta_mass == 0:
                     #     logging.info("No mass from previous so skipping")
                     #     continue

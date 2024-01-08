@@ -2,7 +2,7 @@
 import tensorflow as tf
 
 
-def ResNet50(input_shape=(64, 64, 3), classes=6):
+def ResNet50(X_input, classes=6):
     """
     Implementation of the popular ResNet50 the following architecture:
     CONV2D -> BATCHNORM -> RELU -> MAXPOOL -> CONVBLOCK -> IDBLOCK*2 -> CONVBLOCK -> IDBLOCK*3
@@ -17,7 +17,6 @@ def ResNet50(input_shape=(64, 64, 3), classes=6):
     """
 
     # Define the input as a tensor with shape input_shape
-    X_input = tf.keras.Input(input_shape)
 
     # Zero-Padding
     X = tf.keras.layers.ZeroPadding2D((3, 3))(X_input)

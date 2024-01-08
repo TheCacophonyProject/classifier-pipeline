@@ -52,6 +52,7 @@ def process_job(queue, labels, base_dir, save_data, extra_args):
     i = 0
     saved = 0
     files = 0
+    num_frames = extra_args.get("num_frames", 25)
     while True:
         i += 1
         samples = queue.get()
@@ -65,7 +66,7 @@ def process_job(queue, labels, base_dir, save_data, extra_args):
                 saved += save_data(samples, writer, labels, extra_args)
                 files += 1
                 del samples
-                if saved > 10000:
+                if saved > 250000 / num_frames:
                     logging.info("Closing old writer")
                     writer.close()
                     writer_i += 1
@@ -73,7 +74,7 @@ def process_job(queue, labels, base_dir, save_data, extra_args):
                     logging.info("Opening %s", name)
                     saved = 0
                     writer = tf.io.TFRecordWriter(str(base_dir / name), options=options)
-                if i % 100 == 0:
+                if i % int(25000 / num_frames) == 0:
                     logging.info("Saved %s ", files)
                     gc.collect()
                     writer.flush()
@@ -105,7 +106,7 @@ def create_tf_records(
     logging.info(
         "writing to output path: %s for %s samples", output_path, len(samples_by_source)
     )
-    num_processes = 1
+    num_processes = 8
     try:
         job_queue = Queue()
         processes = []
@@ -120,7 +121,7 @@ def create_tf_records(
         for source_file in source_files:
             job_queue.put((samples_by_source[source_file]))
             added += 1
-            while job_queue.qsize() > num_processes * 3:
+            while job_queue.qsize() > num_processes * 10:
                 logging.info("Sleeping for %s", 10)
                 # give it a change to catch up
                 time.sleep(10)

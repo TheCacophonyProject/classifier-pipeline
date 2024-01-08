@@ -78,10 +78,10 @@ def main():
     args = parse_args()
 
     config = Config.load_from_file(args.config_file)
-    thermal_config, thermal_file = ThermalConfig.load_from_file(
-        args.thermal_config_file
+    thermal_config = ThermalConfig.load_from_file(args.thermal_config_file)
+    monitor_thread = Thread(
+        target=monitor_file, args=(file_changed, thermal_config.config_file)
     )
-    monitor_thread = Thread(target=monitor_file, args=(file_changed, thermal_file))
     monitor_thread.daemon = True
     monitor_thread.start()
     thermal_config.recorder.rec_window.set_location(
@@ -175,7 +175,7 @@ def parse_file(file, config, thermal_config, preview_type):
     )
 
     if ext == ".cptv":
-        parse_cptv(file, config, thermal_config, preview_type)
+        parse_cptv(file, config, thermal_config.config_file, preview_type)
     else:
         parse_ir(file, config, thermal_config, preview_type)
 
@@ -230,7 +230,7 @@ def parse_ir(file, config, thermal_config, preview_type):
     pi_classifier.disconnected()
 
 
-def parse_cptv(file, config, thermal_config, preview_type):
+def parse_cptv(file, config, thermal_config_file, preview_type):
     with open(file, "rb") as f:
         reader = CPTVReader(f)
 
@@ -245,6 +245,10 @@ def parse_cptv(file, config, thermal_config, preview_type):
             serial="",
             firmware="",
         )
+        thermal_config = ThermalConfig.load_from_file(
+            thermal_config_file, headers.model
+        )
+
         pi_classifier = PiClassifier(
             config,
             thermal_config,
@@ -427,7 +431,7 @@ def take_snapshots(window, process_queue):
 
 def handle_connection(connection, config, thermal_config_file, process_queue):
     headers, extra_b = handle_headers(connection)
-    thermal_config, _ = ThermalConfig.load_from_file(thermal_config_file, headers.model)
+    thermal_config = ThermalConfig.load_from_file(thermal_config_file, headers.model)
     logging.info(
         "parsed camera headers %s running with config %s", headers, thermal_config
     )

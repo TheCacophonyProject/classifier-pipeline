@@ -44,6 +44,7 @@ def load_config():
     parser.add_argument("-g", "--grid", action="count", help="Grid Search hparams")
     parser.add_argument("-w", "--weights", help="Fine tune using these weights")
     parser.add_argument("-i", "--ignore", help="Ignore clips in this file")
+    parser.add_argument("-e", "--epochs", type=int, help="Epochs to train")
 
     parser.add_argument(
         "name",
@@ -65,6 +66,7 @@ def main():
         do_grid_search=args.grid,
         weights=args.weights,
         ignore=args.ignore,
+        epochs=args.epochs,
     )
 
 

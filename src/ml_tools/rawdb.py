@@ -188,6 +188,7 @@ class RawDatabase:
                 confidence=human_tag_confidence,
                 human_tags=human_tags,
                 source_file=self.file,
+                mega_missed_regions=track_meta.get("mega_missed_regions")
                 # frame_temp_median=frame_temp_median,
             )
             clip_header.tracks.append(header)

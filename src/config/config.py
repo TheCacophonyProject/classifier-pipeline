@@ -30,9 +30,8 @@ class Config(DefaultConfig):
         "rodent",
         "wallaby",
     ]
-    source_folder = attr.ib()
+    base_folder = attr.ib()
     load = attr.ib()
-    tracks_folder = attr.ib()
     labels = attr.ib()
     build = attr.ib()
     tracking = attr.ib()
@@ -49,6 +48,8 @@ class Config(DefaultConfig):
     def load_from_file(cls, filename=None):
         if filename is None or not Path(filename).exists():
             filename = find_config()
+        if filename is None:
+            return Config.get_defaults()
         with open(filename) as stream:
             return cls.load_from_stream(stream)
 
@@ -61,10 +62,9 @@ class Config(DefaultConfig):
         # Configuration from "tracking" section is used in
         # "classify_tracking" when not specified.
         deep_copy_map_if_key_not_exist(default.as_dict(), raw)
-        base_folder = raw.get("base_data_folder", ".")
+        base_folder = Path(raw.get("base_data_folder", "."))
         return cls(
-            source_folder=path.join(base_folder, raw["source_folder"]),
-            tracks_folder=path.join(base_folder, raw.get("tracks_folder", "tracks")),
+            base_folder=Path(base_folder),
             tracking=TrackingConfig.load(raw["tracking"]),
             load=LoadConfig.load(raw["load"]),
             train=TrainConfig.load(raw["train"], base_folder),
@@ -82,8 +82,7 @@ class Config(DefaultConfig):
     @classmethod
     def get_defaults(cls):
         return cls(
-            source_folder="",
-            tracks_folder="tracks",
+            base_folder=".",
             labels=Config.DEFAULT_LABELS,
             reprocess=True,
             previews_colour_map="custom_colormap.dat",
@@ -117,11 +116,7 @@ def find_config():
         logging.info("Looking for config %s", p)
         if p.is_file():
             return str(p)
-    raise FileNotFoundError(
-        "No configuration file found.  Looking for file named '{}' in dirs {}".format(
-            CONFIG_FILENAME, CONFIG_DIRS
-        )
-    )
+    return None
 
 
 def parse_options_param(name, value, options):

@@ -188,22 +188,24 @@ class ClipClassifier:
 
         for i, track in enumerate(clip.tracks):
             segment_frames = None
-            if reuse_frames and classifier.type == "thermal":
+            if reuse_frames:
                 tracks = meta_data.get("tracks")
                 meta_track = next(
                     (x for x in tracks if x["id"] == track.get_id()), None
                 )
-                previous_predictions = meta_track.get("predictions")
-                if previous_predictions is not None:
-                    previous_prediction = next(
-                        (x for x in previous_predictions if x["model_id"] == model.id),
+                if meta_track is not None:
+                    prediction_tag = next(
+                        (
+                            x
+                            for x in meta_track["tags"]
+                            if x.get("data", {}).get("name") == model.name
+                        ),
                         None,
                     )
-                    if previous_prediction is not None:
-                        logging.info("Reusing previous prediction frames %s", model)
-
-                        segment_frames = previous_prediction.get("prediction_frames")
-                        if segment_frames is not None:
+                    if prediction_tag is not None:
+                        if "prediction_frames" in prediction_tag["data"]:
+                            logging.info("Reusing previous prediction frames %s", model)
+                            segment_frames = prediction_tag["data"]["prediction_frames"]
                             segment_frames = np.uint16(segment_frames)
             prediction = classifier.classify_track(
                 clip, track, segment_frames=segment_frames
