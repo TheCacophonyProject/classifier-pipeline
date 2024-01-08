@@ -38,17 +38,15 @@ class IRRecorder(Recorder):
         self,
         thermal_config,
         headers,
-        on_recording_stopping=None,
         name="IRRecorder",
-        constant_recorder=False,
+        **args,
     ):
         super().__init__(
             thermal_config,
             headers,
             name,
-            constant_recorder,
             VIDEO_EXT,
-            on_recording_stopping,
+            *args,
         )
         self.res_x = headers.res_x
         self.res_y = headers.res_y
