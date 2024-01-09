@@ -61,7 +61,16 @@ def parse_args():
     )
 
     parser.add_argument("-c", "--config-file", help="Path to config file to use")
-    parser.add_argument("-d", "--date", help="Use clips after this")
+    parser.add_argument(
+        "--test-days",
+        type=int,
+        default=None,
+        help="Use the last x days only in test set",
+    )
+
+    parser.add_argument(
+        "-d", "--date", help="Use clips after this only in test dataset"
+    )
     parser.add_argument("--dont-cap", action="count", help="Dont cap numbers")
     parser.add_argument(
         "--consecutive-segments",
@@ -71,7 +80,14 @@ def parse_args():
     )
     parser.add_argument("data_dir", help="Directory of hdf5 files")
     args = parser.parse_args()
-    if args.date:
+    if args.test_days > 0:
+        if args.date:
+            logging.error("Cant have test days and date args at same time")
+            raise Exception("Cant use test days and date together")
+        args.date = datetime.datetime.now(pytz.utc) - datetime.timedelta(
+            days=args.test_days
+        )
+    elif args.date:
         # if args.date == "None":
         #     args.date = None
         # else:
@@ -880,6 +896,8 @@ def main():
         "counts": dataset_counts,
         "by_label": False,
     }
+    if args.date:
+        meta_data["test_date"] = args.date.isoformat()
 
     with open(meta_filename, "w") as f:
         json.dump(meta_data, f, indent=4)
