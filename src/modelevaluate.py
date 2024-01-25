@@ -295,43 +295,49 @@ def init_worker(model):
 
 
 def load_clip_data(cptv_file):
-    # for clip in dataset.clips:
-    reason = {}
-    clip_db = RawDatabase(cptv_file)
-    clip = clip_db.get_clip_tracks(LoadConfig.DEFAULT_GROUPS)
-    if clip is None:
-        logging.warn("No clip for %s", cptv_file)
-        return None
+    try:
+        # for clip in dataset.clips:
+        reason = {}
+        clip_db = RawDatabase(cptv_file)
+        clip = clip_db.get_clip_tracks(LoadConfig.DEFAULT_GROUPS)
+        if clip is None:
+            logging.warn("No clip for %s", cptv_file)
+            return None
 
-    if filter_clip(clip, reason):
-        logging.info("Filtering %s", cptv_file)
-        return None
-    clip.tracks = [
-        track for track in clip.tracks if not filter_track(track, EXCLUDED_TAGS, reason)
-    ]
-    if len(clip.tracks) == 0:
-        logging.info("No tracks after filtering %s", cptv_file)
-        return None
-    clip_db.load_frames()
-    segment_frame_spacing = int(round(clip.frames_per_second))
-    thermal_medians = []
-    for f in clip_db.frames:
-        thermal_medians.append(np.median(f.thermal))
-    thermal_medians = np.uint16(thermal_medians)
-    data = []
-    for track in clip.tracks:
-        frames, preprocessed, masses = worker_model.preprocess(
-            clip_db, track, frames_per_classify=25, dont_filter=True
-        )
-        data.append(
-            (
-                f"{track.clip_id}-{track.get_id()}",
-                track.label,
-                frames,
-                preprocessed,
-                masses,
+        if filter_clip(clip, reason):
+            logging.info("Filtering %s", cptv_file)
+            return None
+        clip.tracks = [
+            track
+            for track in clip.tracks
+            if not filter_track(track, EXCLUDED_TAGS, reason)
+        ]
+        if len(clip.tracks) == 0:
+            logging.info("No tracks after filtering %s", cptv_file)
+            return None
+        clip_db.load_frames()
+        segment_frame_spacing = int(round(clip.frames_per_second))
+        thermal_medians = []
+        for f in clip_db.frames:
+            thermal_medians.append(np.median(f.thermal))
+        thermal_medians = np.uint16(thermal_medians)
+        data = []
+        for track in clip.tracks:
+            frames, preprocessed, masses = worker_model.preprocess(
+                clip_db, track, frames_per_classify=25, dont_filter=True
             )
-        )
+            data.append(
+                (
+                    f"{track.clip_id}-{track.get_id()}",
+                    track.label,
+                    frames,
+                    preprocessed,
+                    masses,
+                )
+            )
+    except:
+        logging.error("Error loading data %s ", cptv_file, exc_info=True)
+        return None
     return data
 
 
