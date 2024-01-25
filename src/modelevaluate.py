@@ -219,12 +219,13 @@ def evalute_prod_confusion(dir, confusion_file):
 
     labels = [
         "bird",
-        "bird/kiwi",
         "cat",
+        "deer",
+        "dog",
         "false-positive",
         "hedgehog",
         "human",
-        "insect",
+        "kiwi",
         "leporidae",
         "mustelid",
         "penguin",
@@ -233,6 +234,7 @@ def evalute_prod_confusion(dir, confusion_file):
         "sheep",
         "vehicle",
         "wallaby",
+        "land-bird",
         "None",
         "unidentified",
     ]
