@@ -215,10 +215,12 @@ def get_data(clip_samples, extra_args):
                 # GP All assumes we dont have a track over multiple bins (Whcih we probably never want)
                 if extra_args.get("use_segments", True):
                     track.get_segments(
-                        extra_args.get("segment_frame_spacing", 9),
-                        extra_args.get("segment_width", 25),
-                        extra_args.get("segment_type"),
-                        extra_args.get("segment_min_avg_mass"),
+                        segment_width=extra_args.get("segment_width", 25),
+                        segment_frame_spacing=extra_args.get(
+                            "segment_frame_spacing", 9
+                        ),
+                        segment_type=extra_args.get("segment_type"),
+                        segment_min_mass=extra_args.get("segment_min_avg_mass"),
                         max_segments=extra_args.get("max_segments"),
                         dont_filter=extra_args.get("dont_filter_segment", False),
                         skip_ffc=extra_args.get("skip_ffc", True),

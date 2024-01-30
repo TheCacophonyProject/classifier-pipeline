@@ -331,7 +331,7 @@ class TrackHeader:
 
     def get_segments(
         self,
-        segment_width,
+        segment_width=25,
         segment_frame_spacing=9,
         segment_type=SegmentType.ALL_RANDOM,
         segment_min_mass=None,
