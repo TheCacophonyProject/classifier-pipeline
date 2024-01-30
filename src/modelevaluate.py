@@ -260,7 +260,7 @@ def evalute_prod_confusion(dir, confusion_file):
             if len(human_tags) > 1:
                 print("Conflicting tags for ", track.get("id"), cptv_file)
             if len(human_tags) == 0:
-                print("No humans in ", tags)
+                print("No humans in ", cptv_file)
                 continue
             human_tag = human_tags.pop()
             human_tag = label_mapping.get(human_tag, human_tag)
@@ -268,8 +268,11 @@ def evalute_prod_confusion(dir, confusion_file):
                 tag.get("what")
                 for tag in tags
                 if tag.get("automatic") is True
-                and tag.get("data", {}).get("name") == "Inc3 RF"
+                and tag.get("data", {}).get("name") == "wr-resnet"
             ]
+             if len(ai_tag)==0:
+                 continue
+
             y_true.append(human_tag)
             if len(ai_tag) == 0:
                 y_pred.append("None")

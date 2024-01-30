@@ -302,9 +302,10 @@ def main():
     config = Config.load_from_file()
     from .tfdataset import get_dataset, get_distribution
 
+    record_dir = Path(config.base_folder) / "training-data"
     # file = "/home/gp/cacophony/classifier-data/thermal-training/cp-training/training-meta.json"
-    file = f"{config.tracks_folder}/training-meta.json"
-    with open(file, "r") as f:
+    metadata_f = record_dir / "training-meta.json"
+    with open(metadata_f, "r") as f:
         meta = json.load(f)
     labels = meta.get("labels", [])
     datasets = []
@@ -312,7 +313,7 @@ def main():
     resampled_ds, remapped, labels, epoch_size = get_dataset(
         # dir,
         load_dataset,
-        f"{config.tracks_folder}/training-data/test",
+        record_dir / "test",
         labels,
         batch_size=32,
         image_size=(160, 160),
