@@ -16,6 +16,7 @@ GNU General Public License for more details.
 You should have received a copy of the GNU General Public License
 along with this program. If not, see <http://www.gnu.org/licenses/>.
 """
+
 import matplotlib.pyplot as plt
 
 import os
@@ -176,9 +177,9 @@ class IRTrackExtractor(ClipTracker):
             self.cache_to_disk,
             False,
             self.keep_frames,
-            max_frames=None
-            if self.keep_frames
-            else 51,  # enough to cover back comparison
+            max_frames=(
+                None if self.keep_frames else 51
+            ),  # enough to cover back comparison
         )
 
         _, ext = os.path.splitext(clip.source_file)
@@ -460,9 +461,11 @@ class IRTrackExtractor(ClipTracker):
                     track.add_frame_for_existing_region(
                         cur_frame,
                         threshold,
-                        clip.frame_buffer.prev_frame.filtered
-                        if clip.frame_buffer.prev_frame is not None
-                        else None,
+                        (
+                            clip.frame_buffer.prev_frame.filtered
+                            if clip.frame_buffer.prev_frame is not None
+                            else None
+                        ),
                     )
         else:
             regions = []

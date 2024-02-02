@@ -7,6 +7,7 @@ Date December 2017
 Handles reading and writing tracks (or segments) to a large database.  Uses HDF5 as a backing store.
 
 """
+
 import h5py
 import os
 import logging

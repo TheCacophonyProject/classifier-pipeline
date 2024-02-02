@@ -595,9 +595,11 @@ class KerasModel(Interpreter):
 
         checkpoint_acc = tf.keras.callbacks.ModelCheckpoint(
             val_acc,
-            monitor="val_binary_accuracy"
-            if self.params.multi_label
-            else "val_categorical_accuracy",
+            monitor=(
+                "val_binary_accuracy"
+                if self.params.multi_label
+                else "val_categorical_accuracy"
+            ),
             verbose=1,
             save_best_only=True,
             save_weights_only=True,
@@ -616,9 +618,11 @@ class KerasModel(Interpreter):
         )
         earlyStopping = tf.keras.callbacks.EarlyStopping(
             patience=22,
-            monitor="val_binary_accuracy"
-            if self.params.multi_label
-            else "val_categorical_accuracy",
+            monitor=(
+                "val_binary_accuracy"
+                if self.params.multi_label
+                else "val_categorical_accuracy"
+            ),
         )
         # havent found much use in this just takes training time
         # file_writer_cm = tf.summary.create_file_writer(
@@ -638,9 +642,11 @@ class KerasModel(Interpreter):
         #   "verbose": 1
         # },
         reduce_lr_callback = tf.keras.callbacks.ReduceLROnPlateau(
-            monitor="val_binary_accuracy"
-            if self.params.multi_label
-            else "val_categorical_accuracy",
+            monitor=(
+                "val_binary_accuracy"
+                if self.params.multi_label
+                else "val_categorical_accuracy"
+            ),
             verbose=1,
         )
         return [
@@ -1241,9 +1247,9 @@ def grid_search(keras_model, epochs=1):
                                         # for some reason cant have None values in hyper params array
                                         if learning_rate_decay == 1.0:
                                             learning_rate_decay = None
-                                        keras_model.params[
-                                            "learning_rate_decay"
-                                        ] = learning_rate_decay
+                                        keras_model.params["learning_rate_decay"] = (
+                                            learning_rate_decay
+                                        )
                                         if mvm >= 1.0:
                                             keras_model.params["mvm"] = True
                                             keras_model.params["hq_mvm"] = mvm > 1
@@ -1254,9 +1260,11 @@ def grid_search(keras_model, epochs=1):
 
                                         keras_model.build_model(
                                             dense_sizes=dense_layers,
-                                            retrain_from=None
-                                            if retrain_layer == -1
-                                            else retrain_layer,
+                                            retrain_from=(
+                                                None
+                                                if retrain_layer == -1
+                                                else retrain_layer
+                                            ),
                                             dropout=None if dropout == 0.0 else dropout,
                                         )
                                         keras_model.model.summary()

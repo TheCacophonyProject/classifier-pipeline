@@ -194,9 +194,9 @@ class Recorder(ABC):
         return self.temp_dir / f"{file_name}{self.file_extention}"
 
     @abstractmethod
-    def new_recording(self, background_frame, preview_frames, temp_thresh, frame_time):
-        ...
+    def new_recording(
+        self, background_frame, preview_frames, temp_thresh, frame_time
+    ): ...
 
     @abstractmethod
-    def final_name(self):
-        ...
+    def final_name(self): ...
