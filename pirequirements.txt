@@ -1,6 +1,6 @@
 #install opencv via sudo apt install python3-opencv libglib2.0-dev libgirepository1.0-dev libcairo2-dev libcairo2  python3-dbus build-essential libdbus-glib-1-dev libgirepository1.0-dev
 
-tflite-runtime==2.11.0
+tflite-runtime==2.14.0
 matplotlib==3.6.3
 pytz==2022.7.1
 cptv==1.5.4
