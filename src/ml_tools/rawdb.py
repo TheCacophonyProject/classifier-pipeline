@@ -6,6 +6,7 @@ Date 2023
 
 
 """
+
 import os
 import logging
 import filelock
@@ -107,7 +108,6 @@ class RawDatabase:
         self.crop_rectangle = Rectangle(
             edge_pixels, edge_pixels, resx - edge_pixels * 2, resy - edge_pixels * 2
         )
-
         clip_header = ClipHeader(
             clip_id=int(metadata["id"]),
             station_id=metadata.get("stationId"),
@@ -188,7 +188,8 @@ class RawDatabase:
                 confidence=human_tag_confidence,
                 human_tags=human_tags,
                 source_file=self.file,
-                mega_missed_regions=track_meta.get("mega_missed_regions")
+                mega_missed_regions=track_meta.get("mega_missed_regions"),
+                station_id=clip_header.station_id,
                 # frame_temp_median=frame_temp_median,
             )
             clip_header.tracks.append(header)
