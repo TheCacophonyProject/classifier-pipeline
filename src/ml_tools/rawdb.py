@@ -178,6 +178,7 @@ class RawDatabase:
                 if start is None:
                     start = region.frame_number
                 end = region.frame_number
+
             header = TrackHeader(
                 device_id=clip_header.camera,
                 clip_id=clip_header.clip_id,
@@ -191,6 +192,7 @@ class RawDatabase:
                 source_file=self.file,
                 mega_missed_regions=track_meta.get("mega_missed_regions"),
                 station_id=clip_header.station_id,
+                rec_time=clip_header.rec_time,
                 # frame_temp_median=frame_temp_median,
             )
             clip_header.tracks.append(header)

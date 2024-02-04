@@ -150,6 +150,7 @@ class TrackHeader:
         remapped_lbl=None,
         mega_missed_regions=None,
     ):
+        self.rec_time = rec_time
         self.device_id = device_id
         # regions that megadetector found nothing in
         self.mega_missed_regions = mega_missed_regions
@@ -374,6 +375,7 @@ class TrackHeader:
             dont_filter=dont_filter,
             skip_ffc=skip_ffc,
             device_id=self.device_id,
+            rec_time=self.rec_time,
         )
         # GP could get this from the tracks when writing
         # but might be best to keep samples independent for ease
