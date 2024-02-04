@@ -277,16 +277,16 @@ def split_label(
         split_by_clip.append(label)
 
     if label in split_by_clip:
-        sample_bins = set([sample.clip_id for sample in samples])
+        sample_bins = set([f"c-{sample.clip_id}" for sample in samples])
         logging.info("%s Splitting by clip", label)
         samples_by_bin = {}
         for clip in dataset.clips:
-            if clip.clip_id in sample_bins:
+            if f"c-{clip.clip_id}" in sample_bins:
                 samples = clip.get_samples()
                 by_id = {}
                 for s in samples:
                     by_id[s.id] = s
-                samples_by_bin[clip.clip_id] = by_id
+                samples_by_bin[f"c-{clip.clip_id}"] = by_id
     else:
         samples_by_bin = dataset.samples_by_bin
     if len(sample_bins) == 0:
