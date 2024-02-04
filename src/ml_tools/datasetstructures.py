@@ -138,6 +138,7 @@ class TrackHeader:
         num_frames,
         regions,
         start_frame,
+        device_id=None,
         ffc_frames=None,
         sample_frames_indices=None,
         station_id=None,
@@ -149,6 +150,7 @@ class TrackHeader:
         remapped_lbl=None,
         mega_missed_regions=None,
     ):
+        self.device_id = device_id
         # regions that megadetector found nothing in
         self.mega_missed_regions = mega_missed_regions
         self.station_id = station_id
@@ -371,6 +373,7 @@ class TrackHeader:
             source_file=self.source_file,
             dont_filter=dont_filter,
             skip_ffc=skip_ffc,
+            device_id=self.device_id,
         )
         # GP could get this from the tracks when writing
         # but might be best to keep samples independent for ease
@@ -732,6 +735,7 @@ class SegmentHeader(Sample):
         mass,
         label,
         regions,
+        device_id=None,
         frame_indices=None,
         movement_data=None,
         best_mass=False,
@@ -746,6 +750,7 @@ class SegmentHeader(Sample):
         track_median_mass=None,
     ):
         super().__init__(label)
+        self.device_id = device_id
         self.filtered = filtered
         self.rec_time = rec_time
         self.location = location
@@ -831,7 +836,9 @@ class SegmentHeader(Sample):
     @property
     def bin_id(self):
         """Unique name of this segments track."""
-        return f"{self.station_id}"
+        if self.station_id is None:
+            return f"d-{self.device_id}"
+        return f"s-{self.station_id}"
 
     def __str__(self):
         return "{0} label {1} offset:{2} weight:{3:.1f}".format(
@@ -944,6 +951,7 @@ def get_segments(
     source_file=None,
     dont_filter=False,
     skip_ffc=True,
+    device_id=None,
 ):
     if segment_type == SegmentType.ALL_RANDOM_NOMIN:
         segment_min_mass = None
@@ -1105,6 +1113,7 @@ def get_segments(
                 rec_time=rec_time,
                 source_file=source_file,
                 filtered=filtered,
+                device_id=device_id,
             )
             segments.append(segment)
     return segments, filtered_stats

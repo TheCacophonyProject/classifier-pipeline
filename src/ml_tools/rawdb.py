@@ -179,6 +179,7 @@ class RawDatabase:
                     start = region.frame_number
                 end = region.frame_number
             header = TrackHeader(
+                device_id=clip_header.camera,
                 clip_id=clip_header.clip_id,
                 track_id=int(track_meta["id"]),
                 label=human_tag,

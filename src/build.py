@@ -80,7 +80,7 @@ def parse_args():
     )
     parser.add_argument("data_dir", help="Directory of hdf5 files")
     args = parser.parse_args()
-    if args.test_days > 0:
+    if args.test_days is not None and args.test_days > 0:
         if args.date:
             logging.error("Cant have test days and date args at same time")
             raise Exception("Cant use test days and date together")
