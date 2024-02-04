@@ -617,7 +617,7 @@ def validate_datasets(datasets, test_bins, test_date):
         for other in datasets[(i + 1) :]:
             if dataset.name == other.name:
                 continue
-            if dataset.name == "test" and test_date is not None:
+            if other.name == "test" and test_date is not None:
                 dont_check = set(
                     [
                         sample.bin_id
