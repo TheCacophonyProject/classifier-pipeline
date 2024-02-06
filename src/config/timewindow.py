@@ -1,5 +1,6 @@
 """ A window time frame, which can be relative to sunset and sunrise
 """
+
 from datetime import datetime, timedelta
 import logging
 import enum

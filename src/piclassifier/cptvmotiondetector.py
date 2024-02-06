@@ -78,17 +78,17 @@ class CPTVMotionDetector(MotionDetector):
         else:
             if self.processed > 2:
                 delta_frame2 = self.diff_window.oldest_nonffc
-                delta_frame[
-                    delta_frame >= self.config.delta_thresh
-                ] = self.config.delta_thresh
+                delta_frame[delta_frame >= self.config.delta_thresh] = (
+                    self.config.delta_thresh
+                )
                 delta_combined = delta_frame2 + delta_frame
                 diff = len(
                     delta_combined[delta_combined == self.config.delta_thresh * 2]
                 )
             else:
-                delta_frame[
-                    delta_frame >= self.config.delta_thresh
-                ] = self.config.delta_thresh
+                delta_frame[delta_frame >= self.config.delta_thresh] = (
+                    self.config.delta_thresh
+                )
                 diff = 0
 
             self.diff_window.add(delta_frame, self.ffc_affected)

@@ -28,12 +28,10 @@ class RawFrame(ABC):
         )
 
     @abstractmethod
-    def get_telemetry_size(self):
-        ...
+    def get_telemetry_size(self): ...
 
     @abstractmethod
-    def parse_telemetry(self, raw_bytes):
-        ...
+    def parse_telemetry(self, raw_bytes): ...
 
 
 def get_uint16(raw, offset):

@@ -1,6 +1,7 @@
 """
 Helper functions for classification of the tracks extracted from CPTV videos
 """
+
 import attr
 import os.path
 import numpy as np

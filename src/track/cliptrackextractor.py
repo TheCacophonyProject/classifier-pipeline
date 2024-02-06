@@ -17,7 +17,6 @@ You should have received a copy of the GNU General Public License
 along with this program. If not, see <http://www.gnu.org/licenses/>.
 """
 
-
 import logging
 import numpy as np
 import time
@@ -174,9 +173,11 @@ class ClipTrackExtractor(ClipTracker):
                     track.add_frame_for_existing_region(
                         cur_frame,
                         threshold,
-                        clip.frame_buffer.prev_frame.filtered
-                        if clip.frame_buffer.prev_frame is not None
-                        else None,
+                        (
+                            clip.frame_buffer.prev_frame.filtered
+                            if clip.frame_buffer.prev_frame is not None
+                            else None
+                        ),
                     )
         else:
             regions = []

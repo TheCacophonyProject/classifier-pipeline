@@ -7,6 +7,7 @@ Dataset used for training a tensorflow model from track data.
 Tracks are broken into segments.  Filtered, and then passed to the trainer using a weighted random sample.
 
 """
+
 import logging
 import math
 import os
@@ -244,12 +245,16 @@ class Dataset:
                     # a lot of ir clips have bad tracking near end so just reduce track length
                     skip_last = 0.1
                 track_header.calculate_sample_frames(
-                    min_mass=self.min_frame_mass
-                    if not self.filter_by_lq
-                    else track_header.lower_mass,
-                    max_mass=self.max_frame_mass
-                    if not self.filter_by_lq
-                    else track_header.upper_mass,
+                    min_mass=(
+                        self.min_frame_mass
+                        if not self.filter_by_lq
+                        else track_header.lower_mass
+                    ),
+                    max_mass=(
+                        self.max_frame_mass
+                        if not self.filter_by_lq
+                        else track_header.upper_mass
+                    ),
                     ffc_frames=clip_header.ffc_frames,
                     skip_last=skip_last,
                 )

@@ -227,12 +227,16 @@ def get_data(clip_samples, extra_args):
                 else:
                     filter_by_lq = extra_args.get("filter_by_lq", False)
                     track.calculate_sample_frames(
-                        min_mass=extra_args.get("min_mass")
-                        if not filter_by_lq
-                        else track.lower_mass,
-                        max_mass=extra_args.get("max_mass")
-                        if not filter_by_lq
-                        else track.upper_mass,
+                        min_mass=(
+                            extra_args.get("min_mass")
+                            if not filter_by_lq
+                            else track.lower_mass
+                        ),
+                        max_mass=(
+                            extra_args.get("max_mass")
+                            if not filter_by_lq
+                            else track.upper_mass
+                        ),
                         ffc_frames=clip_meta.ffc_frames,
                     )
                 samples = track.samples
