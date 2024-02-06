@@ -127,8 +127,10 @@ def main():
         if os.path.exists(SOCKET_NAME):
             raise
     logging.info("running as thermal")
+
     sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     sock.bind(SOCKET_NAME)
+    sock.settimeout(3 * 60)  # 3 minutes
     sock.listen(1)
 
     global connected
@@ -137,18 +139,21 @@ def main():
             sock.close()
             break
         logging.info("waiting for a connection")
-        connection, client_address = sock.accept()
-        connected = True
-        logging.info("connection from %s", client_address)
-        log_event("camera-connected", {"type": ClipTrackExtractor.TYPE})
         try:
+            connection, client_address = sock.accept()
+            connected = True
+            logging.info("connection from %s", client_address)
+            log_event("camera-connected", {"type": ClipTrackExtractor.TYPE})
             handle_connection(
                 connection, config, args.thermal_config_file, process_queue
             )
+        except socket.timeout:
+            logging.error("Socket %s timeout error", SOCKET_NAME, exc_info=True)
+            return
+
         except Exception as ex:
             log_event("camera-disconnected", ex)
             logging.error("Error with connection", exc_info=True)
-            # return
         finally:
             # Clean up the connection
             try:
@@ -284,7 +289,12 @@ def handle_headers(connection):
     headers = b""
     left_over = None
     while True:
+
+        logging.info("Getting header info")
         data = connection.recv(4096)
+
+        if not data:
+            raise Exception("Disconnected from camera while getting headers")
         headers += data
         done = headers.find(b"\n\n")
         if done > -1:
