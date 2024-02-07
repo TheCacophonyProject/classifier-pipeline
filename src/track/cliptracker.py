@@ -124,10 +124,16 @@ class ClipTracker(ABC):
 
         # makes tracking consistent by ordering by score then by frame since target then track id
         scores.sort(
-            key=lambda record: record[1].frames_since_target_seen
-            + float(".{}".format(record[1]._id))
+            key=lambda record: record.track.frames_since_target_seen
+            + float(".{}".format(record.track._id))
         )
-        scores.sort(key=lambda record: record[0])
+        scores.sort(key=lambda record: record.score)
+
+        # want to figure out a way to merge the previous track if this is the case
+        # scores.sort(key=lambda record: record[1].frames < 3)
+
+        for score, track, region in scores:
+            logging.info("GOt %s for track %s", score, track)
         matched_tracks = set()
         blanked_tracks = set()
         cur_frame = clip.frame_buffer.current_frame
@@ -138,6 +144,23 @@ class ClipTracker(ABC):
                 or track in blanked_tracks
             ):
                 continue
+
+            other_matches = region_matches_by_frames[region._id]
+            # we have another track that would match this and has been runing for longer
+            # and this is the only region for the current track, end current track and merge with other track
+            other_top = other_matches[0]
+            if (
+                other_top.region.id != region.id
+                and len(matches_by_track[track.id]) == 1
+            ):
+
+                # check that this potential track doesn't have a better score match
+                other_track_matches = matches_by_track[other_top.track._id][0]
+                if other_track_matches.region.id == region.id:
+                    score, track, region = other_top
+                    # update our colelctions
+                    matches_by_track[other_top]
+                    del matches_by_track[other_top.track._id]
             logging.debug(
                 "frame# %s matched %s to track %s", clip.current_frame, region, track
             )

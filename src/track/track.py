@@ -30,6 +30,9 @@ from ml_tools.datasetstructures import get_segments, SegmentHeader, SegmentType
 import cv2
 import logging
 from track.tracker import Tracker
+from collections import namedtuple
+
+Match = namedtuple("Match", ["score,track,region"])
 
 
 class RegionTracker(Tracker):
@@ -190,7 +193,7 @@ class RegionTracker(Tracker):
                 # GP should figure out good values for the 3 distances rather than the mean
                 distance_score = distances[0]
 
-            scores.append((distance_score, track, region))
+            scores.append(Match(distance_score, track, region))
         return scores
 
     def add_region(self, region):
