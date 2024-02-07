@@ -32,7 +32,7 @@ import logging
 from track.tracker import Tracker
 from collections import namedtuple
 
-Match = namedtuple("Match", ["score,track,region"])
+Match = namedtuple("Match", "score, track, region")
 
 
 class RegionTracker(Tracker):

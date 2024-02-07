@@ -119,9 +119,12 @@ class ClipTracker(ABC):
         unmatched_regions = set(regions)
         active = list(clip.active_tracks)
         active.sort(key=lambda x: x.get_id())
-        for track in active:
-            scores.extend(track.match(regions))
 
+        track_matches = {}
+        region_matches = {}
+        for track in active:
+            matches = track.match(regions)
+            scores.extend(matches)
         # makes tracking consistent by ordering by score then by frame since target then track id
         scores.sort(
             key=lambda record: record.track.frames_since_target_seen
@@ -129,14 +132,24 @@ class ClipTracker(ABC):
         )
         scores.sort(key=lambda record: record.score)
 
-        # want to figure out a way to merge the previous track if this is the case
-        # scores.sort(key=lambda record: record[1].frames < 3)
+        frame_sorted = sorted(scores, key=lambda record: record.track.frames < 3)
 
-        for score, track, region in scores:
-            logging.info("GOt %s for track %s", score, track)
+        for match in frame_sorted:
+
+            if match.region.id in region_matches:
+                region_matches[match.region.id].append(match)
+            else:
+                region_matches[match.region.id] = [match]
+            logging.info("adding match for %s", match.track._id)
+            if match.track._id in track_matches:
+                track_matches[match.track._id].append(match)
+            else:
+                track_matches[match.track._id] = [match]
+
         matched_tracks = set()
         blanked_tracks = set()
         cur_frame = clip.frame_buffer.current_frame
+
         for score, track, region in scores:
             if (
                 track in matched_tracks
@@ -145,22 +158,29 @@ class ClipTracker(ABC):
             ):
                 continue
 
-            other_matches = region_matches_by_frames[region._id]
+            other_matches = region_matches[region.id]
             # we have another track that would match this and has been runing for longer
             # and this is the only region for the current track, end current track and merge with other track
             other_top = other_matches[0]
-            if (
-                other_top.region.id != region.id
-                and len(matches_by_track[track.id]) == 1
-            ):
 
+            # might not need to check that there is only one match for this track
+            if other_top.track._id != track._id and len(track_matches[track._id]) == 1:
                 # check that this potential track doesn't have a better score match
-                other_track_matches = matches_by_track[other_top.track._id][0]
+                other_track_matches = track_matches[other_top.track._id][0]
                 if other_track_matches.region.id == region.id:
+                    logging.info(
+                        "%s Matching to a previous track because it has more frames %s from track %s to track %s ",
+                        clip.current_frame,
+                        region,
+                        track._id,
+                        other_top.track._id,
+                    )
+                    # could try merge this track with other track
+
                     score, track, region = other_top
-                    # update our colelctions
-                    matches_by_track[other_top]
-                    del matches_by_track[other_top.track._id]
+                    del track_matches[other_top.track._id]
+                    del region_matches[region.id]
+
             logging.debug(
                 "frame# %s matched %s to track %s", clip.current_frame, region, track
             )
