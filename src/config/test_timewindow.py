@@ -125,7 +125,7 @@ class TestWindow:
         time_window = TimeWindow(start, end)
         with pytest.raises(ValueError):
             time_window.inside_window()
-
+        print("Current date is ",datetime.now())
         time_window.set_location(TestWindow.DEFAULT_LAT, TestWindow.DEFAULT_LONG, 0)
         time_window.inside_window()
         assert time_window.last_sunrise_check is not None
@@ -137,7 +137,7 @@ class TestWindow:
         end = RelAbsTime("0s")
         time_window = TimeWindow(start, end)
         time_window.set_location(TestWindow.DEFAULT_LAT, TestWindow.DEFAULT_LONG, 0)
-
+# failed at 7:20
         time_window.update_sun_times()
         assert time_window.start.dt.date() == datetime.now().date()
         assert time_window.end.dt > time_window.start.dt

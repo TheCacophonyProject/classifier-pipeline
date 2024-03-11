@@ -7,12 +7,6 @@ python:
 install:
 - sudo apt-get update
 - python -m pip install --upgrade pip
-- pip install cmake
-- sudo apt install -y python3-dbus ffmpeg build-essential libdbus-glib-1-dev libgirepository1.0-dev tzdata libcairo2-dev libjpeg-dev python-cairo libhdf5-dev libopencv-dev cmake
-- pip install -r requirements.txt
-before_script:
-- pip install black --upgrade
-- pip install gdown
 script:
 - pip install freezegun
 - pytest -s
