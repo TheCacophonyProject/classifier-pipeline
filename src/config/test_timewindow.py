@@ -118,6 +118,7 @@ class TestWindow:
         time_window.end = RelAbsTime(new_end.strftime("%H:%M"))
         assert not time_window.inside_window()
 
+    @freeze_time(lambda: datetime.now().replace(hour=12, minute=30))
     def test_sunrise_times(self):
         cur_date = datetime.now()
         start = RelAbsTime(cur_date.strftime("%H:%M"))
@@ -125,7 +126,6 @@ class TestWindow:
         time_window = TimeWindow(start, end)
         with pytest.raises(ValueError):
             time_window.inside_window()
-
         time_window.set_location(TestWindow.DEFAULT_LAT, TestWindow.DEFAULT_LONG, 0)
         time_window.inside_window()
         assert time_window.last_sunrise_check is not None
@@ -137,7 +137,6 @@ class TestWindow:
         end = RelAbsTime("0s")
         time_window = TimeWindow(start, end)
         time_window.set_location(TestWindow.DEFAULT_LAT, TestWindow.DEFAULT_LONG, 0)
-
         time_window.update_sun_times()
         assert time_window.start.dt.date() == datetime.now().date()
         assert time_window.end.dt > time_window.start.dt
