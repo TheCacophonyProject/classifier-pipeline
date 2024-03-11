@@ -98,7 +98,7 @@ class TimeWindow:
         # if self.last_sunrise_check is not None and (
         #     self.start.is_before() or self.end.is_before()
         # ):
-        if self.last_sunrise_check is None or next_window:
+        if self.last_sunrise_check is None or next_window or datetime.now() > self.end.dt:
             #     return
             date = datetime.now().date()
             if self.last_sunrise_check is not None and next_window:
@@ -118,7 +118,6 @@ class TimeWindow:
                     seconds=self.end.offset_s
                 )
                 self.end.dt = self.end.dt.replace(tzinfo=None)
-
                 if datetime.now() > self.end.dt and self.end.dt < self.start.dt:
                     date = date + timedelta(days=1)
                     sun_times = self.location.sun(date=date)

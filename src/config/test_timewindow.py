@@ -74,13 +74,25 @@ class TestWindow:
             assert  time_window.inside_window()
 
 
+    @freeze_time(lambda: datetime.now().replace(hour=1, minute=59))
+    def test_dt_update(self):
+        start = RelAbsTime("-30m")
+        end = RelAbsTime("30m")
+        time_window = TimeWindow(start, end)
+        time_window.set_location(TestWindow.DEFAULT_LAT, TestWindow.DEFAULT_LONG, 0)
+        assert  time_window.inside_window()
+        end_date = time_window.end.dt
+        start_date = time_window.start.dt
+
+        # check that if we move out of window, the end time gets updated
+        with freeze_time(datetime.now().replace(hour=12, minute=59)):
+            time_window.inside_window()
+            assert  end_date != time_window.end.dt
+            assert  start_date == time_window.start.dt
 
 
     @freeze_time(lambda: datetime.now().replace(hour=12, minute=1))
     def test_after_sunrise(self):
-        cur_date = datetime.now()
-        print("Current date is",cur_date)
-
         start = RelAbsTime("-30m")
         end = RelAbsTime("30m")
         time_window = TimeWindow(start, end)
