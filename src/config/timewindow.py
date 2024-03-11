@@ -74,6 +74,9 @@ class TimeWindow:
             elif self.start.is_after() and self.end.is_after():
                 self.next_window()
                 return False
+            elif  self.end.is_before() and self.end.dt.date() == datetime.now().date():
+                # overnight window and we are before sunrise
+                return True
         elif self.start.time == self.end.time:
             return True
         if self.start.is_after() and self.end.is_after():
@@ -116,7 +119,7 @@ class TimeWindow:
                 )
                 self.end.dt = self.end.dt.replace(tzinfo=None)
 
-                if self.end.dt < self.start.dt:
+                if datetime.now() > self.end.dt and self.end.dt < self.start.dt:
                     date = date + timedelta(days=1)
                     sun_times = self.location.sun(date=date)
                     self.end.dt = sun_times["sunrise"] + timedelta(
@@ -181,10 +184,15 @@ class RelAbsTime:
     def time(self):
         return self.dt.time() if self.dt is not None else None
 
-    def is_after(self):
+
+    def is_after(self, ignore_date =False):
+        if ignore_date:
+            return self.any_time or datetime.now().time() > self.dt.time()
         return self.any_time or datetime.now() > self.dt
 
-    def is_before(self):
+    def is_before(self, ignore_date =False):
+        if ignore_date:
+            return self.any_time or datetime.now().time() <self.dt.time()
         return self.any_time or datetime.now() < self.dt
 
     def parse_duration(self, time_str, default_offset=None):
