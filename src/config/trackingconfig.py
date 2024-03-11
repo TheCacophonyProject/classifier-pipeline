@@ -140,7 +140,7 @@ class TrackingConfig(DefaultConfig):
             max_tracks=None,
             filters={
                 "track_overlap_ratio": 0.5,
-                "min_duration_secs": 1.0,
+                "min_duration_secs": 0,
                 "track_min_offset": 4.0,
                 "track_min_mass": 2.0,
                 "moving_vel_thresh": 4,
@@ -157,7 +157,7 @@ class TrackingConfig(DefaultConfig):
             track_min_offset=4.0,
             track_min_mass=2.0,
             track_overlap_ratio=0.5,
-            min_duration_secs=3,
+            min_duration_secs=0,
             min_tag_confidence=0.8,
             enable_track_output=True,
             moving_vel_thresh=4,
