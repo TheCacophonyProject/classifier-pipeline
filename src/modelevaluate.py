@@ -220,12 +220,13 @@ def evalute_prod_confusion(dir, confusion_file):
 
     labels = [
         "bird",
-        "bird/kiwi",
         "cat",
+        "deer",
+        "dog",
         "false-positive",
         "hedgehog",
         "human",
-        "insect",
+        "kiwi",
         "leporidae",
         "mustelid",
         "penguin",
@@ -234,6 +235,7 @@ def evalute_prod_confusion(dir, confusion_file):
         "sheep",
         "vehicle",
         "wallaby",
+        "land-bird",
         "None",
         "unidentified",
     ]
@@ -404,14 +406,15 @@ def evaluate_dir(
                     logging.info("Predicted  %s", predicted_labels)
                     predicted_tag = ",".join(predicted_labels)
                     y_pred.append(predicted_tag)
-                print(
-                    data[0],
-                    "Got a prediction of",
-                    y_pred[-1],
-                    " should be ",
-                    label,
-                    np.round(100 * prediction.class_best_score),
-                )
+                if y_pred[-1] != y_true[-1]:
+                    print(
+                        data[0],
+                        "Got a prediction of",
+                        y_pred[-1],
+                        " should be ",
+                        label,
+                        np.round(100 * prediction.class_best_score),
+                    )
                 # if predicted_tag not in model.labels:
                 # model.labels.append(predicted_tag)
     model.labels.append("None")
