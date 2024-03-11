@@ -1,6 +1,7 @@
 matplotlib~=3.0
 pytz
 cptv~=1.5.4
+opencv-contrib-python-headless
 scipy
 python-dateutil
 scikit-learn
