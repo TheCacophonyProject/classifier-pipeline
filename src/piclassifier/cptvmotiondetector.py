@@ -41,7 +41,7 @@ class CPTVMotionDetector(MotionDetector):
             self.crop_rectangle,
             self.res_x,
             self.res_y,
-            CPTVMotionDetector.BACKGROUND_WEIGHT_ADD,
+            CPTVMotionDetector.BACKGROUND_WEIGHT_ADD*100,#force more changes for rotation
             self.config.temp_thresh,
         )
         self.movement_detected = False

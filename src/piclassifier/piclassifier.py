@@ -540,7 +540,7 @@ class PiClassifier(Processor):
 
     def process_frame(self, lepton_frame, received_at):
         import time
-
+        new_clip=False
         start = time.time()
         self.motion_detector.process_frame(lepton_frame)
         self.process_time += time.time() - start
@@ -574,9 +574,14 @@ class PiClassifier(Processor):
                 t_start = time.time()
                 self.new_clip(preview_frames)
                 self.tracking_time += time.time() - t_start
-
+            new_clip=True
         if self.recorder.recording:
             t_start = time.time()
+            if not new_clip:
+                self.clip.update_background(self.motion_detector.background.copy())
+                self.clip._background_calculated() #keep updating background while tracking since rotating
+            new_clip=False
+
             self.track_extractor.process_frame(self.clip, lepton_frame)
             self.tracking_time += time.time() - t_start
             s_r = time.time()
@@ -601,7 +606,6 @@ class PiClassifier(Processor):
                     if self.classify:
                         track_prediction.tracking = False
                     self.tracking = None
-
             self.recorder.process_frame(
                 self.motion_detector.movement_detected, lepton_frame, received_at
             )
