@@ -9,7 +9,7 @@ tracking:
   thermal:
     filters:
       track_min_offset: 0
-      min_duration_secs: 0.5
+      min_duration_secs: 0.0
   ir:
     filters:
       track_min_offset: 0
