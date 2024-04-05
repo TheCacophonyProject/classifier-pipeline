@@ -117,10 +117,11 @@ class PiClassifier(Processor):
         self.tracking_events = thermal_config.motion.tracking_events
         self.bluetooth_beacons = thermal_config.motion.bluetooth_beacons
         self.preview_frames = thermal_config.recorder.preview_secs * headers.fps
-
+        self.do_tracking = thermal_config.motion.do_tracking
         self.fps_timer = SlidingWindow((headers.fps * 3), np.float32)
         self.preview_type = preview_type
         self.max_keep_frames = None if preview_type else 0
+        self.track_extractor = None
         if thermal_config.recorder.disable_recordings:
             self.recorder = DummyRecorder(
                 thermal_config, headers, on_recording_stopping=on_recording_stopping
@@ -129,18 +130,19 @@ class PiClassifier(Processor):
         if headers.model == IRTrackExtractor.TYPE:
             logging.info("Running on IR")
             PiClassifier.SKIP_FRAMES = 3
-            self.track_extractor = IRTrackExtractor(
-                self.config.tracking,
-                cache_to_disk=self.config.classify.cache_to_disk,
-                keep_frames=False,
-                verbose=config.verbose,
-                calc_stats=False,
-                scale=0.25,
-                on_trapped=on_track_trapped,
-                update_background=False,
-                trap_size=thermal_config.device_setup.trap_size,
-            )
-            self.tracking_config = self.track_extractor.config
+            if self.do_tracking:
+                self.track_extractor = IRTrackExtractor(
+                    self.config.tracking,
+                    cache_to_disk=self.config.classify.cache_to_disk,
+                    keep_frames=False,
+                    verbose=config.verbose,
+                    calc_stats=False,
+                    scale=0.25,
+                    on_trapped=on_track_trapped,
+                    update_background=False,
+                    trap_size=thermal_config.device_setup.trap_size,
+                )
+            self.tracking_config =  self.config.tracking.get(IRTrackExtractor.TYPE)
 
             self.type = IRTrackExtractor.TYPE
             if not thermal_config.recorder.disable_recordings:
@@ -167,14 +169,15 @@ class PiClassifier(Processor):
                 )
         else:
             logging.info("Running on Thermal")
-            self.track_extractor = ClipTrackExtractor(
-                self.config.tracking,
-                self.config.use_opt_flow,
-                self.config.classify.cache_to_disk,
-                keep_frames=False,
-                calc_stats=False,
-            )
-            self.tracking_config = self.track_extractor.config
+            if self.do_tracking:
+                self.track_extractor = ClipTrackExtractor(
+                    self.config.tracking,
+                    self.config.use_opt_flow,
+                    self.config.classify.cache_to_disk,
+                    keep_frames=False,
+                    calc_stats=False,
+                )
+            self.tracking_config =  self.config.tracking.get(ClipTrackExtractor.TYPE)
 
             self.type = "thermal"
             if not thermal_config.recorder.disable_recordings:
@@ -227,7 +230,7 @@ class PiClassifier(Processor):
         if not os.path.exists(self.meta_dir):
             os.makedirs(self.meta_dir)
 
-        if self.classify:
+        if self.classify and self.do_tracking:
             model = config.classify.models[0]
             self.classifier = get_interpreter(model)
 
@@ -325,6 +328,8 @@ class PiClassifier(Processor):
 
         self.clip.update_background(self.motion_detector.background.copy())
         self.clip._background_calculated()
+        if self.do_tracking == False:
+            return
         # no need to retrack all of preview
         background_frames = None
         track_frames = -1
@@ -577,7 +582,8 @@ class PiClassifier(Processor):
 
         if self.recorder.recording:
             t_start = time.time()
-            self.track_extractor.process_frame(self.clip, lepton_frame)
+            if self.do_tracking:
+                self.track_extractor.process_frame(self.clip, lepton_frame)
             self.tracking_time += time.time() - t_start
             s_r = time.time()
             if self.tracking is not None:
@@ -663,20 +669,21 @@ class PiClassifier(Processor):
             self.motion_detector.can_record()
             and self.frame_num % PiClassifier.DEBUG_EVERY == 0
         ):
-            average = np.mean(self.fps_timer.get_frames())
-            mem = process_mem()
-            logging.info(
-                "tracking %s %% process %s %%  identify %s %% rec %s %% fps %s/sec process  system cpu %s process memory %s%% system memory %s behind by %s seconds",
-                round(100 * self.tracking_time / self.total_time, 3),
-                round(100 * self.process_time / self.total_time, 3),
-                round(100 * self.identify_time / self.total_time, 3),
-                round(100 * self.rec_time / self.total_time, 3),
-                round(1 / average),
-                psutil.cpu_percent(),
-                mem,
-                psutil.virtual_memory()[2],
-                time.time() - received_at,
-            )
+            if self.clip is not None:
+                average = np.mean(self.fps_timer.get_frames())
+                mem = process_mem()
+                logging.debug(
+                    "tracking %s %% process %s %%  identify %s %% rec %s %% fps %s/sec process  system cpu %s process memory %s%% system memory %s behind by %s seconds",
+                    round(100 * self.tracking_time / self.total_time, 3),
+                    round(100 * self.process_time / self.total_time, 3),
+                    round(100 * self.identify_time / self.total_time, 3),
+                    round(100 * self.rec_time / self.total_time, 3),
+                    round(1 / average),
+                    psutil.cpu_percent(),
+                    mem,
+                    psutil.virtual_memory()[2],
+                    time.time() - received_at,
+                )
             self.tracking_time = 0
             self.process_time = 0
             self.identify_time = 0
