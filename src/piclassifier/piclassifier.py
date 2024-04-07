@@ -142,7 +142,7 @@ class PiClassifier(Processor):
                     update_background=False,
                     trap_size=thermal_config.device_setup.trap_size,
                 )
-            self.tracking_config =  self.config.tracking.get(IRTrackExtractor.TYPE)
+            self.tracking_config = self.config.tracking.get(IRTrackExtractor.TYPE)
 
             self.type = IRTrackExtractor.TYPE
             if not thermal_config.recorder.disable_recordings:
@@ -177,7 +177,7 @@ class PiClassifier(Processor):
                     keep_frames=False,
                     calc_stats=False,
                 )
-            self.tracking_config =  self.config.tracking.get(ClipTrackExtractor.TYPE)
+            self.tracking_config = self.config.tracking.get(ClipTrackExtractor.TYPE)
 
             self.type = "thermal"
             if not thermal_config.recorder.disable_recordings:

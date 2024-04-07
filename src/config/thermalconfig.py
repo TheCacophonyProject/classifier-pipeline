@@ -125,7 +125,6 @@ class CameraMotionConfig:
             ),
             tracking_events=motion.get("tracking-events", default.tracking_events),
             do_tracking=motion.get("do-tracking", default.do_tracking),
-
         )
         return motion
 
