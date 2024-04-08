@@ -73,6 +73,7 @@ class CameraMotionConfig:
     run_classifier = attr.ib(default=False)
     bluetooth_beacons = attr.ib(default=False)
     tracking_events = attr.ib(default=False)
+    do_tracking = attr.ib(default=False)
 
     @classmethod
     def defaults_for(cls, model):
@@ -87,6 +88,7 @@ class CameraMotionConfig:
                 edge_pixels=1,
                 warmer_only=True,
                 dynamic_thresh=True,
+                do_tracking=False,
             )
         else:
             return cls(
@@ -99,6 +101,7 @@ class CameraMotionConfig:
                 edge_pixels=1,
                 warmer_only=True,
                 dynamic_thresh=True,
+                do_tracking=False,
             )
 
     @classmethod
@@ -121,6 +124,7 @@ class CameraMotionConfig:
                 "bluetooth-beacons", default.bluetooth_beacons
             ),
             tracking_events=motion.get("tracking-events", default.tracking_events),
+            do_tracking=motion.get("do-tracking", default.do_tracking),
         )
         return motion
 
