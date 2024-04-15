@@ -580,7 +580,7 @@ class PiClassifier(Processor):
             if self.recording:
                 if self.tracking_events:
                     self.service.recording(True)
-                    
+
                 if self.bluetooth_beacons:
                     beacon.recording()
                 t_start = time.time()
@@ -669,7 +669,7 @@ class PiClassifier(Processor):
         elif self.clip is not None:
             self.end_clip()
 
-        if not self.recorder.recording and self.recording  and self.tracking_events:
+        if not self.recorder.recording and self.recording and self.tracking_events:
             self.recording = False
             self.service.recording(False)
 
