@@ -114,6 +114,7 @@ class PiClassifier(Processor):
         self.total_time = 0
         self.rec_time = 0
         self.tracking = None
+        self.recording = False
         self.tracking_events = thermal_config.motion.tracking_events
         self.bluetooth_beacons = thermal_config.motion.bluetooth_beacons
         self.preview_frames = thermal_config.recorder.preview_secs * headers.fps
@@ -518,6 +519,9 @@ class PiClassifier(Processor):
 
     def disconnected(self):
         self.motion_detector.disconnected()
+        if self.recorder.recording and self.tracking_events:
+            self.recording = False
+            self.service.recording(time.time(),False)
         self.recorder.force_stop()
         self.snapshot_recorder.force_stop()
         if self.constant_recorder is not None:
@@ -566,14 +570,16 @@ class PiClassifier(Processor):
             s_r = time.time()
             preview_frames = self.motion_detector.preview_frames()
             bak = self.motion_detector.background
-            recording = self.recorder.start_recording(
+            self.recording = self.recorder.start_recording(
                 self.motion_detector.background,
                 preview_frames,
                 self.motion_detector.temp_thresh,
                 received_at,
             )
             self.rec_time += time.time() - s_r
-            if recording:
+            if self.recording:
+                if self.tracking_events:
+                    self.service.recording(time.time(),True)
                 if self.bluetooth_beacons:
                     beacon.recording()
                 t_start = time.time()
@@ -661,6 +667,10 @@ class PiClassifier(Processor):
 
         elif self.clip is not None:
             self.end_clip()
+
+        if not self.recorder.recording and self.recording  and self.tracking_events:
+            self.recording = False
+            self.service.recording(time.time(),False)
 
         self.skip_classifying -= 1
         self.frame_num += 1

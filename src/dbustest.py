@@ -12,7 +12,7 @@ import dbus
 import dbus.mainloop.glib
 import time
 import threading
-
+from datetime import datetime
 
 def catchall_tracking_signals_handler(what, confidence, region, tracking):
     print(
@@ -24,12 +24,22 @@ def catchall_tracking_signals_handler(what, confidence, region, tracking):
         tracking,
     )
 
+def catchall_rec_signals_handler(dt,is_recording):
+    if is_recording:
+        print("Recording started at ", datetime.fromtimestamp(dt))
+    else:
+        print("Recording ended at ", datetime.fromtimestamp(dt));
+
+
+
+
 
 # helper class to run dbus in background
 class TrackingService:
-    def __init__(self, callback):
+    def __init__(self, callback,rec_callback):
         dbus.mainloop.glib.DBusGMainLoop(set_as_default=True)
         self.callback = callback
+        self.rec_callback = rec_callback
         self.loop = GLib.MainLoop()
         self.t = threading.Thread(
             target=self.run_server,
@@ -52,11 +62,16 @@ class TrackingService:
             dbus_interface=DBUS_NAME,
             signal_name="Tracking",
         )
+        bus.add_signal_receiver(
+            self.rec_callback,
+            dbus_interface=DBUS_NAME,
+            signal_name="Recording",
+        )
         self.loop.run()
 
 
 if __name__ == "__main__":
-    tracking = TrackingService(catchall_tracking_signals_handler)
+    tracking = TrackingService(catchall_tracking_signals_handler,catchall_rec_signals_handler)
 
     # just to keep program alive
     # replace with your code
