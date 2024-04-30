@@ -144,6 +144,8 @@ class Interpreter(ABC):
             segment_frames=segment_frames,
             frames_per_classify=self.params.square_width**2,
         )
+        if output is None:
+            return None
         track_prediction = TrackPrediction(track.get_id(), self.labels)
         # self.model.predict(preprocessed)
         top_score = None
