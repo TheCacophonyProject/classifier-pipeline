@@ -3,7 +3,7 @@ language: python
 services:
   - docker
 python:
-- '3.9'
+- '3.10'
 install:
 - sudo apt-get update
 - python -m pip install --upgrade pip
