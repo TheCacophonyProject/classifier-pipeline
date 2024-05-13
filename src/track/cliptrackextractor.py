@@ -106,7 +106,7 @@ class ClipTrackExtractor(ClipTracker):
         camera_model = None
         if header.model:
             camera_model = header.model
-            print("Camera",camera_model)
+            print("Camera", camera_model)
         clip.set_model(camera_model)
 
         # if we have the triggered motion threshold should use that
@@ -116,7 +116,7 @@ class ClipTrackExtractor(ClipTracker):
             temp_thresh = motion.get("triggeredthresh")
             if temp_thresh:
                 clip.temp_thresh = temp_thresh
-        video_start_time = datetime.fromtimestamp(header.timestamp/1000000)
+        video_start_time = datetime.fromtimestamp(header.timestamp / 1000000)
         video_start_time = video_start_time.astimezone(Clip.local_tz)
         clip.set_video_stats(video_start_time)
         clip.calculate_background(reader)
