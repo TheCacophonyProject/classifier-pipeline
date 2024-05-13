@@ -167,7 +167,10 @@ class CPTVMotionDetector(MotionDetector):
 def is_affected_by_ffc(cptv_frame):
     if cptv_frame.time_on is None or cptv_frame.last_ffc_time is None:
         return False
-
+    if isinstance(cptv_frame.time_on,int):
+        return (
+            cptv_frame.time_on - cptv_frame.last_ffc_time
+        ) < CPTVMotionDetector.FFC_PERIOD.seconds
     return (
         cptv_frame.time_on - cptv_frame.last_ffc_time
     ) < CPTVMotionDetector.FFC_PERIOD

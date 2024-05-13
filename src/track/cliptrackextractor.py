@@ -21,9 +21,9 @@ import logging
 import numpy as np
 import time
 import yaml
-
-from cptv import CPTVReader
+from cptv_rs_python_bindings import CptvReader
 import cv2
+from datetime import datetime
 
 from .clip import Clip
 from ml_tools.tools import Rectangle
@@ -96,35 +96,39 @@ class ClipTrackExtractor(ClipTracker):
             self.keep_frames,
         )
         clip.type = self.type
-        with open(clip.source_file, "rb") as f:
-            reader = CPTVReader(f)
-            clip.set_res(reader.x_resolution, reader.y_resolution)
-            if clip.from_metadata:
-                for track in clip.tracks:
-                    track.crop_regions()
-            camera_model = None
-            if reader.model:
-                camera_model = reader.model.decode()
-            clip.set_model(camera_model)
+        reader = CptvReader(str(clip.source_file))
+        header = reader.get_header()
 
-            # if we have the triggered motion threshold should use that
-            # maybe even override dynamic threshold with this value
-            if reader.motion_config:
-                motion = yaml.safe_load(reader.motion_config)
-                temp_thresh = motion.get("triggeredthresh")
-                if temp_thresh:
-                    clip.temp_thresh = temp_thresh
+        clip.set_res(header.x_resolution, header.y_resolution)
+        if clip.from_metadata:
+            for track in clip.tracks:
+                track.crop_regions()
+        camera_model = None
+        if header.model:
+            camera_model = header.model
+            print("Camera",camera_model)
+        clip.set_model(camera_model)
 
-            video_start_time = reader.timestamp.astimezone(Clip.local_tz)
-            clip.set_video_stats(video_start_time)
-            clip.calculate_background(reader)
+        # if we have the triggered motion threshold should use that
+        # maybe even override dynamic threshold with this value
+        if header.motion_config:
+            motion = yaml.safe_load(header.motion_config)
+            temp_thresh = motion.get("triggeredthresh")
+            if temp_thresh:
+                clip.temp_thresh = temp_thresh
+        video_start_time = datetime.fromtimestamp(header.timestamp/1000000)
+        video_start_time = video_start_time.astimezone(Clip.local_tz)
+        clip.set_video_stats(video_start_time)
+        clip.calculate_background(reader)
 
-        with open(clip.source_file, "rb") as f:
-            reader = CPTVReader(f)
-            for frame in reader:
-                if not process_background and frame.background_frame:
-                    continue
-                self.process_frame(clip, frame)
+        reader = CptvReader(str(clip.source_file))
+        while True:
+            frame = reader.next_frame()
+            if frame is None:
+                break
+            if not process_background and frame.background_frame:
+                continue
+            self.process_frame(clip, frame)
 
         if not clip.from_metadata and self.do_tracking:
             self.apply_track_filtering(clip)
