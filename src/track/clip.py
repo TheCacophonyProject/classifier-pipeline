@@ -250,7 +250,6 @@ class Clip:
 
         max_region = Rectangle(0, 0, self.res_x, self.res_y)
         for component, centroid in zip(lower_objects[1:], centroids[1:]):
-            print("Found component", component)
             region = Region(
                 component[0],
                 component[1],
@@ -266,11 +265,9 @@ class Clip:
                     component[4],
                 )
                 continue
-            print("Region is", region)
             background_region = region.subimage(initial_frame)
             norm_back = background_region.copy()
             norm_back, _ = normalize(norm_back, new_max=255)
-            print(norm_back.dtype, norm_back.max())
             sub_components, sub_connected, sub_stats, centroids = detect_objects(
                 np.uint8(norm_back), otsus=True
             )

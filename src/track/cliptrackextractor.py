@@ -106,7 +106,6 @@ class ClipTrackExtractor(ClipTracker):
         camera_model = None
         if header.model:
             camera_model = header.model
-            print("Camera", camera_model)
         clip.set_model(camera_model)
 
         # if we have the triggered motion threshold should use that
