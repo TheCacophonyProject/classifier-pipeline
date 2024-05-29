@@ -7,7 +7,7 @@ language: python
 services:
   - docker
 python:
-# - '3.10'
+- '3.10'
 - '3.11'
 install:
 - sudo apt-get update
