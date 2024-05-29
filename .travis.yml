@@ -12,6 +12,7 @@ python:
 install:
 - sudo add-apt-repository ppa:deadsnakes/ppa
 - sudo apt install python3.11
+- which python3.11
 - virtualenv --python="/usr/bin/python3.11" " ~/virtualenv/python3.11"
 - ~/virtualenv/python3.11/bin/activate
 
