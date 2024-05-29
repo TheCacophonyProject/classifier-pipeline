@@ -14,7 +14,7 @@ install:
 - sudo apt install python3.11
 - which python3.11
 - virtualenv --python="/usr/bin/python3.11" " ~/virtualenv/python3.11"
-- ~/virtualenv/python3.11/bin/activate
+- source ~/virtualenv/python3.11/bin/activate
 
 - sudo apt-get update
 - python -m pip install --upgrade pip
