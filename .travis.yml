@@ -7,9 +7,12 @@ language: python
 services:
   - docker
 python:
-# - '3.10'
-- '3.11'
+- '3.10'
+# - '3.11'
 install:
+- sudo add-apt-repository ppa:deadsnakes/ppa
+- sudo apt install python3.11
+
 - sudo apt-get update
 - python -m pip install --upgrade pip
 - wget https://files.pythonhosted.org/packages/f2/e9/5fc0435129c23c17551fcfadc82bd0d5482276213dfbc641f07b4420cb6d/tflite_runtime-2.14.0-cp311-cp311-manylinux_2_34_aarch64.whl
