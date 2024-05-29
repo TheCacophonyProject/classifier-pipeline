@@ -8,15 +8,14 @@ services:
   - docker
 python:
 - '3.10'
-- '3.11'
 install:
 - sudo apt-get update
 - python -m pip install --upgrade pip
 - wget https://files.pythonhosted.org/packages/f2/e9/5fc0435129c23c17551fcfadc82bd0d5482276213dfbc641f07b4420cb6d/tflite_runtime-2.14.0-cp311-cp311-manylinux_2_34_aarch64.whl
-- pip install  --no-cache-dir --disable-pip-version-check tflite-runtime==2.14.0
+- pip install tflite-runtime==2.14.0
 
 - pip install cmake
-- sudo apt install -y python3-dbus ffmpeg build-essential libdbus-glib-1-dev libgirepository1.0-dev tzdata libcairo2-dev libjpeg-dev python-cairo libhdf5-dev libopencv-dev cmake
+- sudo apt install -y python3-dbus ffmpeg build-essential libdbus-glib-1-dev libgirepository1.0-dev tzdata libcairo2-dev libjpeg-dev python3-cairo libhdf5-dev libopencv-dev cmake
 
 - pip install -r requirements.txt
 before_script:
