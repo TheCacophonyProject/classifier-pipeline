@@ -13,11 +13,12 @@ install:
 - sudo add-apt-repository ppa:deadsnakes/ppa
 - sudo apt install python3.11
 - which python3.11
-- virtualenv --python="/usr/bin/python3.11" "  ~/py311"
-- ls ~/py311
-- ls ~/py311/bin
+- deactivate
+- virtualenv --python="/usr/bin/python3.11" "  ./py311"
+- ls ./py311
+- ls ./py311/bin
 
-- source  ~/py311/bin/activate
+- source  ./py311/bin/activate
 
 - sudo apt-get update
 - python -m pip install --upgrade pip
