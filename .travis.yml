@@ -11,7 +11,7 @@ python:
 # - '3.11'
 install:
 - sudo add-apt-repository ppa:deadsnakes/ppa
-- sudo apt install python3.11
+- sudo apt install python3.11 python3.11-devel
 - which python3.11
 - deactivate
 - virtualenv --python="/usr/bin/python3.11" ./py311
