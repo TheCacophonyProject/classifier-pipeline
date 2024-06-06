@@ -14,6 +14,10 @@ install:
 - sudo apt install python3.11
 - which python3.11
 - virtualenv --python="/usr/bin/python3.11" "  /home/travis/virtualenv/python3.11"
+- ls /home/travis/virtualenv
+- ls /home/travis/virtualenv/python3.11
+- ls /home/travis/virtualenv/python3.11/bin
+
 - source  /home/travis/virtualenv/python3.11/bin/activate
 
 - sudo apt-get update
