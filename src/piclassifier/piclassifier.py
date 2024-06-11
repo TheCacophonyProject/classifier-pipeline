@@ -36,6 +36,7 @@ from . import beacon
 
 from piclassifier.trapcontroller import trigger_trap
 from piclassifier.attiny import set_recording_state
+
 SNAPSHOT_SIGNAL = "snap"
 STOP_SIGNAL = "stop"
 SKIP_SIGNAL = "skip"
@@ -74,6 +75,7 @@ def run_classifier(
 
 predictions = None
 use_low_power_mode = False
+
 
 class PiClassifier(Processor):
     """Classifies frames from leptond"""
@@ -127,7 +129,7 @@ class PiClassifier(Processor):
         global use_lower_power_mode
         use_low_power_mode = self.use_low_power_mode
         if not use_low_power_mode:
-            #clear state
+            # clear state
             set_recording_state(False)
         if thermal_config.recorder.disable_recordings:
             self.recorder = DummyRecorder(
@@ -566,7 +568,7 @@ class PiClassifier(Processor):
                 self.constant_recorder.process_frame(True, lepton_frame, received_at)
             else:
                 logging.info("Starting new constant recorder")
-                self.recording= self.constant_recorder.start_recording(
+                self.recording = self.constant_recorder.start_recording(
                     self.motion_detector.background,
                     [],
                     self.motion_detector.temp_thresh,
