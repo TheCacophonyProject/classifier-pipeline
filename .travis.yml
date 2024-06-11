@@ -2,7 +2,8 @@ dist: jammy
 arch: 
   - amd64
   - arm64
-
+rvm:
+  truffleruby-24.0.1
 language: python
 services:
   - docker
@@ -10,7 +11,6 @@ python:
 - '3.10'
 # - '3.11'
 install:
-- rvm install truffleruby 
 - sudo add-apt-repository -y ppa:deadsnakes/ppa
 - sudo apt install -y python3.11 python3.11-dev
 - which python3.11
