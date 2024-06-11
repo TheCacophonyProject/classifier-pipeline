@@ -126,7 +126,7 @@ class PiClassifier(Processor):
         self.use_low_power_mode = thermal_config.recorder.use_low_power_mode
         global use_lower_power_mode
         use_low_power_mode = self.use_low_power_mode
-        if use_low_power_mode:
+        if not use_low_power_mode:
             #clear state
             set_recording_state(False)
         if thermal_config.recorder.disable_recordings:
@@ -572,7 +572,7 @@ class PiClassifier(Processor):
                     self.motion_detector.temp_thresh,
                     time.time(),
                 )
-                if self.recording and self.use_low_power_mode:
+                if self.recording and not self.use_low_power_mode:
                     set_recording_state(True)
 
         if not self.recorder.recording and self.motion_detector.movement_detected:
@@ -589,7 +589,7 @@ class PiClassifier(Processor):
             if self.recording:
                 if self.tracking_events:
                     self.service.recording(True)
-                if self.use_low_power_mode:
+                if not self.use_low_power_mode:
                     set_recording_state(True)
 
                 if self.bluetooth_beacons:
@@ -775,7 +775,7 @@ def on_track_trapped(track):
 
 def on_recording_stopping(filename):
     global use_low_power_mode
-    if use_low_power_mode:
+    if not use_low_power_mode:
         set_recording_state(False)
 
     if "-snap" in filename.stem:
