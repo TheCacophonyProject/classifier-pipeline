@@ -1,6 +1,5 @@
 dist: jammy
 arch: 
-  - amd64
   - arm64
 rvm:
   truffleruby-24.0.1
@@ -64,6 +63,7 @@ deploy:
       branch: pi-classifier
     skip_cleanup: 'true'
   - provider: script
+    edge: true
     script:  bash ./pypi_push.sh
     on:
       branch: update-pi
