@@ -142,6 +142,7 @@ class RecorderConfig:
     disable_recordings = attr.ib()
     min_disk_space = attr.ib()
     constant_recorder = attr.ib()
+    use_low_power_mode = attr.ib()
 
     @classmethod
     def load(cls, recorder, window):
@@ -157,6 +158,7 @@ class RecorderConfig:
                 RelAbsTime(window.get("stop-recording"), default_offset=30 * 60),
             ),
             output_dir=recorder.get("output-dir", "/var/spool/cptv"),
+            use_low_power_mode =  recorder.get("use-low-power-mode",False)
         )
 
 
