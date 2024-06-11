@@ -46,13 +46,14 @@ script:
 before_deploy:
 - python3 -m pip install --upgrade build
 - pip install twine
+- pip install hatch
 # somethings broken with twine 3.9
 - pip install urllib3==1.26.15 requests-toolbelt==0.10.1
 
 - echo $'[pypi]\nusername = __token__\npassword = '$PYPI_TOKEN > ~/.pypirc
 deploy:
   - provider: script
-    script: bash ./docker_push.sh
+    script: bash ./docker_push.shy
     on:
       repo: TheCacophonyProject/classifier-pipeline
       tags: true
