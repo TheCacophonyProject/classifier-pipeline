@@ -1,29 +1,16 @@
 dist: jammy
 arch: 
-  - arm64
-rvm:
-  truffleruby-24.0.1
+  - amd64
 language: python
 services:
   - docker
 python:
 - '3.10'
-# - '3.11'
 install:
-- sudo add-apt-repository -y ppa:deadsnakes/ppa
-- sudo apt install -y python3.11 python3.11-dev
-- which python3.11
-- deactivate
-- virtualenv --python="/usr/bin/python3.11" ../py311
-- source  ../py311/bin/activate
 - sudo apt-get update
 - python -m pip install --upgrade pip
-- wget https://files.pythonhosted.org/packages/f2/e9/5fc0435129c23c17551fcfadc82bd0d5482276213dfbc641f07b4420cb6d/tflite_runtime-2.14.0-cp311-cp311-manylinux_2_34_aarch64.whl
-- pip install tflite-runtime==2.14.0
-
 - pip install cmake
 - sudo apt install -y python3-dbus ffmpeg build-essential libdbus-glib-1-dev libgirepository1.0-dev tzdata libcairo2-dev libjpeg-dev python3-cairo libhdf5-dev libopencv-dev cmake
-- pip install pytest
 - pip install -r requirements.txt
 before_script:
 - pip install black --upgrade
@@ -46,14 +33,13 @@ script:
 before_deploy:
 - python3 -m pip install --upgrade build
 - pip install twine
-- pip install hatch
 # somethings broken with twine 3.9
 - pip install urllib3==1.26.15 requests-toolbelt==0.10.1
 
 - echo $'[pypi]\nusername = __token__\npassword = '$PYPI_TOKEN > ~/.pypirc
 deploy:
   - provider: script
-    script: bash ./docker_push.shy
+    script: bash ./docker_push.sh
     on:
       repo: TheCacophonyProject/classifier-pipeline
       tags: true
@@ -62,10 +48,4 @@ deploy:
     script:  bash ./pypi_push.sh
     on:
       branch: pi-classifier
-    skip_cleanup: 'true'
-  - provider: script
-    edge: true
-    script:  bash ./pypi_push.sh
-    on:
-      branch: update-pi
     skip_cleanup: 'true'
