@@ -104,6 +104,10 @@ class Service(dbus.service.Object):
     def Tracking(self, what, confidence, region, tracking):
         pass
 
+    @dbus.service.signal(DBUS_NAME, signature="xb")
+    def Recording(self, timestamp, is_recording):
+        pass
+
 
 class SnapshotService:
     def __init__(self, get_frame, headers, take_snapshot_fn):
@@ -137,4 +141,8 @@ class SnapshotService:
         if self.service is None:
             return
         self.service.Tracking(what, round(100 * confidence), region, tracking)
-        # time.sleep(10)
+
+    def recording(self, is_recording):
+        if self.service is None:
+            return
+        self.service.Recording(np.int64(time.time()), is_recording)

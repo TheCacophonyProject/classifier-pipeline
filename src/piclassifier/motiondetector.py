@@ -99,6 +99,7 @@ class SlidingWindow:
 class MotionDetector(ABC):
     def __init__(self, thermal_config, headers):
         self.movement_detected = False
+        self.use_low_power_mode = thermal_config.recorder.use_low_power_mode
         self.num_frames = 0
         self.rec_window = thermal_config.recorder.rec_window
         self.location_config = thermal_config.location
@@ -137,7 +138,7 @@ class MotionDetector(ABC):
         """Tracker type IR or Thermal"""
 
     def can_record(self):
-        return self.rec_window.inside_window()
+        return self.rec_window.inside_window() and not self.use_low_power_mode
 
     @abstractmethod
     def disconnected(self):

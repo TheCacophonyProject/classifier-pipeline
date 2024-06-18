@@ -35,6 +35,7 @@ from track.region import Region
 from . import beacon
 
 from piclassifier.trapcontroller import trigger_trap
+from piclassifier.attiny import set_recording_state
 
 SNAPSHOT_SIGNAL = "snap"
 STOP_SIGNAL = "stop"
@@ -73,6 +74,7 @@ def run_classifier(
 
 
 predictions = None
+use_low_power_mode = False
 
 
 class PiClassifier(Processor):
@@ -114,6 +116,7 @@ class PiClassifier(Processor):
         self.total_time = 0
         self.rec_time = 0
         self.tracking = None
+        self.recording = False
         self.tracking_events = thermal_config.motion.tracking_events
         self.bluetooth_beacons = thermal_config.motion.bluetooth_beacons
         self.preview_frames = thermal_config.recorder.preview_secs * headers.fps
@@ -122,6 +125,12 @@ class PiClassifier(Processor):
         self.preview_type = preview_type
         self.max_keep_frames = None if preview_type else 0
         self.track_extractor = None
+        self.use_low_power_mode = thermal_config.recorder.use_low_power_mode
+        global use_lower_power_mode
+        use_low_power_mode = self.use_low_power_mode
+        if not use_low_power_mode:
+            # clear state
+            set_recording_state(False)
         if thermal_config.recorder.disable_recordings:
             self.recorder = DummyRecorder(
                 thermal_config, headers, on_recording_stopping=on_recording_stopping
@@ -518,6 +527,9 @@ class PiClassifier(Processor):
 
     def disconnected(self):
         self.motion_detector.disconnected()
+        if self.recorder.recording and self.tracking_events:
+            self.recording = False
+            self.service.recording(False)
         self.recorder.force_stop()
         self.snapshot_recorder.force_stop()
         if self.constant_recorder is not None:
@@ -556,24 +568,32 @@ class PiClassifier(Processor):
                 self.constant_recorder.process_frame(True, lepton_frame, received_at)
             else:
                 logging.info("Starting new constant recorder")
-                self.constant_recorder.start_recording(
+                self.recording = self.constant_recorder.start_recording(
                     self.motion_detector.background,
                     [],
                     self.motion_detector.temp_thresh,
                     time.time(),
                 )
+                if self.recording and not self.use_low_power_mode:
+                    set_recording_state(True)
+
         if not self.recorder.recording and self.motion_detector.movement_detected:
             s_r = time.time()
             preview_frames = self.motion_detector.preview_frames()
             bak = self.motion_detector.background
-            recording = self.recorder.start_recording(
+            self.recording = self.recorder.start_recording(
                 self.motion_detector.background,
                 preview_frames,
                 self.motion_detector.temp_thresh,
                 received_at,
             )
             self.rec_time += time.time() - s_r
-            if recording:
+            if self.recording:
+                if self.tracking_events:
+                    self.service.recording(True)
+                if not self.use_low_power_mode:
+                    set_recording_state(True)
+
                 if self.bluetooth_beacons:
                     beacon.recording()
                 t_start = time.time()
@@ -661,6 +681,10 @@ class PiClassifier(Processor):
 
         elif self.clip is not None:
             self.end_clip()
+
+        if not self.recorder.recording and self.recording and self.tracking_events:
+            self.recording = False
+            self.service.recording(False)
 
         self.skip_classifying -= 1
         self.frame_num += 1
@@ -752,6 +776,10 @@ def on_track_trapped(track):
 
 
 def on_recording_stopping(filename):
+    global use_low_power_mode
+    if not use_low_power_mode:
+        set_recording_state(False)
+
     if "-snap" in filename.stem:
         return
     global clip, track_extractor, predictions

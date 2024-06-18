@@ -144,6 +144,8 @@ class Interpreter(ABC):
             segment_frames=segment_frames,
             frames_per_classify=self.params.square_width**2,
         )
+        if output is None:
+            return None
         track_prediction = TrackPrediction(track.get_id(), self.labels)
         # self.model.predict(preprocessed)
         top_score = None
@@ -298,6 +300,9 @@ class Interpreter(ABC):
             for frame_index in frame_indices:
                 region = track.bounds_history[frame_index - track.start_frame]
                 f = clip.get_frame(region.frame_number)
+                if f is None:
+                    logging.warn("Could not get frame {}", region.frame_number)
+                    continue
                 if region.blank or region.width <= 0 or region.height <= 0:
                     continue
 
