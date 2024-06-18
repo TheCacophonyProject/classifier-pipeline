@@ -31,7 +31,6 @@ from ml_tools.resnet.wr_resnet import WRResNet
 
 from ml_tools import irdataset
 from ml_tools.tfdataset import get_weighting, get_distribution, get_dataset as get_tf
-import tensorflow_decision_forests as tfdf
 from ml_tools import forestmodel
 from ml_tools.preprocess import FrameTypes
 
@@ -216,6 +215,8 @@ class KerasModel(Interpreter):
         raise Exception("Could not find model " + pretrained_model)
 
     def get_forest_model(self, run_name):
+        import tensorflow_decision_forests as tfdf
+
         train_files = self.data_dir / "train"
         train, remapped, _, _ = get_dataset(
             train_files,
