@@ -180,24 +180,20 @@ class Clip:
         Also check for animals in the background by checking for connected components in
         the intital_diff frame - this is the maximum change between first average frame and all other average frames in the clip
         """
-        frames = []
-        if frame_reader.background_frames > 0:
-            for frame in frame_reader:
-                if frame.background_frame:
-                    frames.append(frame.pix)
-                else:
-                    break
-            frame_average = np.average(frames, axis=0)
-            self.update_background(frame_average)
+        frame = frame_reader.next_frame()
+        if frame.background_frame:
+            self.update_background(frame.pix)
             self._background_calculated()
             return
 
+        first_frame = frame
         initial_frames = None
         initial_diff = None
-        first_frame = None
-        for frame in frame_reader:
-            if first_frame is None:
-                first_frame = frame.pix
+        frames = [frame.pix]
+        while True:
+            frame = frame_reader.next_frame()
+            if frame is None:
+                break
             ffc_affected = is_affected_by_ffc(frame)
             if ffc_affected:
                 continue
@@ -212,7 +208,6 @@ class Clip:
                     initial_frames = frame_average
 
                 frames = []
-
         if len(frames) > 0:
             frame_average = np.average(frames, axis=0)
             if initial_frames is None:
@@ -274,7 +269,7 @@ class Clip:
             norm_back = background_region.copy()
             norm_back, _ = normalize(norm_back, new_max=255)
             sub_components, sub_connected, sub_stats, centroids = detect_objects(
-                norm_back, otsus=True
+                np.uint8(norm_back), otsus=True
             )
 
             if sub_components <= 1:

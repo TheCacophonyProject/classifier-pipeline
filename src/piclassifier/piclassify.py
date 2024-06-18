@@ -289,7 +289,6 @@ def handle_headers(connection):
     headers = b""
     left_over = None
     while True:
-
         logging.info("Getting header info")
         data = connection.recv(4096)
 
