@@ -95,15 +95,16 @@ def main():
     process_queue = multiprocessing.Queue()
 
     # get a cloned window so we dont update it
-    snapshot_thread = Thread(
-        target=take_snapshots,
-        args=(
-            thermal_config.recorder.rec_window.clone(),
-            process_queue,
-        ),
-    )
-    snapshot_thread.daemon = True
-    snapshot_thread.start()
+    if not thermal_config.recorder.use_low_power_mode:
+        snapshot_thread = Thread(
+            target=take_snapshots,
+            args=(
+                thermal_config.recorder.rec_window.clone(),
+                process_queue,
+            ),
+        )
+        snapshot_thread.daemon = True
+        snapshot_thread.start()
     if args.ir or thermal_config.device_setup.ir:
         while True:
             if restart_pending:
