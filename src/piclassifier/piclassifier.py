@@ -22,7 +22,8 @@ from .processor import Processor
 
 from ml_tools.interpreter import get_interpreter
 from ml_tools.logs import init_logging
-from ml_tools.tools import CustomJSONEncoder, Rectangle
+from ml_tools.tools import CustomJSONEncoder
+from ml_tools.rectangle import Rectangle
 from . import beacon
 
 from piclassifier.trapcontroller import trigger_trap
