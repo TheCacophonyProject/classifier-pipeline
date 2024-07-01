@@ -3,7 +3,7 @@ from datetime import timedelta
 import logging
 
 from .motiondetector import SlidingWindow, MotionDetector, WeightedBackground
-from ml_tools.tools import Rectangle
+from ml_tools.rectangle import Rectangle
 
 
 class CPTVMotionDetector(MotionDetector):

@@ -22,7 +22,7 @@ import math
 import numpy as np
 from collections import namedtuple
 
-from ml_tools.tools import Rectangle
+from ml_tools.rectangle import Rectangle
 from track.region import Region
 from .kalman import Kalman
 from ml_tools.tools import eucl_distance_sq
@@ -32,6 +32,7 @@ import logging
 from track.tracker import Tracker
 
 MASS_CHANGE_PERCENT = 0.55
+
 
 class RegionTracker(Tracker):
     # number of frames required before using kalman estimation

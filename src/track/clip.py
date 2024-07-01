@@ -25,7 +25,7 @@ import pytz
 import cv2
 
 from ml_tools.imageprocessing import normalize, detect_objects
-from ml_tools.tools import Rectangle
+from ml_tools.rectangle import Rectangle
 from track.framebuffer import FrameBuffer
 from track.track import Track
 from track.region import Region
