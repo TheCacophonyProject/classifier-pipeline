@@ -17,8 +17,6 @@ You should have received a copy of the GNU General Public License
 along with this program. If not, see <http://www.gnu.org/licenses/>.
 """
 
-import matplotlib.pyplot as plt
-
 import os
 import logging
 import numpy as np
@@ -26,19 +24,14 @@ import time
 import yaml
 from datetime import datetime
 
-from cptv import CPTVReader
 import cv2
 
-from .clip import Clip
-from ml_tools.tools import Rectangle, eucl_distance_sq
+from ml_tools.tools import eucl_distance_sq
 from track.region import Region
-from track.track import Track
 from ml_tools.imageprocessing import (
-    detect_objects,
-    normalize,
     detect_objects_ir,
 )
-from track.cliptracker import ClipTracker, CVBackground, DiffBackground
+from track.cliptracker import ClipTracker, CVBackground
 
 DO_SALIENCY = False
 DEBUG_TRAP = False

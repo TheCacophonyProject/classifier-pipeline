@@ -7,32 +7,22 @@ import psutil
 import socket
 import time
 import cv2
-import json
-import sys
 
 # fixes logging not showing up in tensorflow
 
-from cptv import CPTVReader
 import numpy as np
 from threading import Thread
 
 from config.timewindow import WindowStatus, TimeWindow, RelAbsTime
 from config.config import Config
 from config.thermalconfig import ThermalConfig
-from .cptvrecorder import CPTVRecorder
 from .headerinfo import HeaderInfo
 from ml_tools.logs import init_logging
-from ml_tools import tools
-from .motiondetector import MotionDetector
+from ml_tools.tools import Rectangle
 from .piclassifier import PiClassifier, run_classifier
 from .cameras import lepton3
-from .cameras.irframe import IRFrame
 import multiprocessing
-from cptv import Frame
 from .eventreporter import log_event
-from track.irtrackextractor import IRTrackExtractor
-from track.cliptrackextractor import ClipTrackExtractor
-
 from piclassifier.monitorconfig import monitor_file
 
 
@@ -144,7 +134,7 @@ def main():
             connection, client_address = sock.accept()
             connected = True
             logging.info("connection from %s", client_address)
-            log_event("camera-connected", {"type": ClipTrackExtractor.TYPE})
+            log_event("camera-connected", {"type": "thermal"})
             handle_connection(
                 connection, config, args.thermal_config_file, process_queue
             )
@@ -204,7 +194,7 @@ def parse_ir(file, config, thermal_config, preview_type):
                 res_y=res_y,
                 fps=10,
                 brand=None,
-                model=IRTrackExtractor.TYPE,
+                model="IR",
                 frame_size=res_y * res_x,
                 pixel_bits=8,
                 serial="",
@@ -237,6 +227,8 @@ def parse_ir(file, config, thermal_config, preview_type):
 
 
 def parse_cptv(file, config, thermal_config_file, preview_type):
+    from cptv import CPTVReader
+
     with open(file, "rb") as f:
         reader = CPTVReader(f)
 
@@ -401,7 +393,6 @@ def next_snapshot(window, prev_window_type=None):
     if current_status == WindowStatus.before or (
         prev_window_type == WindowStatus.after
     ):
-        started = window.next_start()
         return (window.next_start(), WindowStatus.before)
     elif not window.non_stop and (
         current_status == WindowStatus.inside or prev_window_type == WindowStatus.before
@@ -450,7 +441,7 @@ def handle_connection(connection, config, thermal_config_file, process_queue):
     processor.start()
 
     edge = config.tracking["thermal"].edge_pixels
-    crop_rectangle = tools.Rectangle(
+    crop_rectangle = Rectangle(
         edge, edge, headers.res_x - 2 * edge, headers.res_y - 2 * edge
     )
     raw_frame = lepton3.Lepton3(headers)

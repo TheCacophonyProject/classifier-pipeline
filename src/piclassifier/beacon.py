@@ -1,7 +1,5 @@
 import dbus
-from random import randint
 import logging
-import sys
 import numpy as np
 
 NAME = "org.cacophony.beacon"

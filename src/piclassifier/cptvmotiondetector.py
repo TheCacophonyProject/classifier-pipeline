@@ -1,6 +1,5 @@
 import numpy as np
 from datetime import timedelta
-import time
 import logging
 
 from .motiondetector import SlidingWindow, MotionDetector, WeightedBackground

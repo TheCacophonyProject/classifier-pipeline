@@ -227,7 +227,5 @@ class RelAbsTime:
 def next_time(rel_time):
     if rel_time.any_time:
         return None
-    if rel_time.is_relative:
+    else:
         return rel_time.dt
-    date = rel_time.dt
-    return date

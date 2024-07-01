@@ -6,16 +6,11 @@ import time
 import psutil
 import numpy as np
 import logging
-from pathlib import Path
 
 from classify.trackprediction import Predictions
 from track.clip import Clip
-from track.irtrackextractor import IRTrackExtractor
 
-from track.cliptrackextractor import ClipTrackExtractor
-
-from ml_tools.previewer import Previewer, add_last_frame_tracking
-from ml_tools import tools
+from ml_tools.previewer import Previewer
 from .cptvrecorder import CPTVRecorder
 from .throttledrecorder import ThrottledRecorder
 from .dummyrecorder import DummyRecorder
@@ -26,12 +21,9 @@ from .cptvmotiondetector import CPTVMotionDetector
 from .motiondetector import SlidingWindow
 from .processor import Processor
 
-from ml_tools.interpreter import Interpreter, get_interpreter
+from ml_tools.interpreter import get_interpreter
 from ml_tools.logs import init_logging
-from ml_tools.hyperparams import HyperParams
-from ml_tools.tools import CustomJSONEncoder
-from ml_tools.forestmodel import ForestModel
-from track.region import Region
+from ml_tools.tools import CustomJSONEncoder, Rectangle
 from . import beacon
 
 from piclassifier.trapcontroller import trigger_trap
@@ -136,10 +128,13 @@ class PiClassifier(Processor):
                 thermal_config, headers, on_recording_stopping=on_recording_stopping
             )
 
-        if headers.model == IRTrackExtractor.TYPE:
+        if headers.model == "IR":
             logging.info("Running on IR")
             PiClassifier.SKIP_FRAMES = 3
+            from track.irtrackextractor import IRTrackExtractor
+
             if self.do_tracking:
+
                 self.track_extractor = IRTrackExtractor(
                     self.config.tracking,
                     cache_to_disk=self.config.classify.cache_to_disk,
@@ -179,6 +174,8 @@ class PiClassifier(Processor):
         else:
             logging.info("Running on Thermal")
             if self.do_tracking:
+                from track.cliptrackextractor import ClipTrackExtractor
+
                 self.track_extractor = ClipTrackExtractor(
                     self.config.tracking,
                     self.config.use_opt_flow,
@@ -216,7 +213,7 @@ class PiClassifier(Processor):
                     constant_recorder=True,
                 )
         edge = self.tracking_config.edge_pixels
-        self.crop_rectangle = tools.Rectangle(
+        self.crop_rectangle = Rectangle(
             edge, edge, headers.res_x - 2 * edge, headers.res_y - 2 * edge
         )
         global track_extractor
@@ -243,7 +240,7 @@ class PiClassifier(Processor):
             model = config.classify.models[0]
             self.classifier = get_interpreter(model)
 
-            if self.classifier.TYPE == ForestModel.TYPE:
+            if self.classifier.TYPE == "RandomForest":
                 self.predict_from_last = 5 * headers.fps
                 self.frames_per_classify = self.predict_from_last
                 PiClassifier.SKIP_FRAMES = 30
