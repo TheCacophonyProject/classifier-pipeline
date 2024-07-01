@@ -9,6 +9,7 @@ import time
 import cv2
 
 # fixes logging not showing up in tensorflow
+start = time.time()
 
 import numpy as np
 from threading import Thread
@@ -25,7 +26,7 @@ import multiprocessing
 from .eventreporter import log_event
 from piclassifier.monitorconfig import monitor_file
 
-
+print("Import time is ", time.time() - start)
 SOCKET_NAME = "/var/run/lepton-frames"
 VOSPI_DATA_SIZE = 160
 TELEMETRY_PACKET_COUNT = 4

@@ -1,6 +1,6 @@
 import attr
 import yaml
-from ml_tools.tools import Rectangle
+from ml_tools.rectangle import Rectangle
 
 
 @attr.s

@@ -1,4 +1,4 @@
-import attrs
+import attr
 
 
 @attr.s(eq=False)

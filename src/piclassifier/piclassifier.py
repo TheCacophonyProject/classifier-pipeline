@@ -6,7 +6,6 @@ import time
 import psutil
 import numpy as np
 import logging
-
 from classify.trackprediction import Predictions
 from track.clip import Clip
 
