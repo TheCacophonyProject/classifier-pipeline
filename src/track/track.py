@@ -31,6 +31,7 @@ import cv2
 import logging
 from track.tracker import Tracker
 
+MASS_CHANGE_PERCENT = 0.55
 
 class RegionTracker(Tracker):
     # number of frames required before using kalman estimation
@@ -57,7 +58,6 @@ class RegionTracker(Tracker):
     # enforce mass growth after X seconds
     RESTRICT_MASS_AFTER = 1.5
     # amount region mass can change
-    MASS_CHANGE_PERCENT = 0.55
 
     # MAX_DISTANCE = 2000
     MAX_DISTANCE = 30752

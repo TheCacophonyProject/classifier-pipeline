@@ -18,7 +18,7 @@ from config.config import Config
 from config.thermalconfig import ThermalConfig
 from .headerinfo import HeaderInfo
 from ml_tools.logs import init_logging
-from ml_tools.tools import Rectangle
+from ml_tools.rectangle import Rectangle
 from .piclassifier import PiClassifier, run_classifier
 from .cameras import lepton3
 import multiprocessing

@@ -1,3 +1,6 @@
+import attrs
+
+
 @attr.s(eq=False)
 class Rectangle:
     """Defines a rectangle by the topleft point and width / height."""

@@ -32,6 +32,14 @@ from ml_tools.mpeg_creator import MPEGCreator
 # from track.region import Region
 from ml_tools.imageprocessing import normalize
 
+PREVIEW_OPTIONS = [
+    None,
+    PREVIEW_NONE,
+    PREVIEW_RAW,
+    PREVIEW_CLASSIFIED,
+    PREVIEW_TRACKING,
+    PREVIEW_BOXES,
+]
 
 class Previewer:
     PREVIEW_RAW = "raw"
@@ -44,14 +52,6 @@ class Previewer:
 
     PREVIEW_BOXES = "boxes"
 
-    PREVIEW_OPTIONS = [
-        None,
-        PREVIEW_NONE,
-        PREVIEW_RAW,
-        PREVIEW_CLASSIFIED,
-        PREVIEW_TRACKING,
-        PREVIEW_BOXES,
-    ]
 
     TRACK_COLOURS = [(255, 0, 0), (0, 255, 0), (255, 255, 0), (128, 255, 255)]
     FILTERED_COLOURS = [(128, 128, 128)]
