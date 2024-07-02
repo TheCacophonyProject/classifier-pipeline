@@ -2,28 +2,19 @@
 Helper functions for classification of the tracks extracted from CPTV videos
 """
 
-import attr
 import os.path
 import numpy as np
-import random
 import pickle
-import math
-import matplotlib.pyplot as plt
-import logging
-from sklearn import metrics
 import json
 import dateutil
-import binascii
 import datetime
 import glob
 import cv2
 import enum
 import timezonefinder
-from matplotlib.colors import LinearSegmentedColormap
-import subprocess
 from PIL import Image, ImageFont, ImageDraw
 from pathlib import Path
-
+from ml_tools.rectangle import Rectangle
 
 EPISON = 1e-5
 
@@ -45,150 +36,6 @@ class FrameTypes(enum.Enum):
     @staticmethod
     def is_valid(name):
         return name in FrameTypes.__members__.keys()
-
-
-@attr.s(eq=False)
-class Rectangle:
-    """Defines a rectangle by the topleft point and width / height."""
-
-    x = attr.ib()
-    y = attr.ib()
-    width = attr.ib()
-    height = attr.ib()
-
-    @staticmethod
-    def from_ltrb(left, top, right, bottom):
-        """Construct a rectangle from left, top, right, bottom co-ords."""
-        return Rectangle(left, top, width=right - left, height=bottom - top)
-
-    def to_ltrb(self):
-        """Return rectangle as left, top, right, bottom co-ords."""
-        return [self.left, self.top, self.right, self.bottom]
-
-    def to_ltwh(self):
-        """Return rectangle as left, top, right, bottom co-ords."""
-        return [self.left, self.top, self.width, self.height]
-
-    def copy(self):
-        return Rectangle(self.x, self.y, self.width, self.height)
-
-    @property
-    def mid(self):
-        return (self.mid_x, self.mid_y)
-
-    @property
-    def mid_x(self):
-        return self.x + self.width / 2
-
-    def calculate_mass(self, filtered, threshold):
-        """
-        calculates mass on this frame for this region
-        filtered is assumed to be cropped to the region
-        """
-        height, width = filtered.shape
-        assert (
-            width == self.width and height == self.height
-        ), "calculating variance on incorrectly sized filtered"
-
-        self.mass = calculate_mass(filtered, threshold)
-
-    @property
-    def mid_y(self):
-        return self.y + self.height / 2
-
-    @property
-    def left(self):
-        return self.x
-
-    @property
-    def top(self):
-        return self.y
-
-    @property
-    def right(self):
-        return self.x + self.width
-
-    @property
-    def bottom(self):
-        return self.y + self.height
-
-    @left.setter
-    def left(self, value):
-        old_right = self.right
-        self.x = value
-        self.right = old_right
-
-    @top.setter
-    def top(self, value):
-        old_bottom = self.bottom
-        self.y = value
-        self.bottom = old_bottom
-
-    @right.setter
-    def right(self, value):
-        self.width = value - self.x
-
-    @bottom.setter
-    def bottom(self, value):
-        self.height = value - self.y
-
-    def overlap_area(self, other):
-        """Compute the area overlap between this rectangle and another."""
-        x_overlap = max(0, min(self.right, other.right) - max(self.left, other.left))
-        y_overlap = max(0, min(self.bottom, other.bottom) - max(self.top, other.top))
-        return x_overlap * y_overlap
-
-    def crop(self, bounds):
-        """Crops this rectangle so that it fits within given bounds"""
-        self.left = min(bounds.right, max(self.left, bounds.left))
-        self.top = min(bounds.bottom, max(self.top, bounds.top))
-        self.right = max(bounds.left, min(self.right, bounds.right))
-        self.bottom = max(bounds.top, min(self.bottom, bounds.bottom))
-
-    def subimage(self, image):
-        """Returns a subsection of the original image bounded by this rectangle
-        :param image mumpy array of dims [height, width]
-        """
-        return image[
-            self.top : self.top + self.height, self.left : self.left + self.width
-        ]
-
-    def enlarge(self, border, max=None):
-        """Enlarges this by border amount in each dimension such that it fits
-        within the boundaries of max"""
-        self.left -= border
-        self.right += border
-        self.top -= border
-        self.bottom += border
-        if max:
-            self.crop(max)
-
-    @property
-    def area(self):
-        return int(self.width) * self.height
-
-    def __repr__(self):
-        return "(x{0},y{1},x2{2},y2{3})".format(
-            self.left, self.top, self.right, self.bottom
-        )
-
-    def __str__(self):
-        return "<(x{0},y{1})-h{2}xw{3}>".format(self.x, self.y, self.height, self.width)
-
-    def meta_dictionary(self):
-        # Return object as dictionary without is_along_border,was_cropped and id for saving to json
-        region_info = attr.asdict(
-            self,
-            filter=lambda attr, value: attr.name
-            not in ["is_along_border", "was_cropped", "id", "centroid"],
-        )
-        # region_info["centroid"][0] = round(region_info["centroid"][0], 1)
-        # region_info["centroid"][1] = round(region_info["centroid"][1], 1)
-        if region_info["pixel_variance"] is not None:
-            region_info["pixel_variance"] = round(region_info["pixel_variance"], 2)
-        else:
-            region_info["pixel_variance"] = 0
-        return region_info
 
 
 class CustomJSONEncoder(json.JSONEncoder):
@@ -257,14 +104,6 @@ def clear_session():
     tf.keras.backend.clear_session()
 
 
-def calculate_mass(filtered, threshold):
-    """Calculates mass of filtered frame with threshold applied"""
-    if filtered.size == 0:
-        return 0
-    _, mass = blur_and_return_as_mask(filtered, threshold=threshold)
-    return np.uint16(mass)
-
-
 def calculate_variance(filtered, prev_filtered):
     """Calculates variance of filtered frame with previous frame"""
     if filtered.size == 0:
@@ -273,20 +112,6 @@ def calculate_variance(filtered, prev_filtered):
         return
     delta_frame = np.abs(filtered - prev_filtered)
     return np.var(delta_frame)
-
-
-def blur_and_return_as_mask(frame, threshold):
-    """
-    Creates a binary mask out of an image by applying a threshold.
-    Any pixels more than the threshold are set 1, all others are set to 0.
-    A blur is also applied as a filtering step
-    """
-    thresh = cv2.GaussianBlur(frame, (5, 5), 0)
-    thresh[thresh - threshold < 0] = 0
-    values = thresh[thresh > 0]
-    mass = len(values)
-    values = 1
-    return thresh, mass
 
 
 def get_optical_flow_function(high_quality=False):

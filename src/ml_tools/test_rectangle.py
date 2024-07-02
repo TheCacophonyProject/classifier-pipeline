@@ -1,6 +1,6 @@
 import numpy as np
 
-from ml_tools.tools import Rectangle
+from ml_tools.rectangle import Rectangle
 
 
 class TestRectangle:

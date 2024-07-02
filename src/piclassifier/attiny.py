@@ -26,6 +26,7 @@ def set_recording_state(is_recording):
 
     except:
         logging.error("set recording dbus error ", exc_info=True)
+        return False
     return True
 
 

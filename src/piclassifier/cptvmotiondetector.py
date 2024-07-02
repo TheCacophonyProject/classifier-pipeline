@@ -1,10 +1,9 @@
 import numpy as np
 from datetime import timedelta
-import time
 import logging
 
 from .motiondetector import SlidingWindow, MotionDetector, WeightedBackground
-from ml_tools.tools import Rectangle
+from ml_tools.rectangle import Rectangle
 
 
 class CPTVMotionDetector(MotionDetector):

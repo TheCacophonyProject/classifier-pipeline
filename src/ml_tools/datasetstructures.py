@@ -1,5 +1,3 @@
-import math
-import cv2
 import json
 import dateutil
 import numpy as np
@@ -7,10 +5,8 @@ import logging
 from ml_tools import tools
 from track.region import Region
 from abc import ABC, abstractmethod
-from ml_tools.imageprocessing import resize_cv, rotate, normalize, resize_and_pad
-from ml_tools.frame import Frame, TrackChannels
+from ml_tools.rectangle import Rectangle
 from ml_tools import imageprocessing
-import datetime
 from enum import Enum
 import attr
 
@@ -900,7 +896,7 @@ class SegmentHeader(Sample):
         return thermals, filtered
 
 
-def get_cropped_fraction(region: tools.Rectangle, width, height):
+def get_cropped_fraction(region: Rectangle, width, height):
     """Returns the fraction regions mass outside the rect ((0,0), (width, height)"""
     bounds = tools.Rectangle(0, 0, width - 1, height - 1)
     return 1 - (bounds.overlap_area(region) / region.area)

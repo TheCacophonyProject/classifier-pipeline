@@ -665,7 +665,7 @@
             ],
             "predictions": [
                 {
-                    "classify_time": 0.1,
+                    "classify_time": 0.2,
                     "label": "possum",
                     "confident_tag": "possum",
                     "confidence": 1.0,
@@ -727,7 +727,7 @@
                             0,
                             0,
                             0,
-                            10071,
+                            1007100,
                             0,
                             0,
                             0
@@ -1409,7 +1409,7 @@
             "thumbnail_model": false,
             "reclassify": null,
             "submodel": false,
-            "classify_time": 0.1
+            "classify_time": 0.2
         }
     ],
     "thumbnail_region": {

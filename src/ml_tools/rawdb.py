@@ -21,7 +21,7 @@ from ml_tools.datasetstructures import TrackHeader, ClipHeader
 from track.track import Track
 from track.cliptrackextractor import is_affected_by_ffc
 from cptv import CPTVReader
-from ml_tools.tools import Rectangle
+from ml_tools.rectangle import Rectangle
 
 special_datasets = [
     "tag_frames",

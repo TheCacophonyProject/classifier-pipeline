@@ -17,18 +17,12 @@ You should have received a copy of the GNU General Public License
 along with this program. If not, see <http://www.gnu.org/licenses/>.
 """
 
-import logging
 import numpy as np
 import time
 import yaml
-from cptv_rs_python_bindings import CptvReader
-import cv2
 from datetime import datetime
 
 from .clip import Clip
-from ml_tools.tools import Rectangle
-from track.region import Region
-from track.track import Track
 from piclassifier.cptvmotiondetector import is_affected_by_ffc
 from ml_tools.imageprocessing import detect_objects, normalize
 from track.cliptracker import ClipTracker
@@ -87,6 +81,8 @@ class ClipTrackExtractor(ClipTracker):
         """
         Loads a cptv file, and prepares for track extraction.
         """
+        from cptv_rs_python_bindings import CptvReader
+
         self._tracking_time = None
         start = time.time()
         clip.set_frame_buffer(

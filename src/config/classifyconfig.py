@@ -24,7 +24,7 @@ import logging
 
 from config import config
 from .defaultconfig import DefaultConfig
-from ml_tools.previewer import Previewer
+from ml_tools.previewer import PREVIEW_OPTIONS
 
 
 @attr.s
@@ -41,7 +41,7 @@ class ClassifyConfig(DefaultConfig):
             models=ClassifyConfig.load_models(classify.get("models")),
             meta_to_stdout=classify["meta_to_stdout"],
             preview=config.parse_options_param(
-                "preview", classify["preview"], Previewer.PREVIEW_OPTIONS
+                "preview", classify["preview"], PREVIEW_OPTIONS
             ),
             cache_to_disk=classify["cache_to_disk"],
             service_socket=classify["service_socket"],
