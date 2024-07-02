@@ -30,6 +30,7 @@ from ml_tools.mpeg_creator import MPEGCreator
 
 # from track.region import Region
 from ml_tools.imageprocessing import normalize
+
 PREVIEW_RAW = "raw"
 
 PREVIEW_CLASSIFIED = "classified"

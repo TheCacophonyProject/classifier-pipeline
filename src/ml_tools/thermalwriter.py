@@ -48,8 +48,9 @@ from ml_tools import imageprocessing
 from ml_tools.frame import TrackChannels
 from ml_tools.trackdatabase import TrackDatabase
 from ml_tools.rawdb import RawDatabase
+from ml_tools.rectangle import Rectangle
 
-crop_rectangle = tools.Rectangle(0, 0, 640, 480)
+crop_rectangle = Rectangle(0, 0, 640, 480)
 from functools import lru_cache
 
 

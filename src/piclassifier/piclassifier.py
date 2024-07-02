@@ -312,7 +312,7 @@ class PiClassifier(Processor):
         background_frames = None
         track_frames = -1
         retrack_back = True
-        if self.type == IRTrackExtractor.TYPE:
+        if self.type == "IR":
             track_frames = 5
             retrack_back = True
             # background is calculated in motion, so already 5 frames ahead
