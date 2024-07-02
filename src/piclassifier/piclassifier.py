@@ -6,23 +6,13 @@ import time
 import psutil
 import numpy as np
 import logging
-from classify.trackprediction import Predictions
 from track.clip import Clip
 
-from ml_tools.previewer import Previewer
-from .cptvrecorder import CPTVRecorder
-from .throttledrecorder import ThrottledRecorder
-from .dummyrecorder import DummyRecorder
-from .irrecorder import IRRecorder
-from .irmotiondetector import IRMotionDetector
-from .cptvmotiondetector import CPTVMotionDetector
 
 from .motiondetector import SlidingWindow
 from .processor import Processor
 
-from ml_tools.interpreter import get_interpreter
 from ml_tools.logs import init_logging
-from ml_tools.tools import CustomJSONEncoder
 from ml_tools.rectangle import Rectangle
 from . import beacon
 
@@ -124,14 +114,18 @@ class PiClassifier(Processor):
             # clear state
             set_recording_state(False)
         if thermal_config.recorder.disable_recordings:
+            from .dummyrecorder import DummyRecorder
+
             self.recorder = DummyRecorder(
                 thermal_config, headers, on_recording_stopping=on_recording_stopping
             )
 
         if headers.model == "IR":
+            from track.irtrackextractor import IRTrackExtractor
+            from .irmotiondetector import IRMotionDetector
+
             logging.info("Running on IR")
             PiClassifier.SKIP_FRAMES = 3
-            from track.irtrackextractor import IRTrackExtractor
 
             if self.do_tracking:
 
@@ -149,6 +143,8 @@ class PiClassifier(Processor):
             self.tracking_config = self.config.tracking.get(IRTrackExtractor.TYPE)
 
             self.type = IRTrackExtractor.TYPE
+            from .irrecorder import IRRecorder
+
             if not thermal_config.recorder.disable_recordings:
                 self.recorder = IRRecorder(
                     thermal_config, headers, on_recording_stopping=on_recording_stopping
@@ -173,6 +169,8 @@ class PiClassifier(Processor):
                 )
         else:
             logging.info("Running on Thermal")
+            from .cptvmotiondetector import CPTVMotionDetector
+
             if self.do_tracking:
                 from track.cliptrackextractor import ClipTrackExtractor
 
@@ -183,10 +181,12 @@ class PiClassifier(Processor):
                     keep_frames=False,
                     calc_stats=False,
                 )
-            self.tracking_config = self.config.tracking.get(ClipTrackExtractor.TYPE)
+            self.tracking_config = self.config.tracking.get("thermal")
 
             self.type = "thermal"
             if not thermal_config.recorder.disable_recordings:
+                from .cptvrecorder import CPTVRecorder
+
                 self.recorder = CPTVRecorder(
                     thermal_config, headers, on_recording_stopping=on_recording_stopping
                 )
@@ -222,10 +222,14 @@ class PiClassifier(Processor):
         self.min_frames = thermal_config.recorder.min_secs * headers.fps
         self.max_frames = thermal_config.recorder.max_secs * headers.fps
         if thermal_config.recorder.disable_recordings:
+            from .dummyrecorder import DummyRecorder
+
             self.recorder = DummyRecorder(
                 thermal_config, headers, on_recording_stopping=on_recording_stopping
             )
         if thermal_config.throttler.activate:
+            from .throttledrecorder import ThrottledRecorder
+
             self.recorder = ThrottledRecorder(
                 self.recorder,
                 thermal_config,
@@ -237,6 +241,9 @@ class PiClassifier(Processor):
             os.makedirs(self.meta_dir)
 
         if self.classify and self.do_tracking:
+            from ml_tools.interpreter import get_interpreter
+            from classify.trackprediction import Predictions
+
             model = config.classify.models[0]
             self.classifier = get_interpreter(model)
 
@@ -498,6 +505,7 @@ class PiClassifier(Processor):
         if last_frame is not None and self.motion_detector.num_frames == last_frame:
             return None, None, last_frame
         last_frame = self.motion_detector.get_recent_frame()
+        logging.info("getting last frame")
         if self.clip:
             if last_frame is None:
                 return None
@@ -713,6 +721,8 @@ class PiClassifier(Processor):
         self.fps_timer.add(time.time() - start)
 
     def create_mp4(self):
+        from ml_tools.previewer import Previewer
+
         previewer = Previewer(self.config, self.preview_type)
         previewer.export_clip_preview(
             os.path.join(self.output_dir, self.clip.get_id() + ".mp4"),
@@ -773,6 +783,8 @@ def on_track_trapped(track):
 
 
 def on_recording_stopping(filename):
+    from ml_tools.tools import CustomJSONEncoder
+
     global use_low_power_mode
     if not use_low_power_mode:
         set_recording_state(False)

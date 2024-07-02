@@ -7,7 +7,7 @@ import numpy as np
 
 from track.track import Track
 from track.region import Region
-from ml_tools.imageprocessing import detect_objects, normalize, hist_diff
+from ml_tools.imageprocessing import normalize, hist_diff
 
 
 class ClipTracker(ABC):

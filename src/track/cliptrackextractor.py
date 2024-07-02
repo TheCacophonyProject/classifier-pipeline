@@ -20,7 +20,6 @@ along with this program. If not, see <http://www.gnu.org/licenses/>.
 import numpy as np
 import time
 import yaml
-from cptv_rs_python_bindings import CptvReader
 from datetime import datetime
 
 from .clip import Clip
@@ -82,6 +81,8 @@ class ClipTrackExtractor(ClipTracker):
         """
         Loads a cptv file, and prepares for track extraction.
         """
+        from cptv_rs_python_bindings import CptvReader
+
         self._tracking_time = None
         start = time.time()
         clip.set_frame_buffer(

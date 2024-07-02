@@ -59,7 +59,7 @@ class Service(dbus.service.Object):
 
         if f_num == last_num or last_frame is None:
             return (np.empty((0, 0)), (0, "", f_num, 0, 0, 0, 0, False), "")
-        logging.debug(
+        logging.info(
             "Frame requested %s latest frame %s took %s",
             last_num,
             f_num,
