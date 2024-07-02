@@ -24,7 +24,7 @@ from .defaultconfig import (
     deep_copy_map_if_key_not_exist,
 )
 from .trackingmotionconfig import TrackingMotionConfig
-from track.track import MASS_CHANGE_PERCENT
+from track.track import RegionTracker
 
 
 @attr.s
@@ -162,7 +162,7 @@ class TrackingConfig(DefaultConfig):
             moving_vel_thresh=4,
             min_moving_frames=2,
             max_blank_percent=30,
-            max_mass_std_percent=MASS_CHANGE_PERCENT,
+            max_mass_std_percent=RegionTracker.MASS_CHANGE_PERCENT,
             max_jitter=20,
             tracker="RegionTracker",
             type="thermal",

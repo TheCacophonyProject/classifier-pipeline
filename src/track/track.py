@@ -27,11 +27,8 @@ from track.region import Region
 from .kalman import Kalman
 from ml_tools.tools import eucl_distance_sq
 from ml_tools.datasetstructures import get_segments, SegmentHeader, SegmentType
-import cv2
 import logging
 from track.tracker import Tracker
-
-MASS_CHANGE_PERCENT = 0.55
 
 
 class RegionTracker(Tracker):
@@ -49,7 +46,7 @@ class RegionTracker(Tracker):
     # # enforce mass growth after X seconds
     # RESTRICT_MASS_AFTER = 1.5
     # # amount region mass can change
-    # MASS_CHANGE_PERCENT = 0.55
+    MASS_CHANGE_PERCENT = 0.55
 
     # IR VALUES
     BASE_DISTANCE_CHANGE = 11250
