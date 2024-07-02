@@ -6,10 +6,6 @@ import os
 import psutil
 import socket
 import time
-import cv2
-
-# fixes logging not showing up in tensorflow
-start = time.time()
 
 import numpy as np
 from threading import Thread
@@ -26,7 +22,6 @@ import multiprocessing
 from .eventreporter import log_event
 from piclassifier.monitorconfig import monitor_file
 
-print("Import time is ", time.time() - start)
 SOCKET_NAME = "/var/run/lepton-frames"
 VOSPI_DATA_SIZE = 160
 TELEMETRY_PACKET_COUNT = 4
@@ -179,6 +174,7 @@ def parse_file(file, config, thermal_config, preview_type):
 
 def parse_ir(file, config, thermal_config, preview_type):
     from piclassifier import irmotiondetector
+    import cv2
 
     irmotiondetector.MIN_FRAMES = 0
     count = 0
@@ -301,6 +297,8 @@ def handle_headers(connection):
 
 
 def ir_camera(config, thermal_config, process_queue):
+    import cv2
+
     FPS = 10
     logging.info("Starting ir video capture")
     cap = cv2.VideoCapture(0)
@@ -314,7 +312,7 @@ def ir_camera(config, thermal_config, process_queue):
             res_y=int(res_y),
             fps=FPS,
             brand=None,
-            model=IRTrackExtractor.TYPE,
+            model="IR",
             frame_size=res_y * res_x,
             pixel_bits=8,
             serial="",
@@ -355,7 +353,7 @@ def ir_camera(config, thermal_config, process_queue):
                 break
             frames += 1
             if frames == 1:
-                log_event("camera-connected", {"type": IRTrackExtractor.TYPE})
+                log_event("camera-connected", {"type": "IR"})
             if drop_frame is not None and (frames - start_dropping) % drop_frame == 0:
                 logging.info("Dropping frame due to slow processing")
                 dropped += 1
@@ -502,8 +500,6 @@ def handle_connection(connection, config, thermal_config_file, process_queue):
                     )
                 )
                 log_event("bad-thermal-frame", f"Bad Pixel of {t_min}")
-                process_queue.put(SKIP_SIGNAL)
-            elif read < 100:
                 process_queue.put(SKIP_SIGNAL)
             else:
                 process_queue.put((frame, time.time()))

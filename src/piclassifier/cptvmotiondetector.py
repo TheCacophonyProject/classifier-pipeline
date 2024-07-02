@@ -129,8 +129,6 @@ class CPTVMotionDetector(MotionDetector):
     def process_frame(self, cptv_frame, force_process=False):
         prev_ffc = self.ffc_affected
         self.ffc_affected = is_affected_by_ffc(cptv_frame)
-        if self.processed == 0:
-            logging.info("MOTION GOT FRAME")
         if self.can_record() or force_process:
             self.thermal_window.add(cptv_frame, self.ffc_affected)
 
