@@ -67,7 +67,7 @@ class Previewer:
 
     @classmethod
     def create_if_required(self, config, preview_type):
-        if preview_type and not preview_type.lower() == Previewer.PREVIEW_NONE:
+        if preview_type and not preview_type.lower() == PREVIEW_NONE:
             return Previewer(config, preview_type)
 
     def _load_colourmap(self):
@@ -115,7 +115,7 @@ class Previewer:
                     frame.thermal, clip.stats.min_temp, clip.stats.max_temp, clip.type
                 )
                 draw = ImageDraw.Draw(image)
-            elif self.preview_type == self.PREVIEW_TRACKING:
+            elif self.preview_type == PREVIEW_TRACKING:
                 image = self.create_four_tracking_image(
                     frame,
                     clip.stats.min_temp,
@@ -132,7 +132,7 @@ class Previewer:
                     scale=frame_scale,
                 )
 
-            elif self.preview_type == self.PREVIEW_BOXES:
+            elif self.preview_type == PREVIEW_BOXES:
                 image = self.convert_and_resize(
                     frame.thermal,
                     clip.stats.min_temp,
@@ -150,7 +150,7 @@ class Previewer:
                     scale=frame_scale,
                 )
 
-            elif self.preview_type == self.PREVIEW_CLASSIFIED:
+            elif self.preview_type == PREVIEW_CLASSIFIED:
                 image = self.convert_and_resize(
                     frame.thermal,
                     clip.stats.min_temp,

@@ -104,14 +104,6 @@ def clear_session():
     tf.keras.backend.clear_session()
 
 
-def calculate_mass(filtered, threshold):
-    """Calculates mass of filtered frame with threshold applied"""
-    if filtered.size == 0:
-        return 0
-    _, mass = blur_and_return_as_mask(filtered, threshold=threshold)
-    return np.uint16(mass)
-
-
 def calculate_variance(filtered, prev_filtered):
     """Calculates variance of filtered frame with previous frame"""
     if filtered.size == 0:
@@ -120,20 +112,6 @@ def calculate_variance(filtered, prev_filtered):
         return
     delta_frame = np.abs(filtered - prev_filtered)
     return np.var(delta_frame)
-
-
-def blur_and_return_as_mask(frame, threshold):
-    """
-    Creates a binary mask out of an image by applying a threshold.
-    Any pixels more than the threshold are set 1, all others are set to 0.
-    A blur is also applied as a filtering step
-    """
-    thresh = cv2.GaussianBlur(frame, (5, 5), 0)
-    thresh[thresh - threshold < 0] = 0
-    values = thresh[thresh > 0]
-    mass = len(values)
-    values = 1
-    return thresh, mass
 
 
 def get_optical_flow_function(high_quality=False):

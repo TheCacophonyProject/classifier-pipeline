@@ -1,4 +1,5 @@
 import attr
+import numpy as np
 
 
 @attr.s(eq=False)
@@ -33,18 +34,6 @@ class Rectangle:
     @property
     def mid_x(self):
         return self.x + self.width / 2
-
-    def calculate_mass(self, filtered, threshold):
-        """
-        calculates mass on this frame for this region
-        filtered is assumed to be cropped to the region
-        """
-        height, width = filtered.shape
-        assert (
-            width == self.width and height == self.height
-        ), "calculating variance on incorrectly sized filtered"
-
-        self.mass = calculate_mass(filtered, threshold)
 
     @property
     def mid_y(self):

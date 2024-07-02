@@ -214,3 +214,39 @@ class Region(Rectangle):
         if self.left == crop_region.left or self.right == crop_region.right:
             return True
         return False
+
+    def calculate_mass(self, filtered, threshold):
+        """
+        calculates mass on this frame for this region
+        filtered is assumed to be cropped to the region
+        """
+        height, width = filtered.shape
+        assert (
+            width == self.width and height == self.height
+        ), "calculating variance on incorrectly sized filtered"
+
+        self.mass = calculate_mass(filtered, threshold)
+
+
+def calculate_mass(filtered, threshold):
+    """Calculates mass of filtered frame with threshold applied"""
+    if filtered.size == 0:
+        return 0
+    _, mass = blur_and_return_as_mask(filtered, threshold=threshold)
+    return np.uint16(mass)
+
+
+def blur_and_return_as_mask(frame, threshold):
+    """
+    Creates a binary mask out of an image by applying a threshold.
+    Any pixels more than the threshold are set 1, all others are set to 0.
+    A blur is also applied as a filtering step
+    """
+    import cv2
+
+    thresh = cv2.GaussianBlur(frame, (5, 5), 0)
+    thresh[thresh - threshold < 0] = 0
+    values = thresh[thresh > 0]
+    mass = len(values)
+    values = 1
+    return thresh, mass
