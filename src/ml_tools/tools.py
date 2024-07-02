@@ -14,7 +14,7 @@ import enum
 import timezonefinder
 from PIL import Image, ImageFont, ImageDraw
 from pathlib import Path
-from rectangle import Rectangle
+from ml_tools.rectangle import Rectangle
 
 EPISON = 1e-5
 
