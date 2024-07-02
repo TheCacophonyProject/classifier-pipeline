@@ -20,38 +20,38 @@ along with this program. If not, see <http://www.gnu.org/licenses/>.
 import logging
 from os import path
 import numpy as np
-import cv2
 from PIL import Image, ImageDraw, ImageFont
 
 from track.clip import Clip
 from ml_tools import tools
-from ml_tools.tools import Rectangle
+from ml_tools.rectangle import Rectangle
 import ml_tools.globals as globs
 from ml_tools.mpeg_creator import MPEGCreator
 
 # from track.region import Region
 from ml_tools.imageprocessing import normalize
 
+PREVIEW_RAW = "raw"
+
+PREVIEW_CLASSIFIED = "classified"
+
+PREVIEW_NONE = "none"
+
+PREVIEW_TRACKING = "tracking"
+
+PREVIEW_BOXES = "boxes"
+
+PREVIEW_OPTIONS = [
+    None,
+    PREVIEW_NONE,
+    PREVIEW_RAW,
+    PREVIEW_CLASSIFIED,
+    PREVIEW_TRACKING,
+    PREVIEW_BOXES,
+]
+
 
 class Previewer:
-    PREVIEW_RAW = "raw"
-
-    PREVIEW_CLASSIFIED = "classified"
-
-    PREVIEW_NONE = "none"
-
-    PREVIEW_TRACKING = "tracking"
-
-    PREVIEW_BOXES = "boxes"
-
-    PREVIEW_OPTIONS = [
-        None,
-        PREVIEW_NONE,
-        PREVIEW_RAW,
-        PREVIEW_CLASSIFIED,
-        PREVIEW_TRACKING,
-        PREVIEW_BOXES,
-    ]
 
     TRACK_COLOURS = [(255, 0, 0), (0, 255, 0), (255, 255, 0), (128, 255, 255)]
     FILTERED_COLOURS = [(128, 128, 128)]
@@ -67,7 +67,7 @@ class Previewer:
 
     @classmethod
     def create_if_required(self, config, preview_type):
-        if preview_type and not preview_type.lower() == Previewer.PREVIEW_NONE:
+        if preview_type and not preview_type.lower() == PREVIEW_NONE:
             return Previewer(config, preview_type)
 
     def _load_colourmap(self):
@@ -115,7 +115,7 @@ class Previewer:
                     frame.thermal, clip.stats.min_temp, clip.stats.max_temp, clip.type
                 )
                 draw = ImageDraw.Draw(image)
-            elif self.preview_type == self.PREVIEW_TRACKING:
+            elif self.preview_type == PREVIEW_TRACKING:
                 image = self.create_four_tracking_image(
                     frame,
                     clip.stats.min_temp,
@@ -132,7 +132,7 @@ class Previewer:
                     scale=frame_scale,
                 )
 
-            elif self.preview_type == self.PREVIEW_BOXES:
+            elif self.preview_type == PREVIEW_BOXES:
                 image = self.convert_and_resize(
                     frame.thermal,
                     clip.stats.min_temp,
@@ -150,7 +150,7 @@ class Previewer:
                     scale=frame_scale,
                 )
 
-            elif self.preview_type == self.PREVIEW_CLASSIFIED:
+            elif self.preview_type == PREVIEW_CLASSIFIED:
                 image = self.convert_and_resize(
                     frame.thermal,
                     clip.stats.min_temp,

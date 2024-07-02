@@ -6,32 +6,14 @@ import time
 import psutil
 import numpy as np
 import logging
-from pathlib import Path
-
-from classify.trackprediction import Predictions
 from track.clip import Clip
-from track.irtrackextractor import IRTrackExtractor
 
-from track.cliptrackextractor import ClipTrackExtractor
-
-from ml_tools.previewer import Previewer, add_last_frame_tracking
-from ml_tools import tools
-from .cptvrecorder import CPTVRecorder
-from .throttledrecorder import ThrottledRecorder
-from .dummyrecorder import DummyRecorder
-from .irrecorder import IRRecorder
-from .irmotiondetector import IRMotionDetector
-from .cptvmotiondetector import CPTVMotionDetector
 
 from .motiondetector import SlidingWindow
 from .processor import Processor
 
-from ml_tools.interpreter import Interpreter, get_interpreter
 from ml_tools.logs import init_logging
-from ml_tools.hyperparams import HyperParams
-from ml_tools.tools import CustomJSONEncoder
-from ml_tools.forestmodel import ForestModel
-from track.region import Region
+from ml_tools.rectangle import Rectangle
 from . import beacon
 
 from piclassifier.trapcontroller import trigger_trap
@@ -132,14 +114,21 @@ class PiClassifier(Processor):
             # clear state
             set_recording_state(False)
         if thermal_config.recorder.disable_recordings:
+            from .dummyrecorder import DummyRecorder
+
             self.recorder = DummyRecorder(
                 thermal_config, headers, on_recording_stopping=on_recording_stopping
             )
 
-        if headers.model == IRTrackExtractor.TYPE:
+        if headers.model == "IR":
+            from track.irtrackextractor import IRTrackExtractor
+            from .irmotiondetector import IRMotionDetector
+
             logging.info("Running on IR")
             PiClassifier.SKIP_FRAMES = 3
+
             if self.do_tracking:
+
                 self.track_extractor = IRTrackExtractor(
                     self.config.tracking,
                     cache_to_disk=self.config.classify.cache_to_disk,
@@ -154,6 +143,8 @@ class PiClassifier(Processor):
             self.tracking_config = self.config.tracking.get(IRTrackExtractor.TYPE)
 
             self.type = IRTrackExtractor.TYPE
+            from .irrecorder import IRRecorder
+
             if not thermal_config.recorder.disable_recordings:
                 self.recorder = IRRecorder(
                     thermal_config, headers, on_recording_stopping=on_recording_stopping
@@ -178,7 +169,11 @@ class PiClassifier(Processor):
                 )
         else:
             logging.info("Running on Thermal")
+            from .cptvmotiondetector import CPTVMotionDetector
+
             if self.do_tracking:
+                from track.cliptrackextractor import ClipTrackExtractor
+
                 self.track_extractor = ClipTrackExtractor(
                     self.config.tracking,
                     self.config.use_opt_flow,
@@ -186,10 +181,12 @@ class PiClassifier(Processor):
                     keep_frames=False,
                     calc_stats=False,
                 )
-            self.tracking_config = self.config.tracking.get(ClipTrackExtractor.TYPE)
+            self.tracking_config = self.config.tracking.get("thermal")
 
             self.type = "thermal"
             if not thermal_config.recorder.disable_recordings:
+                from .cptvrecorder import CPTVRecorder
+
                 self.recorder = CPTVRecorder(
                     thermal_config, headers, on_recording_stopping=on_recording_stopping
                 )
@@ -216,7 +213,7 @@ class PiClassifier(Processor):
                     constant_recorder=True,
                 )
         edge = self.tracking_config.edge_pixels
-        self.crop_rectangle = tools.Rectangle(
+        self.crop_rectangle = Rectangle(
             edge, edge, headers.res_x - 2 * edge, headers.res_y - 2 * edge
         )
         global track_extractor
@@ -225,10 +222,14 @@ class PiClassifier(Processor):
         self.min_frames = thermal_config.recorder.min_secs * headers.fps
         self.max_frames = thermal_config.recorder.max_secs * headers.fps
         if thermal_config.recorder.disable_recordings:
+            from .dummyrecorder import DummyRecorder
+
             self.recorder = DummyRecorder(
                 thermal_config, headers, on_recording_stopping=on_recording_stopping
             )
         if thermal_config.throttler.activate:
+            from .throttledrecorder import ThrottledRecorder
+
             self.recorder = ThrottledRecorder(
                 self.recorder,
                 thermal_config,
@@ -240,10 +241,13 @@ class PiClassifier(Processor):
             os.makedirs(self.meta_dir)
 
         if self.classify and self.do_tracking:
+            from ml_tools.interpreter import get_interpreter
+            from classify.trackprediction import Predictions
+
             model = config.classify.models[0]
             self.classifier = get_interpreter(model)
 
-            if self.classifier.TYPE == ForestModel.TYPE:
+            if self.classifier.TYPE == "RandomForest":
                 self.predict_from_last = 5 * headers.fps
                 self.frames_per_classify = self.predict_from_last
                 PiClassifier.SKIP_FRAMES = 30
@@ -273,41 +277,6 @@ class PiClassifier(Processor):
             except ValueError:
                 self.fp_index = None
             self.startup_classifier()
-
-    #
-    # def get_preprocess_fn(self):
-    #     import tensorflow as tf
-    #
-    #     pretrained_model = self.classifier.params.model_name
-    #     if pretrained_model == "resnet":
-    #         return tf.keras.applications.resnet.preprocess_input
-    #
-    #     elif pretrained_model == "resnetv2":
-    #         return tf.keras.applications.resnet_v2.preprocess_input
-    #
-    #     elif pretrained_model == "resnet152":
-    #         return tf.keras.applications.resnet.preprocess_input
-    #
-    #     elif pretrained_model == "vgg16":
-    #         return tf.keras.applications.vgg16.preprocess_input
-    #
-    #     elif pretrained_model == "vgg19":
-    #         return tf.keras.applications.vgg19.preprocess_input
-    #
-    #     elif pretrained_model == "mobilenet":
-    #         return tf.keras.applications.mobilenet_v2.preprocess_input
-    #
-    #     elif pretrained_model == "densenet121":
-    #         return tf.keras.applications.densenet.preprocess_input
-    #
-    #     elif pretrained_model == "inceptionresnetv2":
-    #         return tf.keras.applications.inception_resnet_v2.preprocess_input
-    #     elif pretrained_model == "inceptionv3":
-    #         return tf.keras.applications.inception_v3.preprocess_input
-    #     logging.warn(
-    #         "pretrained model %s has no preprocessing function", pretrained_model
-    #     )
-    #     return None
 
     def new_clip(self, preview_frames):
         self.clip = Clip(
@@ -343,7 +312,7 @@ class PiClassifier(Processor):
         background_frames = None
         track_frames = -1
         retrack_back = True
-        if self.type == IRTrackExtractor.TYPE:
+        if self.type == "IR":
             track_frames = 5
             retrack_back = True
             # background is calculated in motion, so already 5 frames ahead
@@ -716,6 +685,8 @@ class PiClassifier(Processor):
         self.fps_timer.add(time.time() - start)
 
     def create_mp4(self):
+        from ml_tools.previewer import Previewer
+
         previewer = Previewer(self.config, self.preview_type)
         previewer.export_clip_preview(
             os.path.join(self.output_dir, self.clip.get_id() + ".mp4"),
@@ -776,6 +747,8 @@ def on_track_trapped(track):
 
 
 def on_recording_stopping(filename):
+    from ml_tools.tools import CustomJSONEncoder
+
     global use_low_power_mode
     if not use_low_power_mode:
         set_recording_state(False)

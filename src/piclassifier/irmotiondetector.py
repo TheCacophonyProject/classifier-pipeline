@@ -1,12 +1,8 @@
 import numpy as np
 import cv2
 from .motiondetector import SlidingWindow, MotionDetector
-from cptv import Frame
-import logging
 from track.cliptracker import (
-    ClipTracker,
     CVBackground,
-    DiffBackground,
     Background,
     get_diff_back_filtered,
 )
