@@ -6,21 +6,7 @@ import os
 import psutil
 import socket
 import time
-
-import numpy as np
-from threading import Thread
-
-from config.timewindow import WindowStatus, TimeWindow, RelAbsTime
-from config.config import Config
-from config.thermalconfig import ThermalConfig
-from .headerinfo import HeaderInfo
-from ml_tools.logs import init_logging
-from ml_tools.rectangle import Rectangle
-from .piclassifier import PiClassifier, run_classifier
-from .cameras import lepton3
-import multiprocessing
-from .eventreporter import log_event
-from piclassifier.monitorconfig import monitor_file
+from multiprocessing import Queue, Process
 
 SOCKET_NAME = "/var/run/lepton-frames"
 VOSPI_DATA_SIZE = 160
@@ -60,53 +46,13 @@ def parse_args():
 
 # Links to socket and continuously waits for 1 connection
 def main():
+    from ml_tools.logs import init_logging
+
     init_logging()
     args = parse_args()
+    process_queue = Queue()
 
-    config = Config.load_from_file(args.config_file)
-    thermal_config = ThermalConfig.load_from_file(args.thermal_config_file)
-    monitor_thread = Thread(
-        target=monitor_file, args=(file_changed, thermal_config.config_file)
-    )
-    monitor_thread.daemon = True
-    monitor_thread.start()
-    thermal_config.recorder.rec_window.set_location(
-        *thermal_config.location.get_lat_long(use_default=True),
-        thermal_config.location.altitude,
-    )
-
-    if args.file:
-        return parse_file(args.file, config, thermal_config, args.preview_type)
-
-    process_queue = multiprocessing.Queue()
-
-    # get a cloned window so we dont update it
-    if not thermal_config.recorder.use_low_power_mode:
-        snapshot_thread = Thread(
-            target=take_snapshots,
-            args=(
-                thermal_config.recorder.rec_window.clone(),
-                process_queue,
-            ),
-        )
-        snapshot_thread.daemon = True
-        snapshot_thread.start()
-    if args.ir or thermal_config.device_setup.ir:
-        while True:
-            if restart_pending:
-                break
-            try:
-                read = ir_camera(config, thermal_config, process_queue)
-                if read == 0:
-                    logging.error("Error reading camera try again in 10")
-                    time.sleep(10)
-                else:
-                    log_event("camera-disconnected", f"read {read} frames")
-            except Exception as ex:
-                log_event("camera-disconnected", ex)
-                logging.error("Error reading camera try again in 10", exc_info=True)
-                time.sleep(10)
-        return
+    from .eventreporter import log_event
 
     try:
         os.unlink(SOCKET_NAME)
@@ -131,9 +77,7 @@ def main():
             connected = True
             logging.info("connection from %s", client_address)
             log_event("camera-connected", {"type": "thermal"})
-            handle_connection(
-                connection, config, args.thermal_config_file, process_queue
-            )
+            handle_connection(connection, None, args.thermal_config_file, process_queue)
         except socket.timeout:
             logging.error("Socket %s timeout error", SOCKET_NAME, exc_info=True)
             return
@@ -431,40 +375,39 @@ def take_snapshots(window, process_queue):
 
 def handle_connection(connection, config, thermal_config_file, process_queue):
     headers, extra_b = handle_headers(connection)
-    thermal_config = ThermalConfig.load_from_file(thermal_config_file, headers.model)
-    logging.info(
-        "parsed camera headers %s running with config %s", headers, thermal_config
-    )
+    # thermal_config = ThermalConfig.load_from_file(thermal_config_file, headers.model)
+    logging.info("parsed camera headers %s running with config %s", headers, config)
 
-    processor = get_processor(process_queue, config, thermal_config, headers)
-    processor.start()
+    # processor = get_processor(process_queue, config, thermal_config, headers)
+    # processor.start()
+    from .cameras import lepton3
 
-    edge = config.tracking["thermal"].edge_pixels
-    crop_rectangle = Rectangle(
-        edge, edge, headers.res_x - 2 * edge, headers.res_y - 2 * edge
-    )
+    # edge = config.tracking["thermal"].edge_pixels
+    # crop_rectangle = Rectangle(
+    #     edge, edge, headers.res_x - 2 * edge, headers.res_y - 2 * edge
+    # )
     raw_frame = lepton3.Lepton3(headers)
     read = 0
     try:
         while True:
-            if restart_pending:
-                logging.info("Restarting as config changed")
-                process_queue.put(STOP_SIGNAL)
-                # give it time to clean up
-                processor.join(5)
-                if processor.is_alive():
-                    logging.info("Killing process")
-                    try:
-                        processor.kill()
-                    except:
-                        pass
-                break
-            if not processor.is_alive():
-                logging.info("Processor stopped restarting")
-                processor = get_processor(
-                    process_queue, config, thermal_config, headers
-                )
-                processor.start()
+            # if restart_pending:
+            #     logging.info("Restarting as config changed")
+            #     process_queue.put(STOP_SIGNAL)
+            #     # give it time to clean up
+            #     processor.join(5)
+            #     if processor.is_alive():
+            #         logging.info("Killing process")
+            #         try:
+            #             processor.kill()
+            #         except:
+            #             pass
+            #     break
+            # if not processor.is_alive():
+            #     logging.info("Processor stopped restarting")
+            #     processor = get_processor(
+            #         process_queue, config, thermal_config, headers
+            #     )
+            #     processor.start()
             if extra_b is not None:
                 data = extra_b + connection.recv(
                     headers.frame_size - len(extra_b), socket.MSG_WAITALL
@@ -490,19 +433,20 @@ def handle_connection(connection, config, thermal_config_file, process_queue):
             read += 1
             frame = raw_frame.parse(data)
             frame.received_at = time.time()
-            cropped_frame = crop_rectangle.subimage(frame.pix)
-            t_min = np.amin(cropped_frame)
-            # seems to happen if pi is working hard
-            if t_min == 0:
-                logging.warning(
-                    "received frame has odd values skipping thermal frame min {} cpu % {} memory % {}".format(
-                        t_min, psutil.cpu_percent(), psutil.virtual_memory()[2]
-                    )
-                )
-                log_event("bad-thermal-frame", f"Bad Pixel of {t_min}")
-                process_queue.put(SKIP_SIGNAL)
-            else:
-                process_queue.put((frame, time.time()))
+            logging.info("Got a frame")
+            # cropped_frame = crop_rectangle.subimage(frame.pix)
+            # t_min = np.amin(cropped_frame)
+            # # seems to happen if pi is working hard
+            # if t_min == 0:
+            #     logging.warning(
+            #         "received frame has odd values skipping thermal frame min {} cpu % {} memory % {}".format(
+            #             t_min, psutil.cpu_percent(), psutil.virtual_memory()[2]
+            #         )
+            #     )
+            #     log_event("bad-thermal-frame", f"Bad Pixel of {t_min}")
+            #     process_queue.put(SKIP_SIGNAL)
+            # else:
+            #     process_queue.put((frame, time.time()))
 
     finally:
         time.sleep(5)
