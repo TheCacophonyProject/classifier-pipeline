@@ -3,10 +3,10 @@ import argparse
 from datetime import datetime, timedelta
 import logging
 import os
-import psutil
 import socket
 import time
 from multiprocessing import Queue, Process
+from piclassifier.service import SnapshotService
 
 SOCKET_NAME = "/var/run/lepton-frames"
 VOSPI_DATA_SIZE = 160
@@ -373,6 +373,14 @@ def take_snapshots(window, process_queue):
         next_snap = next_snapshot(window, next_snap[1])
 
 
+last_frame = None
+num_frames = 0
+
+
+def get_recent_frame(last_frame=None):
+    return (last_frame, {}, num_frames)
+
+
 def handle_connection(connection, config, thermal_config_file, process_queue):
     headers, extra_b = handle_headers(connection)
     # thermal_config = ThermalConfig.load_from_file(thermal_config_file, headers.model)
@@ -386,8 +394,10 @@ def handle_connection(connection, config, thermal_config_file, process_queue):
     # crop_rectangle = Rectangle(
     #     edge, edge, headers.res_x - 2 * edge, headers.res_y - 2 * edge
     # )
+    service = SnapshotService(get_recent_frame, headers, None)
     raw_frame = lepton3.Lepton3(headers)
     read = 0
+    global last_frame, num_frames
     try:
         while True:
             # if restart_pending:
@@ -434,6 +444,8 @@ def handle_connection(connection, config, thermal_config_file, process_queue):
             frame = raw_frame.parse(data)
             frame.received_at = time.time()
             logging.info("Got a frame")
+            last_frame = frame
+            num_frames += 1
             # cropped_frame = crop_rectangle.subimage(frame.pix)
             # t_min = np.amin(cropped_frame)
             # # seems to happen if pi is working hard
