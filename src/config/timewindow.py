@@ -25,6 +25,19 @@ class TimeWindow:
         self.location = None
         self.last_sunrise_check = None
         self.non_stop = not self.use_sunrise_sunset() and self.start.dt == self.end.dt
+        # ensure starting window is valid
+        if not self.end.is_relative and self.end.is_after() and self.end.dt:
+            if (
+                not self.start.is_relative
+                and self.start.is_after()
+                and self.start.dt
+                and self.start.dt < self.end.dt
+            ):
+                self.start.dt = self.start.dt + timedelta(days=1)
+            self.end.dt = self.end.dt + timedelta(days=1)
+
+        if not self.use_sunrise_sunset() and self.start.dt and self.end.dt:
+            assert self.start.dt < self.end.dt
 
     def clone(self):
         new_window = TimeWindow(self.start.clone(), self.end.clone())
@@ -57,11 +70,11 @@ class TimeWindow:
         if self.use_sunrise_sunset():
             # update to tomorrows times
             self.update_sun_times(True)
-        else:
-            if self.start.dt is not None:
-                self.start.dt = self.start.dt + timedelta(days=1)
-            if self.end.dt is not None:
-                self.end.dt = self.end.dt + timedelta(days=1)
+        # handle case that only one is relative
+        if self.start.dt is not None and not self.start.dt.is_relative:
+            self.start.dt = self.start.dt + timedelta(days=1)
+        if self.end.dt is not None and not self.end.dt.is_relative:
+            self.end.dt = self.end.dt + timedelta(days=1)
         logging.info(
             "Updated to next window start %s end %s", self.start.dt, self.end.dt
         )

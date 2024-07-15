@@ -109,14 +109,21 @@ class TestWindow:
         new_end = cur_date + timedelta(minutes=1)
         if new_end.day < cur_date.day:
             new_end = cur_date
-        time_window.end = RelAbsTime(new_end.strftime("%H:%M"))
+        start = RelAbsTime(cur_date.strftime("%H:%M"))
+        end = RelAbsTime(new_end.strftime("%H:%M"))
+        time_window = TimeWindow(start, end)
+
         assert time_window.inside_window()
 
-        new_end = cur_date + timedelta(minutes=-1)
+        new_end = cur_date + timedelta(minutes=-2)
         if new_end.day < cur_date.day:
             new_end = cur_date
-        time_window.end = RelAbsTime(new_end.strftime("%H:%M"))
-        assert not time_window.inside_window()
+        start = RelAbsTime(cur_date.strftime("%H:%M"))
+        end = RelAbsTime(new_end.strftime("%H:%M"))
+
+        time_window = TimeWindow(start, end)
+
+        assert time_window.inside_window()
 
     @freeze_time(lambda: datetime.now().replace(hour=12, minute=30))
     def test_sunrise_times(self):
@@ -164,3 +171,31 @@ class TestWindow:
         # current time is after start and end so sould pick tomorrows sunset window
         in_w = time_window.inside_window()
         assert prev_s != time_window.start.dt.date()
+
+    @freeze_time(lambda: datetime.now().replace(hour=17, minute=2))
+    def test_absolute_times_days(self):
+        start = RelAbsTime("5:00")
+        end = RelAbsTime("08:00")
+        time_window = TimeWindow(start, end)
+        assert not time_window.inside_window()
+        assert start.dt > datetime.now()
+        assert end.dt > datetime.now()
+
+        start = RelAbsTime("17:00")
+        time_window = TimeWindow(start, end)
+        assert time_window.inside_window()
+        assert start.dt < datetime.now()
+        assert end.dt.date() == (datetime.now() + timedelta(days=1)).date()
+
+    @freeze_time(lambda: datetime.now().replace(hour=17, minute=2))
+    def test_absolute_and_relative(self):
+        cur_date = datetime.now()
+        start = RelAbsTime("17:00")
+        end = RelAbsTime("+30m")
+
+        time_window = TimeWindow(start, end)
+        time_window.set_location(TestWindow.DEFAULT_LAT, TestWindow.DEFAULT_LONG, 0)
+        time_window.update_sun_times()
+
+        assert time_window.inside_window()
+        assert start.dt < end.dt
