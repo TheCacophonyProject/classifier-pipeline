@@ -25,18 +25,18 @@ class TimeWindow:
         self.location = None
         self.last_sunrise_check = None
         self.non_stop = not self.use_sunrise_sunset() and self.start.dt == self.end.dt
-
         # ensure starting window is valid
-        if not self.end.is_relative and self.end.is_after():
+        if not self.end.is_relative and self.end.is_after() and self.end.dt:
             if (
                 not self.start.is_relative
                 and self.start.is_after()
+                and self.start.dt
                 and self.start.dt < self.end.dt
             ):
                 self.start.dt = self.start.dt + timedelta(days=1)
             self.end.dt = self.end.dt + timedelta(days=1)
 
-        if not self.use_sunrise_sunset():
+        if not self.use_sunrise_sunset() and self.start.dt and self.end.dt:
             assert self.start.dt < self.end.dt
 
     def clone(self):
