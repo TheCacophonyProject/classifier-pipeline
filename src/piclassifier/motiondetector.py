@@ -113,6 +113,11 @@ class MotionDetector(ABC):
                 *self.location_config.get_lat_long(use_default=True),
                 self.location_config.altitude,
             )
+        logging.info(
+            "Recording window %s - %s ",
+            self.rec_window.start.dt,
+            self.rec_window.end.dt,
+        )
         self.headers = headers
 
     @property
