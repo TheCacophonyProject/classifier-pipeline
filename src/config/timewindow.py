@@ -51,8 +51,7 @@ class TimeWindow:
 
             self.start.dt = self.start.dt + timedelta(days=-1)
 
-        if not self.use_sunrise_sunset() and self.start.dt and self.end.dt:
-            assert self.start.dt <= self.end.dt
+        assert self.start.dt <= self.end.dt
 
     def clone(self):
         new_window = TimeWindow(
@@ -156,7 +155,7 @@ class TimeWindow:
                     seconds=self.end.offset_s
                 )
                 self.end.dt = self.end.dt.replace(tzinfo=None)
-                if datetime.now() > self.end.dt and self.end.dt < self.start.dt:
+                if datetime.now() > self.end.dt:
                     date = date + timedelta(days=1)
                     sun_times = self.location.sun(date=date)
                     self.end.dt = sun_times["sunrise"] + timedelta(
