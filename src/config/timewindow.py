@@ -100,22 +100,10 @@ class TimeWindow:
         )
 
     def inside_window(self):
-        if self.use_sunrise_sunset():
-            self.update_sun_times()
-            # this shouldn't happen
-            # if self.end.dt < self.start.dt:
-            # return self.start.is_after() or self.end.is_before()
-            if self.start.is_after() and self.end.is_after():
-                self.next_window()
-                return False
-            elif self.end.is_before() and self.end.dt.date() == datetime.now().date():
-                # overnight window and we are before sunrise
-                return True
-        elif self.start.time == self.end.time:
+        if self.start.time == self.end.time:
             return True
         if self.start.is_after() and self.end.is_after():
             self.next_window()
-            return False
         return self.start.is_after() and self.end.is_before()
 
     def update_sun_times(self, next_window=False):

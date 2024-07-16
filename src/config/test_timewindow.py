@@ -175,8 +175,8 @@ class TestWindow:
         prev_s = time_window.start.dt.date()
         time_window.inside_window()
 
-        time_window.start.dt = datetime.now() - timedelta(days=1)
-        time_window.end.dt = datetime.now() - timedelta(days=1)
+        time_window.start.dt = time_window.start.dt - timedelta(days=1)
+        time_window.end.dt = time_window.end.dt - timedelta(days=1)
         prev_s = time_window.start.dt.date()
 
         # current time is after start and end so sould pick tomorrows sunset window
