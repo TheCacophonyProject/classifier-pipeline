@@ -1,7 +1,7 @@
 """ A window time frame, which can be relative to sunset and sunrise
 """
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, time
 import logging
 import enum
 from astral import Location
@@ -22,6 +22,9 @@ class TimeWindow:
     def __init__(self, start, end, lat, lng, altitude):
         self.start = start
         self.end = end
+
+        if self.start.any_time or self.end.any_time:
+            assert self.start.any_time and self.end.any_time
         self.location = None
         self.last_sunrise_check = None
         self.non_stop = not self.use_sunrise_sunset() and self.start.dt == self.end.dt
@@ -188,6 +191,10 @@ class RelAbsTime:
         if time_str == "" or (
             time_str is None and default_offset is None and default_time is None
         ):
+            self.dt = datetime.combine(
+                datetime.now(),
+                time(12, 0),
+            )
             self.any_time = True
             return
 

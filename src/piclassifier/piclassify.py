@@ -396,8 +396,9 @@ def next_snapshot(window, prev_window_type=None):
         current_status == WindowStatus.inside or prev_window_type == WindowStatus.before
     ):
         started = window.next_start()
-        if current_status is not None and started - datetime.now() < timedelta(
-            minutes=30
+        if (
+            current_status is not None
+            and abs((started - datetime.now()).total_seconds()) < 60 * 30
         ):
             logging.info("Started inside window within 30 mins")
             return (started, WindowStatus.before)
