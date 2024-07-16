@@ -162,8 +162,7 @@ def file_changed(event):
 def parse_file(file, config, thermal_config, preview_type):
     _, ext = os.path.splitext(file)
     thermal_config.recorder.rec_window = rec_window = TimeWindow(
-        RelAbsTime(""),
-        RelAbsTime(""),
+        RelAbsTime(""), RelAbsTime(""), None, None, 0
     )
 
     if ext == ".cptv":

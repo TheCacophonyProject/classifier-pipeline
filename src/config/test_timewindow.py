@@ -49,16 +49,18 @@ class TestWindow:
     def test_before_sunrise(self):
         start = RelAbsTime("-30m")
         end = RelAbsTime("30m")
-        time_window = TimeWindow(start, end)
-        time_window.set_location(TestWindow.DEFAULT_LAT, TestWindow.DEFAULT_LONG, 0)
+        time_window = TimeWindow(
+            start, end, TestWindow.DEFAULT_LAT, TestWindow.DEFAULT_LONG, 0
+        )
         assert time_window.inside_window()
 
     @freeze_time(lambda: datetime.now().replace(hour=23, minute=59))
     def test_after_sunset(self):
         start = RelAbsTime("-30m")
         end = RelAbsTime("30m")
-        time_window = TimeWindow(start, end)
-        time_window.set_location(TestWindow.DEFAULT_LAT, TestWindow.DEFAULT_LONG, 0)
+        time_window = TimeWindow(
+            start, end, TestWindow.DEFAULT_LAT, TestWindow.DEFAULT_LONG, 0
+        )
         assert time_window.inside_window()
 
     @freeze_time(
@@ -67,8 +69,9 @@ class TestWindow:
     def test_after_midnight(self):
         start = RelAbsTime("-30m")
         end = RelAbsTime("30m")
-        time_window = TimeWindow(start, end)
-        time_window.set_location(TestWindow.DEFAULT_LAT, TestWindow.DEFAULT_LONG, 0)
+        time_window = TimeWindow(
+            start, end, TestWindow.DEFAULT_LAT, TestWindow.DEFAULT_LONG, 0
+        )
         assert time_window.inside_window()
         with freeze_time(
             (datetime.now() + timedelta(days=1)).replace(hour=1, minute=59)
@@ -79,31 +82,36 @@ class TestWindow:
     def test_dt_update(self):
         start = RelAbsTime("-30m")
         end = RelAbsTime("30m")
-        time_window = TimeWindow(start, end)
-        time_window.set_location(TestWindow.DEFAULT_LAT, TestWindow.DEFAULT_LONG, 0)
+        time_window = TimeWindow(
+            start, end, TestWindow.DEFAULT_LAT, TestWindow.DEFAULT_LONG, 0
+        )
         assert time_window.inside_window()
         end_date = time_window.end.dt
         start_date = time_window.start.dt
 
-        # check that if we move out of window, the end time gets updated
+        # check that if we move out of window, the end time and start time gets updated
         with freeze_time(datetime.now().replace(hour=12, minute=59)):
             time_window.inside_window()
+
             assert end_date != time_window.end.dt
-            assert start_date == time_window.start.dt
+            assert start_date != time_window.start.dt
 
     @freeze_time(lambda: datetime.now().replace(hour=12, minute=1))
     def test_after_sunrise(self):
         start = RelAbsTime("-30m")
         end = RelAbsTime("30m")
-        time_window = TimeWindow(start, end)
-        time_window.set_location(TestWindow.DEFAULT_LAT, TestWindow.DEFAULT_LONG, 0)
+        time_window = TimeWindow(
+            start, end, TestWindow.DEFAULT_LAT, TestWindow.DEFAULT_LONG, 0
+        )
         assert not time_window.inside_window()
 
     def test_absolute_times(self):
         cur_date = datetime.now()
         start = RelAbsTime(cur_date.strftime("%H:%M"))
         end = RelAbsTime(cur_date.strftime("%H:%M"))
-        time_window = TimeWindow(start, end)
+        time_window = TimeWindow(
+            start, end, TestWindow.DEFAULT_LAT, TestWindow.DEFAULT_LONG, 0
+        )
         assert time_window.inside_window()
 
         new_end = cur_date + timedelta(minutes=1)
@@ -111,7 +119,9 @@ class TestWindow:
             new_end = cur_date
         start = RelAbsTime(cur_date.strftime("%H:%M"))
         end = RelAbsTime(new_end.strftime("%H:%M"))
-        time_window = TimeWindow(start, end)
+        time_window = TimeWindow(
+            start, end, TestWindow.DEFAULT_LAT, TestWindow.DEFAULT_LONG, 0
+        )
 
         assert time_window.inside_window()
 
@@ -121,7 +131,9 @@ class TestWindow:
         start = RelAbsTime(cur_date.strftime("%H:%M"))
         end = RelAbsTime(new_end.strftime("%H:%M"))
 
-        time_window = TimeWindow(start, end)
+        time_window = TimeWindow(
+            start, end, TestWindow.DEFAULT_LAT, TestWindow.DEFAULT_LONG, 0
+        )
 
         assert time_window.inside_window()
 
@@ -130,10 +142,9 @@ class TestWindow:
         cur_date = datetime.now()
         start = RelAbsTime(cur_date.strftime("%H:%M"))
         end = RelAbsTime("0s")
-        time_window = TimeWindow(start, end)
-        with pytest.raises(ValueError):
-            time_window.inside_window()
-        time_window.set_location(TestWindow.DEFAULT_LAT, TestWindow.DEFAULT_LONG, 0)
+        time_window = TimeWindow(
+            start, end, TestWindow.DEFAULT_LAT, TestWindow.DEFAULT_LONG, 0
+        )
         time_window.inside_window()
         assert time_window.last_sunrise_check is not None
 
@@ -142,9 +153,9 @@ class TestWindow:
 
         start = RelAbsTime(cur_date.strftime("0s"))
         end = RelAbsTime("0s")
-        time_window = TimeWindow(start, end)
-        time_window.set_location(TestWindow.DEFAULT_LAT, TestWindow.DEFAULT_LONG, 0)
-        time_window.update_sun_times()
+        time_window = TimeWindow(
+            start, end, TestWindow.DEFAULT_LAT, TestWindow.DEFAULT_LONG, 0
+        )
         assert time_window.start.dt.date() == datetime.now().date()
         assert time_window.end.dt > time_window.start.dt
         assert time_window.end.dt.date() == datetime.now().date() + timedelta(days=1)
@@ -158,9 +169,9 @@ class TestWindow:
         time_window.inside_window()
         assert time_window.start.dt.date() == prev_s + timedelta(days=1)
 
-        time_window = TimeWindow(start, end)
-        time_window.set_location(TestWindow.DEFAULT_LAT, TestWindow.DEFAULT_LONG, 0)
-        time_window.update_sun_times()
+        time_window = TimeWindow(
+            start, end, TestWindow.DEFAULT_LAT, TestWindow.DEFAULT_LONG, 0
+        )
         prev_s = time_window.start.dt.date()
         time_window.inside_window()
 
@@ -176,26 +187,73 @@ class TestWindow:
     def test_absolute_times_days(self):
         start = RelAbsTime("5:00")
         end = RelAbsTime("08:00")
-        time_window = TimeWindow(start, end)
+        time_window = TimeWindow(
+            start, end, TestWindow.DEFAULT_LAT, TestWindow.DEFAULT_LONG, 0
+        )
         assert not time_window.inside_window()
         assert start.dt > datetime.now()
         assert end.dt > datetime.now()
 
         start = RelAbsTime("17:00")
-        time_window = TimeWindow(start, end)
+        time_window = TimeWindow(
+            start, end, TestWindow.DEFAULT_LAT, TestWindow.DEFAULT_LONG, 0
+        )
         assert time_window.inside_window()
         assert start.dt < datetime.now()
         assert end.dt.date() == (datetime.now() + timedelta(days=1)).date()
 
     @freeze_time(lambda: datetime.now().replace(hour=17, minute=2))
     def test_absolute_and_relative(self):
-        cur_date = datetime.now()
         start = RelAbsTime("17:00")
         end = RelAbsTime("+30m")
 
-        time_window = TimeWindow(start, end)
-        time_window.set_location(TestWindow.DEFAULT_LAT, TestWindow.DEFAULT_LONG, 0)
+        time_window = TimeWindow(
+            start, end, TestWindow.DEFAULT_LAT, TestWindow.DEFAULT_LONG, 0
+        )
         time_window.update_sun_times()
 
         assert time_window.inside_window()
         assert start.dt < end.dt
+
+    @freeze_time(lambda: datetime.now().replace(hour=10, minute=18))
+    def test_constant(self):
+        start = RelAbsTime("12:00")
+        end = RelAbsTime("12:00")
+
+        time_window = TimeWindow(
+            start, end, TestWindow.DEFAULT_LAT, TestWindow.DEFAULT_LONG, 0
+        )
+        assert time_window.inside_window()
+        assert start.dt <= end.dt
+        with freeze_time((datetime.now() + timedelta(hours=10))):
+            time_window = TimeWindow(
+                start, end, TestWindow.DEFAULT_LAT, TestWindow.DEFAULT_LONG, 0
+            )
+            assert time_window.inside_window()
+
+    @freeze_time(lambda: datetime.now().replace(hour=1, minute=2))
+    def test_in_window(self):
+        start = RelAbsTime("17:00")
+        end = RelAbsTime("8:00")
+
+        time_window = TimeWindow(
+            start, end, TestWindow.DEFAULT_LAT, TestWindow.DEFAULT_LONG, None
+        )
+        assert time_window.inside_window()
+        assert start.dt < end.dt
+
+        start = RelAbsTime("17:00")
+        end = RelAbsTime("+30m")
+
+        time_window = TimeWindow(
+            start, end, TestWindow.DEFAULT_LAT, TestWindow.DEFAULT_LONG, None
+        )
+        assert time_window.inside_window()
+        assert start.dt < end.dt
+
+        with freeze_time(datetime.now().replace(hour=11, minute=2)):
+            time_window = TimeWindow(
+                start, end, TestWindow.DEFAULT_LAT, TestWindow.DEFAULT_LONG, 0
+            )
+
+            assert not time_window.inside_window()

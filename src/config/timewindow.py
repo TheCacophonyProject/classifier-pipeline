@@ -19,28 +19,49 @@ class WindowStatus(enum.Enum):
 
 
 class TimeWindow:
-    def __init__(self, start, end):
+    def __init__(self, start, end, lat, lng, altitude):
         self.start = start
         self.end = end
         self.location = None
         self.last_sunrise_check = None
         self.non_stop = not self.use_sunrise_sunset() and self.start.dt == self.end.dt
+        if lat is not None and lng is not None:
+            self.set_location(lat, lng, altitude)
         # ensure starting window is valid
-        if not self.end.is_relative and self.end.is_after() and self.end.dt:
-            if (
-                not self.start.is_relative
-                and self.start.is_after()
-                and self.start.dt
-                and self.start.dt < self.end.dt
-            ):
-                self.start.dt = self.start.dt + timedelta(days=1)
+        # set end or start to following day if needed
+
+        if not self.end.is_relative and self.end.is_after():
+
             self.end.dt = self.end.dt + timedelta(days=1)
+        # set start to previous day if needed
+
+        if (
+            not self.start.is_relative
+            and self.start.is_after()
+            and datetime.now().time() > self.end.dt.time()
+        ):
+            self.start.dt = self.start.dt + timedelta(days=1)
+        if (
+            self.start.dt
+            and not self.start.is_relative
+            and self.end.is_before()
+            and self.start.is_before()
+            and self.start.dt > self.end.dt
+        ):
+
+            self.start.dt = self.start.dt + timedelta(days=-1)
 
         if not self.use_sunrise_sunset() and self.start.dt and self.end.dt:
-            assert self.start.dt < self.end.dt
+            assert self.start.dt <= self.end.dt
 
     def clone(self):
-        new_window = TimeWindow(self.start.clone(), self.end.clone())
+        new_window = TimeWindow(
+            self.start.clone(),
+            self.end.clone(),
+            self.location.latitude,
+            self.location.longitude,
+            self.location.altitude,
+        )
         new_window.location = self.location
         new_window.last_sunrise_check = self.last_sunrise_check
         new_window.non_stop = self.non_stop
@@ -71,9 +92,9 @@ class TimeWindow:
             # update to tomorrows times
             self.update_sun_times(True)
         # handle case that only one is relative
-        if self.start.dt is not None and not self.start.dt.is_relative:
+        if self.start.dt is not None and not self.start.is_relative:
             self.start.dt = self.start.dt + timedelta(days=1)
-        if self.end.dt is not None and not self.end.dt.is_relative:
+        if self.end.dt is not None and not self.end.is_relative:
             self.end.dt = self.end.dt + timedelta(days=1)
         logging.info(
             "Updated to next window start %s end %s", self.start.dt, self.end.dt
@@ -82,9 +103,10 @@ class TimeWindow:
     def inside_window(self):
         if self.use_sunrise_sunset():
             self.update_sun_times()
-            if self.end.dt < self.start.dt:
-                return self.start.is_after() or self.end.is_before()
-            elif self.start.is_after() and self.end.is_after():
+            # this shouldn't happen
+            # if self.end.dt < self.start.dt:
+            # return self.start.is_after() or self.end.is_before()
+            if self.start.is_after() and self.end.is_after():
                 self.next_window()
                 return False
             elif self.end.is_before() and self.end.dt.date() == datetime.now().date():
@@ -116,7 +138,6 @@ class TimeWindow:
             or next_window
             or datetime.now() > self.end.dt
         ):
-            #     return
             date = datetime.now().date()
             if self.last_sunrise_check is not None and next_window:
                 date = self.last_sunrise_check + timedelta(days=1)
@@ -142,6 +163,18 @@ class TimeWindow:
                         seconds=self.end.offset_s
                     )
                     self.end.dt = self.end.dt.replace(tzinfo=None)
+            if (
+                not next_window == True
+                and self.start.is_relative
+                and self.start.is_before()
+                and self.end.is_before()
+            ):
+                date = date + timedelta(days=-1)
+                sun_times = self.location.sun(date=date)
+                self.start.dt = sun_times["sunset"] + timedelta(
+                    seconds=self.start.offset_s
+                )
+                self.start.dt = self.start.dt.replace(tzinfo=None)
 
             logging.info(
                 "Updated sun times start is {} end is {}".format(
