@@ -173,8 +173,7 @@ def extract_file(filename, retrack=False):
 def save_metadata(filename, meta_filename, clip, track_extractor, config):
     # record results in text file.
     metadata = clip.get_metadata()
-    tt = sorted(clip.tracks, key=lambda x: x.get_id())
-    for i, track in enumerate(tt):
+    for i, track in enumerate(clip.tracks):
         best_thumb, best_score = get_thumbnail_info(clip, track)
         if best_thumb is None:
             metadata["tracks"][i]["thumbnail"] = None
