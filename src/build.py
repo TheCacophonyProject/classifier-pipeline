@@ -57,7 +57,7 @@ def parse_args():
     )
     parser.add_argument("--split-file", help="Json file defining a split")
     parser.add_argument(
-        "--ext", default=".hdf5", help="Extension of files to load .mp4,.cptv,.hdf5"
+        "--ext", default=".cptv", help="Extension of files to load .mp4,.cptv,.hdf5"
     )
 
     parser.add_argument("-c", "--config-file", help="Path to config file to use")

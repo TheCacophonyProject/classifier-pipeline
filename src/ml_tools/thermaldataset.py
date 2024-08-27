@@ -33,12 +33,20 @@ def get_excluded():
         "pest",
         "pig",
         "sealion",
+        "bat",
+        "mammal",
+        "frog",
     ]
 
 
 def get_remapped(multi_label=False):
     land_bird = "land-bird" if multi_label else "bird"
     return {
+        "echidna": "hedgehog",
+        "grey kangaroo": "wallaby",
+        "sambar deer": "deer",
+        "mouse": "rodent",
+        "rat": "rodent",
         "water": "false-positive",
         "insect": "false-positive",
         "allbirds": "bird",
