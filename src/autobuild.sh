@@ -11,4 +11,4 @@ echo "Downloading into $1"
 python3 build.py -c $config --ext ".cptv" $1
 dt=$(date '+%d%m%Y-%H%M%S');
 export XLA_FLAGS=--xla_gpu_cuda_data_dir=/home/cp/miniconda3/envs/tf/lib/
-python3 train.py $dt 
+python3 train.py -c $config $dt 
