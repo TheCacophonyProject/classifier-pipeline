@@ -47,6 +47,7 @@ def get_remapped(multi_label=False):
         "sambar deer": "deer",
         "mouse": "rodent",
         "rat": "rodent",
+        "rain": "false-positive",
         "water": "false-positive",
         "insect": "false-positive",
         "allbirds": "bird",
