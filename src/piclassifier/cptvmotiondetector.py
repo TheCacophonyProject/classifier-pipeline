@@ -164,7 +164,7 @@ class CPTVMotionDetector(MotionDetector):
 
 
 def is_affected_by_ffc(cptv_frame):
-    if cptv_frame.ffc_status in [1, 2]:
+    if hasattr(cptv_frame, "ffc_status") and cptv_frame.ffc_status in [1, 2]:
         return True
 
     if cptv_frame.time_on is None or cptv_frame.last_ffc_time is None:
