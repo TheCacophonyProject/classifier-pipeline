@@ -13,3 +13,5 @@ class Telemetry:
         self.reserved25 = None
         self.fpa_temp_last_ffc = None
         self.last_ffc_time = None
+        self.ffc_imminent = False
+        self.ffc_status = None

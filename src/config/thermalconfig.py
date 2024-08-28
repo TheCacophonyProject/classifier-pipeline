@@ -145,7 +145,7 @@ class RecorderConfig:
     use_low_power_mode = attr.ib()
 
     @classmethod
-    def load(cls, recorder, window):
+    def load(cls, recorder, window, location_config):
         return cls(
             constant_recorder=recorder.get("constant-recorder", False),
             min_disk_space=recorder.get("min-disk-space-mb", 200),
@@ -156,6 +156,8 @@ class RecorderConfig:
             rec_window=TimeWindow(
                 RelAbsTime(window.get("start-recording"), default_offset=30 * 60),
                 RelAbsTime(window.get("stop-recording"), default_offset=30 * 60),
+                *location_config.get_lat_long(use_default=True),
+                location_config.altitude,
             ),
             output_dir=recorder.get("output-dir", "/var/spool/cptv"),
             use_low_power_mode=recorder.get("use-low-power-mode", False),
@@ -211,16 +213,18 @@ class ThermalConfig:
         raw = toml.load(stream)
         if raw is None:
             raw = {}
+
+        location_config = LocationConfig.load(raw.get("location", {}))
         return cls(
             config_file=filename,
             throttler=ThrottlerConfig.load(raw.get("thermal-throttler", {})),
             motion=CameraMotionConfig.load(raw.get("thermal-motion", {}), model),
             recorder=RecorderConfig.load(
-                raw.get("thermal-recorder", {}), raw.get("windows", {})
+                raw.get("thermal-recorder", {}), raw.get("windows", {}), location_config
             ),
             device=DeviceConfig.load(raw.get("device", {})),
             device_setup=DeviceSetup.load(raw.get("device-setup", {})),
-            location=LocationConfig.load(raw.get("location", {})),
+            location=location_config,
         )
 
     def validate(self):

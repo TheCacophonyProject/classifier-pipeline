@@ -19,13 +19,16 @@ class RawFrame(ABC):
         thermal_frame = np.frombuffer(
             data, dtype=self.img_dtype, offset=self.get_telemetry_size()
         ).reshape(self.res_y, self.res_x)
-        return Frame(
+        f = Frame(
             thermal_frame.byteswap(),
             telemetry.time_on,
             telemetry.last_ffc_time,
             telemetry.fpa_temp,
             telemetry.fpa_temp_last_ffc,
         )
+        f.ffc_imminent = telemetry.ffc_imminent
+        f.ffc_status = telemetry.ffc_status
+        return f
 
     @abstractmethod
     def get_telemetry_size(self): ...

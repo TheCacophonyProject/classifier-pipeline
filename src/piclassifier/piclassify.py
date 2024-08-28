@@ -162,8 +162,7 @@ def file_changed(event):
 def parse_file(file, config, thermal_config, preview_type):
     _, ext = os.path.splitext(file)
     thermal_config.recorder.rec_window = rec_window = TimeWindow(
-        RelAbsTime(""),
-        RelAbsTime(""),
+        RelAbsTime(""), RelAbsTime(""), None, None, 0
     )
 
     if ext == ".cptv":
@@ -253,6 +252,8 @@ def parse_cptv(file, config, thermal_config_file, preview_type):
             preview_type,
         )
         for frame in reader:
+            frame.ffc_imminent = False
+            frame.ffc_status = 0
             if frame.background_frame:
                 pi_classifier.motion_detector._background._background = frame.pix
                 continue
@@ -397,8 +398,9 @@ def next_snapshot(window, prev_window_type=None):
         current_status == WindowStatus.inside or prev_window_type == WindowStatus.before
     ):
         started = window.next_start()
-        if current_status is not None and started - datetime.now() < timedelta(
-            minutes=30
+        if (
+            current_status is not None
+            and abs((started - datetime.now()).total_seconds()) < 60 * 30
         ):
             logging.info("Started inside window within 30 mins")
             return (started, WindowStatus.before)
