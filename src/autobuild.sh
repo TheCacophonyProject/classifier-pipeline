@@ -1,7 +1,8 @@
-#!/bin/sh
-
+#!/bin/bash
 set -e
 set -x
+conda init bash
+conda activate tf
 config="classifier-thermal.yaml"
 echo "Saving into $1"
 month_ago=$(python3 rebuildDate.py $1)
