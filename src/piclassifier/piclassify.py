@@ -252,6 +252,8 @@ def parse_cptv(file, config, thermal_config_file, preview_type):
             preview_type,
         )
         for frame in reader:
+            frame.ffc_imminent = False
+            frame.ffc_status = 0
             if frame.background_frame:
                 pi_classifier.motion_detector._background._background = frame.pix
                 continue

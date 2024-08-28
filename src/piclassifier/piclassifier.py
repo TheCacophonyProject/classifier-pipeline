@@ -546,7 +546,12 @@ class PiClassifier(Processor):
                 if self.recording and not self.use_low_power_mode:
                     set_recording_state(True)
 
-        if not self.recorder.recording and self.motion_detector.movement_detected:
+        if (
+            not self.recorder.recording
+            and self.motion_detector.movement_detected
+            and not lepton_frame.ffc_imminent
+            and not lepton_frame.ffc_status in [1, 2]
+        ):
             s_r = time.time()
             preview_frames = self.motion_detector.preview_frames()
             bak = self.motion_detector.background
