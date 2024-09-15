@@ -221,7 +221,7 @@ def get_data(clip_samples, extra_args):
                             "segment_frame_spacing", 9
                         ),
                         segment_type=extra_args.get("segment_type"),
-                        segment_min_avg_mass=extra_args.get("segment_min_avg_mass"),
+                        segment_min_mass=extra_args.get("segment_min_avg_mass"),
                         max_segments=extra_args.get("max_segments"),
                         dont_filter=extra_args.get("dont_filter_segment", False),
                         skip_ffc=extra_args.get("skip_ffc", True),
