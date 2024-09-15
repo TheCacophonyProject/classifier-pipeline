@@ -12,6 +12,7 @@ import logging
 
 from ml_tools.featurenorms import mean_v, std_v
 from ml_tools.frame import TrackChannels
+from pathlib import Path
 
 # seed = 1341
 # tf.random.set_seed(seed)
@@ -308,12 +309,13 @@ from collections import Counter
 # test stuff
 def main():
     init_logging()
-    config = Config.load_from_file()
+    config = Config.load_from_file("classifier-thermal.yaml")
     from .tfdataset import get_dataset, get_distribution
 
     # file = "/home/gp/cacophony/classifier-data/thermal-training/cp-training/training-meta.json"
-    file = f"{config.tracks_folder}/training-meta.json"
-    with open(file, "r") as f:
+    training_folder = Path(config.base_folder) / "training-data"
+    meta_f = training_folder / "training-meta.json"
+    with open(meta_f, "r") as f:
         meta = json.load(f)
     labels = meta.get("labels", [])
     datasets = []
@@ -321,7 +323,7 @@ def main():
     resampled_ds, remapped, labels, epoch_size = get_dataset(
         # dir,
         load_dataset,
-        f"{config.tracks_folder}/training-data/test",
+        training_folder / "test",
         labels,
         batch_size=32,
         image_size=(160, 160),
@@ -332,21 +334,24 @@ def main():
         remapped_labels=get_remapped(),
         excluded_labels=get_excluded(),
         include_track=False,
-        num_frames=1,
+        num_frames=25,
     )
     print("Ecpoh size is", epoch_size)
-    print(get_distribution(resampled_ds, len(labels), extra_meta=False))
+    # print(get_distribution(resampled_ds, len(labels), extra_meta=False))
     # return
     #
-    for e in range(2):
+    save_dir = Path("./test-images")
+    save_dir.mkdir(exist_ok=True)
+    for e in range(1):
+        batch_i = 0
         print("epoch", e)
         for x, y in resampled_ds:
-            show_batch(x, y, labels)
-
+            show_batch(x, y, labels, save=save_dir / f"{batch_i}.jpg")
+            batch_i += 1
     # return
 
 
-def show_batch(image_batch, label_batch, labels):
+def show_batch(image_batch, label_batch, labels, save=None):
     plt.figure(figsize=(10, 10))
     print("images in batch", len(image_batch), len(label_batch))
     num_images = min(len(image_batch), 25)
@@ -365,6 +370,8 @@ def show_batch(image_batch, label_batch, labels):
         plt.title(labels[np.argmax(label_batch[n])])
         plt.axis("off")
     # return
+    if save:
+        plt.savefig(save)
     plt.show()
 
 
