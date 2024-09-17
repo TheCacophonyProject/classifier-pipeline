@@ -20,7 +20,7 @@ from track.region import Region
 from ml_tools.datasetstructures import TrackHeader, ClipHeader
 from track.track import Track
 from track.cliptrackextractor import is_affected_by_ffc
-from cptv import CPTVReader
+from cptv_rs_python_bindings import CptvReader
 from ml_tools.rectangle import Rectangle
 
 special_datasets = [
@@ -62,19 +62,23 @@ class RawDatabase:
         background = None
         tracker_version = self.meta_data.get("tracker_version")
         frame_i = 0
-        with open(self.file, "rb") as f:
-            reader = CPTVReader(f)
-            for frame in reader:
-                if frame.background_frame:
-                    background = frame.pix
-                    # bug in previous tracker version where background was first frame
-                    if tracker_version >= 10:
-                        continue
-                ffc = is_affected_by_ffc(frame)
-                if ffc:
-                    ffc_frames.append(frame_i)
-                cptv_frames.append(frame.pix)
-                frame_i += 1
+        reader = CptvReader(str(self.file))
+        header = reader.get_header()
+        while True:
+            frame = reader.next_frame()
+            if frame is None:
+                break
+            if frame.background_frame:
+                background = frame.pix
+                # bug in previous tracker version where background was first frame
+                if tracker_version >= 10:
+                    continue
+            ffc = is_affected_by_ffc(frame)
+            if ffc:
+                print("GOT FFC")
+                ffc_frames.append(frame_i)
+            cptv_frames.append(frame.pix)
+            frame_i += 1
         frames = np.uint16(cptv_frames)
         if background is None:
             background = np.mean(frames, axis=0)
