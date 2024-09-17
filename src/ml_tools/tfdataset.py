@@ -61,18 +61,7 @@ def get_distribution(dataset, num_labels, batched=True, one_hot=True, extra_meta
 
 
 def get_dataset(load_function, base_dir, labels, **args):
-    land_birds = [
-        "pukeko",
-        "california quail",
-        "brown quail",
-        "black swan",
-        "quail",
-        "pheasant",
-        "penguin",
-        "duck",
-        "chicken",
-        "rooster",
-    ]
+
     excluded_labels = args.get("excluded_labels", [])
     to_remap = args.get("remapped_labels", {})
     logging.info("Excluding %s", excluded_labels)
@@ -193,7 +182,6 @@ def get_dataset(load_function, base_dir, labels, **args):
             dataset = dataset.take(epoch_size)
     else:
         epoch_size = 1
-    dataset = dataset.prefetch(buffer_size=AUTOTUNE)
     batch_size = args.get("batch_size", None)
     if batch_size is not None:
         dataset = dataset.batch(batch_size)
