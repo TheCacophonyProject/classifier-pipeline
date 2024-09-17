@@ -11,13 +11,8 @@ from classify.trackprediction import Predictions
 from track.clip import Clip
 from track.cliptrackextractor import ClipTrackExtractor, is_affected_by_ffc
 from ml_tools import tools
-from ml_tools.kerasmodel import KerasModel
 from track.irtrackextractor import IRTrackExtractor
 from ml_tools.previewer import Previewer
-from track.track import Track
-
-from cptv import CPTVReader
-from datetime import datetime
 from ml_tools.interpreter import get_interpreter
 
 
