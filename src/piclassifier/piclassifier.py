@@ -438,6 +438,7 @@ class PiClassifier(Processor):
                     self.tracking = track
                     track_prediction.normalize_score()
                     self.service.tracking(
+                        track_prediction.class_best_score,
                         track_prediction.predicted_tag(),
                         track_prediction.max_score,
                         track.bounds_history[-1].to_ltrb(),
@@ -448,6 +449,7 @@ class PiClassifier(Processor):
                     self.tracking = None
                     track_prediction.normalize_score()
                     self.service.tracking(
+                        track_prediction.class_best_score,
                         track_prediction.predicted_tag(),
                         track_prediction.max_score,
                         track.bounds_history[-1].to_ltrb(),
