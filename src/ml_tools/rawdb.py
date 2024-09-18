@@ -31,6 +31,8 @@ special_datasets = [
     "overlay",
 ]
 
+FPS = 9
+
 
 class RawDatabase:
     def __init__(self, database_filename):
