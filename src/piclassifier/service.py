@@ -103,11 +103,22 @@ class Service(dbus.service.Object):
 
     @dbus.service.method(DBUS_NAME, signature="as")
     def ClassificationLabels(self):
-        logging.info("Getting labels")
+        logging.info("Getting labels %s", self.labels)
         return self.labels
 
-    @dbus.service.signal(DBUS_NAME, signature="aysiaib")
-    def Tracking(self, what, confidence, region, tracking):
+    @dbus.service.signal(DBUS_NAME, signature="aisiaiiibbi")
+    def Tracking(
+        self,
+        scores,
+        what,
+        confidence,
+        region,
+        frame,
+        mass,
+        blank,
+        tracking,
+        last_prediction,
+    ):
         pass
 
     @dbus.service.signal(DBUS_NAME, signature="xb")
@@ -138,25 +149,42 @@ class SnapshotService:
         )
         self.loop.run()
 
-    def tracking(self, scores, what, confidence, region, tracking):
+    def tracking(self, scores, region, tracking, last_prediction):
         logging.debug(
-            "Tracking %s animal %s confidence %s  at %s all scores %s",
-            what,
-            round(100 * confidence),
-            region,
+            "Tracking? %s region %s scores %s",
             tracking,
+            region,
             scores,
         )
         if self.service is None:
             return
-
-        byte_predictions = {}
-        for i, confidence in enumerate(scores):
-            byte_predictions[dbus.Byte(i)] = dbus.Byte(int(confidence * 100))
-
-        self.service.Tracking(
-            byte_predictions, what, round(100 * confidence), region, tracking
-        )
+        if scores is not None:
+            predictions = scores.copy()
+            predictions = np.uint8(np.round(predictions * 100))
+            best = np.argmax(predictions)
+            self.service.Tracking(
+                predictions,
+                self.service.labels[best],
+                predictions[best],
+                region.to_ltrb(),
+                region.frame_number,
+                region.mass,
+                region.blank,
+                tracking,
+                last_prediction,
+            )
+        else:
+            self.service.Tracking(
+                [],
+                "",
+                0,
+                region.to_ltrb(),
+                region.frame_number,
+                region.mass,
+                region.blank,
+                tracking,
+                last_prediction,
+            )
 
     def recording(self, is_recording):
         if self.service is None:
