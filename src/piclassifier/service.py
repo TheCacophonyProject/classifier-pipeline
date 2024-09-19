@@ -109,7 +109,7 @@ class Service(dbus.service.Object):
     @dbus.service.signal(DBUS_NAME, signature="aisiaiiibbi")
     def Tracking(
         self,
-        scores,
+        prediction,
         what,
         confidence,
         region,
@@ -117,7 +117,7 @@ class Service(dbus.service.Object):
         mass,
         blank,
         tracking,
-        last_prediction,
+        last_prediction_frame,
     ):
         pass
 
@@ -149,17 +149,17 @@ class SnapshotService:
         )
         self.loop.run()
 
-    def tracking(self, scores, region, tracking, last_prediction):
+    def tracking(self, prediction, region, tracking, last_prediction_frame):
         logging.debug(
-            "Tracking? %s region %s scores %s",
+            "Tracking? %s region %s prediction %s",
             tracking,
             region,
-            scores,
+            prediction,
         )
         if self.service is None:
             return
-        if scores is not None:
-            predictions = scores.copy()
+        if prediction is not None:
+            predictions = prediction.copy()
             predictions = np.uint8(np.round(predictions * 100))
             best = np.argmax(predictions)
             self.service.Tracking(
@@ -171,7 +171,7 @@ class SnapshotService:
                 region.mass,
                 region.blank,
                 tracking,
-                last_prediction,
+                last_prediction_frame,
             )
         else:
             self.service.Tracking(
@@ -183,7 +183,7 @@ class SnapshotService:
                 region.mass,
                 region.blank,
                 tracking,
-                last_prediction,
+                last_prediction_frame,
             )
 
     def recording(self, is_recording):

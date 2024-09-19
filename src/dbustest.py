@@ -16,11 +16,9 @@ from datetime import datetime
 
 labels = []
 
-# def Tracking(self, scores, what, confidence, region,frame,mass,blank tracking):
-
 
 def catchall_tracking_signals_handler(
-    all_scores,
+    prediction,
     what,
     confidence,
     region,
@@ -37,20 +35,20 @@ def catchall_tracking_signals_handler(
         region,
         " tracking?",
         tracking,
-        "scores",
-        all_scores,
+        "prediction",
+        prediction,
         "frame",
         frame,
         "mass",
         mass,
         "blank",
         blank,
-        "last prediction",
+        "last prediction frame",
         last_prediction_frame,
     )
     index = 0
-    for x in all_scores:
-        print("For  ", labels[index], " have score ", int(x))
+    for x in prediction:
+        print("For  ", labels[index], " have confidence ", int(x), "%")
         index += 1
 
 

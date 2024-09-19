@@ -126,7 +126,6 @@ class CameraMotionConfig:
             tracking_events=motion.get("tracking-events", default.tracking_events),
             do_tracking=motion.get("do-tracking", default.do_tracking),
         )
-        print("GOT MOTION", motion)
         return motion
 
     def as_dict(self):
