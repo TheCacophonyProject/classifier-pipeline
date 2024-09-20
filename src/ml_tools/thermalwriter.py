@@ -23,6 +23,7 @@ Example usage:
       --output_file_prefix="${OUTPUT_DIR/FILE_PREFIX}" \
       --num_shards=100
 """
+import cv2
 from PIL import Image
 from pathlib import Path
 import time
@@ -175,13 +176,19 @@ def get_data(clip_samples, extra_args):
         return None
     data = []
     crop_rectangle = tools.Rectangle(2, 2, 160 - 2 * 2, 140 - 2 * 2)
+
+    out_folder = None
     if clip_samples[0].source_file.suffix == ".hdf5":
         db = TrackDatabase(clip_samples[0].source_file)
+        out_folder = "hdf5"
     else:
         db = RawDatabase(clip_samples[0].source_file)
         db.load_frames()
-        # going to redo segments to get rid of ffc segments
+        out_folder = "raw"
 
+        # going to redo segments to get rid of ffc segments
+    out_folder = Path(out_folder)
+    out_folder.mkdir(exist_ok=True)
     clip_id = clip_samples[0].clip_id
     try:
         background = db.get_clip_background()
@@ -333,6 +340,13 @@ def get_data(clip_samples, extra_args):
 
                         frame.filtered, stats = imageprocessing.normalize(
                             frame.filtered, min=min_diff, max=max_diff, new_max=255
+                        )
+
+                        cv2.imwrite(
+                            str(
+                                out_folder / f"{clip_id}-{track_id}-{frame_number}.png"
+                            ),
+                            np.uint8(frame.thermal),
                         )
 
                         if not stats[0]:

@@ -6,7 +6,6 @@ import os.path
 import numpy as np
 import pickle
 import json
-import dateutil
 import datetime
 import glob
 import cv2
@@ -15,6 +14,7 @@ import timezonefinder
 from PIL import Image, ImageFont, ImageDraw
 from pathlib import Path
 from ml_tools.rectangle import Rectangle
+from dateutil import parser
 
 EPISON = 1e-5
 
@@ -92,7 +92,7 @@ def load_clip_metadata(filename):
         # add in some metadata stats
         meta = json.load(t)
     if meta.get("recordingDateTime"):
-        meta["recordingDateTime"] = dateutil.parser.parse(meta["recordingDateTime"])
+        meta["recordingDateTime"] = parser.parse(meta["recordingDateTime"])
     if meta.get("tracks") is None and meta.get("Tracks"):
         meta["tracks"] = meta["Tracks"]
     return meta
