@@ -306,6 +306,16 @@ def get_data(clip_samples, extra_args):
                         frame.resize_with_aspect(
                             (32, 32), crop_rectangle, keep_edge=True
                         )
+                        if (
+                            np.amax(frame.thermal) > 40000
+                            or np.amin(frame.thermal) < 1000
+                        ):
+                            logging.error(
+                                "Srange values for %s max %s min %s",
+                                clip_id,
+                                np.amax(frame.thermal),
+                                np.amin(frame.thermal),
+                            )
                         frame.thermal -= temp_median
                         np.clip(frame.thermal, a_min=0, a_max=None, out=frame.thermal)
 
