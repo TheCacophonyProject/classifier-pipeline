@@ -346,7 +346,7 @@ def get_data(clip_samples, extra_args):
                             str(
                                 out_folder / f"{clip_id}-{track_id}-{frame_number}.png"
                             ),
-                            np.uint8(frame.thermal),
+                            np.uint8(frame.filtered),
                         )
 
                         if not stats[0]:

@@ -149,6 +149,9 @@ def get_dataset(load_function, base_dir, labels, **args):
             stop_on_empty_dataset=True,
             rerandomize_each_iteration=True,
         )
+    if args.get("epoch_size") is not None:
+        dataset = dataset.take(args.get("epoch_size"))
+        logging.info("Setting dataset to %s", args.get("epoch_size"))
     if args.get("cache", False):
         dataset = dataset.cache()
     if (

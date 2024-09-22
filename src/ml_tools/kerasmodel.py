@@ -502,6 +502,9 @@ class KerasModel(Interpreter):
             multi_label=self.params.multi_label,
             num_frames=self.params.square_width**2,
             channels=self.params.channels,
+            deterministic=True,
+            shuffle=False,
+            epoch_size=1000,
         )
         self.remapped = remapped
         self.validate, remapped, _, _ = get_dataset(
@@ -519,6 +522,9 @@ class KerasModel(Interpreter):
             multi_label=self.params.multi_label,
             num_frames=self.params.square_width**2,
             channels=self.params.channels,
+            deterministic=True,
+            shuffle=False,
+            epoch_size=250,
             # dist=self.dataset_counts["validation"],
         )
 

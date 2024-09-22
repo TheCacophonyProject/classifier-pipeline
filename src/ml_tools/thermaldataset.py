@@ -42,6 +42,7 @@ def get_excluded():
         "fox",
         "cow",
         "wombat",
+        "chicken",
     ]
 
 
