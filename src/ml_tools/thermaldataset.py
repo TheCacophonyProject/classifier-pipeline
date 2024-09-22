@@ -38,11 +38,23 @@ def get_excluded():
         "mammal",
         "frog",
         "grey kangaroo",
-        "sambar deer" "chicken",
+        "sambar deer",
+        "chicken",
         "fox",
         "cow",
         "wombat",
         "chicken",
+        "dog",
+        "sheep" "cat",
+        "duck",
+        "pheasant",
+        "pukeko",
+        "brown quail",
+        "black swan",
+        "quail",
+        "california quail",
+        "sheep",
+        "echidna",
     ]
 
 
@@ -357,10 +369,13 @@ def main():
     # return
 
 
-def show_batch(image_batch, label_batch, labels, save=None):
+def show_batch(image_batch, label_batch, labels, save=None, tracks=False):
     plt.figure(figsize=(10, 10))
     print("images in batch", len(image_batch), len(label_batch))
     num_images = min(len(image_batch), 25)
+    if tracks:
+        track_batch = label_batch[1]
+        label_batch = label_batch[0]
     for n in range(num_images):
         ax = plt.subplot(5, 5, n + 1)
         img = np.uint8(image_batch[n])
@@ -372,8 +387,11 @@ def show_batch(image_batch, label_batch, labels, save=None):
         # if repeat > 0:
         # print(img.shape, " repeating", repeat)
         plt.imshow(img)
-        plt.title("C-" + str(image_batch[n]))
-        plt.title(labels[np.argmax(label_batch[n])])
+        if tracks:
+            plt.title(f"{labels[np.argmax(label_batch[n])]}-{track_batch[n]}")
+        else:
+            plt.title(labels[np.argmax(label_batch[n])])
+
         plt.axis("off")
     # return
     if save:

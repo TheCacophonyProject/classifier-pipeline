@@ -503,8 +503,8 @@ class KerasModel(Interpreter):
             num_frames=self.params.square_width**2,
             channels=self.params.channels,
             deterministic=True,
-            shuffle=False,
             epoch_size=1000,
+            include_Track=True,
         )
         self.remapped = remapped
         self.validate, remapped, _, _ = get_dataset(
@@ -523,10 +523,28 @@ class KerasModel(Interpreter):
             num_frames=self.params.square_width**2,
             channels=self.params.channels,
             deterministic=True,
-            shuffle=False,
             epoch_size=250,
+            include_track=True,
             # dist=self.dataset_counts["validation"],
         )
+        logging.info("Saving datasets")
+        save_dir = Path("./train-images")
+        save_dir.mkdir(exist_ok=True)
+        batch_i = 0
+        for x, y in self.train:
+            thermaldataset.show_batch(
+                x, y, self.labels, save=save_dir / f"{batch_i}.jpg", tracks=True
+            )
+            batch_i += 1
+
+        save_dir = Path("./val-images")
+        save_dir.mkdir(exist_ok=True)
+        batch_i = 0
+        for x, y in self.validate:
+            thermaldataset.show_batch(
+                x, y, self.labels, save=save_dir / f"{batch_i}.jpg"
+            )
+            batch_i += 1
 
         if weights is not None:
             self.model.load_weights(weights)
