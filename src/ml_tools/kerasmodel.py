@@ -548,13 +548,13 @@ class KerasModel(Interpreter):
 
         # if weights is not None:
         #     self.model.load_weights(weights)
-        # if rebalance:
-        #     self.class_weights = get_weighting(self.train, self.labels)
-        #     logging.info(
-        #         "Training on %s  with class weights %s",
-        #         self.labels,
-        #         self.class_weights,
-        #     )
+        if rebalance:
+            self.class_weights = get_weighting(self.train, self.labels)
+            logging.info(
+                "Training on %s  with class weights %s",
+                self.labels,
+                self.class_weights,
+            )
 
         self.save_metadata(run_name)
         self.save(run_name)
