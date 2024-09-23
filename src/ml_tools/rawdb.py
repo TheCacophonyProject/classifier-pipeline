@@ -196,6 +196,7 @@ class RawDatabase:
                 human_tags=human_tags,
                 source_file=self.file,
                 mega_missed_regions=track_meta.get("mega_missed_regions"),
+                station_id=clip_header.station_id,
                 # frame_temp_median=frame_temp_median,
             )
             clip_header.tracks.append(header)
