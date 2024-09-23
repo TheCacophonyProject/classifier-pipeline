@@ -318,11 +318,20 @@ def get_data(clip_samples, extra_args):
                             or np.amin(frame.thermal) < 1000
                         ):
                             logging.error(
-                                "Srange values for %s max %s min %s",
+                                "Strange values for %s max %s min %s",
                                 clip_id,
                                 np.amax(frame.thermal),
                                 np.amin(frame.thermal),
                             )
+                            raise Exception(
+                                f"Strange values for {clip_id} - {track_id} #{frame_number}"
+                            )
+                        #           cv2.imwrite(
+                        #     str(
+                        #         out_folder / f"{clip_id}-{track_id}-{frame_number}.png"
+                        #     ),
+                        #     np.uint8(frame.filtered),
+                        # )
                         frame.thermal -= temp_median
                         np.clip(frame.thermal, a_min=0, a_max=None, out=frame.thermal)
 
