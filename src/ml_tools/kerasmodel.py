@@ -503,8 +503,8 @@ class KerasModel(Interpreter):
             num_frames=self.params.square_width**2,
             channels=self.params.channels,
             deterministic=True,
-            epoch_size=1000,
-            include_Track=True,
+            # epoch_size=1000,
+            # include_Track=True,
         )
         self.remapped = remapped
         self.validate, remapped, _, _ = get_dataset(
@@ -523,8 +523,8 @@ class KerasModel(Interpreter):
             num_frames=self.params.square_width**2,
             channels=self.params.channels,
             deterministic=True,
-            epoch_size=250,
-            include_track=True,
+            # epoch_size=250,
+            # in2clude_track=True,
             # dist=self.dataset_counts["validation"],
         )
         # logging.info("Saving datasets")
@@ -672,6 +672,7 @@ class KerasModel(Interpreter):
                 if self.params.multi_label
                 else "val_categorical_accuracy"
             ),
+            mode = "max"
             verbose=1,
         )
         return [
