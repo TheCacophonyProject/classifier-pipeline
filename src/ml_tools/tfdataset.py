@@ -69,6 +69,8 @@ def get_dataset(load_function, base_dir, labels, **args):
     keys = []
     values = []
     if model_labels is not None:
+        new_labels = model_labels
+
         logging.info("Mapping DS labels to model labels ")
         # if we are loading a model with different labels we need to map the dataset labels
         # to the equivalent model labels
