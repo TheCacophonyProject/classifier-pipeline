@@ -54,6 +54,11 @@ def get_excluded():
         "california quail",
         "sheep",
         "echidna",
+        "mouse",
+        "rodent",
+        "possum",
+        "cat",
+        "dog",
     ]
 
 
@@ -63,8 +68,8 @@ def get_remapped(multi_label=False):
         "echidna": "hedgehog",
         # "grey kangaroo": "wallaby",
         # "sambar deer": "deer",
-        "mouse": "rodent",
-        "rat": "rodent",
+        # "mouse": "rodent",
+        # "rat": "rodent",
         "rain": "false-positive",
         "water": "false-positive",
         "insect": "false-positive",

@@ -648,6 +648,7 @@ class KerasModel(Interpreter):
                 if self.params.multi_label
                 else "val_categorical_accuracy"
             ),
+            mode = "max"
         )
         # havent found much use in this just takes training time
         # file_writer_cm = tf.summary.create_file_writer(

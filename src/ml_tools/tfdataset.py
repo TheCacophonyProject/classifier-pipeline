@@ -206,6 +206,7 @@ def get_dataset(load_function, base_dir, labels, **args):
         logging.info("Setting dataset size to %s", epoch_size)
         if not args.get("only_features", False):
             dataset = dataset.repeat(2)
+        dataset = dataset.take(epoch_size)
         scale_epoch = args.get("scale_epoch", None)
         if scale_epoch:
             epoch_size = epoch_size // scale_epoch
