@@ -483,15 +483,16 @@ def main():
     elif args.dataset:
         model_labels = model.labels.copy()
         model.load_training_meta(base_dir)
-        model.labels = model_labels
-        # if model.params.multi_label:
-        # model.labels.append("land-bird")
+        # model.labels = model_labels
+        if model.params.multi_label:
+            model.labels.append("land-bird")
         excluded, remapped = get_excluded(model.data_type)
         files = base_dir / args.dataset
         dataset, _, new_labels, _ = get_dataset(
             files,
             model.data_type,
             model.labels,
+            model_labels=model_labels,
             batch_size=64,
             image_size=model.params.output_dim[:2],
             preprocess_fn=model.preprocess_fn,

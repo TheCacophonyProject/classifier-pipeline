@@ -61,36 +61,61 @@ def get_distribution(dataset, num_labels, batched=True, one_hot=True, extra_meta
 
 
 def get_dataset(load_function, base_dir, labels, **args):
+    model_labels = args.get("model_labels")
 
     excluded_labels = args.get("excluded_labels", [])
     to_remap = args.get("remapped_labels", {})
-    logging.info("Excluding %s", excluded_labels)
     remapped = {}
     keys = []
     values = []
-    # excluded_labels.append("insect")
-    # excluded_labels.append("cat")
-    new_labels = labels.copy()
-    for excluded in excluded_labels:
-        if excluded in labels:
-            new_labels.remove(excluded)
-    for remapped_lbl in to_remap.keys():
-        if remapped_lbl in new_labels:
-            new_labels.remove(remapped_lbl)
-    for l in labels:
-        keys.append(labels.index(l))
-        if l not in new_labels:
-            remapped[l] = -1
-            values.append(-1)
-            logging.info("Excluding %s", l)
-        else:
-            remapped[l] = [l]
-            values.append(new_labels.index(l))
-    for k, v in to_remap.items():
-        if k in labels and v in labels:
-            remapped[v].append(k)
-            values[labels.index(k)] = new_labels.index(v)
-            del remapped[k]
+    if model_labels is not None:
+        logging.info("Mapping DS labels to model labels ")
+        # if we are loading a model with different labels we need to map the dataset labels
+        # to the equivalent model labels
+        for l_i, og_lbl in enumerate(labels):
+            keys.append(l_i)
+            try:
+                lbl = og_lbl
+                if lbl in to_remap:
+                    lbl = to_remap[lbl]
+                    l_i = labels.index(lbl)
+
+                mdl_i = model_labels.index(lbl)
+                if lbl not in remapped:
+                    remapped[lbl] = []
+                remapped[lbl].append(og_lbl)
+                values.append(mdl_i)
+            except:
+                remapped[og_lbl] = -1
+                values.append(-1)
+
+    else:
+
+        logging.info("Excluding %s", excluded_labels)
+
+        # excluded_labels.append("insect")
+        # excluded_labels.append("cat")
+        new_labels = labels.copy()
+        for excluded in excluded_labels:
+            if excluded in labels:
+                new_labels.remove(excluded)
+        for remapped_lbl in to_remap.keys():
+            if remapped_lbl in new_labels:
+                new_labels.remove(remapped_lbl)
+        for l in labels:
+            keys.append(labels.index(l))
+            if l not in new_labels:
+                remapped[l] = -1
+                values.append(-1)
+                logging.info("Excluding %s", l)
+            else:
+                remapped[l] = [l]
+                values.append(new_labels.index(l))
+        for k, v in to_remap.items():
+            if k in labels and v in labels:
+                remapped[v].append(k)
+                values[labels.index(k)] = new_labels.index(v)
+                del remapped[k]
     remap_lookup = tf.lookup.StaticHashTable(
         initializer=tf.lookup.KeyValueTensorInitializer(
             keys=tf.constant(keys),
