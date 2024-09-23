@@ -77,7 +77,6 @@ class RawDatabase:
                     continue
             ffc = is_affected_by_ffc(frame)
             if ffc:
-                print("GOT FFC")
                 ffc_frames.append(frame_i)
             cptv_frames.append(frame.pix)
             frame_i += 1

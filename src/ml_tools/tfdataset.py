@@ -75,7 +75,7 @@ def get_dataset(load_function, base_dir, labels, **args):
         if excluded in labels:
             new_labels.remove(excluded)
     for remapped_lbl in to_remap.keys():
-        if remapped_lbl in labels:
+        if remapped_lbl in new_labels:
             new_labels.remove(remapped_lbl)
     for l in labels:
         keys.append(labels.index(l))
