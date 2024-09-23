@@ -64,6 +64,8 @@ def get_excluded():
         "leporidae",
         "mustelid",
         "wallaby",
+        "human",
+        "vehicle",
     ]
 
 
