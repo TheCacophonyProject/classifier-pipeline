@@ -59,6 +59,11 @@ def get_excluded():
         "possum",
         "cat",
         "dog",
+        "hedgehog",
+        "kiwi",
+        "leporidae",
+        "mustelid",
+        "wallaby",
     ]
 
 
