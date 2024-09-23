@@ -527,34 +527,34 @@ class KerasModel(Interpreter):
             include_track=True,
             # dist=self.dataset_counts["validation"],
         )
-        logging.info("Saving datasets")
-        save_dir = Path("./train-images")
-        save_dir.mkdir(exist_ok=True)
-        batch_i = 0
-        for x, y in self.train:
-            thermaldataset.show_batch(
-                x, y, self.labels, save=save_dir / f"{batch_i}.jpg", tracks=True
-            )
-            batch_i += 1
+        # logging.info("Saving datasets")
+        # save_dir = Path("./train-images")
+        # save_dir.mkdir(exist_ok=True)
+        # batch_i = 0
+        # for x, y in self.train:
+        #     thermaldataset.show_batch(
+        #         x, y, self.labels, save=save_dir / f"{batch_i}.jpg", tracks=True
+        #     )
+        #     batch_i += 1
 
-        save_dir = Path("./val-images")
-        save_dir.mkdir(exist_ok=True)
-        batch_i = 0
-        for x, y in self.validate:
-            thermaldataset.show_batch(
-                x, y, self.labels, save=save_dir / f"{batch_i}.jpg"
-            )
-            batch_i += 1
+        # save_dir = Path("./val-images")
+        # save_dir.mkdir(exist_ok=True)
+        # batch_i = 0
+        # for x, y in self.validate:
+        #     thermaldataset.show_batch(
+        #         x, y, self.labels, save=save_dir / f"{batch_i}.jpg"
+        #     )
+        #     batch_i += 1
 
-        if weights is not None:
-            self.model.load_weights(weights)
-        if rebalance:
-            self.class_weights = get_weighting(self.train, self.labels)
-            logging.info(
-                "Training on %s  with class weights %s",
-                self.labels,
-                self.class_weights,
-            )
+        # if weights is not None:
+        #     self.model.load_weights(weights)
+        # if rebalance:
+        #     self.class_weights = get_weighting(self.train, self.labels)
+        #     logging.info(
+        #         "Training on %s  with class weights %s",
+        #         self.labels,
+        #         self.class_weights,
+        #     )
 
         self.save_metadata(run_name)
         self.save(run_name)
