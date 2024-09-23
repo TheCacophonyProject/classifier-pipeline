@@ -601,12 +601,12 @@ class KerasModel(Interpreter):
         self.save(run_name, history=history, test_results=test_accuracy)
 
     def checkpoints(self, run_name):
-        checkpoint_file = self.checkpoint_folder / run_name / "cp.ckpt"
+        checkpoint_file = self.checkpoint_folder / run_name / "cp.weights.h5"
 
         cp_callback = tf.keras.callbacks.ModelCheckpoint(
             filepath=checkpoint_file, save_weights_only=True, verbose=1
         )
-        val_loss = self.checkpoint_folder / run_name / "val_loss"
+        val_loss = self.checkpoint_folder / run_name / "val_loss.weights.h5"
 
         checkpoint_loss = tf.keras.callbacks.ModelCheckpoint(
             val_loss,
@@ -616,7 +616,7 @@ class KerasModel(Interpreter):
             save_weights_only=True,
             mode="auto",
         )
-        val_acc = self.checkpoint_folder / run_name / "val_acc"
+        val_acc = self.checkpoint_folder / run_name / "val_acc.weights.h5"
 
         checkpoint_acc = tf.keras.callbacks.ModelCheckpoint(
             val_acc,
@@ -631,7 +631,7 @@ class KerasModel(Interpreter):
             mode="max",
         )
 
-        val_precision = self.checkpoint_folder / run_name / "val_recall"
+        val_precision = self.checkpoint_folder / run_name / "val_recall.weights.h5"
 
         checkpoint_recall = tf.keras.callbacks.ModelCheckpoint(
             val_precision,
