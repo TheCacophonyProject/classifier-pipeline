@@ -481,9 +481,11 @@ def main():
             threshold=args.threshold,
         )
     elif args.dataset:
+        model_labels = model.labels.copy()
         model.load_training_meta(base_dir)
-        if model.params.multi_label:
-            model.labels.append("land-bird")
+        model.labels = model_labels
+        # if model.params.multi_label:
+        # model.labels.append("land-bird")
         excluded, remapped = get_excluded(model.data_type)
         files = base_dir / args.dataset
         dataset, _, new_labels, _ = get_dataset(
