@@ -342,12 +342,12 @@ def get_data(clip_samples, extra_args):
                             frame.filtered, min=min_diff, max=max_diff, new_max=255
                         )
 
-                        cv2.imwrite(
-                            str(
-                                out_folder / f"{clip_id}-{track_id}-{frame_number}.png"
-                            ),
-                            np.uint8(frame.filtered),
-                        )
+                        # cv2.imwrite(
+                        #     str(
+                        #         out_folder / f"{clip_id}-{track_id}-{frame_number}.png"
+                        #     ),
+                        #     np.uint8(frame.filtered),
+                        # )
 
                         if not stats[0]:
                             frame.filtered = np.zeros((frame.filtered.shape))

@@ -192,6 +192,8 @@ class Dataset:
             counter += 1
             if counter % 50 == 0:
                 logging.debug("Dataset loaded %s", counter)
+            if counter == 500:
+                break
         return [counter, counter]
 
     def load_clip(self, db_clip, dont_filter_segment=False):
