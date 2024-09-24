@@ -351,8 +351,8 @@ def main():
         # preprocess_fn=tf.keras.applications.inception_v3.preprocess_input,
         resample=False,
         include_features=False,
-        remapped_labels=get_remapped(),
-        excluded_labels=get_excluded(),
+        # remapped_labels=get_remapped(),
+        # excluded_labels=get_excluded(),
         include_track=True,
         num_frames=25,
     )
@@ -366,11 +366,6 @@ def main():
         batch_i = 0
         print("epoch", e)
         for x, y in resampled_ds:
-            source = y[3]
-            y_b = y[0]
-            for s, y_s in zip(source, y_b):
-                print(labels[np.argmax(y_s)], s.numpy().decode("utf-8"))
-            continue
             show_batch(x, y, labels, save=save_dir / f"{batch_i}.jpg")
             batch_i += 1
     # return

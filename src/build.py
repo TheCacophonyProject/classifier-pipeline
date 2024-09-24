@@ -731,7 +731,7 @@ def rough_balance(datasets):
         counts.sort()
         std_dev = np.std(counts)
         logging.info("Counts are %s std dev %s", counts, std_dev)
-        if std_dev < 2000:
+        if std_dev < 0:
             logging.info("Not balancing")
             continue
         if len(counts) < 7:
