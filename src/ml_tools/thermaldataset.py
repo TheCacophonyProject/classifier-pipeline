@@ -367,8 +367,9 @@ def main():
         print("epoch", e)
         for x, y in resampled_ds:
             source = y[3]
-            for s in source:
-                print(s)
+            y_b = y[0]
+            for s, y_s in zip(source, y_b):
+                print(labels[np.argmax(y_s)], s.numpy().decode("utf-8"))
             continue
             show_batch(x, y, labels, save=save_dir / f"{batch_i}.jpg")
             batch_i += 1
