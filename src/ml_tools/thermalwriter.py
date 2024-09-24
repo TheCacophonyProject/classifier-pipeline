@@ -90,7 +90,7 @@ def create_tf_example(sample, data, features, labels, num_frames):
     average_dim = int(round(np.mean(average_dim) ** 0.5))
     thermals = list(data[0])
     filtereds = list(data[1])
-    image_id = sample.unique_track_id
+    image_id = sample.unique_id
     image_height, image_width = thermals[0].shape
     while len(thermals) < num_frames:
         # ensure 25 frames even if 0s
