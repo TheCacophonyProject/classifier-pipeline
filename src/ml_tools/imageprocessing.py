@@ -5,6 +5,7 @@ from pathlib import Path
 from PIL import Image
 from scipy import ndimage
 from PIL import Image
+import logging
 
 
 def resize_and_pad(
@@ -19,10 +20,22 @@ def resize_and_pad(
     extra_v=0,
 ):
     scale_percent = (new_dim[:2] / np.array(frame.shape[:2])).min()
-    width = int(frame.shape[1] * scale_percent)
-    height = int(frame.shape[0] * scale_percent)
+    width = round(frame.shape[1] * scale_percent)
+    height = round(frame.shape[0] * scale_percent)
     width = max(width, 1)
     height = max(height, 1)
+
+    width = min(width, new_dim[0])
+    height = min(height, new_dim[1])
+    logging.info(
+        "Resizing image with dim %s into dim %s height %s and width %s keep edge %s region %s",
+        frame.shape,
+        new_dim,
+        height,
+        width,
+        keep_edge,
+        region,
+    )
     if len(frame.shape) == 3:
         resize_dim = (width, height, frame.shape[2])
     else:
@@ -40,17 +53,20 @@ def resize_and_pad(
     offset_x = (new_dim[1] - frame_width) // 2
     offset_y = (new_dim[0] - frame_height) // 2
     if keep_edge and crop_region is not None:
-        if region.left == crop_region.left:
+        logging.info("Checking region %s against crop %s", region, crop_region)
+        if region.left <= crop_region.left:
             offset_x = 0
-
-        elif region.right == crop_region.right:
+            logging.info("On left offset so setting 0 %s", region)
+        elif region.right >= crop_region.right:
             offset_x = new_dim[1] - frame_width
+            logging.info("On right offset so setting 0 %s", region)
 
-        if region.top == crop_region.top:
+        if region.top <= crop_region.top:
             offset_y = 0
 
-        elif region.bottom == crop_region.bottom:
+        elif region.bottom >= crop_region.bottom:
             offset_y = new_dim[0] - frame_height
+    logging.info("Offsets are %s %s", offset_x, offset_y)
     if len(resized.shape) == 3:
         resized[
             offset_y : offset_y + frame_height, offset_x : offset_x + frame_width, :
@@ -159,7 +175,7 @@ def normalize(data, min=None, max=None, new_max=1):
         max = np.amax(data)
     if min is None:
         min = np.amin(data)
-    # print("normalizing with", max, min, new_max)
+    print("normalizing with", max, "MIN:", min)
     if max == min:
         if max == 0:
             return np.zeros((data.shape)), (False, max, min)

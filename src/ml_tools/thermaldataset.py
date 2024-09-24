@@ -307,17 +307,6 @@ def read_tfrecord(
     return rgb_image
 
 
-def decode_image(thermals, filtereds, image_size):
-    deoced_thermals = []
-    decoded_filtered = []
-    for thermal, filtered in zip(thermals, filtereds):
-        image = tf.image.decode_png(image, channels=1)
-        filtered = tf.image.decode_png(filtered, channels=1)
-        decoded_thermal.append(image)
-        decoded_filtered.append(filtered)
-    return decoded_thermal, decoded_filtered
-
-
 def tile_images(images):
     index = 0
     image = None

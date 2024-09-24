@@ -941,6 +941,13 @@ def get_segments(
     dont_filter=False,
     skip_ffc=True,
 ):
+    logging.info(
+        "Getting segments %s min mass %s max %s ffc %s",
+        segment_type,
+        segment_min_mass,
+        max_segments,
+        ffc_frames,
+    )
     if segment_type == SegmentType.ALL_RANDOM_NOMIN:
         segment_min_mass = None
     if min_frames is None:
@@ -950,6 +957,7 @@ def get_segments(
     filtered_stats = {"segment_mass": 0, "too short": 0}
 
     has_no_mass = np.sum(mass_history) == 0
+    before = len(regions)
     frame_indices = [
         region.frame_number
         for region in regions
@@ -963,6 +971,7 @@ def get_segments(
         and region.width > 0
         and region.height > 0
     ]
+    logging.info("Frames are %s / %s", len(frame_indices), before)
     if len(frame_indices) == 0:
         logging.warn("Nothing to load for %s - %s", clip_id, track_id)
         return [], filtered_stats
@@ -1065,6 +1074,7 @@ def get_segments(
             segment_mass = np.sum(mass_slice)
             segment_avg_mass = segment_mass / len(mass_slice)
             filtered = False
+            logging.info("avg mass is %s mass slice %s %s", segment_avg_mass, mass_slice)
             if segment_min_mass and segment_avg_mass < segment_min_mass:
                 if dont_filter:
                     filtered = True

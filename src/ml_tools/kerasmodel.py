@@ -550,7 +550,7 @@ class KerasModel(Interpreter):
         #     self.model.load_weights(weights)
         if rebalance:
             self.class_weights = get_weighting(self.train, self.labels)
-            logging.info(
+        logging.info(
                 "Training on %s  with class weights %s",
                 self.labels,
                 self.class_weights,
