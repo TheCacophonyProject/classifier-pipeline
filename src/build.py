@@ -717,6 +717,39 @@ def dump_split_ids(datasets, out_file="datasplit.json"):
     return
 
 
+def rough_balance(datasets):
+    logging.info("ROUGH BALANCE")
+    print_counts(*datasets)
+
+    for dataset in datasets:
+        lbl_counts = {}
+        counts = []
+        for label in dataset.labels:
+            label_count = len(dataset.samples_by_label.get(label, []))
+            lbl_counts[label] = label_count
+            counts.append(label_count)
+        counts.sort()
+        std_dev = np.std(counts)
+        logging.info("Counts are %s std dev %s", counts, std_dev)
+        if std_dev < 2000:
+            logging.info("Not balancing")
+            continue
+        if len(counts) < 7:
+            cap_at = counts[-2]
+        else:
+            cap_at = counts[-3]
+        logging.info("Capping dataset %s at %s", dataset.name, cap_at)
+        for lbl, count in lbl_counts.items():
+            if count <= cap_at:
+                continue
+            samples_to_remove = count - cap_at
+            by_labels = dataset.samples_by_label[lbl]
+            np.random.shuffle(by_labels)
+            for i in range(samples_to_remove):
+                dataset.remove_sample(by_labels[i])
+    print_counts(*datasets)
+
+
 def main():
     init_logging()
     args = parse_args()
@@ -782,6 +815,8 @@ def main():
         print("Splitting data set into train / validation")
 
         datasets = split_randomly(master_dataset, config, args.date, test_clips)
+
+        rough_balance(datasets)
         validate_datasets(datasets, test_clips, args.date)
         dump_split_ids(datasets, record_dir / "datasplit.json")
 
