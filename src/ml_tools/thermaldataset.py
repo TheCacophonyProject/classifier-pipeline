@@ -234,9 +234,9 @@ def read_tfrecord(
             )
 
     if include_track:
+        tfrecord_format["image/source_id"] = tf.io.FixedLenFeature((), tf.string)
         tfrecord_format["image/track_id"] = tf.io.FixedLenFeature((), tf.int64, -1)
         tfrecord_format["image/avg_mass"] = tf.io.FixedLenFeature((), tf.int64, -1)
-
     if include_features or only_features:
         tfrecord_format["image/features"] = tf.io.FixedLenSequenceFeature(
             [36 * 5 + 8], dtype=tf.float32, allow_missing=True
@@ -291,9 +291,11 @@ def read_tfrecord(
             if extra_label_map is not None:
                 label = tf.reduce_max(label, axis=0)
         if include_track:
+
+            source_id = tf.cast(example["image/source_id"], tf.string)
             track_id = tf.cast(example["image/track_id"], tf.int32)
             avg_mass = tf.cast(example["image/avg_mass"], tf.int32)
-            label = (label, track_id, avg_mass)
+            label = (label, track_id, avg_mass, source_id)
         if include_features or only_features:
             features = tf.squeeze(example["image/features"])
             if only_features:
@@ -351,7 +353,7 @@ def main():
         include_features=False,
         remapped_labels=get_remapped(),
         excluded_labels=get_excluded(),
-        include_track=False,
+        include_track=True,
         num_frames=25,
     )
     print("Ecpoh size is", epoch_size)
@@ -364,6 +366,10 @@ def main():
         batch_i = 0
         print("epoch", e)
         for x, y in resampled_ds:
+            source = y[3]
+            for s in source:
+                print(s)
+            continue
             show_batch(x, y, labels, save=save_dir / f"{batch_i}.jpg")
             batch_i += 1
     # return
