@@ -277,7 +277,7 @@ def get_data(clip_samples, extra_args):
                 normalize=True,
                 cropped=True,
             )
-            return None
+
             by_frame_number = {}
             thermal_max_diff = 0
             thermal_min_diff = None
@@ -306,13 +306,13 @@ def get_data(clip_samples, extra_args):
                     # min_diff = max(0, new_min)
                 if new_max > thermal_max_diff:
                     thermal_max_diff = new_max
-            logging.info(
-                "Min diff %s max diff %s thermal %s - %s",
-                min_diff,
-                max_diff,
-                thermal_min_diff,
-                thermal_max_diff,
-            )
+            # logging.info(
+            #     "Min diff %s max diff %s thermal %s - %s",
+            #     min_diff,
+            #     max_diff,
+            #     thermal_min_diff,
+            #     thermal_max_diff,
+            # )
             # normalize by maximum difference between background and tracked region
             # probably only need to use difference on the frames used for this record
             # also min_diff maybe could just be set to 0 and clip values below 0,
@@ -344,11 +344,7 @@ def get_data(clip_samples, extra_args):
                             raise Exception(
                                 f"Strange values for {clip_id} - {track_id} #{frame_number}"
                             )
-                        logging.info(
-                            "Median is %s median in thermal is %s",
-                            temp_median,
-                            np.median(frame.thermal),
-                        )
+
                         frame.thermal -= temp_median
 
                         # np.clip(frame.thermal, a_min=0, a_max=None, out=frame.thermal)
@@ -366,17 +362,12 @@ def get_data(clip_samples, extra_args):
                         )
                         np.clip(frame.filtered, a_min=0, a_max=None, out=frame.filtered)
 
-                        logging.info(
-                            "Normalied %s %s",
-                            np.amin(frame.thermal),
-                            np.amax(frame.thermal),
-                        )
-                        cv2.imwrite(
-                            str(
-                                out_folder / f"{clip_id}-{track_id}-{frame_number}.png"
-                            ),
-                            np.uint8(frame.thermal),
-                        )
+                        # cv2.imwrite(
+                        #     str(
+                        #         out_folder / f"{clip_id}-{track_id}-{frame_number}.png"
+                        #     ),
+                        #     np.uint8(frame.thermal),
+                        # )
 
                         if not stats[0]:
                             frame.filtered = np.zeros((frame.filtered.shape))

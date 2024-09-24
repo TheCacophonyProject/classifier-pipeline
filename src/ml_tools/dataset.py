@@ -587,7 +587,9 @@ def filter_track(track_header, excluded_tags, filtered_stats={}):
         return True
 
     if track_header.human_tags is not None:
-        found_tags = [tag for tag in track_header.human_tags if tag in excluded_tags]
+        found_tags = [
+            tag[0] for tag in track_header.human_tags if tag[0] in excluded_tags
+        ]
         if len(found_tags) > 0:
             filter_tags = filtered_stats.setdefault("tag_names", set())
             filter_tags |= set(found_tags)
