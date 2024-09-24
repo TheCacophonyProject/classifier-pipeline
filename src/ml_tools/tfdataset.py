@@ -99,7 +99,7 @@ def get_dataset(load_function, base_dir, labels, **args):
         # excluded_labels.append("cat")
         new_labels = labels.copy()
         for excluded in excluded_labels:
-            if excluded in labels:
+            if excluded in new_labels:
                 new_labels.remove(excluded)
         for remapped_lbl in to_remap.keys():
             if remapped_lbl in new_labels:
