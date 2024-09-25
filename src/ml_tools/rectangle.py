@@ -106,6 +106,10 @@ class Rectangle:
         if max:
             self.crop(max)
 
+    def contains(self, x, y):
+        """Is this point contained in the rectangle"""
+        return self.left <= x and self.right >= x and self.top >= y and self.bottom <= y
+
     @property
     def area(self):
         return int(self.width) * self.height

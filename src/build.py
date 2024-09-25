@@ -732,10 +732,12 @@ def rough_balance(datasets):
         counts.sort()
         std_dev = np.std(counts)
         logging.info("Counts are %s std dev %s", counts, std_dev)
-        if std_dev < dev_threshold:
+        if std_dev < dev_threshold or len(counts) == 0:
             logging.info("Not balancing")
             continue
-        if len(counts) < 7:
+        if len(counts) <= 2:
+            cap_at = counts[0]
+        elif len(counts) < 7:
             cap_at = counts[-2]
         else:
             cap_at = counts[-3]

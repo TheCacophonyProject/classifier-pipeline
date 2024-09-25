@@ -85,7 +85,9 @@ class Dataset:
             self.filter_by_lq = config.build.filter_by_lq
             self.segment_type = SegmentType.ALL_RANDOM
             self.max_segments = config.build.max_segments
+            self.country = config.build.country
         else:
+            self.country = "NZ"
             self.tag_precedence = BuildConfig.DEFAULT_GROUPS
             self.filter_by_lq = False
             # number of seconds each segment should be
@@ -98,6 +100,13 @@ class Dataset:
             self.segment_min_avg_mass = 10
             self.min_frame_mass = 16
             self.segment_type = SegmentType.ALL_RANDOM
+
+        self.country_rectangle = BuildConfig.COUNTRY_LOCATIONS.get(self.country)
+        logging.info(
+            "Filtering by country %s have boundying %s",
+            self.country,
+            self.country_rectangle,
+        )
         self.max_frame_mass = None
         self.filtered_stats = {
             "confidence": 0,
@@ -204,7 +213,12 @@ class Dataset:
         except:
             logging.error("Could not load %s", db_clip, exc_info=True)
             return 0
-        if clip_header is None or filter_clip(clip_header):
+        if clip_header is None or filter_clip(
+            clip_header,
+            clip_header.location,
+            self.country_rectangle,
+            self.filtered_stats,
+        ):
             return 0
         filtered = 0
         added = 0
@@ -616,12 +630,24 @@ def filter_track(track_header, excluded_tags, filtered_stats={}):
     return False
 
 
-def filter_clip(clip, filtered_stats={}):
+def filter_clip(clip, location, location_bounds, filtered_stats=None):
     # remove tracks of trapped animals
     if (clip.events is not None and "trap" in clip.events.lower()) or (
         clip.trap is not None and "trap" in clip.trap.lower()
     ):
-        self.filtered_stats["trap"] += 1
+        if filtered_stats is not None:
+            if "trap" in filtered_stats:
+                filtered_stats["trap"] += 1
+            else:
+                filtered_stats["trap"] = 1
         logging.info("Filtered because in trap")
+        return True
+
+    if location_bounds is not None and not location_bounds.contains(*location):
+        if filtered_stats is not None:
+            if "location" in filtered_stats:
+                filtered_stats["location"] += 1
+            else:
+                filtered_stats["location"] = 1
         return True
     return False

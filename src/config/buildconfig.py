@@ -22,6 +22,7 @@ import os
 import logging
 from os import path
 from .defaultconfig import DefaultConfig
+from ml_tools.rectangle import Rectangle
 
 
 @attr.s
@@ -37,8 +38,19 @@ class BuildConfig(DefaultConfig):
     thermal_diff_norm = attr.ib()
     tag_precedence = attr.ib()
     excluded_tags = attr.ib()
+    country = attr.ib()
 
     EXCLUDED_TAGS = ["poor tracking", "part", "untagged", "unidentified"]
+
+    # country bounding boxs
+    COUNTRY_LOCATIONS = {
+        "AU": Rectangle.from_ltrb(
+            113.338953078, -10.6681857235, 153.569469029, -43.6345972634
+        ),
+        "NZ": Rectangle.from_ltrb(
+            166.509144322, -34.4506617165, 178.517093541, -46.641235447
+        ),
+    }
 
     DEFAULT_GROUPS = {
         0: [
@@ -75,6 +87,7 @@ class BuildConfig(DefaultConfig):
             thermal_diff_norm=build["thermal_diff_norm"],
             tag_precedence=build["tag_precedence"],
             excluded_tags=build["excluded_tags"],
+            country=build["country"],
         )
 
     @classmethod
@@ -91,6 +104,7 @@ class BuildConfig(DefaultConfig):
             thermal_diff_norm=True,
             tag_precedence=BuildConfig.DEFAULT_GROUPS,
             excluded_tags=BuildConfig.EXCLUDED_TAGS,
+            country="NZ",
         )
 
     def validate(self):

@@ -113,12 +113,19 @@ class RawDatabase:
         self.crop_rectangle = Rectangle(
             edge_pixels, edge_pixels, resx - edge_pixels * 2, resy - edge_pixels * 2
         )
-
+        location = metadata.get("location")
+        lat = None
+        lng = None
+        try:
+            lat = location.get("lat")
+            lng = location.get("lng")
+        except:
+            pass
         clip_header = ClipHeader(
             clip_id=int(metadata["id"]),
             station_id=metadata.get("stationId"),
             source_file=self.file,
-            location=metadata.get("location"),
+            location=None if lat is None or lng is None else (lng, lat),
             camera=metadata.get("deviceId"),
             rec_time=parse_date(metadata["recordingDateTime"]),
             frames_per_second=10 if self.file.suffix == "mp4" else 9,
