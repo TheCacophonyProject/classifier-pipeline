@@ -52,6 +52,9 @@ class CustomJSONEncoder(json.JSONEncoder):
             return obj.isoformat()
         elif isinstance(obj, Rectangle):
             return obj.meta_dictionary()
+        elif isinstance(obj, Path):
+            return str(obj)
+
         # Let the base class default method raise the TypeError
         return json.JSONEncoder.default(self, obj)
 

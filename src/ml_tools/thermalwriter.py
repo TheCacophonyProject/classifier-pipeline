@@ -274,10 +274,13 @@ def get_data(clip_samples, extra_args):
             )
 
             by_frame_number = {}
-            thermal_max_diff = 0
+            thermal_max_diff = None
             thermal_min_diff = None
-            max_diff = 0
+            max_diff = None
             min_diff = None
+
+            thermal_diff_norm = extra_args.get("thermal_diff_norm", False)
+
             for f in track_frames:
                 if f.region.blank or f.region.width <= 0 or f.region.height <= 0:
                     continue
@@ -290,16 +293,16 @@ def get_data(clip_samples, extra_args):
                 if min_diff is None or new_min < min_diff:
                     min_diff = new_min
                     # min_diff = max(0, new_min)
-                if new_max > max_diff:
+                if max_diff is None or new_max > max_diff:
                     max_diff = new_max
-
-                diff_frame = f.thermal - frame_temp_median[f.frame_number]
-                new_max = np.amax(diff_frame)
-                new_min = np.amin(diff_frame)
-                if thermal_min_diff is None or new_min < thermal_min_diff:
-                    thermal_min_diff = new_min
-                if new_max > thermal_max_diff:
-                    thermal_max_diff = new_max
+                if thermal_diff_norm:
+                    diff_frame = f.thermal - frame_temp_median[f.frame_number]
+                    new_max = np.amax(diff_frame)
+                    new_min = np.amin(diff_frame)
+                    if thermal_min_diff is None or new_min < thermal_min_diff:
+                        thermal_min_diff = new_min
+                    if thermal_max_diff is None or new_max > thermal_max_diff:
+                        thermal_max_diff = new_max
 
             # normalize by maximum difference between background and tracked region
             # probably only need to use difference on the frames used for this record
@@ -334,8 +337,10 @@ def get_data(clip_samples, extra_args):
                             )
 
                         frame.thermal -= temp_median
-
-                        # np.clip(frame.thermal, a_min=0, a_max=None, out=frame.thermal)
+                        if not thermal_diff_norm:
+                            np.clip(
+                                frame.thermal, a_min=0, a_max=None, out=frame.thermal
+                            )
                         frame.thermal, stats = imageprocessing.normalize(
                             frame.thermal,
                             min=thermal_min_diff,

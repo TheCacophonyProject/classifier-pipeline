@@ -34,6 +34,32 @@ class BuildConfig(DefaultConfig):
     min_frame_mass = attr.ib()
     filter_by_lq = attr.ib()
     max_segments = attr.ib()
+    thermal_diff_norm = attr.ib()
+    tag_precedence = attr.ib()
+    excluded_tags = attr.ib()
+
+    EXCLUDED_TAGS = ["poor tracking", "part", "untagged", "unidentified"]
+
+    DEFAULT_GROUPS = {
+        0: [
+            "bird",
+            "false-positive",
+            "hedgehog",
+            "possum",
+            "rodent",
+            "mustelid",
+            "cat",
+            "kiwi",
+            "dog",
+            "leporidae",
+            "human",
+            "insect",
+            "pest",
+        ],
+        1: ["unidentified", "other"],
+        2: ["part", "bad track"],
+        3: ["default"],
+    }
 
     @classmethod
     def load(cls, build):
@@ -46,6 +72,9 @@ class BuildConfig(DefaultConfig):
             min_frame_mass=build["min_frame_mass"],
             filter_by_lq=build["filter_by_lq"],
             max_segments=build["max_segments"],
+            thermal_diff_norm=build["thermal_diff_norm"],
+            tag_precedence=build["tag_precedence"],
+            excluded_tags=build["excluded_tags"],
         )
 
     @classmethod
@@ -59,6 +88,9 @@ class BuildConfig(DefaultConfig):
             min_frame_mass=10,
             filter_by_lq=False,
             max_segments=5,
+            thermal_diff_norm=True,
+            tag_precedence=BuildConfig.DEFAULT_GROUPS,
+            excluded_tags=BuildConfig.EXCLUDED_TAGS,
         )
 
     def validate(self):

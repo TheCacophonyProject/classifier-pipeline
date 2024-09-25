@@ -131,7 +131,7 @@ class ClipLoader:
         clip = Clip(config.tracking["thermal"], filename)
         clip.load_metadata(
             metadata,
-            config.load.tag_precedence,
+            config.build.tag_precedence,
         )
 
         with h5py.File(out_file, "w") as f:
@@ -263,7 +263,7 @@ class ClipLoader:
                     node_attrs["id"] = track_id
                     tags = track.get("tags", [])
                     tag = Track.get_best_human_tag(
-                        tags, self.config.load.tag_precedence, 0
+                        tags, self.config.build.tag_precedence, 0
                     )
 
                     master_tag = [

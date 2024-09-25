@@ -19,8 +19,8 @@ from ml_tools.datasetstructures import Camera
 from ml_tools.tfwriter import create_tf_records
 from ml_tools.irwriter import save_data as save_ir_data
 from ml_tools.thermalwriter import save_data as save_thermal_data
-
-
+from ml_tools.tools import CustomJSONEncoder
+import attrs
 import numpy as np
 
 from pathlib import Path
@@ -890,8 +890,9 @@ def main():
                         "max_segments": master_dataset.max_segments,
                         "dont_filter_segment": True,
                         "skip_ffc": True,
-                        "tag_precedence": config.load.tag_precedence,
+                        "tag_precedence": config.build.tag_precedence,
                         "min_mass": master_dataset.min_frame_mass,
+                        "thermal_diff_norm": config.build.thermal_diff_norm,
                     }
                 )
             create_tf_records(
@@ -915,10 +916,11 @@ def main():
         "type": config.train.type,
         "counts": dataset_counts,
         "by_label": False,
+        "config": attrs.asdict(config),
     }
 
     with open(meta_filename, "w") as f:
-        json.dump(meta_data, f, indent=4)
+        json.dump(meta_data, f, indent=4, cls=CustomJSONEncoder)
 
 
 if __name__ == "__main__":

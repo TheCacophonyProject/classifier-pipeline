@@ -20,7 +20,7 @@ from ml_tools.rawdb import RawDatabase
 from ml_tools import tools
 from track.region import Region
 import json
-from config.loadconfig import LoadConfig
+from config.buildconfig import BuildConfig
 from pathlib import Path
 
 
@@ -64,7 +64,7 @@ class Dataset:
         self.label_caps = {}
         self.use_segments = True
         if config:
-            self.tag_precedence = config.load.tag_precedence
+            self.tag_precedence = config.build.tag_precedence
             self.type = config.train.type
             if config.train.type == "IR":
                 self.use_segments = False
@@ -80,13 +80,13 @@ class Dataset:
             self.banned_clips = config.build.banned_clips
             self.included_labels = config.labels
             self.segment_min_avg_mass = config.build.segment_min_avg_mass
-            self.excluded_tags = config.load.excluded_tags
+            self.excluded_tags = config.build.excluded_tags
             self.min_frame_mass = config.build.min_frame_mass
             self.filter_by_lq = config.build.filter_by_lq
             self.segment_type = SegmentType.ALL_RANDOM
             self.max_segments = config.build.max_segments
         else:
-            self.tag_precedence = LoadConfig.DEFAULT_GROUPS
+            self.tag_precedence = BuildConfig.DEFAULT_GROUPS
             self.filter_by_lq = False
             # number of seconds each segment should be
             if self.use_segments:

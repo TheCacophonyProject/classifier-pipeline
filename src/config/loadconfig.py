@@ -24,29 +24,7 @@ from .defaultconfig import DefaultConfig
 
 @attr.s
 class LoadConfig(DefaultConfig):
-    EXCLUDED_TAGS = ["poor tracking", "part", "untagged", "unidentified"]
-
-    DEFAULT_GROUPS = {
-        0: [
-            "bird",
-            "false-positive",
-            "hedgehog",
-            "possum",
-            "rodent",
-            "mustelid",
-            "cat",
-            "kiwi",
-            "dog",
-            "leporidae",
-            "human",
-            "insect",
-            "pest",
-        ],
-        1: ["unidentified", "other"],
-        2: ["part", "bad track"],
-        3: ["default"],
-    }
-
+    
     enable_compression = attr.ib()
     include_filtered_channel = attr.ib()
     preview = attr.ib()

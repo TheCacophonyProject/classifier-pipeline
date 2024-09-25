@@ -44,7 +44,7 @@ from ml_tools.preprocess import preprocess_frame
 from ml_tools.frame import Frame
 from ml_tools import imageprocessing
 import cv2
-from config.loadconfig import LoadConfig
+from config.buildconfig import BuildConfig
 from sklearn.metrics import confusion_matrix
 from multiprocessing import Pool
 
@@ -255,7 +255,6 @@ def evalute_prod_confusion(dir, confusion_file):
                 tag.get("what")
                 for tag in tags
                 if tag.get("automatic") == False
-                # and tag.get("what", "") not in LoadConfig.EXCLUDED_TAGS
             ]
             human_tags = set(human_tags)
             if len(human_tags) > 1:
@@ -299,7 +298,7 @@ def load_clip_data(cptv_file):
     # for clip in dataset.clips:
     reason = {}
     clip_db = RawDatabase(cptv_file)
-    clip = clip_db.get_clip_tracks(LoadConfig.DEFAULT_GROUPS)
+    clip = clip_db.get_clip_tracks(BuildConfig.DEFAULT_GROUPS)
     if clip is None:
         logging.warn("No clip for %s", cptv_file)
         return None

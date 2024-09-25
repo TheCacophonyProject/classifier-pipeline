@@ -129,7 +129,7 @@ class ClipClassifier:
         clip = Clip(track_extractor.config, filename)
         clip.load_metadata(
             meta_data,
-            self.config.load.tag_precedence,
+            self.config.build.tag_precedence,
         )
         track_extractor.parse_clip(clip)
 
