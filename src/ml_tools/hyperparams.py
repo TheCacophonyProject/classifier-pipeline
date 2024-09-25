@@ -105,7 +105,7 @@ class HyperParams(dict):
 
     @property
     def base_training(self):
-        return self.get("base_training", False)
+        return self.get("base_training", True)
 
     @property
     def retrain_layer(self):
