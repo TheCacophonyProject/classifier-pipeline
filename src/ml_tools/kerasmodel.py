@@ -520,7 +520,8 @@ class KerasModel(Interpreter):
             num_frames=self.params.square_width**2,
             channels=self.params.channels,
         )
-
+        if weights is not None:
+            self.model.load_weights(weights)
         if rebalance:
             self.class_weights = get_weighting(self.train, self.labels)
         logging.info(
