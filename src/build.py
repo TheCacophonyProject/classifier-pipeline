@@ -718,7 +718,8 @@ def dump_split_ids(datasets, out_file="datasplit.json"):
 
 
 def rough_balance(datasets):
-    logging.info("ROUGH BALANCE")
+    dev_threshold = 2000
+    logging.info("Roughly Balancing")
     print_counts(*datasets)
 
     for dataset in datasets:
@@ -731,7 +732,7 @@ def rough_balance(datasets):
         counts.sort()
         std_dev = np.std(counts)
         logging.info("Counts are %s std dev %s", counts, std_dev)
-        if std_dev < 0:
+        if std_dev < dev_threshold:
             logging.info("Not balancing")
             continue
         if len(counts) < 7:

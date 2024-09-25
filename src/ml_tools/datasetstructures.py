@@ -950,7 +950,7 @@ def get_segments(
     filtered_stats = {"segment_mass": 0, "too short": 0}
 
     has_no_mass = np.sum(mass_history) == 0
-    before = len(regions)
+
     frame_indices = [
         region.frame_number
         for region in regions

@@ -37,14 +37,14 @@ def get_excluded():
         "bat",
         "mammal",
         "frog",
-        "grey kangaroo",
-        "sambar deer",
-        "chicken",
+        # "grey kangaroo",
+        # "sambar deer",
+        # "chicken",
         "fox",
-        "cow",
+        # "cow",
         "wombat",
         # "dog",
-        "sheep",
+        # "sheep",
         # "cat",
         # "duck",
         # "pheasant",
@@ -352,8 +352,8 @@ def main():
         # preprocess_fn=tf.keras.applications.inception_v3.preprocess_input,
         resample=False,
         include_features=False,
-        # remapped_labels=get_remapped(),
-        # excluded_labels=get_excluded(),
+        remapped_labels=get_remapped(),
+        excluded_labels=get_excluded(),
         include_track=True,
         num_frames=25,
     )
@@ -367,7 +367,7 @@ def main():
         batch_i = 0
         print("epoch", e)
         for x, y in resampled_ds:
-            show_batch(x, y, labels, save=save_dir / f"{batch_i}.jpg")
+            show_batch(x, y, labels, save=save_dir / f"{batch_i}.jpg", tracks=True)
             batch_i += 1
     # return
 

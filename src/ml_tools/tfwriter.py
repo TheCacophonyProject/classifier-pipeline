@@ -101,15 +101,6 @@ def create_tf_records(
     samples_by_source = dataset.get_samples_by_source()
     source_files = list(samples_by_source.keys())
     np.random.shuffle(source_files)
-    # lbl_samples = {}
-    # for source, samples in samples_by_source.items():
-    #     for s in samples:
-    #         if s.label not in lbl_samples:
-    #             lbl_samples[s.label] = []
-    #         lbl_samples[s.label].append(s)
-    # for lbl, samples in lbl_samples.items():
-    #     logging.info("%s samples are %s", lbl, len(samples))
-    #     logging.info("Unique ids are %s", [s.unique_id for s in samples])
     num_labels = len(dataset.labels)
     logging.info(
         "writing to output path: %s for %s samples", output_path, len(samples_by_source)

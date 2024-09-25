@@ -94,9 +94,6 @@ def get_dataset(load_function, base_dir, labels, **args):
     else:
 
         logging.info("Excluding %s", excluded_labels)
-
-        # excluded_labels.append("insect")
-        # excluded_labels.append("cat")
         new_labels = labels.copy()
         for excluded in excluded_labels:
             if excluded in new_labels:

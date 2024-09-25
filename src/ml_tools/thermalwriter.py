@@ -177,18 +177,13 @@ def get_data(clip_samples, extra_args):
     data = []
     crop_rectangle = tools.Rectangle(2, 2, 160 - 2 * 2, 140 - 2 * 2)
 
-    out_folder = None
     if clip_samples[0].source_file.suffix == ".hdf5":
         db = TrackDatabase(clip_samples[0].source_file)
-        out_folder = "hdf5"
     else:
         db = RawDatabase(clip_samples[0].source_file)
         db.load_frames()
-        out_folder = "raw"
 
-        # going to redo segments to get rid of ffc segments
-    out_folder = Path(out_folder)
-    out_folder.mkdir(exist_ok=True)
+    # going to redo segments to get rid of ffc segments
     clip_id = clip_samples[0].clip_id
     try:
         background = db.get_clip_background()
@@ -303,16 +298,9 @@ def get_data(clip_samples, extra_args):
                 new_min = np.amin(diff_frame)
                 if thermal_min_diff is None or new_min < thermal_min_diff:
                     thermal_min_diff = new_min
-                    # min_diff = max(0, new_min)
                 if new_max > thermal_max_diff:
                     thermal_max_diff = new_max
-            # logging.info(
-            #     "Min diff %s max diff %s thermal %s - %s",
-            #     min_diff,
-            #     max_diff,
-            #     thermal_min_diff,
-            #     thermal_max_diff,
-            # )
+
             # normalize by maximum difference between background and tracked region
             # probably only need to use difference on the frames used for this record
             # also min_diff maybe could just be set to 0 and clip values below 0,
@@ -332,7 +320,7 @@ def get_data(clip_samples, extra_args):
                             (32, 32), crop_rectangle, keep_edge=True
                         )
                         if (
-                            np.amax(frame.thermal) > 40000
+                            np.amax(frame.thermal) > 50000
                             or np.amin(frame.thermal) < 1000
                         ):
                             logging.error(
@@ -361,13 +349,6 @@ def get_data(clip_samples, extra_args):
                             frame.filtered, min=min_diff, max=max_diff, new_max=255
                         )
                         np.clip(frame.filtered, a_min=0, a_max=None, out=frame.filtered)
-
-                        # cv2.imwrite(
-                        #     str(
-                        #         out_folder / f"{clip_id}-{track_id}-{frame_number}.png"
-                        #     ),
-                        #     np.uint8(frame.thermal),
-                        # )
 
                         if not stats[0]:
                             frame.filtered = np.zeros((frame.filtered.shape))
