@@ -7,7 +7,7 @@ scipy
 python-dateutil
 scikit-learn
 tables~=3.8.0
-h5py~=3.9.0
+h5py~=3.10.0
 pyyaml>=4.2b1
 pillow~=10.0.1
 attrs~=19.1
