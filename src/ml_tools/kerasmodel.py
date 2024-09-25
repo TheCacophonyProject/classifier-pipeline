@@ -803,15 +803,7 @@ class KerasModel(Interpreter):
             new_smooth = pred.predictions * masses
             new_smooth = np.sum(new_smooth, axis=0)
             new_smooth /= np.sum(masses)
-            # logging.info(
-            #     "Smoothing %s with masses %s", np.round(100 * pred.predictions), masses
-            # )
-            # logging.info(
-            #     "N smooth %s old %s new %s",
-            #     np.round(100 * no_smoothing),
-            #     np.round(100 * old_smoothing),
-            #     np.round(100 * new_smooth),
-            # )
+
             for i, pred_type in enumerate([no_smoothing, old_smoothing, new_smooth]):
                 best_pred = np.argmax(pred_type)
                 confidence = pred_type[best_pred]

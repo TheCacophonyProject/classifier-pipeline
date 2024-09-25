@@ -37,6 +37,7 @@ def get_excluded():
         "bat",
         "mammal",
         "frog",
+        "cow",
         # "fox",
         # "wombat",
     ]
@@ -207,7 +208,6 @@ def read_tfrecord(
             )
 
     if include_track:
-        tfrecord_format["image/source_id"] = tf.io.FixedLenFeature((), tf.string)
         tfrecord_format["image/track_id"] = tf.io.FixedLenFeature((), tf.int64, -1)
         tfrecord_format["image/avg_mass"] = tf.io.FixedLenFeature((), tf.int64, -1)
     if include_features or only_features:
@@ -265,10 +265,9 @@ def read_tfrecord(
                 label = tf.reduce_max(label, axis=0)
         if include_track:
 
-            source_id = tf.cast(example["image/source_id"], tf.string)
             track_id = tf.cast(example["image/track_id"], tf.int32)
             avg_mass = tf.cast(example["image/avg_mass"], tf.int32)
-            label = (label, track_id, avg_mass, source_id)
+            label = (label, track_id, avg_mass)
         if include_features or only_features:
             features = tf.squeeze(example["image/features"])
             if only_features:
