@@ -643,7 +643,11 @@ def filter_clip(clip, location, location_bounds, filtered_stats=None):
         logging.info("Filtered because in trap")
         return True
 
-    if location_bounds is not None and not location_bounds.contains(*location):
+    if (
+        location is not None
+        and location_bounds is not None
+        and not location_bounds.contains(*location)
+    ):
         if filtered_stats is not None:
             if "location" in filtered_stats:
                 filtered_stats["location"] += 1
