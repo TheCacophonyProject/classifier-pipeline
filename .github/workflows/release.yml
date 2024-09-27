@@ -24,38 +24,38 @@ jobs:
       - run: pip install black --upgrade
       - run: ./check-style
         
-      # - name: Install dependencies
-      #   run: |
-      #     pip install cmake freezegun gdown
-      #     sudo apt install -y python3-dbus ffmpeg build-essential libdbus-glib-1-dev libgirepository1.0-dev tzdata libcairo2-dev libjpeg-dev python3-cairo libhdf5-dev libopencv-dev cmake
-      #     pip install -r requirements.txt
+      - name: Install dependencies
+        run: |
+          pip install cmake freezegun gdown
+          sudo apt install -y python3-dbus ffmpeg build-essential libdbus-glib-1-dev libgirepository1.0-dev tzdata libcairo2-dev libjpeg-dev python3-cairo libhdf5-dev libopencv-dev cmake
+          pip install -r requirements.txt
      
 
-      # - name: Run tests
-      #   run: |
-      #     pip install pytest
-      #     pytest -s
+      - name: Run tests
+        run: |
+          pip install pytest
+          pytest -s
 
-      # - name: Test Build
-      #   run: python3 src/build.py -c tests/test-config.yaml tests --ext ".cptv"
+      - name: Test Build
+        run: python3 src/build.py -c tests/test-config.yaml tests --ext ".cptv"
 
-      # - name: Test Classify
-      #   run: |
-      #     sudo mkdir /var/spool/cptv
-      #     sudo chmod -R 777 /var/spool/cptv
-      #     wget -O thermal-model.tar https://github.com/TheCacophonyProject/AI-Model/releases/download/v0.5/inc3-19012023-tflite.tar
-      #     mkdir thermal-model
-      #     tar xzvf thermal-model.tar -C thermal-model --strip-components=1
-      #     pip install tflite-runtime==2.14.0
-      #     python3 src/classify.py -c tests/test-config.yaml ./tests/clips/
-      #     python3 src/piclassify.py --file tests/clips/possum.cptv  --thermal-config-file tests/config.toml -c tests/test-config.yaml
+      - name: Test Classify
+        run: |
+          sudo mkdir /var/spool/cptv
+          sudo chmod -R 777 /var/spool/cptv
+          wget -O thermal-model.tar https://github.com/TheCacophonyProject/AI-Model/releases/download/v0.5/inc3-19012023-tflite.tar
+          mkdir thermal-model
+          tar xzvf thermal-model.tar -C thermal-model --strip-components=1
+          pip install tflite-runtime==2.14.0
+          python3 src/classify.py -c tests/test-config.yaml ./tests/clips/
+          python3 src/piclassify.py --file tests/clips/possum.cptv  --thermal-config-file tests/config.toml -c tests/test-config.yaml
 
   build:
     name: Build distribution 📦
     runs-on: ubuntu-latest
     needs:
       - tests
-    if: github.ref == 'refs/heads/github-action'
+    if: github.ref == 'refs/heads/pi-classifier'
 
     steps:
     - name: Check out repository code
@@ -86,7 +86,7 @@ jobs:
     name: Upload release to PyPI
     needs: 
       - build
-    if: github.ref == 'refs/heads/github-action'
+    if: github.ref == 'refs/heads/pi-classifier'
 
     runs-on: ubuntu-latest
     environment:
@@ -103,3 +103,77 @@ jobs:
           path: dist/
       - name: Publish package distributions to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
+
+  docker:
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/github-action'
+    environment:
+      name: docker
+    steps:
+      -
+        name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+      -
+        name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      -
+        name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_TOKEN }}
+      -
+        name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          file: ./docker/Dockerfile
+          push: true
+          tags: user/app:latest
+
+  # push_to_registry:
+  #   name: Push Docker image to Docker Hub
+  #   runs-on: ubuntu-latest
+  #   environment:
+  #     name: docker
+  #   permissions:
+  #     packages: write
+  #     contents: read
+  #     attestations: write
+  #     id-token: write
+  #     steps:
+  #       -
+  #         name: Set up QEMU
+  #         uses: docker/setup-qemu-action@v3
+  #       -
+  #         name: Set up Docker Buildx
+  #     - name: Check out the repo
+  #       uses: actions/checkout@v4
+
+  #     - name: Log in to Docker Hub
+  #       uses: docker/login-action@f4ef78c080cd8ba55a85445d5b36e214a81df20a
+  #       with:
+  #         username: ${{ secrets.DOCKER_USERNAME }}
+  #         password: ${{ secrets.DOCKER_PASSWORD }}
+
+  #     - name: Extract metadata (tags, labels) for Docker
+  #       id: meta
+  #       uses: docker/metadata-action@9ec57ed1fcdbf14dcef7dfbe97b2010124a938b7
+  #       with:
+  #         images: my-docker-hub-namespace/my-docker-hub-repository
+
+  #     - name: Build and push Docker image
+  #       id: push
+  #       uses: docker/build-push-action@3b5e8027fcad23fda98b2e3ac259d8d67585f671
+  #       with:
+  #         context: .
+  #         file: ./docker/Dockerfile
+  #         push: true
+  #         tags: ${{ steps.meta.outputs.tags }}
+  #         labels: ${{ steps.meta.outputs.labels }}
+
+  #     - name: Generate artifact attestation
+  #       uses: actions/attest-build-provenance@v1
+  #       with:
+  #         subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME}}
+  #         subject-digest: ${{ steps.push.outputs.digest }}
+  #         push-to-registry: true
