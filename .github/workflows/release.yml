@@ -90,8 +90,9 @@ jobs:
 
     runs-on: ubuntu-latest
     environment:
-      name: pypi
+      name: release
       url: https://pypi.org/project/classifier-pipeline/
+      
     permissions:
       id-token: write
     steps:
