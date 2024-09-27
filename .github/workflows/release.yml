@@ -128,7 +128,7 @@ jobs:
         with:
           file: ./docker/Dockerfile
           push: true
-          tags: user/app:latest
+          tags: cacophonyproject/classifier:latest
 
   # push_to_registry:
   #   name: Push Docker image to Docker Hub
