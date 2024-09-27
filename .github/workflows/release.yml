@@ -58,9 +58,16 @@ jobs:
     if: github.ref == 'refs/heads/github-action'
 
     steps:
-    - name: List files in the repository
-      run: |
-        ls ${{ github.workspace }}
+    - name: Check out repository code
+      uses: actions/checkout@v4
+    - run: echo "💡 The ${{ github.repository }} repository has been cloned to the runner."
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.10'
+        architecture: 'x64'
+
     - name: Install pypa/build
       run: >-
         python3 -m
