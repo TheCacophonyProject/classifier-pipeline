@@ -427,7 +427,7 @@ class KerasModel(Interpreter):
         self.model.trainable = training
 
         if weights is not None:
-            self.model.load_weights(weights).expect_partial()
+            self.model.load_weights(weights)
             logging.info("Loaded weight %s", weights)
         # print(self.model.summary())
 
