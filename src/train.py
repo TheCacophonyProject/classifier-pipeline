@@ -45,6 +45,7 @@ def load_config():
     parser.add_argument("-w", "--weights", help="Fine tune using these weights")
     parser.add_argument("-i", "--ignore", help="Ignore clips in this file")
     parser.add_argument("-e", "--epochs", type=int, help="Epochs to train")
+    parser.add_argument("-f", "--fine_tune", help="Model to fine tune")
 
     parser.add_argument(
         "name",
@@ -67,6 +68,7 @@ def main():
         weights=args.weights,
         ignore=args.ignore,
         epochs=args.epochs,
+        fine_tune=args.fine_tune,
     )
 
 

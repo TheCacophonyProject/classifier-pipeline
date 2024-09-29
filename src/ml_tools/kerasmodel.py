@@ -362,6 +362,59 @@ class KerasModel(Interpreter):
             ],
         )
 
+    def adjust_final_layer(self):
+        # Adjust final layer to a new set of labels, by removing it and re adding
+        # new_model = tf.keras.models.Sequential(self.model.layers[:-3])
+        self.model = tf.keras.Model(
+            inputs=self.model.input, outputs=self.model.layers[-2].output
+        )
+
+        # model = tf.keras.Model(inputs=self.model.input, outputs=x)
+
+        activation = "softmax"
+        if self.params.multi_label:
+            activation = "sigmoid"
+
+        retrain_from = self.params.retrain_layer
+        if retrain_from:
+            for i, layer in enumerate(self.model.layers):
+                if isinstance(layer, tf.keras.layers.BatchNormalization):
+                    # apparently this shouldn't matter as we set base_training = False
+                    layer.trainable = False
+                    logging.info("dont train %s %s", i, layer.name)
+                else:
+                    layer.trainable = i >= retrain_from
+        else:
+            self.model.trainable = self.params.base_training
+
+        # add final layer after as always want this trainable
+        logging.info(
+            "Adding new final layer with %s activation and %s labels ",
+            activation,
+            len(self.labels),
+        )
+        preds = tf.keras.layers.Dense(
+            len(self.labels), activation=activation, name="prediction"
+        )(self.model.output)
+
+        self.model = tf.keras.models.Model(self.model.inputs, outputs=preds)
+        if self.params.multi_label:
+            acc = tf.metrics.binary_accuracy
+        else:
+            acc = tf.metrics.categorical_accuracy
+        logging.info("Using acc %s", acc)
+        self.model.summary()
+        self.model.compile(
+            optimizer=optimizer(self.params),
+            loss=loss(self.params),
+            metrics=[
+                acc,
+                tf.keras.metrics.AUC(),
+                tf.keras.metrics.Recall(),
+                tf.keras.metrics.Precision(),
+            ],
+        )
+
     def load_model(self, model_file, training=False, weights=None):
         model_file = Path(model_file)
         super().__init__(model_file)
@@ -450,14 +503,26 @@ class KerasModel(Interpreter):
         gc.collect()
 
     def train_model(
-        self, epochs, run_name, weights=None, rebalance=False, resample=False
+        self,
+        epochs,
+        run_name,
+        weights=None,
+        rebalance=False,
+        resample=False,
+        fine_tune=None,
     ):
         logging.info(
             "%s Training model for %s epochs with weights %s", run_name, epochs, weights
         )
-        self.excluded_labels, self.remapped_labels = get_excluded(
-            self.data_type, self.params.multi_label
-        )
+
+        if self.params.excluded_labels is None:
+            self.excluded_labels, self.remapped_labels = get_excluded(
+                self.data_type, self.params.multi_label
+            )
+        if self.params.remapped_labels is None:
+            self.remapped_labels, self.remapped_labels = get_excluded(
+                self.data_type, self.params.multi_label
+            )
         train_files = self.data_dir / "train"
         validate_files = self.data_dir / "validation"
         logging.info(
@@ -475,8 +540,11 @@ class KerasModel(Interpreter):
                 self.labels.remove(l)
         self.log_dir = self.log_base / run_name
         self.log_dir.mkdir(parents=True, exist_ok=True)
+        if fine_tune is not None:
+            self.load_model(fine_tune, weights=weights)
+            self.adjust_final_layer()
 
-        if not self.model:
+        elif not self.model:
             self.build_model(
                 dense_sizes=self.params.dense_sizes,
                 retrain_from=self.params.retrain_layer,

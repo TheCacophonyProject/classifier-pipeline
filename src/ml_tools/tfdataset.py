@@ -94,6 +94,8 @@ def get_dataset(load_function, base_dir, labels, **args):
     else:
 
         logging.info("Excluding %s", excluded_labels)
+
+        # get new labels after excluding and removing remapped labels
         new_labels = labels.copy()
         for excluded in excluded_labels:
             if excluded in new_labels:
@@ -101,6 +103,8 @@ def get_dataset(load_function, base_dir, labels, **args):
         for remapped_lbl in to_remap.keys():
             if remapped_lbl in new_labels:
                 new_labels.remove(remapped_lbl)
+
+        # initialize remapped dictionary, setting labels that have been removed to -1, these values will be filtered later
         for l in labels:
             keys.append(labels.index(l))
             if l not in new_labels:
@@ -110,11 +114,14 @@ def get_dataset(load_function, base_dir, labels, **args):
             else:
                 remapped[l] = [l]
                 values.append(new_labels.index(l))
+
+        # add the remapped labels to the correct place
         for k, v in to_remap.items():
             if k in labels and v in labels:
                 remapped[v].append(k)
                 values[labels.index(k)] = new_labels.index(v)
                 del remapped[k]
+
     remap_lookup = tf.lookup.StaticHashTable(
         initializer=tf.lookup.KeyValueTensorInitializer(
             keys=tf.constant(keys),

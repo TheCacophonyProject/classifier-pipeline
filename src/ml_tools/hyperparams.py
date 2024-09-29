@@ -51,6 +51,14 @@ class HyperParams(dict):
         return self.get("smooth_predictions", True)
 
     @property
+    def excluded_labels(self):
+        return self.get("excluded_labels", None)
+
+    @property
+    def remapped_labels(self):
+        return self.get("remapped_labels", None)
+
+    @property
     def diff_norm(self):
         return self.get("diff_norm", True)
 
