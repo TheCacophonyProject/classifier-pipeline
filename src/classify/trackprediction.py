@@ -1,6 +1,8 @@
 import attr
 import logging
 import numpy as np
+import time
+from attrs import define, field
 
 # uniform prior stats start with uniform distribution.  This is the safest bet, but means that
 # it takes a while to make predictions.  When off the first prediction is used instead causing
@@ -55,6 +57,29 @@ class Predictions:
         return np.sum(classify_time)
 
 
+@define
+class Prediction:
+    prediction = field()
+    smoothed_prediction = field()
+    frames = field()
+    predicted_at_frame = field()
+    mass = field()
+    predicted_time = field(init=False)
+
+    def __attrs_post_init__(self):
+        self.predicted_time = time.time()
+
+    def get_metadata(self):
+        meta = attr.asdict(self)
+        meta["smoothed_prediction"] = np.uint32(np.round(self.smoothed_prediction))
+        meta["prediction"] = np.uint8(np.round(100 * self.prediction))
+        return meta
+
+    def clarity(self):
+        best = np.argsort(self.prediction)
+        return self.prediction[best[-1]] - self.prediction[best[-2]]
+
+
 class TrackPrediction:
     """
     Class to hold the information about the predicted class of a track.
@@ -69,9 +94,7 @@ class TrackPrediction:
             fp_index = None
         self.track_id = track_id
         self.predictions = []
-        self.prediction_frames = []
         self.fp_index = fp_index
-        self.smoothed_predictions = []
         self.class_best_score = None
         self.start_frame = start_frame
 
@@ -87,15 +110,20 @@ class TrackPrediction:
         self, predictions, smoothed_predictions, prediction_frames, top_score=None
     ):
         self.num_frames_classified = len(predictions)
-        if smoothed_predictions is None:
-            self.smoothed_predictions = predictions
-        else:
-            self.smoothed_predictions = smoothed_predictions
-        self.predictions = predictions
-        self.prediction_frames = prediction_frames
+        for prediction, smoothed_prediction, frames in zip(
+            predictions, smoothed_predictions, prediction_frames
+        ):
+            prediction = Prediction(
+                prediction,
+                smoothed_prediction,
+                frames,
+                np.amax(frames),
+                None,
+            )
+            self.predictions.append(prediction)
 
         if self.num_frames_classified > 0:
-            self.class_best_score = np.sum(self.smoothed_predictions, axis=0)
+            self.class_best_score = np.sum(smoothed_predictions, axis=0)
             # normalize so it sums to 1
             if top_score is None:
                 self.class_best_score = self.class_best_score / np.sum(
@@ -112,36 +140,45 @@ class TrackPrediction:
                 self.class_best_score
             )
 
-    def classified_frames(self, frame_numbers, prediction, mass):
+    def classified_frames(self, frame_numbers, predictions, mass):
         self.num_frames_classified += len(frame_numbers)
-        smoothed_prediction = prediction**2 * mass
+        self.last_frame_classified = np.max(frame_numbers)
+        smoothed_prediction = predictions**2 * mass
+        prediction = Prediction(
+            predictions,
+            smoothed_prediction,
+            frame_numbers,
+            self.last_frame_classified,
+            mass,
+        )
         if self.keep_all:
-            self.prediction_frames.append(frame_numbers)
             self.predictions.append(prediction)
-            self.smoothed_predictions.append(smoothed_prediction)
-
         else:
-            self.prediction_frames = [frame_numbers]
             self.predictions = [prediction]
-            self.smoothed_predictions = [smoothed_prediction]
+
         if self.class_best_score is None:
             self.class_best_score = smoothed_prediction.copy()
         else:
             self.class_best_score += smoothed_prediction
 
-    def classified_frame(self, frame_number, prediction, mass):
+    def classified_frame(self, frame_number, predictions, mass):
         self.prediction_frames.append([frame_number])
         self.last_frame_classified = frame_number
         self.num_frames_classified += 1
         self.masses.append(mass)
         smoothed_prediction = prediction * prediction * mass
+
+        prediction = Prediction(
+            predictions,
+            smoothed_prediction,
+            frame_number,
+            self.last_frame_classified,
+            mass,
+        )
         if self.keep_all:
             self.predictions.append(prediction)
-            self.smoothed_predictions.append(smoothed_prediction)
-
         else:
             self.predictions = [prediction]
-            self.smoothed_predictions = [smoothed_prediction]
 
         if self.class_best_score is None:
             self.class_best_score = smoothed_prediction
@@ -257,9 +294,7 @@ class TrackPrediction:
         return float(np.amax(self.class_best_score))
 
     def clarity_at(self, frame):
-        pred = self.predictions[frame]
-        best = np.argsort(pred)
-        return pred[best[-1]] - pred[best[-2]]
+        return self.predictions[frame].clarity
 
     @property
     def clarity(self):
@@ -359,13 +394,10 @@ class TrackPrediction:
         )
         prediction_meta["clarity"] = round(self.clarity, 3) if self.clarity else 0
         prediction_meta["all_class_confidences"] = {}
-        if self.prediction_frames is not None:
-            prediction_meta["prediction_frames"] = self.prediction_frames
-
-        # for ease always multiply by 100, depending on smoothing applied values might be large
-        prediction_meta["predictions"] = np.uint32(
-            np.round(100 * self.smoothed_predictions)
-        )
+        preds = []
+        for p in self.predictions:
+            preds.append(p.get_metadata())
+        prediction_meta["predictions"] = preds
         if self.class_best_score is not None:
             for i, value in enumerate(self.class_best_score):
                 label = self.labels[i]

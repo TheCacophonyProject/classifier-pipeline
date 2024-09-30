@@ -27,7 +27,14 @@ class Processor(ABC):
         self,
     ):
         self.service = SnapshotService(
-            self.get_recent_frame, self.headers, self.take_snapshot
+            self.get_recent_frame,
+            self.headers,
+            self.take_snapshot,
+            (
+                self.classifier.labels
+                if self.classifier is not None
+                else ["Not classifying"]
+            ),
         )
 
     @abstractmethod
