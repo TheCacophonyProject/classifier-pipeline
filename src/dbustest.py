@@ -14,8 +14,20 @@ import time
 import threading
 from datetime import datetime
 
+labels = []
 
-def catchall_tracking_signals_handler(what, confidence, region, tracking):
+
+def catchall_tracking_signals_handler(
+    prediction,
+    what,
+    confidence,
+    region,
+    frame,
+    mass,
+    blank,
+    tracking,
+    last_prediction_frame,
+):
     print(
         "Received a trackng signal and it says " + what,
         confidence,
@@ -23,7 +35,21 @@ def catchall_tracking_signals_handler(what, confidence, region, tracking):
         region,
         " tracking?",
         tracking,
+        "prediction",
+        prediction,
+        "frame",
+        frame,
+        "mass",
+        mass,
+        "blank",
+        blank,
+        "last prediction frame",
+        last_prediction_frame,
     )
+    index = 0
+    for x in prediction:
+        print("For  ", labels[index], " have confidence ", int(x), "%")
+        index += 1
 
 
 def catchall_rec_signals_handler(dt, is_recording):
@@ -49,13 +75,16 @@ class TrackingService:
         self.loop.quit()
 
     def run_server(self):
+        dbus_object = None
         try:
             bus = dbus.SystemBus()
-            object = bus.get_object(DBUS_NAME, DBUS_PATH)
+            dbus_object = bus.get_object(DBUS_NAME, DBUS_PATH)
         except dbus.exceptions.DBusException as e:
             print("Failed to initialize D-Bus object: '%s'" % str(e))
             sys.exit(2)
-
+        global labels
+        labels = dbus_object.ClassificationLabels()
+        print("Labels are ", labels)
         bus.add_signal_receiver(
             self.callback,
             dbus_interface=DBUS_NAME,

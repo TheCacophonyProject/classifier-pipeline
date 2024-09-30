@@ -15,8 +15,9 @@
   managementd = 80
 
 [thermal-motion]
+  tracking-events = true
   do-tracking = true
-  run-classifier = true
+  run-classifier = true 
   count-thresh = 3
   delta-thresh = 50
   edge-pixels = 1
