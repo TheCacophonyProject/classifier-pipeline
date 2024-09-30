@@ -82,7 +82,7 @@ class PiClassifier(Processor):
         self.constant_recorder = None
         self._output_dir = thermal_config.recorder.output_dir
         self.headers = headers
-        super().__init__()
+        self.classifier = None
         self.frame_num = 0
         self.clip = None
         self.enable_per_track_information = False
@@ -277,6 +277,7 @@ class PiClassifier(Processor):
             except ValueError:
                 self.fp_index = None
             self.startup_classifier()
+        super().__init__()
 
     def new_clip(self, preview_frames):
         self.clip = Clip(
@@ -438,20 +439,20 @@ class PiClassifier(Processor):
                     self.tracking = track
                     track_prediction.normalize_score()
                     self.service.tracking(
-                        track_prediction.predicted_tag(),
-                        track_prediction.max_score,
-                        track.bounds_history[-1].to_ltrb(),
+                        track_prediction.class_best_score,
+                        track.bounds_history[-1],
                         True,
+                        track_prediction.last_frame_classified,
                     )
                 elif track_prediction.tracking:
                     track_prediction.tracking = False
                     self.tracking = None
                     track_prediction.normalize_score()
                     self.service.tracking(
-                        track_prediction.predicted_tag(),
-                        track_prediction.max_score,
-                        track.bounds_history[-1].to_ltrb(),
+                        track_prediction.class_best_score,
+                        track.bounds_history[-1],
                         False,
+                        track_prediction.last_frame_classified,
                     )
 
             new_prediction = True
@@ -584,17 +585,19 @@ class PiClassifier(Processor):
                 tracking = self.tracking in self.clip.active_tracks
                 score = 0
                 prediction = ""
+                all_scores = None
+                last_prediction = 0
                 if self.classify:
                     track_prediction = self.predictions.prediction_for(
                         self.tracking.get_id()
                     )
-                    prediction = track_prediction.predicted_tag()
-                    score = track_prediction.max_score
+                    all_scores = track_prediction.class_best_score
+                    last_prediction = track_prediction.last_frame_classified
                 self.service.tracking(
-                    prediction,
-                    score,
-                    self.tracking.bounds_history[-1].to_ltrb(),
+                    all_scores,
+                    self.tracking.bounds_history[-1],
                     tracking,
+                    last_prediction,
                 )
 
                 if not tracking:

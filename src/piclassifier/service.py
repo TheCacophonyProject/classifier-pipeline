@@ -17,11 +17,12 @@ DBUS_PATH = "/org/cacophony/thermalrecorder"
 
 
 class Service(dbus.service.Object):
-    def __init__(self, dbus, get_frame, headers, take_snapshot_fn):
+    def __init__(self, dbus, get_frame, headers, take_snapshot_fn, labels):
         super().__init__(dbus, DBUS_PATH)
         self.get_frame = get_frame
         self.headers = headers
         self.take_snapshot = take_snapshot_fn
+        self.labels = labels
 
     @dbus.service.method(
         DBUS_NAME,
@@ -100,8 +101,24 @@ class Service(dbus.service.Object):
 
         return result
 
-    @dbus.service.signal(DBUS_NAME, signature="siaib")
-    def Tracking(self, what, confidence, region, tracking):
+    @dbus.service.method(DBUS_NAME, signature="as")
+    def ClassificationLabels(self):
+        logging.info("Getting labels %s", self.labels)
+        return self.labels
+
+    @dbus.service.signal(DBUS_NAME, signature="aisiaiiibbi")
+    def Tracking(
+        self,
+        prediction,
+        what,
+        confidence,
+        region,
+        frame,
+        mass,
+        blank,
+        tracking,
+        last_prediction_frame,
+    ):
         pass
 
     @dbus.service.signal(DBUS_NAME, signature="xb")
@@ -110,13 +127,13 @@ class Service(dbus.service.Object):
 
 
 class SnapshotService:
-    def __init__(self, get_frame, headers, take_snapshot_fn):
+    def __init__(self, get_frame, headers, take_snapshot_fn, labels):
         DBusGMainLoop(set_as_default=True)
         dbus.mainloop.glib.threads_init()
         self.loop = GLib.MainLoop()
         self.t = threading.Thread(
             target=self.run_server,
-            args=(get_frame, headers, take_snapshot_fn),
+            args=(get_frame, headers, take_snapshot_fn, labels),
         )
         self.t.start()
         self.service = None
@@ -124,23 +141,50 @@ class SnapshotService:
     def quit(self):
         self.loop.quit()
 
-    def run_server(self, get_frame, headers, take_snapshot_fn):
+    def run_server(self, get_frame, headers, take_snapshot_fn, labels):
         session_bus = dbus.SystemBus(mainloop=DBusGMainLoop())
         name = dbus.service.BusName(DBUS_NAME, session_bus)
-        self.service = Service(session_bus, get_frame, headers, take_snapshot_fn)
+        self.service = Service(
+            session_bus, get_frame, headers, take_snapshot_fn, labels
+        )
         self.loop.run()
 
-    def tracking(self, what, confidence, region, tracking):
+    def tracking(self, prediction, region, tracking, last_prediction_frame):
         logging.debug(
-            "Tracking %s animal %s confidence %s  at %s",
-            what,
-            round(100 * confidence),
-            region,
+            "Tracking? %s region %s prediction %s",
             tracking,
+            region,
+            prediction,
         )
         if self.service is None:
             return
-        self.service.Tracking(what, round(100 * confidence), region, tracking)
+        if prediction is not None:
+            predictions = prediction.copy()
+            predictions = np.uint8(np.round(predictions * 100))
+            best = np.argmax(predictions)
+            self.service.Tracking(
+                predictions,
+                self.service.labels[best],
+                predictions[best],
+                region.to_ltrb(),
+                region.frame_number,
+                region.mass,
+                region.blank,
+                tracking,
+                last_prediction_frame,
+            )
+        else:
+            self.service.Tracking(
+                [],
+                "",
+                0,
+                region.to_ltrb(),
+                region.frame_number,
+                region.mass,
+                region.blank,
+                tracking,
+                last_prediction_frame,
+            )
 
     def recording(self, is_recording):
         if self.service is None:

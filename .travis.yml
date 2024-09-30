@@ -48,3 +48,9 @@ deploy:
     on:
       branch: pi-classifier
     skip_cleanup: 'true'
+  - provider: script
+    script:  bash ./pypi_push.sh
+    on:
+      branch: add-event
+    skip_cleanup: 'true'
+  
