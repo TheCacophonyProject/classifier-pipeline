@@ -242,6 +242,10 @@ def metadata_confusion(dir, confusion_file, after_date=None, model_metadata=None
         for k, v in remapped_labels.items():
             if v == "land-bird":
                 remapped_labels[k] = "bird"
+        if "None" not in labels:
+            labels.append("None")
+        if "unidentified" not in labels:
+            labels.append("unidentified")
     else:
         labels = [
             "bird",
