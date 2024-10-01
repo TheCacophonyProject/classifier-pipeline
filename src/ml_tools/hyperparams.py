@@ -27,6 +27,8 @@ class HyperParams(dict):
         self["segment_type"] = self.segment_type
         self["multi_label"] = True
         self["diff_norm"] = self.diff_norm
+        self["thermal_diff_norm"] = self.thermal_diff_norm
+
         self["smooth_predictions"] = self.smooth_predictions
         self["channels"] = self.channels
 
@@ -57,6 +59,10 @@ class HyperParams(dict):
     @property
     def remapped_labels(self):
         return self.get("remapped_labels", None)
+
+    @property
+    def thermal_diff_norm(self):
+        return self.get("thermal_diff_norm", False)
 
     @property
     def diff_norm(self):

@@ -183,9 +183,12 @@ class Interpreter(ABC):
         data = []
         frames_used = []
         filtered_norm_limits = None
-        if self.params.diff_norm:
+        thermal_norm_limits = None
+        if self.params.diff_norm or self.params.thermal_diff_norm:
             min_diff = None
             max_diff = 0
+            thermal_max_diff = None
+            thermal_min_diff = None
             for i, region in enumerate(reversed(track.bounds_history)):
                 if region.blank:
                     continue
@@ -201,16 +204,30 @@ class Interpreter(ABC):
                     continue
 
                 f.float_arrays()
-                diff_frame = region.subimage(f.thermal) - region.subimage(
-                    clip.background
-                )
-                new_max = np.amax(diff_frame)
-                new_min = np.amin(diff_frame)
-                if min_diff is None or new_min < min_diff:
-                    min_diff = new_min
-                if new_max > max_diff:
-                    max_diff = new_max
-            filtered_norm_limits = (min_diff, max_diff)
+
+                if self.params.thermal_diff_norm:
+                    diff_frame = f.thermal - np.median(f.thermal)
+                    new_max = np.amax(diff_frame)
+                    new_min = np.amin(diff_frame)
+                    if thermal_min_diff is None or new_min < thermal_min_diff:
+                        thermal_min_diff = new_min
+                    if thermal_max_diff is None or new_max > thermal_max_diff:
+                        thermal_max_diff = new_max
+                if self.params.diff_norm:
+                    diff_frame = region.subimage(f.thermal) - region.subimage(
+                        clip.background
+                    )
+                    new_max = np.amax(diff_frame)
+                    new_min = np.amin(diff_frame)
+                    if min_diff is None or new_min < min_diff:
+                        min_diff = new_min
+                    if new_max > max_diff:
+                        max_diff = new_max
+            if self.params.thermal_diff_norm:
+                thermal_norm_limits = (thermal_min_diff, thermal_max_diff)
+
+            if self.params.diff_norm:
+                filtered_norm_limits = (min_diff, max_diff)
         for i, region in enumerate(reversed(track.bounds_history)):
             if region.blank:
                 continue
@@ -249,6 +266,7 @@ class Interpreter(ABC):
                 clip.background,
                 clip.crop_rectangle,
                 filtered_norm_limits=filtered_norm_limits,
+                thermal_norm_limits=thermal_norm_limits,
             )
             preprocessed = preprocess_single_frame(
                 cropped_frame,
@@ -293,30 +311,52 @@ class Interpreter(ABC):
 
         # should really be over whole track buts let just do the indices we predict of
         #  seems to make little different to just doing a min max normalization
+        thermal_norm_limits = None
         filtered_norm_limits = None
-        if self.params.diff_norm:
+        if self.params.diff_norm or self.params.thermal_diff_norm:
             min_diff = None
             max_diff = 0
-            for frame_index in frame_indices:
-                region = track.bounds_history[frame_index - track.start_frame]
-                f = clip.get_frame(region.frame_number)
-                if f is None:
-                    logging.warn("Could not get frame {}", region.frame_number)
+            thermal_max_diff = None
+            thermal_min_diff = None
+            for i, region in enumerate(reversed(track.bounds_history)):
+                if region.blank:
                     continue
+                if region.width == 0 or region.height == 0:
+                    logging.warn(
+                        "No width or height for frame %s regoin %s",
+                        region.frame_number,
+                        region,
+                    )
+                    continue
+                f = clip.get_frame(region.frame_number)
                 if region.blank or region.width <= 0 or region.height <= 0:
                     continue
 
                 f.float_arrays()
-                diff_frame = region.subimage(f.thermal) - region.subimage(
-                    clip.background
-                )
-                new_max = np.amax(diff_frame)
-                new_min = np.amin(diff_frame)
-                if min_diff is None or new_min < min_diff:
-                    min_diff = new_min
-                if new_max > max_diff:
-                    max_diff = new_max
-            filtered_norm_limits = (min_diff, max_diff)
+
+                if self.params.thermal_diff_norm:
+                    diff_frame = f.thermal - np.median(f.thermal)
+                    new_max = np.amax(diff_frame)
+                    new_min = np.amin(diff_frame)
+                    if thermal_min_diff is None or new_min < thermal_min_diff:
+                        thermal_min_diff = new_min
+                    if thermal_max_diff is None or new_max > thermal_max_diff:
+                        thermal_max_diff = new_max
+                if self.params.diff_norm:
+                    diff_frame = region.subimage(f.thermal) - region.subimage(
+                        clip.background
+                    )
+                    new_max = np.amax(diff_frame)
+                    new_min = np.amin(diff_frame)
+                    if min_diff is None or new_min < min_diff:
+                        min_diff = new_min
+                    if new_max > max_diff:
+                        max_diff = new_max
+            if self.params.thermal_diff_norm:
+                thermal_norm_limits = (thermal_min_diff, thermal_max_diff)
+
+            if self.params.diff_norm:
+                filtered_norm_limits = (min_diff, max_diff)
         for frame_index in frame_indices:
             region = track.bounds_history[frame_index - track.start_frame]
 
@@ -341,6 +381,7 @@ class Interpreter(ABC):
                 clip.background,
                 clip.crop_rectangle,
                 filtered_norm_limits=filtered_norm_limits,
+                thermal_norm_limits=thermal_norm_limits,
             )
             track_data[frame.frame_number] = cropped_frame
         features = None
@@ -365,6 +406,7 @@ class Interpreter(ABC):
                 self.params.frame_size,
                 self.params.channels,
                 self.preprocess_fn,
+                sample=f"{clip.get_id()}-{track.get_id()}",
             )
             if frames is None:
                 logging.warn("No frames to predict on")
