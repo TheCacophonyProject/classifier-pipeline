@@ -470,16 +470,12 @@ def evaluate_dir(
                     predicted_tag = ",".join(predicted_labels)
                     y_pred.append(predicted_tag)
                 if y_pred[-1] != y_true[-1]:
-                    print(
+                    logging.info("%s predicted %s but should be %s with confidence %s"
                         data[0],
-                        "Got a prediction of",
                         y_pred[-1],
-                        " should be ",
                         label,
                         np.round(100 * prediction.class_best_score),
                     )
-                # if predicted_tag not in model.labels:
-                # model.labels.append(predicted_tag)
     model.labels.append("None")
     model.labels.append("unidentified")
     cm = confusion_matrix(y_true, y_pred, labels=model.labels)
