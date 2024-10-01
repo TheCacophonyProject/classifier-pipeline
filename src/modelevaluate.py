@@ -163,6 +163,9 @@ def load_args():
     parser.add_argument("-d", "--date", help="Use clips after this")
 
     parser.add_argument("--split-file", help="Use split for evaluation")
+    parser.add_argument(
+        "--confusion-from-meta", help="Use metadata to produce a confusion matrix"
+    )
 
     parser.add_argument(
         "confusion",
@@ -213,32 +216,14 @@ def filter_diffs(track_frames, background):
     return min_diff, max_diff
 
 
-def evalute_prod_confusion(dir, confusion_file):
+# evaluate a confusion matrix from metadata of files, already evaluated by our current model on browse
+
+
+def metadata_confusion(dir, confusion_file):
     with open("label_paths.json", "r") as f:
         label_paths = json.load(f)
     label_mapping = get_mappings(label_paths)
-
-    labels = [
-        "bird",
-        "cat",
-        "deer",
-        "dog",
-        "false-positive",
-        "hedgehog",
-        "human",
-        "kiwi",
-        "leporidae",
-        "mustelid",
-        "penguin",
-        "possum",
-        "rodent",
-        "sheep",
-        "vehicle",
-        "wallaby",
-        "land-bird",
-        "None",
-        "unidentified",
-    ]
+    labels = set()
     y_true = []
     y_pred = []
     dir = Path(dir)
@@ -252,9 +237,7 @@ def evalute_prod_confusion(dir, confusion_file):
         for track in meta_data.get("Tracks", []):
             tags = track.get("tags", [])
             human_tags = [
-                tag.get("what")
-                for tag in tags
-                if tag.get("automatic") == False
+                tag.get("what") for tag in tags if tag.get("automatic") == False
             ]
             human_tags = set(human_tags)
             if len(human_tags) > 1:
@@ -264,6 +247,7 @@ def evalute_prod_confusion(dir, confusion_file):
                 continue
             human_tag = human_tags.pop()
             human_tag = label_mapping.get(human_tag, human_tag)
+            labels.add(human_tag)
             ai_tag = [
                 tag.get("what")
                 for tag in tags
@@ -273,9 +257,13 @@ def evalute_prod_confusion(dir, confusion_file):
             y_true.append(human_tag)
             if len(ai_tag) == 0:
                 y_pred.append("None")
+                labels.add("None")
             else:
+                labels.add(ai_tag[0])
                 y_pred.append(ai_tag[0])
-
+    labels = list(labels)
+    labels.sort()
+    logging.info("Using labels %s",labels)
     cm = confusion_matrix(y_true, y_pred, labels=labels)
     # Log the confusion matrix as an image summary.
     figure = plot_confusion_matrix(cm, class_names=labels)
@@ -287,11 +275,13 @@ def evalute_prod_confusion(dir, confusion_file):
 
 EXCLUDED_TAGS = ["poor tracking", "part", "untagged", "unidentified"]
 worker_model = None
+after_date = None
 
 
-def init_worker(model):
-    global worker_model
+def init_worker(model, date):
+    global worker_model, after_date
     worker_model = model
+    after_date = date
 
 
 def load_clip_data(cptv_file):
@@ -303,7 +293,7 @@ def load_clip_data(cptv_file):
         logging.warn("No clip for %s", cptv_file)
         return None
 
-    if filter_clip(clip, reason):
+    if filter_clip(clip, reason, after_date=after_date):
         logging.info("Filtering %s", cptv_file)
         return None
     clip.tracks = [
@@ -349,6 +339,7 @@ def evaluate_dir(
     split_file=None,
     split_dataset="test",
     threshold=0.5,
+    after_date=None,
 ):
     logging.info("Evaluating cptv files in %s with threshold %s", dir, threshold)
 
@@ -374,7 +365,14 @@ def evaluate_dir(
     # files = files[:8]
     start = time.time()
     # quite faster with just one process for loading and using main process for predicting
-    with Pool(processes=1, initializer=init_worker, initargs=(model,)) as pool:
+    with Pool(
+        processes=1,
+        initializer=init_worker,
+        initargs=(
+            model,
+            after_date,
+        ),
+    ) as pool:
         for clip_data in pool.imap_unordered(load_clip_data, files):
             if clip_data is None:
                 continue
@@ -468,17 +466,20 @@ def main():
 
     model = KerasModel(train_config=config.train)
     model.load_model(model_file, training=False, weights=weights)
-
     if args.evaluate_dir:
-        evaluate_dir(
-            model,
-            Path(args.evaluate_dir),
-            config,
-            args.confusion,
-            args.split_file,
-            args.dataset,
-            threshold=args.threshold,
-        )
+        if args.confusion_from_meta:
+            evalute_prod_confusion(Path(args.evaluate_dir), args.confusion)
+        else:
+            evaluate_dir(
+                model,
+                Path(args.evaluate_dir),
+                config,
+                args.confusion,
+                args.split_file,
+                args.dataset,
+                threshold=args.threshold,
+                after_date=args.date,
+            )
     elif args.dataset:
         model_labels = model.labels.copy()
         model.load_training_meta(base_dir)

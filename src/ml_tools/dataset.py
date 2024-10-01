@@ -630,7 +630,7 @@ def filter_track(track_header, excluded_tags, filtered_stats={}):
     return False
 
 
-def filter_clip(clip, location, location_bounds, filtered_stats=None):
+def filter_clip(clip, location, location_bounds, filtered_stats=None, after_date=None):
     # remove tracks of trapped animals
     if (clip.events is not None and "trap" in clip.events.lower()) or (
         clip.trap is not None and "trap" in clip.trap.lower()
@@ -654,4 +654,13 @@ def filter_clip(clip, location, location_bounds, filtered_stats=None):
             else:
                 filtered_stats["location"] = 1
         return True
+
+    if after_date is not None and clip.rec_time <= after_date:
+        if filtered_stats is not None:
+            if "date" in filtered_stats:
+                filtered_stats["date"] += 1
+            else:
+                filtered_stats["date"] = 1
+        return True
+
     return False
