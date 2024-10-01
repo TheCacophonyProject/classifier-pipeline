@@ -310,6 +310,9 @@ def metadata_confusion(dir, confusion_file, after_date=None, model_metadata=None
                     "Remapping %s to %s", human_tag, remapped_labels[human_tag]
                 )
                 human_tag = remapped_labels[human_tag]
+            if human_tag not in labels:
+                logging.info("Excluding %s", human_tag)
+  
             ai_tags = []
             for tag in tags:
                 if tag.get("automatic") is True:
@@ -321,8 +324,6 @@ def metadata_confusion(dir, confusion_file, after_date=None, model_metadata=None
                         ai_tags.append(tag["what"])
 
             y_true.append(human_tag)
-            if human_tag not in labels:
-                labels.append(human_tag)
             if len(ai_tags) == 0:
                 y_pred.append("None")
             else:
