@@ -253,19 +253,23 @@ def metadata_confusion(dir, confusion_file):
             human_tag = human_tags.pop()
             human_tag = label_mapping.get(human_tag, human_tag)
             labels.add(human_tag)
-            ai_tag = [
-                tag.get("what")
-                for tag in tags
-                if tag.get("automatic") is True
-                and tag.get("data", {}).get("name") == "Master"
-            ]
+            ai_tags = []
+            for tag in tags:
+                if tag.get("automatic") is True:
+                    data = tag.get("data", {})
+                    if isinstance(data, str):
+                        if data == "Master":
+                            ai_tags.append(tag["what"])
+                    elif data.get("name") == "Master":
+                        ai_tags.append(tag["what"])
+
             y_true.append(human_tag)
-            if len(ai_tag) == 0:
+            if len(ai_tags) == 0:
                 y_pred.append("None")
                 labels.add("None")
             else:
-                labels.add(ai_tag[0])
-                y_pred.append(ai_tag[0])
+                labels.add(ai_tags[0])
+                y_pred.append(ai_tags[0])
     labels = list(labels)
     labels.sort()
     logging.info("Using labels %s", labels)
