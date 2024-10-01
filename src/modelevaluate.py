@@ -379,18 +379,22 @@ def load_clip_data(cptv_file):
     thermal_medians = np.uint16(thermal_medians)
     data = []
     for track in clip.tracks:
-        frames, preprocessed, masses = worker_model.preprocess(
-            clip_db, track, frames_per_classify=25, dont_filter=True
-        )
-        data.append(
-            (
-                f"{track.clip_id}-{track.get_id()}",
-                track.label,
-                frames,
-                preprocessed,
-                masses,
+        try:
+            frames, preprocessed, masses = worker_model.preprocess(
+                clip_db, track, frames_per_classify=25, dont_filter=True
             )
-        )
+
+            data.append(
+                (
+                    f"{track.clip_id}-{track.get_id()}",
+                    track.label,
+                    frames,
+                    preprocessed,
+                    masses,
+                )
+            )
+        except:
+            logging.error("Could not load %s", clip.clip_id, exc_info=True)
     return data
 
 
