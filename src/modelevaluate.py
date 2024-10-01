@@ -47,6 +47,7 @@ import cv2
 from config.buildconfig import BuildConfig
 from sklearn.metrics import confusion_matrix
 from multiprocessing import Pool
+from dateutil.parser import parse as parse_date
 
 
 root_logger = logging.getLogger()
@@ -224,7 +225,7 @@ def filter_diffs(track_frames, background):
 # evaluate a confusion matrix from metadata of files, already evaluated by our current model on browse
 
 
-def metadata_confusion(dir, confusion_file):
+def metadata_confusion(dir, confusion_file, after_date=None):
     with open("label_paths.json", "r") as f:
         label_paths = json.load(f)
     label_mapping = get_mappings(label_paths)
@@ -238,7 +239,9 @@ def metadata_confusion(dir, confusion_file):
         with open(meta_f, "r") as t:
             # add in some metadata stats
             meta_data = json.load(t)
-
+        rec_time = parse_date(meta_data["recordingDateTime"])
+        if after_date is not None and rec_time <= after_date:
+            continue
         for track in meta_data.get("Tracks", []):
             tags = track.get("tags", [])
             human_tags = [
@@ -248,7 +251,7 @@ def metadata_confusion(dir, confusion_file):
             if len(human_tags) > 1:
                 print("Conflicting tags for ", track.get("id"), cptv_file)
             if len(human_tags) == 0:
-                print("No humans in ", tags)
+                print("No humans in ", meta_f)
                 continue
             human_tag = human_tags.pop()
             human_tag = label_mapping.get(human_tag, human_tag)
@@ -270,8 +273,12 @@ def metadata_confusion(dir, confusion_file):
             else:
                 labels.add(ai_tags[0])
                 y_pred.append(ai_tags[0])
+    if len(labels) == 0:
+        logging.info("No data found")
+        return
     labels = list(labels)
     labels.sort()
+
     logging.info("Using labels %s", labels)
     cm = confusion_matrix(y_true, y_pred, labels=labels)
     # Log the confusion matrix as an image summary.
@@ -473,7 +480,7 @@ def main():
         weights = model_file / args.weights
     base_dir = Path(config.base_folder) / "training-data"
     if args.evaluate_dir and args.confusion_from_meta:
-        metadata_confusion(Path(args.evaluate_dir), args.confusion)
+        metadata_confusion(Path(args.evaluate_dir), args.confusion, args.date)
     else:
 
         model = KerasModel(train_config=config.train)
