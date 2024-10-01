@@ -54,6 +54,14 @@ def parse_args():
     parser.add_argument(
         "--ir", action="count", help="Path to pi-config file (config.toml) to use"
     )
+
+    parser.add_argument(
+        "--fps",
+        type=int,
+        default=None,
+        help="When running a file through specify the frame rate you want it to run at, otherwise it runs as fast as the cpu can",
+    )
+
     args = parser.parse_args()
     return args
 
@@ -76,7 +84,9 @@ def main():
     )
 
     if args.file:
-        return parse_file(args.file, config, thermal_config, args.preview_type)
+        return parse_file(
+            args.file, config, thermal_config, args.preview_type, args.fps
+        )
 
     process_queue = multiprocessing.Queue()
 
@@ -159,20 +169,19 @@ def file_changed(event):
         os._exit(0)
 
 
-def parse_file(file, config, thermal_config, preview_type):
+def parse_file(file, config, thermal_config, preview_type, fps):
     _, ext = os.path.splitext(file)
     thermal_config.recorder.rec_window = rec_window = TimeWindow(
-        RelAbsTime(""),
-        RelAbsTime(""),
+        RelAbsTime(""), RelAbsTime(""), None, None, 0
     )
 
     if ext == ".cptv":
-        parse_cptv(file, config, thermal_config.config_file, preview_type)
+        parse_cptv(file, config, thermal_config.config_file, preview_type, fps)
     else:
-        parse_ir(file, config, thermal_config, preview_type)
+        parse_ir(file, config, thermal_config, preview_type, fps)
 
 
-def parse_ir(file, config, thermal_config, preview_type):
+def parse_ir(file, config, thermal_config, preview_type, fps):
     from piclassifier import irmotiondetector
     import cv2
 
@@ -180,6 +189,8 @@ def parse_ir(file, config, thermal_config, preview_type):
     count = 0
     vidcap = cv2.VideoCapture(file)
     while True:
+        if fps is not None:
+            time.sleep(1 / fps)
         success, image = vidcap.read()
         if not success:
             break
@@ -223,7 +234,7 @@ def parse_ir(file, config, thermal_config, preview_type):
     pi_classifier.disconnected()
 
 
-def parse_cptv(file, config, thermal_config_file, preview_type):
+def parse_cptv(file, config, thermal_config_file, preview_type, fps):
     from cptv import CPTVReader
 
     with open(file, "rb") as f:
@@ -253,11 +264,14 @@ def parse_cptv(file, config, thermal_config_file, preview_type):
             preview_type,
         )
         for frame in reader:
+            frame.ffc_imminent = False
+            frame.ffc_status = 0
             if frame.background_frame:
                 pi_classifier.motion_detector._background._background = frame.pix
                 continue
             pi_classifier.process_frame(frame, time.time())
-
+            if fps is not None:
+                time.sleep(1.0 / fps)
         pi_classifier.disconnected()
 
 
@@ -397,8 +411,9 @@ def next_snapshot(window, prev_window_type=None):
         current_status == WindowStatus.inside or prev_window_type == WindowStatus.before
     ):
         started = window.next_start()
-        if current_status is not None and started - datetime.now() < timedelta(
-            minutes=30
+        if (
+            current_status is not None
+            and abs((started - datetime.now()).total_seconds()) < 60 * 30
         ):
             logging.info("Started inside window within 30 mins")
             return (started, WindowStatus.before)

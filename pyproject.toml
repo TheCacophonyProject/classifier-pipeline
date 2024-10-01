@@ -8,7 +8,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "classifier_pipeline"
-version = "0.0.13"
+version = "0.0.17"
 authors = [
   { name="Giampaolo Ferraro", email="giampaolo@cacophony.org.nz" },
 ]
@@ -35,7 +35,7 @@ dependencies = [
   "h5py==3.8.0",
   "pyyaml==6.0",
   "pillow==10.0.1",
-  "attrs==19.2.0",
+  "attrs==24.2.0",
   "filelock==3.0.12",
   "Astral==1.10.1",
   "timezonefinder==4.1.0",

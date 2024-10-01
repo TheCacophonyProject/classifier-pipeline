@@ -20,7 +20,7 @@ class Lepton3(RawFrame):
         revision = get_uint16(raw_bytes, offset)
         time_counter = get_uint32(raw_bytes, 2)
         status_bits = get_uint32(raw_bytes, 6)
-
+        ffc_status = (status_bits >> 4) & 0b11
         offset = 2 + 4 + 4 + 16
         software_revision = get_uint64(raw_bytes, offset)  # /26
         offset += 8 + 6
@@ -37,6 +37,8 @@ class Lepton3(RawFrame):
 
         offset += 2
         time_counter_last_ffc = get_uint32(raw_bytes, offset)
+        ffc_imminent = raw_bytes[637] > 0
+
         # 60th byte
         t = Telemetry()
         t.telemetry_revision = revision
@@ -49,4 +51,6 @@ class Lepton3(RawFrame):
         t.fpa_temp = (fpa_temp - 27315.0) / 100
         t.fpa_temp_last_ffc = (fpa_temp_last_ffc - 27315.0) / 100
         t.last_ffc_time = timedelta(milliseconds=time_counter_last_ffc)
+        t.ffc_imminent = ffc_imminent
+        t.ffc_status = ffc_status
         return t
