@@ -155,6 +155,7 @@ def load_args():
 
     parser.add_argument(
         "--evaluate-dir",
+        actoun="count",
         help="Evalute directory of cptv files",
     )
 
@@ -263,7 +264,7 @@ def metadata_confusion(dir, confusion_file):
                 y_pred.append(ai_tag[0])
     labels = list(labels)
     labels.sort()
-    logging.info("Using labels %s",labels)
+    logging.info("Using labels %s", labels)
     cm = confusion_matrix(y_true, y_pred, labels=labels)
     # Log the confusion matrix as an image summary.
     figure = plot_confusion_matrix(cm, class_names=labels)
