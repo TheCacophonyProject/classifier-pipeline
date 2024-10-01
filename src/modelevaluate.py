@@ -311,8 +311,8 @@ def metadata_confusion(dir, confusion_file, after_date=None, model_metadata=None
                 )
                 human_tag = remapped_labels[human_tag]
             # if human_tag not in labels:
-                # logging.info("Excluding %s", human_tag)
-  
+            # logging.info("Excluding %s", human_tag)
+
             ai_tags = []
             for tag in tags:
                 if tag.get("automatic") is True:
@@ -362,7 +362,7 @@ def load_clip_data(cptv_file):
         logging.warn("No clip for %s", cptv_file)
         return None
 
-    if filter_clip(clip, None,None,reason, after_date=after_date):
+    if filter_clip(clip, None, None, reason, after_date=after_date):
         logging.info("Filtering %s", cptv_file)
         return None
     clip.tracks = [
@@ -473,7 +473,8 @@ def evaluate_dir(
                     predicted_tag = ",".join(predicted_labels)
                     y_pred.append(predicted_tag)
                 if y_pred[-1] != y_true[-1]:
-                    logging.info("%s predicted %s but should be %s with confidence %s"
+                    logging.info(
+                        "%s predicted %s but should be %s with confidence %s",
                         data[0],
                         y_pred[-1],
                         label,
