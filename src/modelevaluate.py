@@ -310,8 +310,8 @@ def metadata_confusion(dir, confusion_file, after_date=None, model_metadata=None
                     "Remapping %s to %s", human_tag, remapped_labels[human_tag]
                 )
                 human_tag = remapped_labels[human_tag]
-            if human_tag not in labels:
-                logging.info("Excluding %s", human_tag)
+            # if human_tag not in labels:
+                # logging.info("Excluding %s", human_tag)
   
             ai_tags = []
             for tag in tags:
@@ -324,6 +324,8 @@ def metadata_confusion(dir, confusion_file, after_date=None, model_metadata=None
                         ai_tags.append(tag["what"])
 
             y_true.append(human_tag)
+            if human_tag not in labels:
+                labels.append(human_tag)
             if len(ai_tags) == 0:
                 y_pred.append("None")
             else:
@@ -360,7 +362,7 @@ def load_clip_data(cptv_file):
         logging.warn("No clip for %s", cptv_file)
         return None
 
-    if filter_clip(clip, reason, after_date=after_date):
+    if filter_clip(clip, None,None,reason, after_date=after_date):
         logging.info("Filtering %s", cptv_file)
         return None
     clip.tracks = [
