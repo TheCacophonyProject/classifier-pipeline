@@ -363,7 +363,7 @@ def load_clip_data(cptv_file):
         return None
 
     if filter_clip(clip, None, None, reason, after_date=after_date):
-        logging.info("Filtering %s", cptv_file)
+        # logging.info("Filtering %s", cptv_file)
         return None
     clip.tracks = [
         track for track in clip.tracks if not filter_track(track, EXCLUDED_TAGS, reason)
