@@ -239,6 +239,9 @@ def metadata_confusion(dir, confusion_file, after_date=None, model_metadata=None
         labels = model_meta.get("labels", [])
         excluded_labels = model_meta.get("excluded_labels", {})
         remapped_labels = model_meta.get("remapped_labels", {})
+        for k, v in remapped_labels.items():
+            if v == "land-bird":
+                remapped_labels[k] = "bird"
     else:
         labels = [
             "bird",
