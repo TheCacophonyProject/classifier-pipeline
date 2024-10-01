@@ -208,6 +208,9 @@ class RawDatabase:
             clip_header.tracks.append(header)
         return clip_header
 
+    def get_id(self):
+        return self.meta_data_file
+
     def get_clip_meta(self, tag_precedence):
         return self.get_clip_tracks(tag_precedence)
         #
