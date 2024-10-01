@@ -94,7 +94,6 @@ def preprocess_frame(
             thermal_max = None
             if thermal_norm_limits is not None:
                 thermal_min, thermal_max = thermal_norm_limits
-                logging.info("Using therml min max %s, %s", thermal_min, thermal_max)
             cropped_frame.thermal, _ = imageprocessing.normalize(
                 cropped_frame.thermal, min=thermal_min, max=thermal_max, new_max=255
             )
