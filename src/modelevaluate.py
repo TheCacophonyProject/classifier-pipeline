@@ -161,7 +161,10 @@ def load_args():
         "--evaluate-dir",
         help="Evalute directory of cptv files",
     )
-
+    parser.add_argument(
+        "--model-metadata",
+        help="Meta data file for model, used with confusion from meta",
+    )
     parser.add_argument("-c", "--config-file", help="Path to config file to use")
 
     parser.add_argument("-d", "--date", help="Use clips after this")
@@ -225,11 +228,51 @@ def filter_diffs(track_frames, background):
 # evaluate a confusion matrix from metadata of files, already evaluated by our current model on browse
 
 
-def metadata_confusion(dir, confusion_file, after_date=None):
+def metadata_confusion(dir, confusion_file, after_date=None, model_metadata=None):
     with open("label_paths.json", "r") as f:
         label_paths = json.load(f)
     label_mapping = get_mappings(label_paths)
-    labels = set()
+    if model_metadata is not None and Path(model_metadata).exists():
+        with open(model_metadata, "r") as t:
+            # add in some metadata stats
+            model_meta = json.load(t)
+        labels = model_meta.get("labels", [])
+        excluded_labels = model_meta.get("excluded_labels", {})
+        remapped = model_meta.get("remapped_labels", {})
+        remapped_labels = {}
+        # slightly different format than from thermaldataset
+        for mapped_to, mapped_labels in remapped.items():
+            for mapped_label in mapped_labels:
+                remapped_labels[mapped_label] = mapped_to
+    else:
+        labels = [
+            "bird",
+            "cat",
+            "deer",
+            "dog",
+            "falsepositive",
+            "hedgehog",
+            "human",
+            "kiwi",
+            "leporidae",
+            "mustelid",
+            "penguin",
+            "possum",
+            "rodent",
+            "sheep",
+            "vehicle",
+            "wallaby",
+            "landbird",
+            "None",
+            "unidentified",
+        ]
+        excluded_labels, remapped_labels = get_excluded("thermal")
+    logging.info(
+        "Labels are %s excluded %s remapped %s",
+        labels,
+        excluded_labels,
+        remapped_labels,
+    )
     y_true = []
     y_pred = []
     dir = Path(dir)
@@ -255,7 +298,14 @@ def metadata_confusion(dir, confusion_file, after_date=None):
                 continue
             human_tag = human_tags.pop()
             human_tag = label_mapping.get(human_tag, human_tag)
-            labels.add(human_tag)
+            if human_tag in excluded_labels:
+                logging.info("Excluding %s", human_tag)
+                continue
+            if human_tag in remapped_labels:
+                logging.info(
+                    "Remapping %s to %s", human_tag, remapped_labels[human_tag]
+                )
+                human_tag = remapped_labels[human_tag]
             ai_tags = []
             for tag in tags:
                 if tag.get("automatic") is True:
@@ -269,17 +319,12 @@ def metadata_confusion(dir, confusion_file, after_date=None):
             y_true.append(human_tag)
             if len(ai_tags) == 0:
                 y_pred.append("None")
-                labels.add("None")
             else:
-                labels.add(ai_tags[0])
                 y_pred.append(ai_tags[0])
     if len(labels) == 0:
         logging.info("No data found")
         return
-    labels = list(labels)
-    labels.sort()
 
-    logging.info("Using labels %s", labels)
     cm = confusion_matrix(y_true, y_pred, labels=labels)
     # Log the confusion matrix as an image summary.
     figure = plot_confusion_matrix(cm, class_names=labels)
@@ -480,7 +525,9 @@ def main():
         weights = model_file / args.weights
     base_dir = Path(config.base_folder) / "training-data"
     if args.evaluate_dir and args.confusion_from_meta:
-        metadata_confusion(Path(args.evaluate_dir), args.confusion, args.date)
+        metadata_confusion(
+            Path(args.evaluate_dir), args.confusion, args.date, args.model_metadata
+        )
     else:
 
         model = KerasModel(train_config=config.train)
