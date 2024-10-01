@@ -321,13 +321,14 @@ def metadata_confusion(dir, confusion_file, after_date=None, model_metadata=None
                         ai_tags.append(tag["what"])
 
             y_true.append(human_tag)
+            if human_tag not in labels:
+                labels.append(human_tag)
             if len(ai_tags) == 0:
                 y_pred.append("None")
             else:
                 y_pred.append(ai_tags[0])
-    if len(labels) == 0:
-        logging.info("No data found")
-        return
+                if ai_tags[0] not in labels:
+                    labels.append(ai_tags[0])
 
     cm = confusion_matrix(y_true, y_pred, labels=labels)
     # Log the confusion matrix as an image summary.
