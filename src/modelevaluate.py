@@ -238,12 +238,7 @@ def metadata_confusion(dir, confusion_file, after_date=None, model_metadata=None
             model_meta = json.load(t)
         labels = model_meta.get("labels", [])
         excluded_labels = model_meta.get("excluded_labels", {})
-        remapped = model_meta.get("remapped_labels", {})
-        remapped_labels = {}
-        # slightly different format than from thermaldataset
-        for mapped_to, mapped_labels in remapped.items():
-            for mapped_label in mapped_labels:
-                remapped_labels[mapped_label] = mapped_to
+        remapped_labels = model_meta.get("remapped_labels", {})
     else:
         labels = [
             "bird",
