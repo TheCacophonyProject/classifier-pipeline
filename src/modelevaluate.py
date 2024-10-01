@@ -72,8 +72,9 @@ land_birds = [
 def model_score(cm, labels):
     cm = np.around(cm.astype("float") / cm.sum(axis=1)[:, np.newaxis], decimals=2)
     cm = np.nan_to_num(cm)
-
-    fp_index = labels.index("false-positive")
+    fp_index = None
+    if "false-positive" in labels:
+        fp_index = labels.index("false-positive")
     none_index = None
     unid_index = None
     if "None" in labels:
@@ -82,7 +83,9 @@ def model_score(cm, labels):
         unid_index = labels.index("unidentified")
     score = 0
     for l_i, l in enumerate(labels):
-        fp_acc = cm[l_i][fp_index]
+        fp_acc = 0
+        if fp_index is not None:
+            fp_acc = cm[l_i][fp_index]
         none_acc = 0
         unid_acc = 0
         accuracy = cm[l_i][l_i]
@@ -155,7 +158,6 @@ def load_args():
 
     parser.add_argument(
         "--evaluate-dir",
-        actoun="count",
         help="Evalute directory of cptv files",
     )
 
@@ -165,7 +167,9 @@ def load_args():
 
     parser.add_argument("--split-file", help="Use split for evaluation")
     parser.add_argument(
-        "--confusion-from-meta", help="Use metadata to produce a confusion matrix"
+        "--confusion-from-meta",
+        action="count",
+        help="Use metadata to produce a confusion matrix",
     )
 
     parser.add_argument(
@@ -253,7 +257,7 @@ def metadata_confusion(dir, confusion_file):
                 tag.get("what")
                 for tag in tags
                 if tag.get("automatic") is True
-                and tag.get("data", {}).get("name") == "Inc3 RF"
+                and tag.get("data", {}).get("name") == "Master"
             ]
             y_true.append(human_tag)
             if len(ai_tag) == 0:
@@ -464,13 +468,13 @@ def main():
     if args.weights:
         weights = model_file / args.weights
     base_dir = Path(config.base_folder) / "training-data"
+    if args.evaluate_dir and args.confusion_from_meta:
+        metadata_confusion(Path(args.evaluate_dir), args.confusion)
+    else:
 
-    model = KerasModel(train_config=config.train)
-    model.load_model(model_file, training=False, weights=weights)
-    if args.evaluate_dir:
-        if args.confusion_from_meta:
-            evalute_prod_confusion(Path(args.evaluate_dir), args.confusion)
-        else:
+        model = KerasModel(train_config=config.train)
+        model.load_model(model_file, training=False, weights=weights)
+        if args.evaluate_dir:
             evaluate_dir(
                 model,
                 Path(args.evaluate_dir),
@@ -481,42 +485,42 @@ def main():
                 threshold=args.threshold,
                 after_date=args.date,
             )
-    elif args.dataset:
-        model_labels = model.labels.copy()
-        model.load_training_meta(base_dir)
-        # model.labels = model_labels
-        if model.params.multi_label:
-            model.labels.append("land-bird")
-        excluded, remapped = get_excluded(model.data_type)
-        files = base_dir / args.dataset
-        dataset, _, new_labels, _ = get_dataset(
-            files,
-            model.data_type,
-            model.labels,
-            model_labels=model_labels,
-            batch_size=64,
-            image_size=model.params.output_dim[:2],
-            preprocess_fn=model.preprocess_fn,
-            augment=False,
-            resample=False,
-            include_features=model.params.mvm,
-            one_hot=True,
-            deterministic=True,
-            shuffle=False,
-            excluded_labels=excluded,
-            remapped_labels=remapped,
-            multi_label=model.params.multi_label,
-            include_track=True,
-            cache=True,
-            channels=model.params.channels,
-        )
-        model.labels = new_labels
-        logging.info(
-            "Dataset loaded %s, using labels %s",
-            args.dataset,
-            model.labels,
-        )
-        model.confusion_tracks(dataset, args.confusion, threshold=args.threshold)
+        elif args.dataset:
+            model_labels = model.labels.copy()
+            model.load_training_meta(base_dir)
+            # model.labels = model_labels
+            if model.params.multi_label:
+                model.labels.append("land-bird")
+            excluded, remapped = get_excluded(model.data_type)
+            files = base_dir / args.dataset
+            dataset, _, new_labels, _ = get_dataset(
+                files,
+                model.data_type,
+                model.labels,
+                model_labels=model_labels,
+                batch_size=64,
+                image_size=model.params.output_dim[:2],
+                preprocess_fn=model.preprocess_fn,
+                augment=False,
+                resample=False,
+                include_features=model.params.mvm,
+                one_hot=True,
+                deterministic=True,
+                shuffle=False,
+                excluded_labels=excluded,
+                remapped_labels=remapped,
+                multi_label=model.params.multi_label,
+                include_track=True,
+                cache=True,
+                channels=model.params.channels,
+            )
+            model.labels = new_labels
+            logging.info(
+                "Dataset loaded %s, using labels %s",
+                args.dataset,
+                model.labels,
+            )
+            model.confusion_tracks(dataset, args.confusion, threshold=args.threshold)
 
 
 if __name__ == "__main__":
