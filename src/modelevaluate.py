@@ -462,7 +462,7 @@ def evaluate_dir(
                 #     top_score = len(output)
                 #     smoothed = output
                 # else:
-                # smoothed = output * output * masses
+                smoothed = output * output * masses
                 prediction.classified_clip(output, output, data[2], top_score=top_score)
                 y_true.append(label_mapping.get(label, label))
                 predicted_labels = [prediction.predicted_tag()]
