@@ -276,6 +276,8 @@ def metadata_confusion(dir, confusion_file, after_date=None, model_metadata=None
     dir = Path(dir)
     for cptv_file in dir.glob(f"**/*cptv"):
         meta_f = cptv_file.with_suffix(".txt")
+        if not meta_f.exists():
+            continue
         meta_data = None
         with open(meta_f, "r") as t:
             # add in some metadata stats
