@@ -736,11 +736,11 @@ def rough_balance(datasets):
             logging.info("Not balancing")
             continue
         if len(counts) <= 2:
-            cap_at = counts[0]
+            cap_at = counts[-1]
         elif len(counts) < 7:
-            cap_at = counts[-2]
+            cap_at = counts[-1]
         else:
-            cap_at = counts[-3]
+            cap_at = counts[-1]
         logging.info("Capping dataset %s at %s", dataset.name, cap_at)
         for lbl, count in lbl_counts.items():
             if count <= cap_at:

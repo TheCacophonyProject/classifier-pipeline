@@ -193,7 +193,8 @@ def saveclassify_image(data, filename):
     Path(filename).parent.mkdir(parents=True, exist_ok=True)
     r = Image.fromarray(np.uint8(data[:, :, 0]))
     g = Image.fromarray(np.uint8(data[:, :, 1]))
-    b = Image.fromarray(np.uint8(data[:, :, 2]))
+    b = g
+    # b = Image.fromarray(np.uint8(data[:, :, 2]))
     concat = np.concatenate((r, g, b), axis=1)  # horizontally
     img = Image.fromarray(np.uint8(concat))
     img.save(filename + ".png")

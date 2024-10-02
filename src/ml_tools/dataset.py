@@ -70,7 +70,7 @@ class Dataset:
                 self.use_segments = False
                 self.segment_length = 1
             else:
-                self.use_segments = config.train.hyper_params.get("use_segments", True)
+                self.use_segments = config.build.use_segments
                 if self.use_segments:
                     self.segment_length = config.build.segment_length
                 else:

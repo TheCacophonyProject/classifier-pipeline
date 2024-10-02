@@ -39,7 +39,7 @@ class BuildConfig(DefaultConfig):
     tag_precedence = attr.ib()
     excluded_tags = attr.ib()
     country = attr.ib()
-
+    use_segments = attr.ib()
     EXCLUDED_TAGS = ["poor tracking", "part", "untagged", "unidentified"]
 
     # country bounding boxs
@@ -88,6 +88,7 @@ class BuildConfig(DefaultConfig):
             tag_precedence=build["tag_precedence"],
             excluded_tags=build["excluded_tags"],
             country=build["country"],
+            use_segments=build["use_segments"],
         )
 
     @classmethod
@@ -105,6 +106,7 @@ class BuildConfig(DefaultConfig):
             tag_precedence=BuildConfig.DEFAULT_GROUPS,
             excluded_tags=BuildConfig.EXCLUDED_TAGS,
             country="NZ",
+            use_segments=True,
         )
 
     def validate(self):
