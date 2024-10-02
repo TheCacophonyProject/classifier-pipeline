@@ -164,6 +164,13 @@ class HyperParams(dict):
     def frame_size(self):
         return self.get("frame_size", 32)
 
+    def set_use_segments(self, use_segments):
+        self["use_segments"] = use_segments
+        if use_segments:
+            self["square_width"] = 5
+        else:
+            self["square_width"] = 1
+
     #
     # @property
     # def red_type(self):

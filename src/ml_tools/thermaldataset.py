@@ -130,7 +130,9 @@ def load_dataset(filenames, remap_lookup, labels, args):
             extra_label_map=extra_label_map,
             include_track=args.get("include_track", False),
             num_frames=args.get("num_frames", 25),
-            channels=args.get("channels", [TrackChannels.thermal.name]),
+            channels=args.get(
+                "channels", [TrackChannels.thermal.name, TrackChannels.filtered.name]
+            ),
         ),
         num_parallel_calls=AUTOTUNE,
         deterministic=deterministic,
@@ -183,7 +185,7 @@ def read_tfrecord(
     channels=[TrackChannels.thermal.name, TrackChannels.filtered.name],
 ):
     logging.info(
-        "Read tf record with image %s lbls %s labeld %s aug  %s  prepr %s only features %s one hot %s include fetures %s",
+        "Read tf record with image %s lbls %s labeld %s aug  %s  prepr %s only features %s one hot %s include fetures %s num frames %s",
         image_size,
         num_labels,
         labeled,
@@ -192,6 +194,7 @@ def read_tfrecord(
         only_features,
         one_hot,
         include_features,
+        num_frames,
     )
     load_images = not only_features
     tfrecord_format = {

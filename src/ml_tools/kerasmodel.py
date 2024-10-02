@@ -81,6 +81,9 @@ class KerasModel(Interpreter):
         self.ds_by_label = meta.get("by_label", True)
         self.excluded_labels = meta.get("excluded_labels")
         self.remapped_labels = meta.get("remapped_labels")
+        self.params.set_use_segments(
+            meta.get("config").get("build", {}).get("use_segments", True)
+        )
 
     def shape(self):
         if self.model is None:
