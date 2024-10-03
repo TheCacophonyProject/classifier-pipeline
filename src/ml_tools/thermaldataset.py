@@ -329,7 +329,7 @@ def main():
         remapped_labels=get_remapped(),
         excluded_labels=get_excluded(),
         include_track=True,
-        num_frames=25,
+        num_frames=1,
     )
     print("Ecpoh size is", epoch_size)
     # print(get_distribution(resampled_ds, len(labels), extra_meta=False))

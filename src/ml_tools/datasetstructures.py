@@ -144,6 +144,7 @@ class TrackHeader:
         human_tags=None,
         remapped_lbl=None,
         mega_missed_regions=None,
+        skip_ffc=True,
     ):
         # regions that megadetector found nothing in
         self.mega_missed_regions = mega_missed_regions
@@ -173,12 +174,8 @@ class TrackHeader:
         self.frame_crop = None
         self.num_frames = num_frames
         self.important_predicted = 0
-
-        mass_history = np.uint16(
-            [region.mass for region in self.regions_by_frame.values()]
-        )
         mass_history = [
-            region.frame_number
+            region.mass
             for region in self.regions_by_frame.values()
             if region.mass > 0
             and (
@@ -243,29 +240,55 @@ class TrackHeader:
     def calculate_sample_frames(
         self, min_mass=None, max_mass=None, ffc_frames=None, skip_last=None
     ):
+        crop_rectangle = Rectangle(2, 2, 160 - 2 * 2, 140 - 2 * 2)
+
+        logging.debug(
+            "Calculating sample with min %s and max %s ffc %s and skip %s",
+            min_mass,
+            max_mass,
+            ffc_frames,
+            skip_last,
+        )
         frame_numbers = list(self.regions_by_frame.keys())
+        previous_mass = None
+
         if skip_last is not None:
             skip_x = int(len(frame_numbers) * skip_last)
             frame_numbers = frame_numbers[:-skip_x]
-        frame_numbers = [
-            frame
-            for frame in frame_numbers
-            if (ffc_frames is None or frame not in ffc_frames)
-            and (
-                self.mega_missed_regions is None
-                or frame not in self.mega_missed_regions
-            )
-        ]
-        frame_numbers.sort()
 
+        frame_numbers.sort()
         for frame_num in frame_numbers:
             region = self.regions_by_frame[frame_num]
-            if region.mass == 0 or region.blank:
+
+            if (
+                region.mass == 0
+                or region.blank
+                or region.width <= 0
+                or region.height <= 0
+            ):
                 continue
+            if ffc_frames is not None and frame_num in ffc_frames:
+                continue
+
+            if (
+                self.mega_missed_regions is not None
+                and frame_num in self.mega_missed_regions
+            ):
+                continue
+
             if min_mass is not None and region.mass < min_mass:
                 continue
             if max_mass is not None and region.mass > max_mass:
                 continue
+            # dont use regions on the edge if the mass deviates too much from the last known good mass
+            region.set_is_along_border(crop_rectangle)
+            if region.is_along_border:
+                if previous_mass is not None:
+                    previous_mass_thresh = previous_mass * 0.1
+                    if (abs(previous_mass - region.mass)) >= previous_mass_thresh:
+                        continue
+            else:
+                previous_mass = region.mass
             f = FrameSample(
                 self.clip_id,
                 self.track_id,

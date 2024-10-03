@@ -895,6 +895,7 @@ def main():
                         "tag_precedence": config.build.tag_precedence,
                         "min_mass": master_dataset.min_frame_mass,
                         "thermal_diff_norm": config.build.thermal_diff_norm,
+                        "filter_by_lq": master_dataset.filter_by_lq,
                     }
                 )
             create_tf_records(
