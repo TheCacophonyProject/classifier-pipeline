@@ -238,7 +238,12 @@ class TrackHeader:
         self.samples.append(sample)
 
     def calculate_sample_frames(
-        self, min_mass=None, max_mass=None, ffc_frames=None, skip_last=None
+        self,
+        min_mass=None,
+        max_mass=None,
+        ffc_frames=None,
+        skip_last=None,
+        max_frames=None,
     ):
         crop_rectangle = Rectangle(2, 2, 160 - 2 * 2, 140 - 2 * 2)
 
@@ -302,6 +307,8 @@ class TrackHeader:
                 track_median_mass=self.median_mass,
             )
             self.samples.append(f)
+        if max_frames is not None and len(self.samples) > max_frames:
+            self.samples = np.random.choice(self.samples, max_frames, replace=False)
 
     def remove_sample(self, f):
         self.samples.remove(f)

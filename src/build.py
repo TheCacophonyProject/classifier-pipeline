@@ -896,6 +896,7 @@ def main():
                         "min_mass": master_dataset.min_frame_mass,
                         "thermal_diff_norm": config.build.thermal_diff_norm,
                         "filter_by_lq": master_dataset.filter_by_lq,
+                        "max_frames": master_dataset.max_frames,
                     }
                 )
             create_tf_records(

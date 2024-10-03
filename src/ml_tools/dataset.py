@@ -86,6 +86,7 @@ class Dataset:
             self.segment_type = SegmentType.ALL_RANDOM
             self.max_segments = config.build.max_segments
             self.country = config.build.country
+            self.max_frames = config.build.max_frames
         else:
             self.country = "NZ"
             self.tag_precedence = BuildConfig.DEFAULT_GROUPS
@@ -100,6 +101,7 @@ class Dataset:
             self.segment_min_avg_mass = 10
             self.min_frame_mass = 16
             self.segment_type = SegmentType.ALL_RANDOM
+            self.max_frames = 75
 
         self.country_rectangle = BuildConfig.COUNTRY_LOCATIONS.get(self.country)
         logging.info(

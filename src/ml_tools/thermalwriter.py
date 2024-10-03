@@ -244,6 +244,7 @@ def get_data(clip_samples, extra_args):
                             else track.upper_mass
                         ),
                         ffc_frames=clip_meta.ffc_frames,
+                        max_frames =extra_args.get("max_frames")
                     )
                 samples = track.samples
                 frame_temp_median = {}

@@ -40,6 +40,8 @@ class BuildConfig(DefaultConfig):
     excluded_tags = attr.ib()
     country = attr.ib()
     use_segments = attr.ib()
+    max_frames = attr.ib()
+
     EXCLUDED_TAGS = ["poor tracking", "part", "untagged", "unidentified"]
 
     # country bounding boxs
@@ -89,6 +91,7 @@ class BuildConfig(DefaultConfig):
             excluded_tags=build["excluded_tags"],
             country=build["country"],
             use_segments=build["use_segments"],
+            max_frames=build["max_frames"],
         )
 
     @classmethod
@@ -107,6 +110,7 @@ class BuildConfig(DefaultConfig):
             excluded_tags=BuildConfig.EXCLUDED_TAGS,
             country=None,
             use_segments=True,
+            max_frames=75,
         )
 
     def validate(self):
