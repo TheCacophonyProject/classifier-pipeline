@@ -228,6 +228,7 @@ def get_data(clip_samples, extra_args):
                         skip_ffc=extra_args.get("skip_ffc", True),
                         ffc_frames=clip_meta.ffc_frames,
                         max_segments=len(samples),
+                        frame_min_mass=extra_args.get("min_mass"),
                     )
                 else:
                     filter_by_lq = extra_args.get("filter_by_lq", False)

@@ -362,12 +362,14 @@ class TrackHeader:
         location=None,
         segment_frames=None,
         from_last=None,
+        frame_min_mass=None,
     ):
         if segment_frames is not None:
             raise Exception("Have not implement this path")
-        min_frames = segment_width
-        if self.label == "vehicle" or self.label == "human":
-            min_frames = segment_width / 4.0
+        min_frames = segment_width / 4.0
+        if self.label in ["stoat", "mustelid", "weasel", "ferret"]:
+            # try and always get one for these
+            min_frames = 0
 
         # in python3.7+ can just take the values and it guarantees order it was added to dict
         regions = self.bounds_history
@@ -390,6 +392,7 @@ class TrackHeader:
             source_file=self.source_file,
             dont_filter=dont_filter,
             skip_ffc=skip_ffc,
+            frame_min_mass=frame_min_mass,
         )
         # GP could get this from the tracks when writing
         # but might be best to keep samples independent for ease
@@ -963,11 +966,12 @@ def get_segments(
     source_file=None,
     dont_filter=False,
     skip_ffc=True,
+    frame_min_mass=None,
 ):
     if segment_type == SegmentType.ALL_RANDOM_NOMIN:
         segment_min_mass = None
     if min_frames is None:
-        min_frames = 25
+        min_frames = segment_width / 4.0
     segments = []
     mass_history = np.uint16([region.mass for region in regions])
     filtered_stats = {"segment_mass": 0, "too short": 0}
@@ -986,6 +990,7 @@ def get_segments(
         and not region.blank
         and region.width > 0
         and region.height > 0
+        and ((has_no_mass or frame_min_mass is None) or region.mass >= frame_min_mass)
     ]
     if len(frame_indices) == 0:
         logging.warn("Nothing to load for %s - %s", clip_id, track_id)
@@ -1024,9 +1029,9 @@ def get_segments(
             segment_min_mass,
             source_file=source_file,
         )
-    # if len(frame_indices) < min_frames:
-    # filtered_stats["too short"] += 1
-    # return segments, filtered_stats
+    if len(frame_indices) < min_frames:
+        filtered_stats["too short"] += 1
+        return segments, filtered_stats
     frame_indices = np.array(frame_indices)
     segment_count = max(1, len(frame_indices) // segment_frame_spacing)
     segment_count = int(segment_count)
@@ -1047,12 +1052,12 @@ def get_segments(
             # random_frames and not random_sections:
             np.random.shuffle(frame_indices)
         for i in range(segment_count):
-            # always get atleast one segmnet
-            if i > 0:
-                if (len(frame_indices) < segment_width and len(segments) > 1) or len(
-                    frame_indices
-                ) < (segment_width / 4.0):
-                    break
+            # always get atleast one segment, not doing annymore
+            # if i > 0:
+            if (len(frame_indices) < segment_width and len(segments) > 1) or len(
+                frame_indices
+            ) < segment_width / 4:
+                break
 
             if segment_type == SegmentType.ALL_SECTIONS:
                 # random frames from section 2.2 * segment_width

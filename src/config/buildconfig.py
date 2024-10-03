@@ -101,11 +101,11 @@ class BuildConfig(DefaultConfig):
             segment_min_avg_mass=10,
             min_frame_mass=10,
             filter_by_lq=False,
-            max_segments=5,
+            max_segments=3,
             thermal_diff_norm=True,
             tag_precedence=BuildConfig.DEFAULT_GROUPS,
             excluded_tags=BuildConfig.EXCLUDED_TAGS,
-            country="NZ",
+            country=None,
             use_segments=True,
         )
 
