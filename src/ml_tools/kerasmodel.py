@@ -66,8 +66,8 @@ class KerasModel(Interpreter):
         self.label_probabilities = None
         self.class_weights = None
         self.ds_by_label = True
-        self.excluded_labels = []
-        self.remapped_labels = []
+        self.excluded_labels = None
+        self.remapped_labels = None
         self.orig_labels = None
 
     def load_training_meta(self, base_dir):
@@ -517,12 +517,15 @@ class KerasModel(Interpreter):
         logging.info(
             "%s Training model for %s epochs with weights %s", run_name, epochs, weights
         )
-
-        if self.params.excluded_labels is None:
+        if self.params.excluded_labels is not None:
+            self.excluded_labels = self.params.excluded_labels
+        else:
             self.excluded_labels, self.remapped_labels = get_excluded(
                 self.data_type, self.params.multi_label
             )
-        if self.params.remapped_labels is None:
+        if self.params.remapped_labels is not None:
+            self.remapped_labels = self.params.remapped_labels
+        else:
             self.remapped_labels, self.remapped_labels = get_excluded(
                 self.data_type, self.params.multi_label
             )
@@ -531,7 +534,10 @@ class KerasModel(Interpreter):
         logging.info(
             "Excluding %s remapping %s", self.excluded_labels, self.remapped_labels
         )
-
+        for lbl in self.remapped_labels.values():
+            if lbl not in self.labels:
+                self.labels.append(lbl)
+        self.labels.sort()
         if self.params.multi_label:
             self.labels.append("land-bird")
         self.orig_labels = self.labels.copy()

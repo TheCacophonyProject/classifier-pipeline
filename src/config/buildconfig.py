@@ -105,7 +105,7 @@ class BuildConfig(DefaultConfig):
             min_frame_mass=10,
             filter_by_lq=False,
             max_segments=3,
-            thermal_diff_norm=True,
+            thermal_diff_norm=False,
             tag_precedence=BuildConfig.DEFAULT_GROUPS,
             excluded_tags=BuildConfig.EXCLUDED_TAGS,
             country=None,
