@@ -559,6 +559,13 @@ def main():
             if model.params.multi_label:
                 model.labels.append("land-bird")
             excluded, remapped = get_excluded(model.data_type)
+
+            if model.params.excluded_labels is not None:
+                excluded = model.params.excluded_labels
+
+            if model.params.remapped_labels is not None:
+                remapped = model.params.remapped_labels
+
             files = base_dir / args.dataset
             dataset, _, new_labels, _ = get_dataset(
                 files,
@@ -580,7 +587,7 @@ def main():
                 include_track=True,
                 cache=True,
                 channels=model.params.channels,
-                num_frames=self.params.square_width**2,
+                num_frames=model.params.square_width**2,
             )
             model.labels = new_labels
             logging.info(
