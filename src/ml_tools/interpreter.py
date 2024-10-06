@@ -49,35 +49,31 @@ class Interpreter(ABC):
         else:
             import tensorflow as tf
 
-            if pretrained_model == "resnet":
+            if model_name == "resnet":
                 return tf.keras.applications.resnet.preprocess_input
-            elif pretrained_model == "nasnet":
+            elif model_name == "nasnet":
                 return tf.keras.applications.nasnet.preprocess_input
-            elif pretrained_model == "resnetv2":
+            elif model_name == "resnetv2":
                 return tf.keras.applications.resnet_v2.preprocess_input
 
-            elif pretrained_model == "resnet152":
+            elif model_name == "resnet152":
                 return tf.keras.applications.resnet.preprocess_input
 
-            elif pretrained_model == "vgg16":
+            elif model_name == "vgg16":
                 return tf.keras.applications.vgg16.preprocess_input
 
-            elif pretrained_model == "vgg19":
+            elif model_name == "vgg19":
                 return tf.keras.applications.vgg19.preprocess_input
 
-            elif pretrained_model == "mobilenet":
+            elif model_name == "mobilenet":
                 return tf.keras.applications.mobilenet_v2.preprocess_input
 
-            elif pretrained_model == "densenet121":
+            elif model_name == "densenet121":
                 return tf.keras.applications.densenet.preprocess_input
 
-            elif pretrained_model == "inceptionresnetv2":
+            elif model_name == "inceptionresnetv2":
                 return tf.keras.applications.inception_resnet_v2.preprocess_input
-        logging.warn(
-            "pretrained model %s has no preprocessing function", pretrained_model
-        )
-        return None
-        logging.info("No preprocess defined for %s", model_name)
+        logging.warn("pretrained model %s has no preprocessing function", model_name)
         return None
 
     def preprocess(self, clip, track, **args):
