@@ -68,10 +68,13 @@ def get_dataset(load_function, base_dir, labels, **args):
     remapped = {}
     keys = []
     values = []
+    shuffle_size = 4096
+    if args.get("num_frames", 25) == 1:
+        shuffle_size *= 25
     if model_labels is not None:
         new_labels = model_labels
 
-        logging.info("Mapping DS labels to model labels ")
+        logging.info("Mapping DS labels %s to model labels %s", labels, model_labels)
         # if we are loading a model with different labels we need to map the dataset labels
         # to the equivalent model labels
         for l_i, og_lbl in enumerate(labels):
@@ -80,7 +83,6 @@ def get_dataset(load_function, base_dir, labels, **args):
                 lbl = og_lbl
                 if lbl in to_remap:
                     lbl = to_remap[lbl]
-                    l_i = labels.index(lbl)
 
                 mdl_i = model_labels.index(lbl)
                 if lbl not in remapped:
@@ -171,7 +173,9 @@ def get_dataset(load_function, base_dir, labels, **args):
 
             l_filter = lambda x, y: tf.math.reduce_all(tf.math.equal(y, l_mask))
             l_dataset = dataset.filter(l_filter)
-            l_dataset = l_dataset.shuffle(40096, reshuffle_each_iteration=True)
+            l_dataset = l_dataset.shuffle(
+                shuffle_size * 10, reshuffle_each_iteration=True
+            )
 
             label_ds.append(l_dataset)
         dataset = tf.data.Dataset.sample_from_datasets(
@@ -190,9 +194,9 @@ def get_dataset(load_function, base_dir, labels, **args):
         and args.get("shuffle", True)
         and not args.get("resample")
     ):
-        logging.info("shuffling data")
+        logging.info("shuffling data with buffer %s", shuffle_size)
         dataset = dataset.shuffle(
-            4096, reshuffle_each_iteration=args.get("reshuffle", True)
+            shuffle_size, reshuffle_each_iteration=args.get("reshuffle", True)
         )
     # tf refues to run if epoch sizes change so we must decide a costant epoch size even though with reject res
     # it will chang eeach epoch, to ensure this take this repeat data and always take epoch_size elements
