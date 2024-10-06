@@ -580,6 +580,7 @@ def main():
                 include_track=True,
                 cache=True,
                 channels=model.params.channels,
+                num_frames=self.params.square_width**2,
             )
             model.labels = new_labels
             logging.info(
