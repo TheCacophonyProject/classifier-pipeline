@@ -874,10 +874,12 @@ class KerasModel(Interpreter):
         ]
         for y, pred in pred_per_track.values():
             pred.normalize_score()
-            no_smoothing = np.mean(pred.predictions, axis=0)
+            preds = np.array([p.prediction for p in pred.predictions])
+
+            no_smoothing = np.mean(preds, axis=0)
             masses = np.array(pred.masses)[:, None]
             old_smoothing = pred.class_best_score
-            new_smooth = pred.predictions * masses
+            new_smooth = preds * masses
             new_smooth = np.sum(new_smooth, axis=0)
             new_smooth /= np.sum(masses)
 
