@@ -537,7 +537,7 @@ class KerasModel(Interpreter):
         for lbl in self.remapped_labels.values():
             if lbl not in self.labels:
                 self.labels.append(lbl)
-        self.labels.sort()
+
         if self.params.multi_label:
             self.labels.append("land-bird")
         self.orig_labels = self.labels.copy()
