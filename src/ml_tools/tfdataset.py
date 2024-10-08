@@ -70,7 +70,7 @@ def get_dataset(load_function, base_dir, labels, **args):
     values = []
     shuffle_size = 4096
     if args.get("num_frames", 25) == 1:
-        shuffle_size *= 25
+        shuffle_size *= 20
     if model_labels is not None:
         new_labels = model_labels
 
@@ -166,6 +166,8 @@ def get_dataset(load_function, base_dir, labels, **args):
         logging.info("RESAMPLING")
         # seems the only way to get even distribution
         label_ds = []
+        unbalanced_ds = []
+        dont_balance = ["vehicle"]
         for i, l in enumerate(new_labels):
             l_mask = np.zeros((len(new_labels)))
             l_mask[i] = 1
@@ -173,15 +175,22 @@ def get_dataset(load_function, base_dir, labels, **args):
 
             l_filter = lambda x, y: tf.math.reduce_all(tf.math.equal(y, l_mask))
             l_dataset = dataset.filter(l_filter)
-            l_dataset = l_dataset.shuffle(
-                shuffle_size * 10, reshuffle_each_iteration=True
-            )
-
-            label_ds.append(l_dataset)
+            l_dataset = l_dataset.shuffle(shuffle_size, reshuffle_each_iteration=True)
+            if l in dont_balance:
+                unbalanced_ds.append(l_dataset)
+            else:
+                label_ds.append(l_dataset)
         dataset = tf.data.Dataset.sample_from_datasets(
             label_ds,
             # weights=[1 / len(new_labels)] * len(new_labels),
             stop_on_empty_dataset=True,
+            rerandomize_each_iteration=True,
+        )
+        dont_balance.append(dataset)
+        dataset = tf.data.Dataset.sample_from_datasets(
+            dont_balance,
+            # weights=[1 / len(new_labels)] * len(new_labels),
+            stop_on_empty_dataset=False,
             rerandomize_each_iteration=True,
         )
     if args.get("epoch_size") is not None:
