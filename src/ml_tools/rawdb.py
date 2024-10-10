@@ -203,6 +203,7 @@ class RawDatabase:
                 source_file=self.file,
                 mega_missed_regions=track_meta.get("mega_missed_regions"),
                 station_id=clip_header.station_id,
+                fp_frames=track_meta.get("fp_model_predictions"),
                 # frame_temp_median=frame_temp_median,
             )
             clip_header.tracks.append(header)

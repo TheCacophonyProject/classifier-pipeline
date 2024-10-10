@@ -18,7 +18,7 @@ class Interpreter(ABC):
         filename = filename.with_suffix(".json")
         logging.info("Loading metadata from %s", filename)
         metadata = json.load(open(filename, "r"))
-
+        self.version = metadata.get("version", None)
         self.labels = metadata["labels"]
         self.params = HyperParams()
         self.params.update(metadata.get("hyperparams", {}))
@@ -224,6 +224,7 @@ class Interpreter(ABC):
 
             if self.params.diff_norm:
                 filtered_norm_limits = (min_diff, max_diff)
+
         for i, region in enumerate(reversed(track.bounds_history)):
             if region.blank:
                 continue

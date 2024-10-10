@@ -145,7 +145,9 @@ class TrackHeader:
         remapped_lbl=None,
         mega_missed_regions=None,
         skip_ffc=True,
+        fp_frames=None,
     ):
+        self.fp_frames = fp_frames
         # regions that megadetector found nothing in
         self.mega_missed_regions = mega_missed_regions
         self.station_id = station_id

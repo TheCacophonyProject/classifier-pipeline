@@ -79,6 +79,9 @@ class Prediction:
         best = np.argsort(self.prediction)
         return self.prediction[best[-1]] - self.prediction[best[-2]]
 
+    def __str__(self):
+        return f"{self.frames} conf: {np.round(100*self.prediction)}"
+
 
 class TrackPrediction:
     """
