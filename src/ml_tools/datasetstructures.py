@@ -17,6 +17,9 @@ CPTV_FILE_HEIGHT = 120
 FRAME_SIZE = 32
 MIN_SIZE = 4
 
+# hard coded for now
+FP_LABELS = ["other", "unidentified", "rain", "false-positive", "water", "insect"]
+
 
 class SegmentType(Enum):
     IMPORTANT_RANDOM = 0
@@ -147,7 +150,9 @@ class TrackHeader:
         skip_ffc=True,
         fp_frames=None,
     ):
+
         self.fp_frames = fp_frames
+
         # regions that megadetector found nothing in
         self.mega_missed_regions = mega_missed_regions
         self.station_id = station_id
@@ -372,6 +377,7 @@ class TrackHeader:
         segment_frames=None,
         from_last=None,
         frame_min_mass=None,
+        filter_by_fp=True,
     ):
         if segment_frames is not None:
             raise Exception("Have not implement this path")
@@ -402,6 +408,7 @@ class TrackHeader:
             dont_filter=dont_filter,
             skip_ffc=skip_ffc,
             frame_min_mass=frame_min_mass,
+            fp_frames=self.fp_frames if filter_by_fp else None,
         )
         # GP could get this from the tracks when writing
         # but might be best to keep samples independent for ease
@@ -976,6 +983,7 @@ def get_segments(
     dont_filter=False,
     skip_ffc=True,
     frame_min_mass=None,
+    fp_frames=None,
 ):
     if segment_type == SegmentType.ALL_RANDOM_NOMIN:
         segment_min_mass = None
@@ -1001,6 +1009,9 @@ def get_segments(
         and region.height > 0
         and ((has_no_mass or frame_min_mass is None) or region.mass >= frame_min_mass)
     ]
+    if fp_frames is not None and label not in FP_LABELS:
+        frame_indices = [f for f in frame_indices if f not in fp_frames]
+        logging.info("FIltering with fp frames %s", fp_frames)
     if len(frame_indices) == 0:
         logging.warn("Nothing to load for %s - %s", clip_id, track_id)
         return [], filtered_stats

@@ -899,6 +899,8 @@ def main():
                         "max_frames": master_dataset.max_frames,
                     }
                 )
+            # dont filter the test set,
+            extra_args["filter_by_fp"] = dataset.name != "test"
             create_tf_records(
                 dataset,
                 dir,

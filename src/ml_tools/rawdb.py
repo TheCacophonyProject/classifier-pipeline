@@ -135,6 +135,10 @@ class RawDatabase:
             ffc_frames=self.ffc_frames,
         )
         tracks = metadata.get("Tracks", [])
+        fp_labels = metadata.get("fp_model_labels")
+        fp_index = None
+        if fp_labels is not None:
+            fp_index = fp_labels.index("false-positive")
         meta = []
         for track_meta in tracks:
             tags = track_meta.get("tags", [])
@@ -191,6 +195,17 @@ class RawDatabase:
                 if start is None:
                     start = region.frame_number
                 end = region.frame_number
+
+            fp_meta = track_meta.get("fp_model_predictions")
+            fp_frames = None
+            if fp_meta is not None:
+                fp_frames = []
+                for pred in fp_meta.get("predictions", []):
+                    scores = pred["prediction"]
+                    best_arg = np.argmax(scores)
+                    confidence = scores[best_arg]
+                    if best_arg == fp_index and confidence > 75:
+                        fp_frames.append(pred["frames"][0])
             header = TrackHeader(
                 clip_id=clip_header.clip_id,
                 track_id=int(track_meta["id"]),
@@ -203,7 +218,7 @@ class RawDatabase:
                 source_file=self.file,
                 mega_missed_regions=track_meta.get("mega_missed_regions"),
                 station_id=clip_header.station_id,
-                fp_frames=track_meta.get("fp_model_predictions"),
+                fp_frames=fp_frames,
                 # frame_temp_median=frame_temp_median,
             )
             clip_header.tracks.append(header)
