@@ -1011,7 +1011,6 @@ def get_segments(
     ]
     if fp_frames is not None and label not in FP_LABELS:
         frame_indices = [f for f in frame_indices if f not in fp_frames]
-        logging.info("FIltering with fp frames %s", fp_frames)
     if len(frame_indices) == 0:
         logging.warn("Nothing to load for %s - %s", clip_id, track_id)
         return [], filtered_stats
