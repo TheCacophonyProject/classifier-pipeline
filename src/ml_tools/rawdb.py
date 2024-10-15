@@ -205,7 +205,11 @@ class RawDatabase:
                     best_arg = np.argmax(scores)
                     confidence = scores[best_arg]
                     if best_arg == fp_index and confidence > 75:
-                        fp_frames.append(pred["frames"][0])
+                        frame_i = pred["frames"]
+                        if isinstance(frame_i, int):
+                            fp_frames.append(frame_i)
+                        else:
+                            fp_frames.append(frame_i[0])
             header = TrackHeader(
                 clip_id=clip_header.clip_id,
                 track_id=int(track_meta["id"]),
