@@ -55,7 +55,7 @@ crop_rectangle = Rectangle(0, 0, 640, 480)
 from functools import lru_cache
 
 
-def create_tf_example(sample, data, features, labels, num_frames):
+def create_tf_example(sample, data, features, labels, num_frames, country_code):
     """Converts image and annotations to a tf.Example proto.
 
     Args:
@@ -128,6 +128,9 @@ def create_tf_example(sample, data, features, labels, num_frames):
         "image/format": tfrecord_util.bytes_feature("jpeg".encode("utf8")),
         "image/class/text": tfrecord_util.bytes_feature(sample.label.encode("utf8")),
         "image/class/label": tfrecord_util.int64_feature(labels.index(sample.label)),
+        "image/country_id": tfrecord_util.bytes_feature(
+            str(country_code).encode("utf8")
+        ),
     }
 
     example = tf.train.Example(features=tf.train.Features(feature=feature_dict))
@@ -157,9 +160,11 @@ def save_data(samples, writer, labels, extra_args):
         return 0
     saved = 0
     try:
-        for data in sample_data:
+        country_code = sample_data[1]
+        sample_data = sample_data[0]
+        for sample, images, features in sample_data:
             tf_example = create_tf_example(
-                data[0], data[1], data[2], labels, extra_args["num_frames"]
+                sample, images, features, labels, extra_args["num_frames"], country_code
             )
             writer.write(tf_example.SerializeToString())
             saved += 1
@@ -372,4 +377,4 @@ def get_data(clip_samples, extra_args):
             "Cant get Samples for %s", clip_samples[0].source_file, exc_info=True
         )
         return None
-    return data
+    return (data, clip_meta.country_code)

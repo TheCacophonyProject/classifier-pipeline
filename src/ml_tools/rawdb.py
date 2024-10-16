@@ -22,6 +22,7 @@ from track.track import Track
 from track.cliptrackextractor import is_affected_by_ffc
 from cptv_rs_python_bindings import CptvReader
 from ml_tools.rectangle import Rectangle
+from config.buildconfig import BuildConfig
 
 special_datasets = [
     "tag_frames",
@@ -116,11 +117,19 @@ class RawDatabase:
         location = metadata.get("location")
         lat = None
         lng = None
+        country_code = None
         try:
             lat = location.get("lat")
             lng = location.get("lng")
+            if lat is not None and lng is not None:
+                for country, location in BuildConfig.COUNTRY_LOCATIONS.items():
+                    if location.contains(lng, lat):
+                        country_code = country
+                        break
         except:
+            logging.error("Could not parse lat lng", exc_info=True)
             pass
+
         clip_header = ClipHeader(
             clip_id=int(metadata["id"]),
             station_id=metadata.get("stationId"),
@@ -133,6 +142,7 @@ class RawDatabase:
             trap=metadata.get("trap", ""),
             tracks=[],
             ffc_frames=self.ffc_frames,
+            country_code=country_code,
         )
         tracks = metadata.get("Tracks", [])
         fp_labels = metadata.get("fp_model_labels")

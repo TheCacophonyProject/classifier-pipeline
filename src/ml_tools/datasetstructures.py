@@ -117,6 +117,7 @@ class ClipHeader:
     trap = attr.ib()
     tracks = attr.ib()
     ffc_frames = attr.ib()
+    country_code = attr.ib()
     frame_temp_median = attr.ib(default=None)
 
     def get_samples(self):
