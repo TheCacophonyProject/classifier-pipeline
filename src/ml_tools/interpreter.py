@@ -299,6 +299,7 @@ class Interpreter(ABC):
             from_last=predict_from_last,
             max_segments=max_segments,
             dont_filter=dont_filter,
+            filter_by_fp = False,
         )
         frame_indices = set()
         for segment in segments:
