@@ -110,7 +110,7 @@ def get_dataset(load_function, base_dir, labels, **args):
         for l in labels:
             keys.append(labels.index(l))
             if l not in new_labels:
-                remapped[l] = -1
+                remapped[l] = [-1]
                 values.append(-1)
                 logging.info("Excluding %s", l)
             else:
@@ -119,7 +119,9 @@ def get_dataset(load_function, base_dir, labels, **args):
 
         # add the remapped labels to the correct place
         for k, v in to_remap.items():
-            if k in labels and v in labels:
+            if k in excluded_labels:
+                continue
+            if k in labels and v in new_labels and k in new_labels:
                 remapped[v].append(k)
                 values[labels.index(k)] = new_labels.index(v)
                 del remapped[k]
