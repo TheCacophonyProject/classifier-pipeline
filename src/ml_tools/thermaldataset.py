@@ -38,7 +38,13 @@ def get_excluded():
         "mammal",
         "frog",
         "cow",
-        # "fox",
+        # added gp forretrain
+        "wombat",
+        "gray kangaroo",
+        "echidna",
+        "fox",
+        "deer",
+        "sheep",
         # "wombat",
     ]
 
