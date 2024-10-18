@@ -534,34 +534,12 @@ class KerasModel(Interpreter):
         logging.info(
             "Excluding %s remapping %s", self.excluded_labels, self.remapped_labels
         )
-        for lbl in self.remapped_labels.values():
-            if lbl not in self.labels:
-                self.labels.append(lbl)
 
-        if self.params.multi_label:
+        if self.params.multi_label and "land-bird" not in self.labels:
             self.labels.append("land-bird")
         self.orig_labels = self.labels.copy()
-        for l in self.excluded_labels:
-            if l in self.labels:
-                self.labels.remove(l)
-        for l in self.remapped_labels.keys():
-            if l in self.labels:
-                self.labels.remove(l)
-        self.log_dir = self.log_base / run_name
-        self.log_dir.mkdir(parents=True, exist_ok=True)
-        if fine_tune is not None:
-            self.load_model(fine_tune, weights=weights)
-            self.adjust_final_layer()
 
-        elif not self.model:
-            self.build_model(
-                dense_sizes=self.params.dense_sizes,
-                retrain_from=self.params.retrain_layer,
-                dropout=self.params.dropout,
-                run_name=run_name,
-            )
-        self.model.summary()
-
+        self.preprocess_fn = self.get_preprocess_fn()
         self.train, remapped, new_labels, epoch_size = get_dataset(
             train_files,
             self.data_type,
@@ -580,6 +558,28 @@ class KerasModel(Interpreter):
             num_frames=self.params.square_width**2,
             channels=self.params.channels,
         )
+        self.labels = new_labels
+
+        self.log_dir = self.log_base / run_name
+        self.log_dir.mkdir(parents=True, exist_ok=True)
+        if fine_tune is not None:
+            self.load_model(fine_tune, weights=weights)
+            self.adjust_final_layer()
+        else:
+
+            if not self.model:
+                self.build_model(
+                    dense_sizes=self.params.dense_sizes,
+                    retrain_from=self.params.retrain_layer,
+                    dropout=self.params.dropout,
+                    run_name=run_name,
+                )
+
+            if weights is not None:
+                self.model.load_weights(weights)
+
+        self.model.summary()
+
         self.remapped = remapped
         self.validate, remapped, _, _ = get_dataset(
             validate_files,
@@ -597,8 +597,6 @@ class KerasModel(Interpreter):
             num_frames=self.params.square_width**2,
             channels=self.params.channels,
         )
-        if weights is not None:
-            self.model.load_weights(weights)
         if rebalance:
             self.class_weights = get_weighting(self.train, self.labels)
         logging.info(

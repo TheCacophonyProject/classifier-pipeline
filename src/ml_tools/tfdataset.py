@@ -121,7 +121,7 @@ def get_dataset(load_function, base_dir, labels, **args):
         for k, v in to_remap.items():
             if k in excluded_labels:
                 continue
-            if k in labels and v in new_labels and k in new_labels:
+            if k in labels and v in new_labels:
                 remapped[v].append(k)
                 values[labels.index(k)] = new_labels.index(v)
                 del remapped[k]
@@ -135,7 +135,7 @@ def get_dataset(load_function, base_dir, labels, **args):
         name="remapped_y",
     )
     num_labels = len(new_labels)
-    logging.info("New labels are %s", new_labels)
+    logging.info("New labels are %s from original %s", new_labels, labels)
     for k, v in zip(keys, values):
         logging.info(
             "Mapping %s to %s", labels[k], new_labels[v] if v >= 0 else "nothing"
