@@ -452,7 +452,13 @@ def evaluate_dir(
             for data in clip_data:
                 label = data[1]
                 preprocessed = data[3]
+                if len(preprocessed) == 0:
+                    logging.info("No data found for %s", data[0])
+                    y_true.append(label_mapping.get(label, label))
+                    y_pred.append("None")
+                    continue
                 output = model.predict(preprocessed)
+
                 prediction = TrackPrediction(data[0], model.labels)
                 masses = np.array(data[4])
                 masses = masses[:, None]

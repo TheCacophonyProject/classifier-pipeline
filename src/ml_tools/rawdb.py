@@ -118,17 +118,18 @@ class RawDatabase:
         lat = None
         lng = None
         country_code = None
-        try:
-            lat = location.get("lat")
-            lng = location.get("lng")
-            if lat is not None and lng is not None:
-                for country, location in BuildConfig.COUNTRY_LOCATIONS.items():
-                    if location.contains(lng, lat):
-                        country_code = country
-                        break
-        except:
-            logging.error("Could not parse lat lng", exc_info=True)
-            pass
+        if location is not None:
+            try:
+                lat = location.get("lat")
+                lng = location.get("lng")
+                if lat is not None and lng is not None:
+                    for country, location in BuildConfig.COUNTRY_LOCATIONS.items():
+                        if location.contains(lng, lat):
+                            country_code = country
+                            break
+            except:
+                logging.error("Could not parse lat lng", exc_info=True)
+                pass
 
         clip_header = ClipHeader(
             clip_id=int(metadata["id"]),
