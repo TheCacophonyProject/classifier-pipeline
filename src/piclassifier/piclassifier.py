@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 import json
 import logging
 import os
@@ -7,7 +7,6 @@ import psutil
 import numpy as np
 import logging
 from track.clip import Clip
-
 
 from .motiondetector import SlidingWindow
 from .processor import Processor
@@ -290,8 +289,11 @@ class PiClassifier(Processor):
         )
         global clip
         clip = self.clip
-        self.clip.video_start_time = datetime.now()
-        self.clip.num_preview_frames = self.preview_frames
+        self.clip.video_start_time = datetime.now() - timedelta(
+            seconds=len(preview_frames) / self.headers.fps
+        )
+
+        self.clip.num_preview_frames = len(preview_frames)
 
         self.clip.set_res(self.res_x, self.res_y)
         self.clip.set_frame_buffer(
@@ -303,7 +305,6 @@ class PiClassifier(Processor):
             ),
             max_frames=self.max_keep_frames,
         )
-        edge_pixels = self.tracking_config.edge_pixels
 
         self.clip.update_background(self.motion_detector.background.copy())
         self.clip._background_calculated()
