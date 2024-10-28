@@ -46,7 +46,7 @@ def process_job(queue, labels, base_dir, save_data, writer_i, extra_args):
 
     # writer_i = 1
     name = f"{writer_i}-{pid}.tfrecord"
-
+    logging.info("Writing to %s", name)
     options = tf.io.TFRecordOptions(compression_type="GZIP")
     writer = tf.io.TFRecordWriter(str(base_dir / name), options=options)
     i = 0
@@ -108,7 +108,7 @@ def create_tf_records(
     num_processes = 8
     writer_i = 0
     index = 0
-    jobs_per_process = 300 * num_processes
+    jobs_per_process = 3000 * num_processes
     try:
         while index < len(source_files):
             job_queue = Queue()
