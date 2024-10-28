@@ -23,6 +23,7 @@ from track.cliptrackextractor import is_affected_by_ffc
 from cptv_rs_python_bindings import CptvReader
 from ml_tools.rectangle import Rectangle
 from config.buildconfig import BuildConfig
+from datetime import timedelta
 
 special_datasets = [
     "tag_frames",
@@ -234,6 +235,7 @@ class RawDatabase:
                 mega_missed_regions=track_meta.get("mega_missed_regions"),
                 station_id=clip_header.station_id,
                 fp_frames=fp_frames,
+                start_time=clip_header.rec_time + timedelta(seconds=start / FPS),
                 # frame_temp_median=frame_temp_median,
             )
             clip_header.tracks.append(header)

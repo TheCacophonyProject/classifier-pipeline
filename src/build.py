@@ -608,7 +608,7 @@ def validate_datasets(datasets, test_bins, after_date):
                     if sample.label in split_by_clip
                 ]
             )
-            if dataset.name == "test" and after_date is not None:
+            if other.name == "test" and after_date is not None:
                 dont_check_other = set(
                     [
                         sample.bin_id

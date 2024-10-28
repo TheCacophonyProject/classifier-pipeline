@@ -141,7 +141,7 @@ class TrackHeader:
         ffc_frames=None,
         sample_frames_indices=None,
         station_id=None,
-        rec_time=None,
+        start_time=None,
         source_file=None,
         camera=None,
         confidence=None,
@@ -153,7 +153,7 @@ class TrackHeader:
     ):
 
         self.fp_frames = fp_frames
-
+        self.start_time = start_time
         # regions that megadetector found nothing in
         self.mega_missed_regions = mega_missed_regions
         self.station_id = station_id
@@ -410,6 +410,7 @@ class TrackHeader:
             skip_ffc=skip_ffc,
             frame_min_mass=frame_min_mass,
             fp_frames=self.fp_frames if filter_by_fp else None,
+            rec_time=self.start_time,
         )
         # GP could get this from the tracks when writing
         # but might be best to keep samples independent for ease
