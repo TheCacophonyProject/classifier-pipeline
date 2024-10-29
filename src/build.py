@@ -616,7 +616,7 @@ def validate_datasets(datasets, test_bins, after_date):
                         if sample.rec_time > after_date
                     ]
                 )
-                dont_check = dont_check + dont_check_other
+                dont_check = dont_check | dont_check_other
             other_bins = set([sample.bin_id for sample in other.samples_by_id.values()])
             other_bins = other_bins - dont_check
             other_clips = set(
