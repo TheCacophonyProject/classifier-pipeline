@@ -146,6 +146,7 @@ class Interpreter(ABC):
         # self.model.predict(preprocessed)
         top_score = None
         smoothed_predictions = None
+
         if self.params.smooth_predictions:
             masses = np.array(masses)
             top_score = np.sum(masses)
@@ -155,6 +156,7 @@ class Interpreter(ABC):
             output,
             smoothed_predictions,
             prediction_frames,
+            masses,
             top_score=top_score,
         )
         track_prediction.classify_time = time.time() - start
@@ -213,6 +215,7 @@ class Interpreter(ABC):
                     diff_frame = region.subimage(f.thermal) - region.subimage(
                         clip.background
                     )
+
                     new_max = np.amax(diff_frame)
                     new_min = np.amin(diff_frame)
                     if min_diff is None or new_min < min_diff:
@@ -299,7 +302,7 @@ class Interpreter(ABC):
             from_last=predict_from_last,
             max_segments=max_segments,
             dont_filter=dont_filter,
-            filter_by_fp = False,
+            filter_by_fp=False,
         )
         frame_indices = set()
         for segment in segments:

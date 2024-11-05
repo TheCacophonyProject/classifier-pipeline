@@ -245,7 +245,17 @@ class ClipClassifier:
                 prediction = predictions.prediction_for(track.get_id())
                 if prediction is None:
                     continue
-
+                # DEBUGGING STUFF REMOVE ME
+                # logging.info("Track predictions %s", track)
+                # for p in prediction.predictions:
+                #     logging.info(
+                #         "Have %s sum %s smoothed %s mass %s",
+                #         p,
+                #         np.sum(p.prediction),
+                #         np.round(p.smoothed_prediction),
+                #         p.mass,
+                #     )
+                # logging.info("smoothed %s", np.round(100 * prediction.class_best_score))
                 prediction_meta = prediction.get_metadata()
                 prediction_meta["model_id"] = model_id
                 prediction_info.append(prediction_meta)

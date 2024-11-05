@@ -1058,6 +1058,7 @@ def get_segments(
     segment_count = int(segment_count)
     if max_segments is not None:
         segment_count = min(max_segments, segment_count)
+
     # take any segment_width frames, this could be done each epoch
     whole_indices = frame_indices
     random_frames = segment_type in [
@@ -1074,8 +1075,7 @@ def get_segments(
             np.random.shuffle(frame_indices)
         for i in range(segment_count):
             # always get atleast one segment, not doing annymore
-            # if i > 0:
-            if (len(frame_indices) < segment_width and len(segments) > 1) or len(
+            if (len(frame_indices) < segment_width / 2.0 and len(segments) > 1) or len(
                 frame_indices
             ) < segment_width / 4:
                 break
@@ -1089,6 +1089,7 @@ def get_segments(
                     replace=False,
                 )
                 frames = section[indices]
+                # might need to change that gp 11/05 - 2024
                 frame_indices = frame_indices[segment_frame_spacing:]
             elif random_frames:
                 # frame indices already randomized so just need to grab some

@@ -444,6 +444,7 @@ class Track:
         max_segments=None,
         ffc_frames=None,
         dont_filter=False,
+        filter_by_fp=False,
     ):
         if from_last is not None:
             if from_last == 0:
@@ -476,23 +477,28 @@ class Track:
                 )
                 segments.append(segment)
         else:
-            segments, _ = get_segments(
-                self.clip_id,
-                self._id,
-                start_frame,
-                segment_frame_spacing=segment_frame_spacing,
-                segment_width=segment_width,
-                regions=regions,
-                ffc_frames=ffc_frames,
-                repeats=repeats,
-                # frame_temp_median=frame_temp_median,
-                min_frames=min_frames,
-                segment_frames=None,
-                segment_type=segment_type,
-                max_segments=max_segments,
-                dont_filter=dont_filter,
-            )
-        return segments
+            all_segments = []
+            for seg_type in [SegmentType.ALL_RANDOM, SegmentType.ALL_SECTIONS]:
+                segments, _ = get_segments(
+                    self.clip_id,
+                    self._id,
+                    start_frame,
+                    segment_frame_spacing=segment_frame_spacing,
+                    segment_width=segment_width,
+                    regions=regions,
+                    ffc_frames=ffc_frames,
+                    repeats=repeats,
+                    # frame_temp_median=frame_temp_median,
+                    min_frames=min_frames,
+                    segment_frames=None,
+                    segment_type=seg_type,
+                    max_segments=max_segments,
+                    dont_filter=dont_filter,
+                    # segment_type=seg_type,
+                )
+                all_segments.extend(segments)
+
+        return all_segments
 
     @classmethod
     def from_region(cls, clip, region, tracker_version=None, tracking_config=None):
