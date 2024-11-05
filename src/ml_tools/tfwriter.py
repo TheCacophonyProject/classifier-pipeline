@@ -108,7 +108,7 @@ def create_tf_records(
     num_processes = 8
     writer_i = 0
     index = 0
-    jobs_per_process = 3000 * num_processes
+    jobs_per_process = 600 * num_processes
     try:
         while index < len(source_files):
             job_queue = Queue()
