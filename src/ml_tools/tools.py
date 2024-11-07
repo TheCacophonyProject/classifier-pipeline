@@ -15,6 +15,7 @@ from PIL import Image, ImageFont, ImageDraw
 from pathlib import Path
 from ml_tools.rectangle import Rectangle
 from dateutil import parser
+from enum import Enum
 
 EPISON = 1e-5
 
@@ -54,7 +55,8 @@ class CustomJSONEncoder(json.JSONEncoder):
             return obj.meta_dictionary()
         elif isinstance(obj, Path):
             return str(obj)
-
+        elif isinstance(obj, Enum):
+            return str(obj.name)
         # Let the base class default method raise the TypeError
         return json.JSONEncoder.default(self, obj)
 

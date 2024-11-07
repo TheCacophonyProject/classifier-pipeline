@@ -12,31 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-from PIL import Image
 from pathlib import Path
 from multiprocessing import Process, Queue
-
-import collections
-import hashlib
-import io
-import json
-import multiprocessing
 import os
-import time
-from absl import app
-from absl import flags
 from absl import logging
 import numpy as np
-from PIL import Image, ImageOps
-
 import tensorflow as tf
-from . import tfrecord_util
-from ml_tools import tools
-from ml_tools.imageprocessing import normalize, rotate
-from track.cliptracker import get_diff_back_filtered
-import cv2
-import random
-import math
 
 
 def process_job(queue, labels, base_dir, save_data, writer_i, extra_args):
@@ -44,7 +25,6 @@ def process_job(queue, labels, base_dir, save_data, writer_i, extra_args):
 
     pid = os.getpid()
 
-    # writer_i = 1
     name = f"{writer_i}-{pid}.tfrecord"
     logging.info("Writing to %s", name)
     options = tf.io.TFRecordOptions(compression_type="GZIP")
@@ -66,15 +46,8 @@ def process_job(queue, labels, base_dir, save_data, writer_i, extra_args):
                 saved += save_data(samples, writer, labels, extra_args)
                 files += 1
                 del samples
-                # if saved > 250000 / num_frames:
-                #     logging.info("Closing old writer")
-                #     writer.close()
-                #     writer_i += 1
-                #     name = f"{writer_i}-{pid}.tfrecord"
-                #     logging.info("Opening %s", name)
-                #     saved = 0
-                #     writer = tf.io.TFRecordWriter(str(base_dir / name), options=options)
-                if i % int(25000 / num_frames) == 0:
+
+                if i % int(2500 / num_frames) == 0:
                     logging.info("Saved %s ", files)
                     gc.collect()
                     writer.flush()

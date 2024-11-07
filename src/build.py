@@ -896,7 +896,7 @@ def main():
                     {
                         "segment_frame_spacing": master_dataset.segment_spacing * 9,
                         "segment_width": master_dataset.segment_length,
-                        "segment_type": master_dataset.segment_type,
+                        "segment_types": master_dataset.segment_types,
                         "segment_min_avg_mass": master_dataset.segment_min_avg_mass,
                         "max_segments": master_dataset.max_segments,
                         "dont_filter_segment": True,
@@ -932,6 +932,7 @@ def main():
         "counts": dataset_counts,
         "by_label": False,
         "config": attrs.asdict(config),
+        "segment_types": master_dataset.segment_types,
     }
 
     with open(meta_filename, "w") as f:

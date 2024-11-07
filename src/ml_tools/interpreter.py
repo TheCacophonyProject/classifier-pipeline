@@ -21,6 +21,7 @@ class Interpreter(ABC):
         self.version = metadata.get("version", None)
         self.labels = metadata["labels"]
         self.params = HyperParams()
+        print("Hypers are ", metadata.get("hyperparams", {}))
         self.params.update(metadata.get("hyperparams", {}))
         self.data_type = metadata.get("type", "thermal")
 
@@ -298,7 +299,7 @@ class Interpreter(ABC):
             ffc_frames=[] if dont_filter else clip.ffc_frames,
             repeats=1,
             segment_frames=segment_frames,
-            segment_type=self.params.segment_type,
+            segment_types=self.params.segment_types,
             from_last=predict_from_last,
             max_segments=max_segments,
             dont_filter=dont_filter,

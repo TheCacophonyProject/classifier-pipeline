@@ -83,7 +83,7 @@ class Dataset:
             self.excluded_tags = config.build.excluded_tags
             self.min_frame_mass = config.build.min_frame_mass
             self.filter_by_lq = config.build.filter_by_lq
-            self.segment_type = SegmentType.ALL_RANDOM
+            self.segment_types = [SegmentType.ALL_RANDOM]
             self.max_segments = config.build.max_segments
             self.country = config.build.country
             self.max_frames = config.build.max_frames
@@ -100,7 +100,7 @@ class Dataset:
             self.segment_spacing = 1
             self.segment_min_avg_mass = 10
             self.min_frame_mass = 16
-            self.segment_type = SegmentType.ALL_RANDOM
+            self.segment_types = [SegmentType.ALL_RANDOM]
             self.max_frames = 75
 
         self.country_rectangle = BuildConfig.COUNTRY_LOCATIONS.get(self.country)
@@ -244,7 +244,7 @@ class Dataset:
                 track_header.get_segments(
                     segment_width,
                     segment_frame_spacing,
-                    self.segment_type,
+                    self.segment_types,
                     self.segment_min_avg_mass,
                     max_segments=self.max_segments,
                     dont_filter=dont_filter_segment,
@@ -504,46 +504,6 @@ class Dataset:
     def has_data(self):
         return len(self.samples_by_id) > 0
 
-    #
-    # def recalculate_segments(self, segment_type=SegmentType.ALL_RANDOM):
-    #     self.samples_by_bin.clear()
-    #     self.samples_by_label.clear()
-    #     del self.samples[:]
-    #     del self.samples
-    #     self.samples = []
-    #     self.samples_by_label = {}
-    #     self.samples_by_bin = {}
-    #     logging.info("%s generating segments  type %s", self.name, segment_type)
-    #     start = time.time()
-    #     empty_tracks = []
-    #     filtered_stats = 0
-    #
-    #     for track in self.tracks:
-    #         segment_frame_spacing = int(
-    #             round(self.segment_spacing * track.frames_per_second)
-    #         )
-    #         segment_width = self.segment_length
-    #         track.calculate_segments(
-    #             segment_frame_spacing,
-    #             segment_width,
-    #             segment_type,
-    #             segment_min_mass=segment_min_avg_mass,
-    #         )
-    #         filtered_stats = filtered_stats + track.filtered_stats["segment_mass"]
-    #         if len(track.segments) == 0:
-    #             empty_tracks.append(track)
-    #             continue
-    #         for sample in track.segments:
-    #             self.add_clip_sample_mappings(sample)
-    #
-    #     self.rebuild_cdf()
-    #     logging.info(
-    #         "%s #segments %s filtered stats are %s took  %s",
-    #         self.name,
-    #         len(self.samples),
-    #         filtered_stats,
-    #         time.time() - start,
-    #     )
     def remove_sample_by_id(self, id, bin_id):
         del self.samples_by_id[id]
         try:

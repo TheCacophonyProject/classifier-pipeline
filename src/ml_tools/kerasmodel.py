@@ -1083,7 +1083,6 @@ def plot_confusion_matrix(cm, class_names):
     counts = cm.copy()
     threshold = counts.max() / 2.0
 
-    print("Threshold is", threshold, " for ", cm.max())
     # Normalize the confusion matrix.
 
     cm = np.around(cm.astype("float") / cm.sum(axis=1)[:, np.newaxis], decimals=2)

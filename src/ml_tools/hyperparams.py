@@ -24,7 +24,7 @@ class HyperParams(dict):
         self["square_width"] = self.square_width
         self["frame_size"] = self.frame_size
         self["segment_width"] = self.segment_width
-        self["segment_type"] = self.segment_type
+        self["segment_types"] = self.segment_types
         self["multi_label"] = True
         self["diff_norm"] = self.diff_norm
         self["thermal_diff_norm"] = self.thermal_diff_norm
@@ -89,12 +89,14 @@ class HyperParams(dict):
         return self.get("segment_width", 25 if self.use_segments else 1)
 
     @property
-    def segment_type(self):
-        segment_type = self.get("segment_type", SegmentType.ALL_RANDOM.name)
-        if isinstance(segment_type, str):
-            return SegmentType[segment_type]
-        else:
-            return segment_type
+    def segment_types(self):
+
+        segment_types = self.get("segment_type", [SegmentType.ALL_RANDOM])
+        # convert string to enum type
+        if isinstance(segment_types[0], str):
+            for i in range(len(segment_types)):
+                segment_types[i] = SegmentType[segment_types[i]]
+        return segment_types
 
     @property
     def mvm(self):

@@ -463,14 +463,14 @@ def evaluate_dir(
                 masses = np.array(data[4])
                 masses = masses[:, None]
                 top_score = None
-                # if model.params.multi_label is True:
-                #     # every label could be 1 for each prediction
-                #     top_score = len(output)
+                if model.params.multi_label is True:
+                    #     # every label could be 1 for each prediction
+                    top_score = np.sum(masses)
                 #     smoothed = output
                 # else:
                 smoothed = output * masses
                 prediction.classified_clip(
-                    output, smoothed, data[2], top_score=top_score
+                    output, smoothed, data[2], masses, top_score=top_score
                 )
                 y_true.append(label_mapping.get(label, label))
                 predicted_labels = [prediction.predicted_tag()]
