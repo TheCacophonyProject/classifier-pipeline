@@ -381,9 +381,8 @@ def load_clip_data(cptv_file):
     for track in clip.tracks:
         try:
             frames, preprocessed, masses = worker_model.preprocess(
-                clip_db, track, frames_per_classify=25, dont_filter=True
+                clip_db, track, frames_per_classify=25, dont_filter=True, min_segments=1
             )
-
             data.append(
                 (
                     f"{track.clip_id}-{track.get_id()}",

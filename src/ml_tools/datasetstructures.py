@@ -1095,11 +1095,16 @@ def get_segments(
 
             for i in range(segment_count):
                 if random_mask:
-                    mask_start = i * 25
-                    frame_indices = list(whole_indices[0:mask_start].copy())
-                    frame_indices.extend(whole_indices[mask_start + 25 :].copy())
-                    frame_indices = [f for f in frame_indices if f not in used_indices]
-                    frame_indices = np.uint32(frame_indices)
+                    if len(whole_indices) < 40:
+                        frame_indices = whole_indices.copy()
+                    else:
+                        mask_start = i * 25
+                        frame_indices = list(whole_indices[0:mask_start].copy())
+                        frame_indices.extend(whole_indices[mask_start + 25 :].copy())
+                        frame_indices = [
+                            f for f in frame_indices if f not in used_indices
+                        ]
+                        frame_indices = np.uint32(frame_indices)
                     np.random.shuffle(frame_indices)
 
                 # always get atleast one segment, not doing annymore

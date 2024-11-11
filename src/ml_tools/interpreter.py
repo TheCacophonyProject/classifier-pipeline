@@ -126,6 +126,7 @@ class Interpreter(ABC):
                 predict_from_last,
                 segment_frames=segment_frames,
                 dont_filter=args.get("dont_filter", False),
+                min_segments=args.get("min_segments"),
             )
         else:
             frames, preprocessed, masses = self.preprocess_frames(
@@ -290,6 +291,7 @@ class Interpreter(ABC):
         predict_from_last=None,
         segment_frames=None,
         dont_filter=False,
+        min_segments=None,
     ):
         from ml_tools.preprocess import preprocess_frame, preprocess_movement
 
@@ -304,7 +306,7 @@ class Interpreter(ABC):
             max_segments=max_segments,
             dont_filter=dont_filter,
             filter_by_fp=False,
-            min_segments=1,
+            min_segments=min_segments,
         )
         frame_indices = set()
         for segment in segments:
