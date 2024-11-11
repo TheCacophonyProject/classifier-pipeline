@@ -379,6 +379,7 @@ class TrackHeader:
         from_last=None,
         frame_min_mass=None,
         filter_by_fp=True,
+        min_segments=None,
     ):
         if segment_frames is not None:
             raise Exception("Have not implement this path")
@@ -411,6 +412,7 @@ class TrackHeader:
             frame_min_mass=frame_min_mass,
             fp_frames=self.fp_frames if filter_by_fp else None,
             rec_time=self.start_time,
+            min_segments=min_segments,
         )
         self.filtered_stats.update(filtered_stats)
         # GP could get this from the tracks when writing
