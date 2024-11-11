@@ -182,6 +182,8 @@ class ClipClassifier:
         predictions.model_load_time = time.time() - start
 
         for i, track in enumerate(clip.tracks):
+            logging.info("Track id is %s", track.get_id())
+
             segment_frames = None
             if reuse_frames:
                 tracks = meta_data.get("tracks")

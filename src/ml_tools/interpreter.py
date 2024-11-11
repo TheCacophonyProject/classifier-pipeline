@@ -304,6 +304,7 @@ class Interpreter(ABC):
             max_segments=max_segments,
             dont_filter=dont_filter,
             filter_by_fp=False,
+            min_segments=1,
         )
         frame_indices = set()
         for segment in segments:
