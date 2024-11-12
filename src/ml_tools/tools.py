@@ -194,9 +194,17 @@ def saveclassify_image(data, filename):
     # saves image channels side by side, expected data to be values in the range of 0->1
     Path(filename).parent.mkdir(parents=True, exist_ok=True)
     r = Image.fromarray(np.uint8(data[:, :, 0]))
-    g = Image.fromarray(np.uint8(data[:, :, 1]))
-    b = g
-    # b = Image.fromarray(np.uint8(data[:, :, 2]))
+    _, _, channels = data.shape
+
+    if channels == 1:
+        g = r
+    else:
+        g = Image.fromarray(np.uint8(data[:, :, 1]))
+
+    if channels == 2:
+        b = r
+    else:
+        b = Image.fromarray(np.uint8(data[:, :, 2]))
     concat = np.concatenate((r, g, b), axis=1)  # horizontally
     img = Image.fromarray(np.uint8(concat))
     img.save(filename + ".png")

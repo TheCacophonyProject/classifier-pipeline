@@ -9,7 +9,7 @@ from pathlib import Path
 from dateutil.parser import parse as parse_date
 
 parser = argparse.ArgumentParser()
-parser.add_argument("data_dir", help="Directory of hdf5 files")
+parser.add_argument("data_dir", help="Directory of cptv files")
 args = parser.parse_args()
 args.data_dir = Path(args.data_dir)
 latest_date = None

@@ -90,7 +90,6 @@ class HyperParams(dict):
 
     @property
     def segment_types(self):
-
         segment_types = self.get("segment_type", [SegmentType.ALL_RANDOM])
         # convert string to enum type
         if isinstance(segment_types[0], str):
