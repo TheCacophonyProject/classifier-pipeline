@@ -83,7 +83,7 @@ class Dataset:
             self.excluded_tags = config.build.excluded_tags
             self.min_frame_mass = config.build.min_frame_mass
             self.filter_by_lq = config.build.filter_by_lq
-            self.segment_types = [SegmentType.ALL_RANDOM]
+            self.segment_types = [SegmentType.ALL_RANDOM_MASKED]
             self.max_segments = config.build.max_segments
             self.country = config.build.country
             self.max_frames = config.build.max_frames
