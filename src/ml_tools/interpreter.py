@@ -334,7 +334,7 @@ class Interpreter(ABC):
                     )
                     continue
                 f = clip.get_frame(region.frame_number)
-                if region.blank or region.width <= 0 or region.height <= 0:
+                if region.blank or region.width <= 0 or region.height <= 0 or f is None:
                     continue
 
                 f.float_arrays()
