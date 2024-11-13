@@ -66,8 +66,8 @@ class KerasModel(Interpreter):
         self.label_probabilities = None
         self.class_weights = None
         self.ds_by_label = True
-        self.excluded_labels = []
-        self.remapped_labels = []
+        self.excluded_labels = None
+        self.remapped_labels = None
         self.orig_labels = None
 
     def load_training_meta(self, base_dir):
@@ -81,6 +81,9 @@ class KerasModel(Interpreter):
         self.ds_by_label = meta.get("by_label", True)
         self.excluded_labels = meta.get("excluded_labels")
         self.remapped_labels = meta.get("remapped_labels")
+        self.params.set_use_segments(
+            meta.get("config").get("build", {}).get("use_segments", True)
+        )
 
     def shape(self):
         if self.model is None:
@@ -362,6 +365,59 @@ class KerasModel(Interpreter):
             ],
         )
 
+    def adjust_final_layer(self):
+        # Adjust final layer to a new set of labels, by removing it and re adding
+        # new_model = tf.keras.models.Sequential(self.model.layers[:-3])
+        self.model = tf.keras.Model(
+            inputs=self.model.input, outputs=self.model.layers[-2].output
+        )
+
+        # model = tf.keras.Model(inputs=self.model.input, outputs=x)
+
+        activation = "softmax"
+        if self.params.multi_label:
+            activation = "sigmoid"
+
+        retrain_from = self.params.retrain_layer
+        if retrain_from:
+            for i, layer in enumerate(self.model.layers):
+                if isinstance(layer, tf.keras.layers.BatchNormalization):
+                    # apparently this shouldn't matter as we set base_training = False
+                    layer.trainable = False
+                    logging.info("dont train %s %s", i, layer.name)
+                else:
+                    layer.trainable = i >= retrain_from
+        else:
+            self.model.trainable = self.params.base_training
+
+        # add final layer after as always want this trainable
+        logging.info(
+            "Adding new final layer with %s activation and %s labels ",
+            activation,
+            len(self.labels),
+        )
+        preds = tf.keras.layers.Dense(
+            len(self.labels), activation=activation, name="prediction"
+        )(self.model.output)
+
+        self.model = tf.keras.models.Model(self.model.inputs, outputs=preds)
+        if self.params.multi_label:
+            acc = tf.metrics.binary_accuracy
+        else:
+            acc = tf.metrics.categorical_accuracy
+        logging.info("Using acc %s", acc)
+        self.model.summary()
+        self.model.compile(
+            optimizer=optimizer(self.params),
+            loss=loss(self.params),
+            metrics=[
+                acc,
+                tf.keras.metrics.AUC(),
+                tf.keras.metrics.Recall(),
+                tf.keras.metrics.Precision(),
+            ],
+        )
+
     def load_model(self, model_file, training=False, weights=None):
         model_file = Path(model_file)
         super().__init__(model_file)
@@ -374,7 +430,7 @@ class KerasModel(Interpreter):
         self.model.trainable = training
 
         if weights is not None:
-            self.model.load_weights(weights).expect_partial()
+            self.model.load_weights(weights)
             logging.info("Loaded weight %s", weights)
         # print(self.model.summary())
 
@@ -450,41 +506,40 @@ class KerasModel(Interpreter):
         gc.collect()
 
     def train_model(
-        self, epochs, run_name, weights=None, rebalance=False, resample=False
+        self,
+        epochs,
+        run_name,
+        weights=None,
+        rebalance=False,
+        resample=False,
+        fine_tune=None,
     ):
         logging.info(
             "%s Training model for %s epochs with weights %s", run_name, epochs, weights
         )
-        self.excluded_labels, self.remapped_labels = get_excluded(
-            self.data_type, self.params.multi_label
-        )
+        if self.params.excluded_labels is not None:
+            self.excluded_labels = self.params.excluded_labels
+        else:
+            self.excluded_labels, self.remapped_labels = get_excluded(
+                self.data_type, self.params.multi_label
+            )
+        if self.params.remapped_labels is not None:
+            self.remapped_labels = self.params.remapped_labels
+        else:
+            self.remapped_labels, self.remapped_labels = get_excluded(
+                self.data_type, self.params.multi_label
+            )
         train_files = self.data_dir / "train"
         validate_files = self.data_dir / "validation"
         logging.info(
             "Excluding %s remapping %s", self.excluded_labels, self.remapped_labels
         )
 
-        if self.params.multi_label:
+        if self.params.multi_label and "land-bird" not in self.labels:
             self.labels.append("land-bird")
         self.orig_labels = self.labels.copy()
-        for l in self.excluded_labels:
-            if l in self.labels:
-                self.labels.remove(l)
-        for l in self.remapped_labels.keys():
-            if l in self.labels:
-                self.labels.remove(l)
-        self.log_dir = self.log_base / run_name
-        self.log_dir.mkdir(parents=True, exist_ok=True)
 
-        if not self.model:
-            self.build_model(
-                dense_sizes=self.params.dense_sizes,
-                retrain_from=self.params.retrain_layer,
-                dropout=self.params.dropout,
-                run_name=run_name,
-            )
-        self.model.summary()
-
+        self.preprocess_fn = self.get_preprocess_fn()
         self.train, remapped, new_labels, epoch_size = get_dataset(
             train_files,
             self.data_type,
@@ -503,6 +558,31 @@ class KerasModel(Interpreter):
             num_frames=self.params.square_width**2,
             channels=self.params.channels,
         )
+        self.labels = new_labels
+
+        self.log_dir = self.log_base / run_name
+        self.log_dir.mkdir(parents=True, exist_ok=True)
+        if fine_tune is not None:
+            self.load_model(fine_tune, weights=weights, training=True)
+            # load model loads old labels
+            self.labels = new_labels
+
+            self.adjust_final_layer()
+        else:
+
+            if not self.model:
+                self.build_model(
+                    dense_sizes=self.params.dense_sizes,
+                    retrain_from=self.params.retrain_layer,
+                    dropout=self.params.dropout,
+                    run_name=run_name,
+                )
+
+            if weights is not None:
+                self.model.load_weights(weights)
+
+        self.model.summary()
+
         self.remapped = remapped
         self.validate, remapped, _, _ = get_dataset(
             validate_files,
@@ -519,18 +599,14 @@ class KerasModel(Interpreter):
             multi_label=self.params.multi_label,
             num_frames=self.params.square_width**2,
             channels=self.params.channels,
-            # dist=self.dataset_counts["validation"],
         )
-
-        if weights is not None:
-            self.model.load_weights(weights)
         if rebalance:
             self.class_weights = get_weighting(self.train, self.labels)
-            logging.info(
-                "Training on %s  with class weights %s",
-                self.labels,
-                self.class_weights,
-            )
+        logging.info(
+            "Training on %s  with class weights %s",
+            self.labels,
+            self.class_weights,
+        )
 
         self.save_metadata(run_name)
         self.save(run_name)
@@ -577,12 +653,12 @@ class KerasModel(Interpreter):
         self.save(run_name, history=history, test_results=test_accuracy)
 
     def checkpoints(self, run_name):
-        checkpoint_file = self.checkpoint_folder / run_name / "cp.ckpt"
+        checkpoint_file = self.checkpoint_folder / run_name / "cp.weights.h5"
 
         cp_callback = tf.keras.callbacks.ModelCheckpoint(
             filepath=checkpoint_file, save_weights_only=True, verbose=1
         )
-        val_loss = self.checkpoint_folder / run_name / "val_loss"
+        val_loss = self.checkpoint_folder / run_name / "val_loss.weights.h5"
 
         checkpoint_loss = tf.keras.callbacks.ModelCheckpoint(
             val_loss,
@@ -592,7 +668,7 @@ class KerasModel(Interpreter):
             save_weights_only=True,
             mode="auto",
         )
-        val_acc = self.checkpoint_folder / run_name / "val_acc"
+        val_acc = self.checkpoint_folder / run_name / "val_acc.weights.h5"
 
         checkpoint_acc = tf.keras.callbacks.ModelCheckpoint(
             val_acc,
@@ -607,7 +683,7 @@ class KerasModel(Interpreter):
             mode="max",
         )
 
-        val_precision = self.checkpoint_folder / run_name / "val_recall"
+        val_precision = self.checkpoint_folder / run_name / "val_recall.weights.h5"
 
         checkpoint_recall = tf.keras.callbacks.ModelCheckpoint(
             val_precision,
@@ -624,6 +700,7 @@ class KerasModel(Interpreter):
                 if self.params.multi_label
                 else "val_categorical_accuracy"
             ),
+            mode="max",
         )
         # havent found much use in this just takes training time
         # file_writer_cm = tf.summary.create_file_writer(
@@ -648,6 +725,7 @@ class KerasModel(Interpreter):
                 if self.params.multi_label
                 else "val_categorical_accuracy"
             ),
+            mode="max",
             verbose=1,
         )
         return [
@@ -797,21 +875,15 @@ class KerasModel(Interpreter):
         ]
         for y, pred in pred_per_track.values():
             pred.normalize_score()
-            no_smoothing = np.mean(pred.predictions, axis=0)
+            preds = np.array([p.prediction for p in pred.predictions])
+
+            no_smoothing = np.mean(preds, axis=0)
             masses = np.array(pred.masses)[:, None]
             old_smoothing = pred.class_best_score
-            new_smooth = pred.predictions * masses
+            new_smooth = preds * masses
             new_smooth = np.sum(new_smooth, axis=0)
             new_smooth /= np.sum(masses)
-            # logging.info(
-            #     "Smoothing %s with masses %s", np.round(100 * pred.predictions), masses
-            # )
-            # logging.info(
-            #     "N smooth %s old %s new %s",
-            #     np.round(100 * no_smoothing),
-            #     np.round(100 * old_smoothing),
-            #     np.round(100 * new_smooth),
-            # )
+
             for i, pred_type in enumerate([no_smoothing, old_smoothing, new_smooth]):
                 best_pred = np.argmax(pred_type)
                 confidence = pred_type[best_pred]
@@ -1011,7 +1083,6 @@ def plot_confusion_matrix(cm, class_names):
     counts = cm.copy()
     threshold = counts.max() / 2.0
 
-    print("Threshold is", threshold, " for ", cm.max())
     # Normalize the confusion matrix.
 
     cm = np.around(cm.astype("float") / cm.sum(axis=1)[:, np.newaxis], decimals=2)

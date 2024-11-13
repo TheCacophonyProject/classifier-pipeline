@@ -228,7 +228,7 @@ def forest_features(
 
     for i, frame in enumerate(track_frames):
         region = regions[i]
-        if region.blank or region.width == 0 or region.height == 0:
+        if region.blank or region.width > 0 or region.height > 0:
             prev_count = 0
             continue
 

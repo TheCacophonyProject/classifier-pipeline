@@ -18,9 +18,10 @@ class Interpreter(ABC):
         filename = filename.with_suffix(".json")
         logging.info("Loading metadata from %s", filename)
         metadata = json.load(open(filename, "r"))
-
+        self.version = metadata.get("version", None)
         self.labels = metadata["labels"]
         self.params = HyperParams()
+        print("Hypers are ", metadata.get("hyperparams", {}))
         self.params.update(metadata.get("hyperparams", {}))
         self.data_type = metadata.get("type", "thermal")
 
@@ -49,35 +50,31 @@ class Interpreter(ABC):
         else:
             import tensorflow as tf
 
-            if pretrained_model == "resnet":
+            if model_name == "resnet":
                 return tf.keras.applications.resnet.preprocess_input
-            elif pretrained_model == "nasnet":
+            elif model_name == "nasnet":
                 return tf.keras.applications.nasnet.preprocess_input
-            elif pretrained_model == "resnetv2":
+            elif model_name == "resnetv2":
                 return tf.keras.applications.resnet_v2.preprocess_input
 
-            elif pretrained_model == "resnet152":
+            elif model_name == "resnet152":
                 return tf.keras.applications.resnet.preprocess_input
 
-            elif pretrained_model == "vgg16":
+            elif model_name == "vgg16":
                 return tf.keras.applications.vgg16.preprocess_input
 
-            elif pretrained_model == "vgg19":
+            elif model_name == "vgg19":
                 return tf.keras.applications.vgg19.preprocess_input
 
-            elif pretrained_model == "mobilenet":
+            elif model_name == "mobilenet":
                 return tf.keras.applications.mobilenet_v2.preprocess_input
 
-            elif pretrained_model == "densenet121":
+            elif model_name == "densenet121":
                 return tf.keras.applications.densenet.preprocess_input
 
-            elif pretrained_model == "inceptionresnetv2":
+            elif model_name == "inceptionresnetv2":
                 return tf.keras.applications.inception_resnet_v2.preprocess_input
-        logging.warn(
-            "pretrained model %s has no preprocessing function", pretrained_model
-        )
-        return None
-        logging.info("No preprocess defined for %s", model_name)
+        logging.warn("pretrained model %s has no preprocessing function", model_name)
         return None
 
     def preprocess(self, clip, track, **args):
@@ -129,6 +126,7 @@ class Interpreter(ABC):
                 predict_from_last,
                 segment_frames=segment_frames,
                 dont_filter=args.get("dont_filter", False),
+                min_segments=args.get("min_segments"),
             )
         else:
             frames, preprocessed, masses = self.preprocess_frames(
@@ -150,6 +148,7 @@ class Interpreter(ABC):
         # self.model.predict(preprocessed)
         top_score = None
         smoothed_predictions = None
+
         if self.params.smooth_predictions:
             masses = np.array(masses)
             top_score = np.sum(masses)
@@ -159,6 +158,7 @@ class Interpreter(ABC):
             output,
             smoothed_predictions,
             prediction_frames,
+            masses,
             top_score=top_score,
         )
         track_prediction.classify_time = time.time() - start
@@ -183,9 +183,12 @@ class Interpreter(ABC):
         data = []
         frames_used = []
         filtered_norm_limits = None
-        if self.params.diff_norm:
+        thermal_norm_limits = None
+        if self.params.diff_norm or self.params.thermal_diff_norm:
             min_diff = None
             max_diff = 0
+            thermal_max_diff = None
+            thermal_min_diff = None
             for i, region in enumerate(reversed(track.bounds_history)):
                 if region.blank:
                     continue
@@ -201,16 +204,32 @@ class Interpreter(ABC):
                     continue
 
                 f.float_arrays()
-                diff_frame = region.subimage(f.thermal) - region.subimage(
-                    clip.background
-                )
-                new_max = np.amax(diff_frame)
-                new_min = np.amin(diff_frame)
-                if min_diff is None or new_min < min_diff:
-                    min_diff = new_min
-                if new_max > max_diff:
-                    max_diff = new_max
-            filtered_norm_limits = (min_diff, max_diff)
+
+                if self.params.thermal_diff_norm:
+                    diff_frame = f.thermal - np.median(f.thermal)
+                    new_max = np.amax(diff_frame)
+                    new_min = np.amin(diff_frame)
+                    if thermal_min_diff is None or new_min < thermal_min_diff:
+                        thermal_min_diff = new_min
+                    if thermal_max_diff is None or new_max > thermal_max_diff:
+                        thermal_max_diff = new_max
+                if self.params.diff_norm:
+                    diff_frame = region.subimage(f.thermal) - region.subimage(
+                        clip.background
+                    )
+
+                    new_max = np.amax(diff_frame)
+                    new_min = np.amin(diff_frame)
+                    if min_diff is None or new_min < min_diff:
+                        min_diff = new_min
+                    if new_max > max_diff:
+                        max_diff = new_max
+            if self.params.thermal_diff_norm:
+                thermal_norm_limits = (thermal_min_diff, thermal_max_diff)
+
+            if self.params.diff_norm:
+                filtered_norm_limits = (min_diff, max_diff)
+
         for i, region in enumerate(reversed(track.bounds_history)):
             if region.blank:
                 continue
@@ -249,6 +268,7 @@ class Interpreter(ABC):
                 clip.background,
                 clip.crop_rectangle,
                 filtered_norm_limits=filtered_norm_limits,
+                thermal_norm_limits=thermal_norm_limits,
             )
             preprocessed = preprocess_single_frame(
                 cropped_frame,
@@ -271,6 +291,7 @@ class Interpreter(ABC):
         predict_from_last=None,
         segment_frames=None,
         dont_filter=False,
+        min_segments=None,
     ):
         from ml_tools.preprocess import preprocess_frame, preprocess_movement
 
@@ -280,10 +301,12 @@ class Interpreter(ABC):
             ffc_frames=[] if dont_filter else clip.ffc_frames,
             repeats=1,
             segment_frames=segment_frames,
-            segment_type=self.params.segment_type,
+            segment_types=self.params.segment_types,
             from_last=predict_from_last,
             max_segments=max_segments,
             dont_filter=dont_filter,
+            filter_by_fp=False,
+            min_segments=min_segments,
         )
         frame_indices = set()
         for segment in segments:
@@ -293,30 +316,52 @@ class Interpreter(ABC):
 
         # should really be over whole track buts let just do the indices we predict of
         #  seems to make little different to just doing a min max normalization
+        thermal_norm_limits = None
         filtered_norm_limits = None
-        if self.params.diff_norm:
+        if self.params.diff_norm or self.params.thermal_diff_norm:
             min_diff = None
             max_diff = 0
-            for frame_index in frame_indices:
-                region = track.bounds_history[frame_index - track.start_frame]
-                f = clip.get_frame(region.frame_number)
-                if f is None:
-                    logging.warn("Could not get frame {}", region.frame_number)
+            thermal_max_diff = None
+            thermal_min_diff = None
+            for i, region in enumerate(reversed(track.bounds_history)):
+                if region.blank:
                     continue
-                if region.blank or region.width <= 0 or region.height <= 0:
+                if region.width == 0 or region.height == 0:
+                    logging.warn(
+                        "No width or height for frame %s regoin %s",
+                        region.frame_number,
+                        region,
+                    )
+                    continue
+                f = clip.get_frame(region.frame_number)
+                if region.blank or region.width <= 0 or region.height <= 0 or f is None:
                     continue
 
                 f.float_arrays()
-                diff_frame = region.subimage(f.thermal) - region.subimage(
-                    clip.background
-                )
-                new_max = np.amax(diff_frame)
-                new_min = np.amin(diff_frame)
-                if min_diff is None or new_min < min_diff:
-                    min_diff = new_min
-                if new_max > max_diff:
-                    max_diff = new_max
-            filtered_norm_limits = (min_diff, max_diff)
+
+                if self.params.thermal_diff_norm:
+                    diff_frame = f.thermal - np.median(f.thermal)
+                    new_max = np.amax(diff_frame)
+                    new_min = np.amin(diff_frame)
+                    if thermal_min_diff is None or new_min < thermal_min_diff:
+                        thermal_min_diff = new_min
+                    if thermal_max_diff is None or new_max > thermal_max_diff:
+                        thermal_max_diff = new_max
+                if self.params.diff_norm:
+                    diff_frame = region.subimage(f.thermal) - region.subimage(
+                        clip.background
+                    )
+                    new_max = np.amax(diff_frame)
+                    new_min = np.amin(diff_frame)
+                    if min_diff is None or new_min < min_diff:
+                        min_diff = new_min
+                    if new_max > max_diff:
+                        max_diff = new_max
+            if self.params.thermal_diff_norm:
+                thermal_norm_limits = (thermal_min_diff, thermal_max_diff)
+
+            if self.params.diff_norm:
+                filtered_norm_limits = (min_diff, max_diff)
         for frame_index in frame_indices:
             region = track.bounds_history[frame_index - track.start_frame]
 
@@ -341,6 +386,7 @@ class Interpreter(ABC):
                 clip.background,
                 clip.crop_rectangle,
                 filtered_norm_limits=filtered_norm_limits,
+                thermal_norm_limits=thermal_norm_limits,
             )
             track_data[frame.frame_number] = cropped_frame
         features = None
@@ -365,6 +411,7 @@ class Interpreter(ABC):
                 self.params.frame_size,
                 self.params.channels,
                 self.preprocess_fn,
+                sample=f"{clip.get_id()}-{track.get_id()}",
             )
             if frames is None:
                 logging.warn("No frames to predict on")

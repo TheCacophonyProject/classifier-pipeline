@@ -439,11 +439,13 @@ class Track:
         repeats=1,
         min_frames=0,
         segment_frames=None,
-        segment_type=SegmentType.ALL_RANDOM,
+        segment_types=[SegmentType.ALL_RANDOM],
         from_last=None,
         max_segments=None,
         ffc_frames=None,
         dont_filter=False,
+        filter_by_fp=False,
+        min_segments=1,
     ):
         if from_last is not None:
             if from_last == 0:
@@ -485,13 +487,13 @@ class Track:
                 regions=regions,
                 ffc_frames=ffc_frames,
                 repeats=repeats,
-                # frame_temp_median=frame_temp_median,
                 min_frames=min_frames,
-                segment_frames=None,
-                segment_type=segment_type,
+                segment_types=segment_types,
                 max_segments=max_segments,
                 dont_filter=dont_filter,
+                min_segments=min_segments,
             )
+
         return segments
 
     @classmethod

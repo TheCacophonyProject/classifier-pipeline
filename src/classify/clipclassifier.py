@@ -11,13 +11,8 @@ from classify.trackprediction import Predictions
 from track.clip import Clip
 from track.cliptrackextractor import ClipTrackExtractor, is_affected_by_ffc
 from ml_tools import tools
-from ml_tools.kerasmodel import KerasModel
 from track.irtrackextractor import IRTrackExtractor
 from ml_tools.previewer import Previewer
-from track.track import Track
-
-from cptv import CPTVReader
-from datetime import datetime
 from ml_tools.interpreter import get_interpreter
 
 
@@ -134,7 +129,7 @@ class ClipClassifier:
         clip = Clip(track_extractor.config, filename)
         clip.load_metadata(
             meta_data,
-            self.config.load.tag_precedence,
+            self.config.build.tag_precedence,
         )
         track_extractor.parse_clip(clip)
 
@@ -250,7 +245,6 @@ class ClipClassifier:
                 prediction = predictions.prediction_for(track.get_id())
                 if prediction is None:
                     continue
-
                 prediction_meta = prediction.get_metadata()
                 prediction_meta["model_id"] = model_id
                 prediction_info.append(prediction_meta)
