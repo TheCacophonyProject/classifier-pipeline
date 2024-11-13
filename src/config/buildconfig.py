@@ -43,7 +43,7 @@ class BuildConfig(DefaultConfig):
     max_frames = attr.ib()
 
     EXCLUDED_TAGS = ["poor tracking", "part", "untagged", "unidentified"]
-
+    NO_MIN_FRAMES = ["stoat", "mustelid", "weasel", "ferret"]
     # country bounding boxs
     COUNTRY_LOCATIONS = {
         "AU": Rectangle.from_ltrb(

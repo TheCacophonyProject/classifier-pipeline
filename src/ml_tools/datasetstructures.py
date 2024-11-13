@@ -6,6 +6,7 @@ from ml_tools import tools
 from track.region import Region
 from abc import ABC, abstractmethod
 from ml_tools.rectangle import Rectangle
+from config.buildconfig import BuildConfig
 from ml_tools import imageprocessing
 from enum import Enum
 import attr
@@ -385,9 +386,11 @@ class TrackHeader:
         if segment_frames is not None:
             raise Exception("Have not implement this path")
         min_frames = segment_width / 4.0
-        if self.label in ["stoat", "mustelid", "weasel", "ferret"]:
+        if self.label in BuildConfig.NO_MIN_FRAMES:
             # try and always get one for these
             min_frames = 0
+            if min_segments is None:
+                min_segments = 1
 
         # in python3.7+ can just take the values and it guarantees order it was added to dict
         regions = self.bounds_history
