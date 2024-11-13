@@ -92,7 +92,10 @@ class HyperParams(dict):
     def segment_types(self):
         segment_types = self.get("segment_type", [SegmentType.ALL_RANDOM])
         # convert string to enum type
-        if isinstance(segment_types[0], str):
+        if isinstance(segment_types, str):
+            # old metadata
+            segment_types = [SegmentType[segment_types]]
+        elif isinstance(segment_types[0], str):
             for i in range(len(segment_types)):
                 segment_types[i] = SegmentType[segment_types[i]]
         return segment_types
