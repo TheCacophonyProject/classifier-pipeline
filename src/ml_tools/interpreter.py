@@ -21,7 +21,6 @@ class Interpreter(ABC):
         self.version = metadata.get("version", None)
         self.labels = metadata["labels"]
         self.params = HyperParams()
-        print("Hypers are ", metadata.get("hyperparams", {}))
         self.params.update(metadata.get("hyperparams", {}))
         self.data_type = metadata.get("type", "thermal")
 
