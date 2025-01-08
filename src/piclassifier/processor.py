@@ -35,6 +35,7 @@ class Processor(ABC):
                 if self.classifier is not None
                 else ["Not classifying"]
             ),
+            self.get_thumbnail
         )
 
     @abstractmethod

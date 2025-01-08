@@ -17,9 +17,10 @@ DBUS_PATH = "/org/cacophony/thermalrecorder"
 
 
 class Service(dbus.service.Object):
-    def __init__(self, dbus, get_frame, headers, take_snapshot_fn, labels):
+    def __init__(self, dbus, get_frame, headers, take_snapshot_fn, labels, get_thumbnail):
         super().__init__(dbus, DBUS_PATH)
         self.get_frame = get_frame
+        self.get_thumbnail = get_thumbnail
         self.headers = headers
         self.take_snapshot = take_snapshot_fn
         self.labels = labels
@@ -88,6 +89,15 @@ class Service(dbus.service.Object):
             json.dumps(track_meta, cls=CustomJSONEncoder),
         )
 
+
+    @dbus.service.method(
+        DBUS_NAME,
+                out_signature="aaq",
+
+    )
+    def GetThumbnail(self):
+        return self.get_thumbnail()
+
     @dbus.service.method(
         DBUS_NAME,
     )
@@ -127,13 +137,13 @@ class Service(dbus.service.Object):
 
 
 class SnapshotService:
-    def __init__(self, get_frame, headers, take_snapshot_fn, labels):
+    def __init__(self, get_frame, headers, take_snapshot_fn, labels,get_thumbnail):
         DBusGMainLoop(set_as_default=True)
         dbus.mainloop.glib.threads_init()
         self.loop = GLib.MainLoop()
         self.t = threading.Thread(
             target=self.run_server,
-            args=(get_frame, headers, take_snapshot_fn, labels),
+            args=(get_frame, headers, take_snapshot_fn, labels,get_thumbnail),
         )
         self.t.start()
         self.service = None
@@ -141,11 +151,11 @@ class SnapshotService:
     def quit(self):
         self.loop.quit()
 
-    def run_server(self, get_frame, headers, take_snapshot_fn, labels):
+    def run_server(self, get_frame, headers, take_snapshot_fn, labels,get_thumbnail):
         session_bus = dbus.SystemBus(mainloop=DBusGMainLoop())
         name = dbus.service.BusName(DBUS_NAME, session_bus)
         self.service = Service(
-            session_bus, get_frame, headers, take_snapshot_fn, labels
+            session_bus, get_frame, headers, take_snapshot_fn, labels,get_thumbnail
         )
         self.loop.run()
 

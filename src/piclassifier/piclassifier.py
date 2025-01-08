@@ -467,6 +467,51 @@ class PiClassifier(Processor):
                 beacon.classification(active_predictions)
         return True
 
+    def get_thumbnail(self):
+        import cv2
+        from ml_tools.imageprocessing import resize_and_pad
+        if self.clip is None:
+            logging.info("Have no clip")
+            return None
+        else:
+            if clip.frame_buffer.frames is None:
+                logging.info("Have no frames")
+                return None
+            
+
+            tracks = clip.tracks
+            current_frame_num = clip.frame_buffer.current_frame.frame_number
+            oldest_frame_num =  clip.frame_buffer.frames[0].frame_number
+            best_contour = None
+
+            for track in tracks:
+                pred = None
+                regions =  track.bounds_history
+
+                i = len(regions)
+                # tra = []
+                while i >=0 :
+                    region = regions[i]
+                    if region.frame_number >= oldest_frame_num:
+                        frame =clip.frame_buffer[ region.frame_number-oldest_frame_num]
+                        assert frame.frame_number == region.frame_number
+                        contour_image = frame.filtered if frame.mask is None else frame.mask
+                        contours, _ = cv2.findContours(
+                            np.uint8(region.subimage(contour_image)),
+                            cv2.RETR_EXTERNAL,
+                            # cv2.CHAIN_APPROX_SIMPLE,
+                            cv2.CHAIN_APPROX_TC89_L1,
+                        )
+                        if best_contour is None or best_contour[0] < contours:
+                            best_contour = (contours,region, track.get_id())
+                    i-=1
+            logging.info("Got more contours on %s", best_contour)
+            frame =clip.frame_buffer[best_contour[1].frame_number - oldest_frame_num]
+            thumb_thermal = best_contour[1].subimage(frame.thermal)
+            thumb_thermal = resize_and_pad(thumb_thermal,(32,32),None,None)
+            return thumb_thermal
+                # if self.predictions:
+                
     def get_recent_frame(self, last_frame=None):
         # save us having to lock if we dont have a different frame
         if last_frame is not None and self.motion_detector.num_frames == last_frame:
