@@ -20,9 +20,7 @@ along with this program. If not, see <http://www.gnu.org/licenses/>.
 from ml_tools.framecache import FrameCache
 from ml_tools.frame import Frame
 from ml_tools.tools import get_optical_flow_function
-
-import time
-import logging
+from threading import Lock
 
 
 class FrameBuffer:
@@ -47,6 +45,7 @@ class FrameBuffer:
         self.keep_frames = True if max_frames and max_frames > 0 else keep_frames
         self.current_frame_i = 0
         self.current_frame = None
+        self.frame_lock = Lock()
         if calc_flow:
             self.set_optical_flow()
         self.reset()
@@ -67,7 +66,8 @@ class FrameBuffer:
                 self.cache.add_frame(frame)
             else:
                 if self.max_frames and len(self.frames) == self.max_frames:
-                    del self.frames[0]
+                    with self.frame_lock:
+                        del self.frames[0]
                 self.frames.append(frame)
         return frame
 

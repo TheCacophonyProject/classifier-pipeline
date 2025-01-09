@@ -13,11 +13,13 @@ import dbus.mainloop.glib
 import time
 import threading
 from datetime import datetime
-
+import cv2
+import numpy as np
 labels = []
 
 
 def catchall_tracking_signals_handler(
+        track_id,
     prediction,
     what,
     confidence,
@@ -29,28 +31,26 @@ def catchall_tracking_signals_handler(
     last_prediction_frame,
 ):
     print(
-        "Received a trackng signal and it says " + what,
-        confidence,
-        "% at ",
-        region,
-        " tracking?",
-        tracking,
-        "prediction",
-        prediction,
-        "frame",
-        frame,
-        "mass",
-        mass,
-        "blank",
-        blank,
-        "last prediction frame",
-        last_prediction_frame,
+        f"Received a tracking signal for track {track_id} and it says {what} {confidence}% at {region} tracking? {tracking} prediction {prediction} frame {frame} mass {mass} blank? {blank} last predicted frame {last_prediction_frame}"
     )
     index = 0
     for x in prediction:
         print("For  ", labels[index], " have confidence ", int(x), "%")
         index += 1
 
+    bus = dbus.SystemBus()
+    dbus_object = bus.get_object(DBUS_NAME, DBUS_PATH)
+    thumb,track_id,region = dbus_object.GetThumbnail(track_id)
+    print("Got thumb for ",track_id, region)
+    thumb = np.uint16(thumb)
+    thumb = normalize(thumb)
+    cv2.imshow("t",thumb)
+    cv2.waitKey(100)
+
+def normalize(thumb):
+    a_max = np.amax(thumb)
+    a_min = np.amin(thumb)
+    return np.uint8(255* (np.float32(thumb) -a_min) / (a_max -a_min))
 
 def catchall_rec_signals_handler(dt, is_recording):
     if is_recording:
@@ -104,6 +104,5 @@ if __name__ == "__main__":
     )
 
     # just to keep program alive
-    # replace with your code
     while tracking.t.is_alive():
         time.sleep(1)

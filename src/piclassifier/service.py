@@ -92,12 +92,16 @@ class Service(dbus.service.Object):
 
     @dbus.service.method(
         DBUS_NAME,
-                out_signature="aaq",
+        out_signature="aaqiai",
 
     )
-    def GetThumbnail(self):
-        return self.get_thumbnail()
-
+    def GetThumbnail(self,track_id):
+        if track_id == 0:
+            track_id = None
+        thumb,track_id,region =  self.get_thumbnail(track_id)
+        if thumb is None:
+            raise Exception("No thumbnail")
+        return thumb,track_id, region.to_ltrb()
     @dbus.service.method(
         DBUS_NAME,
     )
@@ -116,9 +120,10 @@ class Service(dbus.service.Object):
         logging.info("Getting labels %s", self.labels)
         return self.labels
 
-    @dbus.service.signal(DBUS_NAME, signature="aisiaiiibbi")
+    @dbus.service.signal(DBUS_NAME, signature="iaisiaiiibbi")
     def Tracking(
         self,
+        track_id,
         prediction,
         what,
         confidence,
@@ -159,12 +164,13 @@ class SnapshotService:
         )
         self.loop.run()
 
-    def tracking(self, prediction, region, tracking, last_prediction_frame):
+    def tracking(self,track, prediction, region, tracking, last_prediction_frame):
         logging.debug(
-            "Tracking? %s region %s prediction %s",
+            "Tracking?  %s region %s prediction %s track %s",
             tracking,
             region,
             prediction,
+            track.get_id()
         )
         if self.service is None:
             return
@@ -173,6 +179,7 @@ class SnapshotService:
             predictions = np.uint8(np.round(predictions * 100))
             best = np.argmax(predictions)
             self.service.Tracking(
+                track.get_id(),
                 predictions,
                 self.service.labels[best],
                 predictions[best],
@@ -185,6 +192,7 @@ class SnapshotService:
             )
         else:
             self.service.Tracking(
+                track.get_id(),
                 [],
                 "",
                 0,
