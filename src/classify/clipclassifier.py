@@ -209,7 +209,7 @@ class ClipClassifier:
                 predictions.prediction_per_track[track.get_id()] = prediction
                 description = prediction.description()
                 logging.info(
-                    " - [{}/{}] prediction: {}".format(
+                    "{} - [{}/{}] prediction: {}".format(track.get_id(),
                         i + 1, len(clip.tracks), description
                     )
                 )

@@ -391,7 +391,6 @@ class Interpreter(ABC):
         features = None
         if self.params.mvm:
             from ml_tools.forestmodel import process_track as forest_process_track
-
             features = forest_process_track(
                 clip, track, normalize=True, predict_from_last=predict_from_last
             )

@@ -256,7 +256,9 @@ class TrackPrediction:
                 self.labels[self.best_label_index], score * 10, self.clarity * 10
             )
         else:
-            first_guess = "[nothing]"
+            first_guess = "[nothing] {} {:.1f} (clarity {:.1f})".format(
+                self.labels[self.best_label_index], score * 10, self.clarity * 10
+            )
 
         second_score = self.score(2)
 
