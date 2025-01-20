@@ -124,7 +124,7 @@ class ForestModel(Interpreter):
 
         track_prediction = TrackPrediction(track.get_id(), self.labels)
         predictions, frames,masses = self.predict_track(clip, track, last_x_frames=last_x_frames,normalize=True)
-        track_prediction.classified_clip(predictions, predictions * 100, frames,masses)
+        track_prediction.classified_clip(predictions, predictions, frames,masses)
         return track_prediction
 
     def shape(self):
@@ -227,8 +227,8 @@ def forest_features(
     frames_used = []
     masses = []
     back_med = np.median(background)
-    if len(track_frames) <= buf_len:
-        return None
+    if len(track_frames) < buf_len:
+        return None,None ,None
 
     for i, frame in enumerate(track_frames):
         region = regions[i]
@@ -238,7 +238,7 @@ def forest_features(
         frames_used.append(region.frame_number)
         masses.append(region.mass)
         feature = FrameFeatures(region)
-        sub_back = region.subimage(background)
+        sub_back = region.subimage(background).copy()
         feature.calc_histogram(sub_back, frame.thermal, normalize=normalize)
         t_median = frame_temp_median[frame.frame_number]
         if cropped:
@@ -284,7 +284,7 @@ def forest_features(
                 )
                 # Aggregate
                 avg_features += features
-    if f_count <= buf_len:
+    if f_count < buf_len:
         return None
     # Compute statistics for all tracks that have the min required duration
     if buf_len == 1:

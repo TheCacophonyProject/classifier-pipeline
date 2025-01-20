@@ -275,6 +275,8 @@ class ClipTracker(ABC):
 
             if self.scale:
                 region.rescale(1 / self.scale)
+
+            # Make this min area
             if region.width < self.min_dimension or region.height < self.min_dimension:
                 continue
             # GP this needs to be checked for themals 29/06/2022
