@@ -483,6 +483,7 @@ class FrameFeatures:
                 self.fill_factor,
                 self.histogram_diff,
                 self.thermal_max,
+                self.thermal_min,
                 self.thermal_std,
                 self.filtered_max,
                 self.filtered_min,

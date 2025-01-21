@@ -350,7 +350,7 @@ class ClipTracker(ABC):
             track.set_end_s(clip.frames_per_second)
 
         [track.calculate_stats() for track in clip.tracks]
-        clip.tracks.sort(reverse=True, key=lambda record: record[0].score)
+        clip.tracks.sort(reverse=True, key=lambda record: record.stats.score)
         if self.verbose:
             for track in clip.tracks:
                 start_s, end_s = clip.start_and_end_in_secs(track)
