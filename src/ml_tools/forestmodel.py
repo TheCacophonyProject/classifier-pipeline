@@ -174,13 +174,18 @@ def process_track(
     frames = []
     # bounds = bounds[:50]
     data_bounds = np.empty_like(bounds)
+    if clip.crop_rectangle is None:
+        logging.warning("Clip has no crop rectangle")
     for i, r in enumerate(bounds):
         # if scale is not None and scale != 1:
         #     r = r.copy()
         #     r.rescale(1 / scale)
         #     data_bounds[i] = r
         # else:
-        data_bounds[i] = bounds[i]
+        data_bounds[i] = bounds[i].copy()
+        if clip.crop_rectangle is not None:
+            data_bounds[i].crop(clip.crop_rectangle)
+        
         if all_frames is None:
             frame = clip.get_frame(r.frame_number)
         else:

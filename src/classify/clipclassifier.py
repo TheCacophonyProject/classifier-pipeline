@@ -203,7 +203,7 @@ class ClipClassifier:
                             segment_frames = prediction_tag["data"]["prediction_frames"]
                             segment_frames = np.uint16(segment_frames)
             prediction = classifier.classify_track(
-                clip, track, segment_frames=segment_frames
+                clip, track, segment_frames=segment_frames,min_segments = 1
             )
             if prediction is not None:
                 predictions.prediction_per_track[track.get_id()] = prediction
