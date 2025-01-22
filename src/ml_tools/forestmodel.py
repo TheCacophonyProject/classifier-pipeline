@@ -117,14 +117,16 @@ class ForestModel(Interpreter):
         super().__init__(model_file)
         model_file = Path(model_file)
         self.model = joblib.load(model_file)
-        self.buffer_length = self.params.get("buffer_length",1)
+        self.buffer_length = self.params.get("buffer_length", 1)
         self.features_used = self.params.get("features_used")
 
     def classify_track(self, clip, track, last_x_frames=None, segment_frames=None):
 
         track_prediction = TrackPrediction(track.get_id(), self.labels)
-        predictions, frames,masses = self.predict_track(clip, track, last_x_frames=last_x_frames,normalize=True)
-        track_prediction.classified_clip(predictions, predictions, frames,masses)
+        predictions, frames, masses = self.predict_track(
+            clip, track, last_x_frames=last_x_frames, normalize=True
+        )
+        track_prediction.classified_clip(predictions, predictions, frames, masses)
         return track_prediction
 
     def shape(self):
@@ -141,7 +143,14 @@ class ForestModel(Interpreter):
             "last_x_frames",
         )
         scale = args.get("scale")
-        x,frames, masses = process_track(clip, track, last_x_frames, scale=scale,normalize = args.get("normalize",True),buf_len = self.buffer_length)
+        x, frames, masses = process_track(
+            clip,
+            track,
+            last_x_frames,
+            scale=scale,
+            normalize=args.get("normalize", True),
+            buf_len=self.buffer_length,
+        )
 
         if x is None:
             logging.warning("Random forest could not classify track")
@@ -153,7 +162,7 @@ class ForestModel(Interpreter):
         # x = x[np.newaxis, :]
         predictions = self.model.predict_proba(x)
         # print("predictions", predictions.shape)
-        return predictions, frames,masses
+        return predictions, frames, masses
 
 
 def process_track(
@@ -185,7 +194,7 @@ def process_track(
         data_bounds[i] = bounds[i].copy()
         if clip.crop_rectangle is not None:
             data_bounds[i].crop(clip.crop_rectangle)
-        
+
         if all_frames is None:
             frame = clip.get_frame(r.frame_number)
         else:
@@ -201,16 +210,16 @@ def process_track(
         )
     else:
         backgorund = clip.background
-    x,frames_used, masses = forest_features(
+    x, frames_used, masses = forest_features(
         frames,
         background,
         frame_temp_median,
         data_bounds,
         cropped=False,
         normalize=normalize,
-        buf_len = buf_len,
+        buf_len=buf_len,
     )
-    return x,frames_used,masses
+    return x, frames_used, masses
 
 
 def forest_features(
@@ -233,7 +242,7 @@ def forest_features(
     masses = []
     back_med = np.median(background)
     if len(track_frames) < buf_len:
-        return None,None ,None
+        return None, None, None
 
     for i, frame in enumerate(track_frames):
         region = regions[i]
@@ -293,7 +302,7 @@ def forest_features(
         return None
     # Compute statistics for all tracks that have the min required duration
     if buf_len == 1:
-        return np.array(all_features),frames_used,masses
+        return np.array(all_features), frames_used, masses
     else:
         N = f_count - np.array(
             [
@@ -351,10 +360,9 @@ def forest_features(
                 np.array([len(track_frames)]),
             )
         )
-           
-        return X,frames_used,masses
 
-     
+        return X, frames_used, masses
+
 
 def calculate_burst_features(frames, mean_speed):
     #
@@ -427,7 +435,6 @@ class FrameFeatures:
         self.cent = None
         self.extent = None
         self.thera = None
-
 
         self.sqrt_area = None
         self.std_back = None

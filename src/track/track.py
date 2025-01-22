@@ -963,7 +963,7 @@ class Track:
         track_info["frame_start"] = self.start_frame
         track_info["frame_end"] = self.end_frame
         track_info["positions"] = self.bounds_history
-        track_info["tracking_score"]= 0 if self.stats is None else self.stats.score
+        track_info["tracking_score"] = 0 if self.stats is None else self.stats.score
         prediction_info = []
         if predictions_per_model:
             for model_id, predictions in predictions_per_model.items():

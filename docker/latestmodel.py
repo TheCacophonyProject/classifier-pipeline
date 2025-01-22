@@ -69,27 +69,26 @@ def main():
 
     rf_releases = sorted(rf_releases, key=lambda r: r["tag_name"], reverse=True)
     server_releases = sorted(server_releases, key=lambda r: r["tag_name"], reverse=True)
-    if len(rf_releases) == 0 and len(server_releases)==0:
+    if len(rf_releases) == 0 and len(server_releases) == 0:
         print("No releases found for server")
         sys.exit(0)
-    
+
     config_file = "/etc/cacophony/classifier.yaml"
     print("Loading ", config_file)
     with open(config_file) as stream:
         config = yaml.safe_load(stream)
 
-
     if config is None:
         config = {"classify": {"models": []}}
 
-    add_to_config(server_releases[0],config,1,"Keras")
-    add_to_config(rf_releases[0],config,2,"RandomForest")
-
+    add_to_config(server_releases[0], config, 1, "Keras")
+    add_to_config(rf_releases[0], config, 2, "RandomForest")
 
     with open(config_file, "w") as stream:
         raw = yaml.dump(config, stream)
 
-def add_to_config(release,config,model_id,model_type):
+
+def add_to_config(release, config, model_id, model_type):
     print("Using release ", release["tag_name"])
     if len(release["assets"]) == 0:
         print("Release has no files", release)
@@ -125,8 +124,6 @@ def add_to_config(release,config,model_id,model_type):
     model_name = model_meta["name"]
     print("Model name is ", model_name)
 
-    
-
     # if config.get("classify") is None:
     #     config["classify"] = {}
     # if len(config.get("classify", {}).get("models", [])) == 0:
@@ -137,14 +134,14 @@ def add_to_config(release,config,model_id,model_type):
     #     }
     #     config["classify"]["models"] = [config_model]
     # else:
-    config_model = config["classify"]["models"][model_id-1]
+    config_model = config["classify"]["models"][model_id - 1]
     config_model["name"] = model_name
     if model_type == "RandomForest":
         config_model["model_file"] = str(model_dir / "model.pkl")
     else:
         config_model["model_file"] = str(model_dir / "saved_model.pb")
     config_model["id"] = config_model["id"] + 1
-    config_model["type"]= model_type
+    config_model["type"] = model_type
 
     return True
 
