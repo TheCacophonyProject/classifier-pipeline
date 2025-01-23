@@ -120,7 +120,9 @@ class ForestModel(Interpreter):
         self.buffer_length = self.params.get("buffer_length", 1)
         self.features_used = self.params.get("features_used")
 
-    def classify_track(self, clip, track, last_x_frames=None, segment_frames=None,min_segments =None):
+    def classify_track(
+        self, clip, track, last_x_frames=None, segment_frames=None, min_segments=None
+    ):
 
         track_prediction = TrackPrediction(track.get_id(), self.labels)
         predictions, frames, masses = self.predict_track(
