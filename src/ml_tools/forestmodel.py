@@ -255,13 +255,14 @@ def forest_features(
         masses.append(region.mass)
         feature = FrameFeatures(region)
         sub_back = region.subimage(background).copy()
-        feature.calc_histogram(sub_back, frame.thermal, normalize=normalize)
         t_median = frame_temp_median[frame.frame_number]
         if cropped:
             cropped_frame = frame
         else:
             cropped_frame = frame.crop_by_region(region)
         thermal = cropped_frame.thermal
+        feature.calc_histogram(sub_back, thermal, normalize=normalize)
+
         f_count += 1
 
         thermal = thermal + back_med - t_median
@@ -610,7 +611,7 @@ class FrameFeatures:
 
             sub_back *= 255
             crop_t *= 255
-
+        assert crop_t.shape == sub_back.shape
         # sub_back = np.uint8(sub_back)
         # crop_t = np.uint8(crop_t)
         sub_back = sub_back[..., np.newaxis]
@@ -627,7 +628,6 @@ class FrameFeatures:
             accumulate=False,
         )
         cv2.normalize(hist_base, hist_base, alpha=0, beta=1, norm_type=cv2.NORM_MINMAX)
-
         hist_track = cv2.calcHist(
             [crop_t],
             channels,
@@ -636,7 +636,6 @@ class FrameFeatures:
             [0, 255],
             accumulate=False,
         )
-        # print(hist_track)
         cv2.normalize(
             hist_track,
             hist_track,

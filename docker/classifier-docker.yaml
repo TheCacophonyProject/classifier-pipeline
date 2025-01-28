@@ -1,5 +1,5 @@
 classify:
-  meta_to_stdout: True
+  meta_to_stdout: False
   models:
     - id: 2
       name : "WR"
