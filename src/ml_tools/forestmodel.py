@@ -114,16 +114,21 @@ class ForestModel(Interpreter):
     TYPE = "RandomForest"
 
     def __init__(self, model_file, data_type=None):
-        super().__init__(model_file, data_type)
+        super().__init__(model_file)
         model_file = Path(model_file)
         self.model = joblib.load(model_file)
-        self.buffer_length = 5
+        self.buffer_length = self.params.get("buffer_length", 1)
         self.features_used = self.params.get("features_used")
 
-    def classify_track(self, clip, track, last_x_frames=None, segment_frames=None):
+    def classify_track(
+        self, clip, track, last_x_frames=None, segment_frames=None, min_segments=None
+    ):
+
         track_prediction = TrackPrediction(track.get_id(), self.labels)
-        predictions, mass = self.predict_track(clip, track, last_x_frames=last_x_frames)
-        track_prediction.classified_clip(predictions, predictions * 100, [-1])
+        predictions, frames, masses = self.predict_track(
+            clip, track, last_x_frames=last_x_frames, normalize=True
+        )
+        track_prediction.classified_clip(predictions, predictions, frames, masses)
         return track_prediction
 
     def shape(self):
@@ -140,7 +145,14 @@ class ForestModel(Interpreter):
             "last_x_frames",
         )
         scale = args.get("scale")
-        x = process_track(clip, track, last_x_frames, scale=scale)
+        x, frames, masses = process_track(
+            clip,
+            track,
+            last_x_frames,
+            scale=scale,
+            normalize=args.get("normalize", True),
+            buf_len=self.buffer_length,
+        )
 
         if x is None:
             logging.warning("Random forest could not classify track")
@@ -149,14 +161,14 @@ class ForestModel(Interpreter):
             f_mask = feature_mask(self.features_used)
             x = np.take(x, f_mask)
 
-        x = x[np.newaxis, :]
+        # x = x[np.newaxis, :]
         predictions = self.model.predict_proba(x)
         # print("predictions", predictions.shape)
-        return predictions, [1]
+        return predictions, frames, masses
 
 
 def process_track(
-    clip, track, predict_from_last=None, buf_len=5, scale=None, normalize=False
+    clip, track, predict_from_last=None, buf_len=5, scale=None, normalize=True
 ):
     background = clip.background
     all_frames = None
@@ -173,13 +185,18 @@ def process_track(
     frames = []
     # bounds = bounds[:50]
     data_bounds = np.empty_like(bounds)
+    if clip.crop_rectangle is None:
+        logging.warning("Clip has no crop rectangle")
     for i, r in enumerate(bounds):
         # if scale is not None and scale != 1:
         #     r = r.copy()
         #     r.rescale(1 / scale)
         #     data_bounds[i] = r
         # else:
-        data_bounds[i] = bounds[i]
+        data_bounds[i] = bounds[i].copy()
+        if clip.crop_rectangle is not None:
+            data_bounds[i].crop(clip.crop_rectangle)
+
         if all_frames is None:
             frame = clip.get_frame(r.frame_number)
         else:
@@ -195,15 +212,16 @@ def process_track(
         )
     else:
         backgorund = clip.background
-    x = forest_features(
+    x, frames_used, masses = forest_features(
         frames,
         background,
         frame_temp_median,
         data_bounds,
         cropped=False,
         normalize=normalize,
+        buf_len=buf_len,
     )
-    return x
+    return x, frames_used, masses
 
 
 def forest_features(
@@ -213,7 +231,7 @@ def forest_features(
     regions,
     buf_len=5,
     cropped=True,
-    normalize=False,
+    normalize=True,
 ):
     frame_features = []
     avg_features = None
@@ -222,122 +240,131 @@ def forest_features(
     all_features = []
     f_count = 0
     prev_count = 0
+    frames_used = []
+    masses = []
     back_med = np.median(background)
-    if len(track_frames) <= buf_len:
-        return None
+    if len(track_frames) < buf_len:
+        return None, None, None
 
     for i, frame in enumerate(track_frames):
         region = regions[i]
-        if region.blank or region.width > 0 or region.height > 0:
+        if region.blank or region.width <= 0 or region.height <= 0:
             prev_count = 0
             continue
-
+        frames_used.append(region.frame_number)
+        masses.append(region.mass)
         feature = FrameFeatures(region)
-        sub_back = region.subimage(background)
-        feature.calc_histogram(sub_back, frame.thermal, normalize=normalize)
+        sub_back = region.subimage(background).copy()
         t_median = frame_temp_median[frame.frame_number]
         if cropped:
             cropped_frame = frame
         else:
             cropped_frame = frame.crop_by_region(region)
         thermal = cropped_frame.thermal
+        feature.calc_histogram(sub_back, thermal, normalize=normalize)
+
         f_count += 1
 
         thermal = thermal + back_med - t_median
-        filtered = thermal - sub_back
 
         feature.calculate(thermal, sub_back)
-        count_back = min(buf_len, prev_count)
-        for i in range(count_back):
-            prev = frame_features[-i - 1]
-            vel = feature.cent - prev.cent
-            feature.speed[i] = np.sqrt(np.sum(vel * vel))
-            feature.rel_speed[i] = feature.speed[i] / feature.sqrt_area
-            feature.rel_speed_x[i] = np.abs(vel[0]) / feature.sqrt_area
-            feature.rel_speed_y[i] = np.abs(vel[1]) / feature.sqrt_area
-            feature.speed_x[i] = np.abs(vel[0])
-            feature.speed_y[i] = np.abs(vel[1])
+        if buf_len > 1:
+            count_back = min(buf_len, prev_count)
 
-        frame_features.append(feature)
+            for i in range(count_back):
+                prev = frame_features[-i - 1]
+                vel = feature.cent - prev.cent
+                feature.speed[i] = np.sqrt(np.sum(vel * vel))
+                feature.rel_speed[i] = feature.speed[i] / feature.sqrt_area
+                feature.rel_speed_x[i] = np.abs(vel[0]) / feature.sqrt_area
+                feature.rel_speed_y[i] = np.abs(vel[1]) / feature.sqrt_area
+                feature.speed_x[i] = np.abs(vel[0])
+                feature.speed_y[i] = np.abs(vel[1])
+
+            frame_features.append(feature)
         features = feature.features()
         all_features.append(features)
         prev_count += 1
-        if maximum_features is None:
-            maximum_features = features.copy()
-            minimum_features = features.copy()
+        if buf_len > 1:
+            if maximum_features is None:
+                maximum_features = features.copy()
+                minimum_features = features.copy()
 
-            avg_features = features.copy()
-        else:
-            maximum_features = np.maximum(features, maximum_features)
-            non_zero = features != 0
-            current_zero = minimum_features == 0
-            minimum_features[current_zero] = features[current_zero]
-            minimum_features[non_zero] = np.minimum(
-                minimum_features[non_zero], features[non_zero]
-            )
-            # Aggregate
-            avg_features += features
-    if f_count <= buf_len:
+                avg_features = features.copy()
+            else:
+                maximum_features = np.maximum(features, maximum_features)
+                non_zero = features != 0
+                current_zero = minimum_features == 0
+                minimum_features[current_zero] = features[current_zero]
+                minimum_features[non_zero] = np.minimum(
+                    minimum_features[non_zero], features[non_zero]
+                )
+                # Aggregate
+                avg_features += features
+    if f_count < buf_len:
         return None
     # Compute statistics for all tracks that have the min required duration
-    valid_counter = 0
-    N = f_count - np.array(
-        [
-            0,
-            0,
-            0,
-            0,
-            0,
-            1,
-            1,
-            1,
-            1,
-            3,
-            3,
-            3,
-            3,
-            5,
-            5,
-            5,
-            5,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-        ]
-    )  # Normalise each measure by however many samples went into it
-    avg_features /= N
-    std_features = np.sqrt(np.sum((all_features - avg_features) ** 2, axis=0) / N)
-    diff_features = maximum_features - minimum_features
-    burst_features = calculate_burst_features(frame_features, avg_features[5])
+    if buf_len == 1:
+        return np.array(all_features), frames_used, masses
+    else:
+        N = f_count - np.array(
+            [
+                0,
+                0,
+                0,
+                0,
+                0,
+                1,
+                1,
+                1,
+                1,
+                3,
+                3,
+                3,
+                3,
+                5,
+                5,
+                5,
+                5,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+            ]
+        )  # Normalise each measure by however many samples went into it
+        avg_features /= N
+        std_features = np.sqrt(np.sum((all_features - avg_features) ** 2, axis=0) / N)
+        diff_features = maximum_features - minimum_features
+        burst_features = calculate_burst_features(frame_features, avg_features[5])
 
-    X = np.hstack(
-        (
-            avg_features,
-            std_features,
-            maximum_features,
-            minimum_features,
-            diff_features,
-            burst_features,
-            np.array([len(track_frames)]),
+        X = np.hstack(
+            (
+                avg_features,
+                std_features,
+                maximum_features,
+                minimum_features,
+                diff_features,
+                burst_features,
+                np.array([len(track_frames)]),
+            )
         )
-    )
-    return X
+
+        return X, frames_used, masses
 
 
 def calculate_burst_features(frames, mean_speed):
@@ -411,6 +438,21 @@ class FrameFeatures:
         self.cent = None
         self.extent = None
         self.thera = None
+
+        self.sqrt_area = None
+        self.std_back = None
+        self.peak_snr = None
+        self.mean_snr = None
+        self.fill_factor = None
+        self.histogram_diff = 0
+        self.thermal_min = None
+
+        self.thermal_max = None
+        self.thermal_std = None
+        self.filtered_max = None
+        self.filtered_std = None
+        self.filtered_min = None
+
         self.rel_speed = np.zeros(buff_len)
         self.rel_speed_x = np.zeros(buff_len)
         self.rel_speed_y = np.zeros(buff_len)
@@ -420,14 +462,14 @@ class FrameFeatures:
         self.histogram_diff = 0
 
     def calculate(self, thermal, sub_back):
+        self.thermal_min = np.min(thermal)
         self.thermal_max = np.amax(thermal)
         self.thermal_std = np.std(thermal)
         filtered = thermal - sub_back
         filtered = np.abs(filtered)
-        f_max = filtered.max()
-
-        if f_max > 0.0:
-            filtered /= f_max
+        self.filtered_max = np.amax(filtered)
+        self.filtered_min = np.amin(filtered)
+        self.filtered_std = np.std(filtered)
 
         # Calculate weighted centroid and second moments etc
         cent, extent, theta = intensity_weighted_moments(filtered, self.region)
@@ -447,60 +489,6 @@ class FrameFeatures:
         self.fill_factor = np.sum(filtered) / area
 
     def features(self):
-        non_zero = np.array([s for s in self.speed if s > 0])
-        max_speed = 0
-        min_speed = 0
-        avg_speed = 0
-        if len(non_zero) > 0:
-            max_speed = np.amax(non_zero)
-            min_speed = np.amin(non_zero)
-            avg_speed = np.mean(non_zero)
-
-        non_zero = np.array([s for s in self.speed_x if s > 0])
-        max_speed_x = 0
-        min_speed_x = 0
-        avg_speed_x = 0
-        if len(non_zero) > 0:
-            max_speed_x = np.amax(non_zero)
-            min_speed_x = np.amin(non_zero)
-            avg_speed_x = np.mean(non_zero)
-
-        non_zero = np.array([s for s in self.speed_y if s > 0])
-        max_speed_y = 0
-        min_speed_y = 0
-        avg_speed_y = 0
-        if len(non_zero) > 0:
-            max_speed_y = np.amax(non_zero)
-            min_speed_y = np.amin(non_zero)
-            avg_speed_y = np.mean(non_zero)
-
-        non_zero = np.array([s for s in self.rel_speed if s > 0])
-        max_rel_speed = 0
-        min_rel_speed = 0
-        avg_rel_speed = 0
-        if len(non_zero) > 0:
-            max_rel_speed = np.amax(non_zero)
-            min_rel_speed = np.amin(non_zero)
-            avg_rel_speed = np.mean(non_zero)
-
-        non_zero = np.array([s for s in self.rel_speed_x if s > 0])
-        max_rel_speed_x = 0
-        min_rel_speed_x = 0
-        avg_rel_speed_x = 0
-        if len(non_zero) > 0:
-            max_rel_speed_x = np.amax(non_zero)
-            min_rel_speed_x = np.amin(non_zero)
-            avg_rel_speed_x = np.mean(non_zero)
-
-        non_zero = np.array([s for s in self.rel_speed_y if s > 0])
-        max_rel_speed_y = 0
-        min_rel_speed_y = 0
-        avg_rel_speed_y = 0
-        if len(non_zero) > 0:
-            max_rel_speed_y = np.amax(non_zero)
-            min_rel_speed_y = np.amin(non_zero)
-            avg_rel_speed_y = np.mean(non_zero)
-
         return np.array(
             [
                 self.sqrt_area,
@@ -508,39 +496,109 @@ class FrameFeatures:
                 self.peak_snr,
                 self.mean_snr,
                 self.fill_factor,
-                self.speed[0],
-                self.rel_speed[0],
-                self.rel_speed_x[0],
-                self.rel_speed_y[0],
-                self.speed[2],
-                self.rel_speed[2],
-                self.rel_speed_x[2],
-                self.rel_speed_y[2],
-                self.speed[4],
-                self.rel_speed[4],
-                self.rel_speed_x[4],
-                self.rel_speed_y[4],
-                max_speed,
-                min_speed,
-                avg_speed,
-                max_speed_x,
-                min_speed_x,
-                avg_speed_x,
-                max_speed_y,
-                min_speed_y,
-                avg_speed_y,
-                max_rel_speed,
-                min_rel_speed,
-                avg_rel_speed,
-                max_rel_speed_x,
-                min_rel_speed_x,
-                avg_rel_speed_x,
-                max_rel_speed_y,
-                min_rel_speed_y,
-                avg_rel_speed_y,
                 self.histogram_diff,
+                self.thermal_max,
+                self.thermal_min,
+                self.thermal_std,
+                self.filtered_max,
+                self.filtered_min,
+                self.filtered_std,
             ]
         )
+        # non_zero = np.array([s for s in self.speed if s > 0])
+        # max_speed = 0
+        # min_speed = 0
+        # avg_speed = 0
+        # if len(non_zero) > 0:
+        #     max_speed = np.amax(non_zero)
+        #     min_speed = np.amin(non_zero)
+        #     avg_speed = np.mean(non_zero)
+
+        # non_zero = np.array([s for s in self.speed_x if s > 0])
+        # max_speed_x = 0
+        # min_speed_x = 0
+        # avg_speed_x = 0
+        # if len(non_zero) > 0:
+        #     max_speed_x = np.amax(non_zero)
+        #     min_speed_x = np.amin(non_zero)
+        #     avg_speed_x = np.mean(non_zero)
+
+        # non_zero = np.array([s for s in self.speed_y if s > 0])
+        # max_speed_y = 0
+        # min_speed_y = 0
+        # avg_speed_y = 0
+        # if len(non_zero) > 0:
+        #     max_speed_y = np.amax(non_zero)
+        #     min_speed_y = np.amin(non_zero)
+        #     avg_speed_y = np.mean(non_zero)
+
+        # non_zero = np.array([s for s in self.rel_speed if s > 0])
+        # max_rel_speed = 0
+        # min_rel_speed = 0
+        # avg_rel_speed = 0
+        # if len(non_zero) > 0:
+        #     max_rel_speed = np.amax(non_zero)
+        #     min_rel_speed = np.amin(non_zero)
+        #     avg_rel_speed = np.mean(non_zero)
+
+        # non_zero = np.array([s for s in self.rel_speed_x if s > 0])
+        # max_rel_speed_x = 0
+        # min_rel_speed_x = 0
+        # avg_rel_speed_x = 0
+        # if len(non_zero) > 0:
+        #     max_rel_speed_x = np.amax(non_zero)
+        #     min_rel_speed_x = np.amin(non_zero)
+        #     avg_rel_speed_x = np.mean(non_zero)
+
+        # non_zero = np.array([s for s in self.rel_speed_y if s > 0])
+        # max_rel_speed_y = 0
+        # min_rel_speed_y = 0
+        # avg_rel_speed_y = 0
+        # if len(non_zero) > 0:
+        #     max_rel_speed_y = np.amax(non_zero)
+        #     min_rel_speed_y = np.amin(non_zero)
+        #     avg_rel_speed_y = np.mean(non_zero)
+
+        # return np.array(
+        #     [
+        #         self.sqrt_area,
+        #         self.elongation,
+        #         self.peak_snr,
+        #         self.mean_snr,
+        #         self.fill_factor,
+        #         self.speed[0],
+        #         self.rel_speed[0],
+        #         self.rel_speed_x[0],
+        #         self.rel_speed_y[0],
+        #         self.speed[2],
+        #         self.rel_speed[2],
+        #         self.rel_speed_x[2],
+        #         self.rel_speed_y[2],
+        #         self.speed[4],
+        #         self.rel_speed[4],
+        #         self.rel_speed_x[4],
+        #         self.rel_speed_y[4],
+        #         max_speed,
+        #         min_speed,
+        #         avg_speed,
+        #         max_speed_x,
+        #         min_speed_x,
+        #         avg_speed_x,
+        #         max_speed_y,
+        #         min_speed_y,
+        #         avg_speed_y,
+        #         max_rel_speed,
+        #         min_rel_speed,
+        #         avg_rel_speed,
+        #         max_rel_speed_x,
+        #         min_rel_speed_x,
+        #         avg_rel_speed_x,
+        #         max_rel_speed_y,
+        #         min_rel_speed_y,
+        #         avg_rel_speed_y,
+        #         self.histogram_diff,
+        #     ]
+        # )
 
     def calc_histogram(self, sub_back, crop_t, normalize=False):
         if normalize:
@@ -553,7 +611,7 @@ class FrameFeatures:
 
             sub_back *= 255
             crop_t *= 255
-
+        assert crop_t.shape == sub_back.shape
         # sub_back = np.uint8(sub_back)
         # crop_t = np.uint8(crop_t)
         sub_back = sub_back[..., np.newaxis]
@@ -570,7 +628,6 @@ class FrameFeatures:
             accumulate=False,
         )
         cv2.normalize(hist_base, hist_base, alpha=0, beta=1, norm_type=cv2.NORM_MINMAX)
-
         hist_track = cv2.calcHist(
             [crop_t],
             channels,
@@ -579,7 +636,6 @@ class FrameFeatures:
             [0, 255],
             accumulate=False,
         )
-        # print(hist_track)
         cv2.normalize(
             hist_track,
             hist_track,

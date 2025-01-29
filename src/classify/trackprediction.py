@@ -109,6 +109,12 @@ class TrackPrediction:
         self.tracking = False
         self.masses = []
 
+    def cap_confidences(self, max_confidence):
+        max_score = np.sum(self.class_best_score)
+        if max_score > max_confidence:
+            scale = max_confidence / max_score
+            self.class_best_score *= scale
+
     def classified_clip(
         self,
         predictions,
@@ -256,7 +262,9 @@ class TrackPrediction:
                 self.labels[self.best_label_index], score * 10, self.clarity * 10
             )
         else:
-            first_guess = "[nothing]"
+            first_guess = "[nothing] {} {:.1f} (clarity {:.1f})".format(
+                self.labels[self.best_label_index], score * 10, self.clarity * 10
+            )
 
         second_score = self.score(2)
 

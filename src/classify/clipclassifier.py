@@ -162,7 +162,6 @@ class ClipClassifier:
             self.previewer.export_clip_preview(
                 mpeg_filename, clip, list(predictions_per_model.values())[0]
             )
-        logging.info("saving meta data %s", meta_file)
         models = [self.model] if self.model else self.config.classify.models
         meta_data = self.save_metadata(
             meta_data,
@@ -203,14 +202,14 @@ class ClipClassifier:
                             segment_frames = prediction_tag["data"]["prediction_frames"]
                             segment_frames = np.uint16(segment_frames)
             prediction = classifier.classify_track(
-                clip, track, segment_frames=segment_frames
+                clip, track, segment_frames=segment_frames, min_segments=1
             )
             if prediction is not None:
                 predictions.prediction_per_track[track.get_id()] = prediction
                 description = prediction.description()
                 logging.info(
-                    " - [{}/{}] prediction: {}".format(
-                        i + 1, len(clip.tracks), description
+                    "{} - [{}/{}] prediction: {}".format(
+                        track.get_id(), i + 1, len(clip.tracks), description
                     )
                 )
         if self.config.verbose:
@@ -261,8 +260,11 @@ class ClipClassifier:
 
         meta_data["models"] = model_dictionaries
         if self.config.classify.meta_to_stdout:
+            logging.info("Printing json meta data")
+
             print(json.dumps(meta_data, cls=tools.CustomJSONEncoder))
         else:
+            logging.info("saving meta data %s", meta_filename)
             with open(meta_filename, "w") as f:
                 json.dump(meta_data, f, indent=4, cls=tools.CustomJSONEncoder)
         return meta_data

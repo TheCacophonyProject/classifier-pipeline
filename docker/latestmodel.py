@@ -55,21 +55,44 @@ def download_file(url, name, extract_to):
 
 
 def main():
-    releases = get_releases()
-    releases = [
+    all_releases = get_releases()
+    server_releases = [
         release
-        for release in releases
+        for release in all_releases
         if release["tag_name"].startswith("server") and not release["prerelease"]
     ]
-    releases = sorted(releases, key=lambda r: r["tag_name"], reverse=True)
-    if len(releases) == 0:
+    rf_releases = [
+        release
+        for release in all_releases
+        if release["tag_name"].startswith("rf-fp") and not release["prerelease"]
+    ]
+
+    rf_releases = sorted(rf_releases, key=lambda r: r["tag_name"], reverse=True)
+    server_releases = sorted(server_releases, key=lambda r: r["tag_name"], reverse=True)
+    if len(rf_releases) == 0 and len(server_releases) == 0:
         print("No releases found for server")
         sys.exit(0)
-    release = releases[0]
+
+    config_file = "/etc/cacophony/classifier.yaml"
+    print("Loading ", config_file)
+    with open(config_file) as stream:
+        config = yaml.safe_load(stream)
+
+    if config is None:
+        config = {"classify": {"models": []}}
+
+    add_to_config(server_releases[0], config, 1, "Keras")
+    add_to_config(rf_releases[0], config, 2, "RandomForest")
+
+    with open(config_file, "w") as stream:
+        raw = yaml.dump(config, stream)
+
+
+def add_to_config(release, config, model_id, model_type):
     print("Using release ", release["tag_name"])
     if len(release["assets"]) == 0:
-        print("Release has no files")
-        sys.exit(0)
+        print("Release has no files", release)
+        return False
     asset = release["assets"][0]
 
     # check existing models
@@ -84,7 +107,7 @@ def main():
     print("Have existing", model_versions)
     if release["tag_name"] in model_versions:
         print("Already have latest model")
-        sys.exit(0)
+        return False
 
     # Download and extract new model
     print("Downloading model", asset["name"])
@@ -101,30 +124,26 @@ def main():
     model_name = model_meta["name"]
     print("Model name is ", model_name)
 
-    config_file = "/etc/cacophony/classifier.yaml"
-    print("Loading ", config_file)
-    with open(config_file) as stream:
-        config = yaml.safe_load(stream)
-    if config is None:
-        config = {"classify": {"models": []}}
-
-    if config.get("classify") is None:
-        config["classify"] = {}
-    if len(config.get("classify", {}).get("models", [])) == 0:
-        config_model = {
-            "name": model_name,
-            "model_file": str(model_dir / "saved_model.pb"),
-            "id": 1,
-        }
-        config["classify"]["models"] = [config_model]
+    # if config.get("classify") is None:
+    #     config["classify"] = {}
+    # if len(config.get("classify", {}).get("models", [])) == 0:
+    #     config_model = {
+    #         "name": model_name,
+    #         "model_file": str(model_dir / "saved_model.pb"),
+    #         "id": model_id,
+    #     }
+    #     config["classify"]["models"] = [config_model]
+    # else:
+    config_model = config["classify"]["models"][model_id - 1]
+    config_model["name"] = model_name
+    if model_type == "RandomForest":
+        config_model["model_file"] = str(model_dir / "model.pkl")
     else:
-        config_model = config["classify"]["models"][0]
-        config_model["name"] = model_name
         config_model["model_file"] = str(model_dir / "saved_model.pb")
-        config_model["id"] = config_model["id"] + 1
+    config_model["id"] = config_model["id"] + 1
+    config_model["type"] = model_type
 
-    with open(config_file, "w") as stream:
-        raw = yaml.dump(config, stream)
+    return True
 
 
 if __name__ == "__main__":
@@ -132,3 +151,4 @@ if __name__ == "__main__":
         main()
     except Exception as e:
         print("Error running ", e)
+        raise e

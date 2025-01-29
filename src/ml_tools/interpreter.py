@@ -133,15 +133,17 @@ class Interpreter(ABC):
             )
         return frames, preprocessed, masses
 
-    def classify_track(self, clip, track, segment_frames=None):
+    def classify_track(self, clip, track, segment_frames=None, min_segments=None):
         start = time.time()
         prediction_frames, output, masses = self.predict_track(
             clip,
             track,
             segment_frames=segment_frames,
             frames_per_classify=self.params.square_width**2,
+            min_segments=min_segments,
         )
         if output is None:
+            logging.info("Skipping track %s", track.get_id())
             return None
         track_prediction = TrackPrediction(track.get_id(), self.labels)
         # self.model.predict(preprocessed)
@@ -160,6 +162,13 @@ class Interpreter(ABC):
             masses,
             top_score=top_score,
         )
+        if (
+            len(prediction_frames) == 1
+            and len(set(prediction_frames[0])) < self.params.square_width**2 / 4
+        ):
+            # if we don't have many frames to get a good prediction, lets assume only false-positive is a good prediction and filter the rest to a maximum of 0.5
+            if track_prediction.predicted_tag() != "false-positive":
+                track_prediction.cap_confidences(0.5)
         track_prediction.classify_time = time.time() - start
         return track_prediction
 
