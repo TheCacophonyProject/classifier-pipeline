@@ -1095,8 +1095,8 @@ def get_segments(
                 segment_indices = np.arange(len(regions))
                 all_frames = np.arange(len(regions)) + start_frame
 
-                available_indices = np.full(len(regions),False)
-                available_indices[frame_indices-start_frame] = True
+                available_indices = np.full(len(regions), False)
+                available_indices[frame_indices - start_frame] = True
                 # use all frames and make out onces filtered by other criteria like mass and blank etc
                 # this way we are always making as 25 frame period
             if segment_type != SegmentType.ALL_RANDOM_MASKED or len(whole_indices) < 40:
@@ -1108,11 +1108,11 @@ def get_segments(
             for i in range(segment_count):
                 if segment_type == SegmentType.ALL_RANDOM_MASKED:
                     if len(whole_indices) < 40:
-                        frame_indices =segment_indices[available_indices]
+                        frame_indices = segment_indices[available_indices]
                     else:
                         mask = available_indices.copy()
                         mask_start = i * mask_length
-                        mask[mask_start:mask_start+mask_length]=False
+                        mask[mask_start : mask_start + mask_length] = False
 
                         frame_indices = segment_indices[mask]
                         frame_indices = np.uint32(frame_indices)
@@ -1143,7 +1143,7 @@ def get_segments(
                     frame_indices = frame_indices[segment_width:]
                 elif segment_type == SegmentType.ALL_RANDOM_MASKED:
                     indices = frame_indices[:segment_width]
-                    available_indices[indices]= False
+                    available_indices[indices] = False
                     frames = all_frames[indices]
                 elif random_frames:
                     # frame indices already randomized so just need to grab some

@@ -29,6 +29,7 @@ from track.cliptracker import ClipTracker
 import logging
 from cptv_rs_python_bindings import CptvReader
 
+
 class ClipTrackExtractor(ClipTracker):
     PREVIEW = "preview"
     VERSION = 10
@@ -77,7 +78,8 @@ class ClipTrackExtractor(ClipTracker):
         # if self.config.dilation_pixels > 0:
         #     size = self.config.dilation_pixels * 2 + 1
         #     self.dilate_kernel = np.ones((size, size), np.uint8)
-    def init_clip(self,clip):
+
+    def init_clip(self, clip):
 
         clip.set_frame_buffer(
             self.high_quality_optical_flow,
@@ -118,13 +120,13 @@ class ClipTrackExtractor(ClipTracker):
         self._tracking_time = None
         start = time.time()
         self.init_clip(clip)
-        self._track_clip(clip,process_background=process_background)
+        self._track_clip(clip, process_background=process_background)
         if self.calc_stats:
             clip.stats.completed()
         self._tracking_time = time.time() - start
         return True
 
-    def _track_clip(self,clip,process_background=False):
+    def _track_clip(self, clip, process_background=False):
         if clip.background is None:
             logging.error("Clip has no background have you called init_clip first")
             raise Exception("Clip has no background have you called init_clip first")
