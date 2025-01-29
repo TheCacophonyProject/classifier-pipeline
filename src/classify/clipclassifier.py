@@ -203,8 +203,7 @@ class ClipClassifier:
                             logging.info("Reusing previous prediction frames %s", model)
                             segment_frames = prediction_tag["data"]["prediction_frames"]
                             segment_frames = np.uint16(segment_frames)
-            # if track.get_id()!=6066838:
-                # continue
+
             prediction = classifier.classify_track(
                 clip, track, segment_frames=segment_frames, min_segments=1
             )

@@ -10,7 +10,6 @@ from config.buildconfig import BuildConfig
 from ml_tools import imageprocessing
 from enum import Enum
 import attr
-import time
 
 FRAMES_PER_SECOND = 9
 
@@ -1098,49 +1097,27 @@ def get_segments(
 
                 available_indices = np.full(len(regions),False)
                 available_indices[frame_indices-start_frame] = True
-
+                # use all frames and make out onces filtered by other criteria like mass and blank etc
+                # this way we are always making as 25 frame period
             if segment_type != SegmentType.ALL_RANDOM_MASKED or len(whole_indices) < 40:
                 frame_indices = whole_indices.copy()
 
                 if random_frames:
                     # random_frames and not random_sections:
                     np.random.shuffle(frame_indices)
-            times = [0,0,0]
             for i in range(segment_count):
-                start = time.time()
-
                 if segment_type == SegmentType.ALL_RANDOM_MASKED:
                     if len(whole_indices) < 40:
                         frame_indices =segment_indices[available_indices]
-                        # logging.info("Set frame indices to %s index len %s",frame_indices, len(whole_indices))
                     else:
                         mask = available_indices.copy()
                         mask_start = i * mask_length
-
                         mask[mask_start:mask_start+mask_length]=False
 
-
                         frame_indices = segment_indices[mask]
-                        # frame_indices = np.concatenate(
-                        #     [frame_indices, whole_indices[mask_start + mask_length :]],
-                        #     axis=0,
-                        # )
-                        times[0] += time.time()-start
-                        start = time.time()
-                        # maybe some faster way of doing this...
-                        # frame_indices = [
-                        #     f for f in frame_indices if f not in used_indices
-                        # ]
-
                         frame_indices = np.uint32(frame_indices)
-                        # logging.info("Mask is from %s to %s indices are %s",mask_start,mask_start + mask_length, frame_indices)
-
-                        times[1] += time.time()-start
-                        start = time.time()
                         np.random.shuffle(frame_indices)
-                        times[2] += time.time()-start
 
-                start = time.time()
                 # always get atleast one segment, not doing annymore
                 if (
                     len(frame_indices) == 0
@@ -1168,12 +1145,6 @@ def get_segments(
                     indices = frame_indices[:segment_width]
                     available_indices[indices]= False
                     frames = all_frames[indices]
-                    frames.sort()
-                    indices.sort()
-                    # logging.info("Used from frames indieces %s becomes %s",indices, frames)
-
-                    # .extend(frames)
-                    # frame_indices = frame_indices[segment_width:]
                 elif random_frames:
                     # frame indices already randomized so just need to grab some
                     frames = frame_indices[:segment_width]
@@ -1194,8 +1165,6 @@ def get_segments(
                     )
                     frames = np.concatenate([frames, extra_frames])
                 frames.sort()
-                # times[1] += time.time()-start
-                # start = time.time()
                 relative_frames = frames - start_frame
                 mass_slice = mass_history[relative_frames]
                 segment_mass = np.sum(mass_slice)
@@ -1251,18 +1220,6 @@ def get_segments(
                     filtered=filtered,
                 )
                 segments.append(segment)
-                # times[2] += time.time()-start
-    for i,seg in enumerate(segments):
-        mask_start = i * mask_length + start_frame
-        mask_end = mask_start + mask_length 
-        for s2 in segments:
-            if s2 ==seg:
-                continue
-            for f in seg.frame_indices:
-                assert f in whole_indices
-                assert f < mask_start or f >= mask_end, f"{f} is wrong {mask_start} {mask_end}"
-                assert f not in s2.frame_indices
-    logging.info("Times are %s",times)
     return segments, filtered_stats
 
 
