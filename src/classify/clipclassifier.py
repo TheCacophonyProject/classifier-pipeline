@@ -14,6 +14,8 @@ from ml_tools import tools
 from track.irtrackextractor import IRTrackExtractor
 from ml_tools.previewer import Previewer
 from ml_tools.interpreter import get_interpreter
+from cptv_rs_python_bindings import CptvReader
+from piclassifier.cptvmotiondetector import is_affected_by_ffc
 
 
 class ClipClassifier:
@@ -103,7 +105,7 @@ class ClipClassifier:
         )
         if ext == ".cptv":
             track_extractor = ClipTrackExtractor(
-                self.config.tracking, self.config.use_opt_flow, cache_to_disk
+                self.config.tracking, self.config.use_opt_flow, cache_to_disk,do_tracking=False
             )
             logging.info("Using clip extractor")
 
@@ -132,7 +134,7 @@ class ClipClassifier:
             self.config.build.tag_precedence,
         )
         track_extractor.parse_clip(clip)
-
+        
         predictions_per_model = {}
         if self.model:
             prediction = self.classify_clip(
@@ -201,6 +203,8 @@ class ClipClassifier:
                             logging.info("Reusing previous prediction frames %s", model)
                             segment_frames = prediction_tag["data"]["prediction_frames"]
                             segment_frames = np.uint16(segment_frames)
+            # if track.get_id()!=6066838:
+                # continue
             prediction = classifier.classify_track(
                 clip, track, segment_frames=segment_frames, min_segments=1
             )

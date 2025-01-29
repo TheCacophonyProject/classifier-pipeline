@@ -26,7 +26,8 @@ from .clip import Clip
 from piclassifier.cptvmotiondetector import is_affected_by_ffc
 from ml_tools.imageprocessing import detect_objects, normalize
 from track.cliptracker import ClipTracker
-
+import logging
+from cptv_rs_python_bindings import CptvReader
 
 class ClipTrackExtractor(ClipTracker):
     PREVIEW = "preview"
@@ -76,15 +77,8 @@ class ClipTrackExtractor(ClipTracker):
         # if self.config.dilation_pixels > 0:
         #     size = self.config.dilation_pixels * 2 + 1
         #     self.dilate_kernel = np.ones((size, size), np.uint8)
+    def init_clip(self,clip):
 
-    def parse_clip(self, clip, process_background=False):
-        """
-        Loads a cptv file, and prepares for track extraction.
-        """
-        from cptv_rs_python_bindings import CptvReader
-
-        self._tracking_time = None
-        start = time.time()
         clip.set_frame_buffer(
             self.high_quality_optical_flow,
             self.cache_to_disk,
@@ -116,6 +110,24 @@ class ClipTrackExtractor(ClipTracker):
         clip.set_video_stats(video_start_time)
         clip.calculate_background(reader)
 
+    def parse_clip(self, clip, process_background=False):
+        """
+        Loads a cptv file, and prepares for track extraction.
+        """
+
+        self._tracking_time = None
+        start = time.time()
+        self.init_clip(clip)
+        self._track_clip(clip,process_background=process_background)
+        if self.calc_stats:
+            clip.stats.completed()
+        self._tracking_time = time.time() - start
+        return True
+
+    def _track_clip(self,clip,process_background=False):
+        if clip.background is None:
+            logging.error("Clip has no background have you called init_clip first")
+            raise Exception("Clip has no background have you called init_clip first")
         reader = CptvReader(str(clip.source_file))
         while True:
             frame = reader.next_frame()
@@ -127,11 +139,6 @@ class ClipTrackExtractor(ClipTracker):
 
         if not clip.from_metadata and self.do_tracking:
             self.apply_track_filtering(clip)
-
-        if self.calc_stats:
-            clip.stats.completed()
-        self._tracking_time = time.time() - start
-        return True
 
     @property
     def tracking_time(self):
@@ -156,9 +163,13 @@ class ClipTrackExtractor(ClipTracker):
         if ffc_affected:
             self.print_if_verbose("{} ffc_affected".format(clip.current_frame))
         clip.ffc_affected = ffc_affected
-        filtered, threshold = self._get_filtered_frame(clip, thermal)
         mask = None
+        filtered = None
         if self.do_tracking:
+            # pretty sure we dont need filtered unless we are tracking
+            # need to check for on PI
+            filtered, threshold = self._get_filtered_frame(clip, thermal)
+
             _, mask, component_details, centroids = detect_objects(
                 filtered.copy(), otsus=False, threshold=threshold, kernel=(5, 5)
             )

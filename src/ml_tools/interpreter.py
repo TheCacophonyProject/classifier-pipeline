@@ -118,6 +118,7 @@ class Interpreter(ABC):
                     available_frames,
                     len(track.bounds_history),
                 )
+            
             frames, preprocessed, masses = self.preprocess_segments(
                 clip,
                 track,
@@ -173,7 +174,9 @@ class Interpreter(ABC):
         return track_prediction
 
     def predict_track(self, clip, track, **args):
+        start = time.time()
         frames, preprocessed, masses = self.preprocess(clip, track, **args)
+        logging.info("Time to preprocess track of length %s is %s", len(track),time.time()-start)
         if preprocessed is None or len(preprocessed) == 0:
             return None, None, None
         pred = self.predict(preprocessed)
@@ -304,6 +307,8 @@ class Interpreter(ABC):
         from ml_tools.preprocess import preprocess_frame, preprocess_movement
 
         track_data = {}
+        start = time.time()
+
         segments = track.get_segments(
             self.params.square_width**2,
             ffc_frames=[] if dont_filter else clip.ffc_frames,
@@ -316,6 +321,7 @@ class Interpreter(ABC):
             filter_by_fp=False,
             min_segments=min_segments,
         )
+        logging.info("Time to get segments %s", time.time() - start)
         frame_indices = set()
         for segment in segments:
             frame_indices.update(set(segment.frame_indices))
