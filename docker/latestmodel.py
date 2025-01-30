@@ -137,7 +137,7 @@ def add_to_config(release, config, model_id, model_type):
     config_model = config["classify"]["models"][model_id - 1]
     config_model["name"] = model_name
     if model_type == "RandomForest":
-        config_model["model_file"] = str(model_dir / "model.pkl")
+        config_model["model_file"] = str(meta_data.with_suffix(".pkl"))
     else:
         config_model["model_file"] = str(model_dir / "saved_model.pb")
     config_model["id"] = config_model["id"] + 1
