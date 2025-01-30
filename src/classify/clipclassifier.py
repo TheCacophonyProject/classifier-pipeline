@@ -221,7 +221,8 @@ class ClipClassifier:
                 (time.time() - start) * 1000 / max(1, len(clip.frame_buffer.frames))
             )
             logging.info("Took {:.1f}ms per frame".format(ms_per_frame))
-        tools.clear_session()
+        if classifier.TYPE == "Keras":
+            tools.clear_session()
         del classifier
         gc.collect()
 
