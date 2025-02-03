@@ -1000,7 +1000,6 @@ def get_segments(
     segments = []
     mass_history = np.uint16([region.mass for region in regions])
     filtered_stats = {"segment_mass": 0, "too short": 0}
-
     has_no_mass = np.sum(mass_history) == 0
 
     for segment_type in segment_types:
@@ -1076,7 +1075,6 @@ def get_segments(
         segment_count = max(1, len(frame_indices) // segment_frame_spacing)
         segment_count = int(segment_count)
         mask_length = 25
-
         # probably only counts for all random
         if max_segments is not None and segment_type not in [SegmentType.ALL_SECTIONS]:
             segment_count = min(max_segments, segment_count)
@@ -1092,29 +1090,31 @@ def get_segments(
             SegmentType.ALL_RANDOM_MASKED,
             None,
         ]
-
         for _ in range(repeats):
-            used_indices = []
+            if segment_type == SegmentType.ALL_RANDOM_MASKED:
+                segment_indices = np.arange(len(regions))
+                all_frames = np.arange(len(regions)) + start_frame
+
+                available_indices = np.full(len(regions), False)
+                available_indices[frame_indices - start_frame] = True
+                # use all frames and make out onces filtered by other criteria like mass and blank etc
+                # this way we are always making as 25 frame period
             if segment_type != SegmentType.ALL_RANDOM_MASKED or len(whole_indices) < 40:
                 frame_indices = whole_indices.copy()
 
                 if random_frames:
                     # random_frames and not random_sections:
                     np.random.shuffle(frame_indices)
-
             for i in range(segment_count):
                 if segment_type == SegmentType.ALL_RANDOM_MASKED:
-                    if len(whole_indices) > 40:
+                    if len(whole_indices) < 40:
+                        frame_indices = segment_indices[available_indices]
+                    else:
+                        mask = available_indices.copy()
                         mask_start = i * mask_length
-                        frame_indices = whole_indices[0:mask_start]
-                        frame_indices = np.concatenate(
-                            [frame_indices, whole_indices[mask_start + mask_length :]],
-                            axis=0,
-                        )
-                        # maybe some faster way of doing this...
-                        frame_indices = [
-                            f for f in frame_indices if f not in used_indices
-                        ]
+                        mask[mask_start : mask_start + mask_length] = False
+
+                        frame_indices = segment_indices[mask]
                         frame_indices = np.uint32(frame_indices)
                         np.random.shuffle(frame_indices)
 
@@ -1141,10 +1141,13 @@ def get_segments(
                     frames = section[indices]
                     # might need to change that gp 11/05 - 2024
                     frame_indices = frame_indices[segment_width:]
+                elif segment_type == SegmentType.ALL_RANDOM_MASKED:
+                    indices = frame_indices[:segment_width]
+                    available_indices[indices] = False
+                    frames = all_frames[indices]
                 elif random_frames:
                     # frame indices already randomized so just need to grab some
                     frames = frame_indices[:segment_width]
-                    used_indices.extend(frames)
                     frame_indices = frame_indices[segment_width:]
                 else:
                     segment_start = i * segment_frame_spacing
@@ -1217,7 +1220,6 @@ def get_segments(
                     filtered=filtered,
                 )
                 segments.append(segment)
-
     return segments, filtered_stats
 
 

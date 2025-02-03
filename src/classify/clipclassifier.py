@@ -103,7 +103,10 @@ class ClipClassifier:
         )
         if ext == ".cptv":
             track_extractor = ClipTrackExtractor(
-                self.config.tracking, self.config.use_opt_flow, cache_to_disk
+                self.config.tracking,
+                self.config.use_opt_flow,
+                cache_to_disk,
+                do_tracking=False,
             )
             logging.info("Using clip extractor")
 
@@ -201,6 +204,7 @@ class ClipClassifier:
                             logging.info("Reusing previous prediction frames %s", model)
                             segment_frames = prediction_tag["data"]["prediction_frames"]
                             segment_frames = np.uint16(segment_frames)
+
             prediction = classifier.classify_track(
                 clip, track, segment_frames=segment_frames, min_segments=1
             )
@@ -217,7 +221,8 @@ class ClipClassifier:
                 (time.time() - start) * 1000 / max(1, len(clip.frame_buffer.frames))
             )
             logging.info("Took {:.1f}ms per frame".format(ms_per_frame))
-        tools.clear_session()
+        if classifier.TYPE == "Keras":
+            tools.clear_session()
         del classifier
         gc.collect()
 

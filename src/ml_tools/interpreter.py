@@ -118,6 +118,7 @@ class Interpreter(ABC):
                     available_frames,
                     len(track.bounds_history),
                 )
+
             frames, preprocessed, masses = self.preprocess_segments(
                 clip,
                 track,
