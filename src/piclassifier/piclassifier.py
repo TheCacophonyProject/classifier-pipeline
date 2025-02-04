@@ -179,6 +179,7 @@ class PiClassifier(Processor):
                     self.config.classify.cache_to_disk,
                     keep_frames=False,
                     calc_stats=False,
+                    update_background=False,
                 )
             self.tracking_config = self.config.tracking.get("thermal")
 
@@ -424,6 +425,7 @@ class PiClassifier(Processor):
                 scale=self.track_extractor.scale,
                 frames_per_classify=self.frames_per_classify,
                 num_predictions=1,
+                calculate_filtered=True,
             )
             if prediction is None:
                 track_prediction.last_frame_classified = self.clip.current_frame
@@ -547,7 +549,6 @@ class PiClassifier(Processor):
                 )
                 if self.recording and not self.use_low_power_mode:
                     set_recording_state(True)
-
         if (
             not self.recorder.recording
             and self.motion_detector.movement_detected

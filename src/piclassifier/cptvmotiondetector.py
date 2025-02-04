@@ -131,10 +131,15 @@ class CPTVMotionDetector(MotionDetector):
         self.ffc_affected = is_affected_by_ffc(cptv_frame)
         if self.can_record() or force_process:
             self.thermal_window.add(cptv_frame, self.ffc_affected)
-
             cropped_frame = np.int32(self.crop_rectangle.subimage(cptv_frame.pix))
             if not self.ffc_affected:
-                self._background.process_frame(cropped_frame)
+                # This may be too slow on pi will need to adjust
+                last_45 = [
+                    f.pix
+                    for f in self.thermal_window.get_frames()[:45]
+                    if not is_affected_by_ffc(f)
+                ]
+                self._background.process_frame(np.mean(last_45, axis=0))
             if self.ffc_affected or prev_ffc:
                 logging.debug("{} MotionDetector FFC".format(self.num_frames))
                 self.movement_detected = False

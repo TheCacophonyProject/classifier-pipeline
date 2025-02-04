@@ -235,44 +235,58 @@ def parse_ir(file, config, thermal_config, preview_type, fps):
 
 
 def parse_cptv(file, config, thermal_config_file, preview_type, fps):
-    from cptv import CPTVReader
+    from cptv import Frame
+    from cptv_rs_python_bindings import CptvReader
 
-    with open(file, "rb") as f:
-        reader = CPTVReader(f)
+    reader = CptvReader(str(file))
+    header = reader.get_header()
 
-        headers = HeaderInfo(
-            res_x=reader.x_resolution,
-            res_y=reader.y_resolution,
-            fps=9,
-            brand=reader.brand.decode() if reader.brand else None,
-            model=reader.model.decode() if reader.model else None,
-            frame_size=reader.x_resolution * reader.y_resolution * 2,
-            pixel_bits=16,
-            serial="",
-            firmware="",
-        )
-        thermal_config = ThermalConfig.load_from_file(
-            thermal_config_file, headers.model
-        )
+    headers = HeaderInfo(
+        res_x=header.x_resolution,
+        res_y=header.y_resolution,
+        fps=9,
+        brand=header.brand if header.brand else None,
+        model=header.model if header.model else None,
+        frame_size=header.x_resolution * header.y_resolution * 2,
+        pixel_bits=16,
+        serial="",
+        firmware="",
+    )
+    thermal_config = ThermalConfig.load_from_file(thermal_config_file, headers.model)
 
-        pi_classifier = PiClassifier(
-            config,
-            thermal_config,
-            headers,
-            thermal_config.motion.run_classifier,
-            0,
-            preview_type,
+    pi_classifier = PiClassifier(
+        config,
+        thermal_config,
+        headers,
+        thermal_config.motion.run_classifier,
+        0,
+        preview_type,
+    )
+    while True:
+        frame = reader.next_frame()
+
+        if frame is None:
+            break
+
+        # to get extra properties and allow pickling convert to cptv.Frame
+        frame = Frame(
+            frame.pix,
+            timedelta(milliseconds=frame.time_on),
+            timedelta(milliseconds=frame.last_ffc_time),
+            frame.temp_c,
+            frame.last_ffc_temp_c,
+            frame.background_frame,
         )
-        for frame in reader:
-            frame.ffc_imminent = False
-            frame.ffc_status = 0
-            if frame.background_frame:
-                pi_classifier.motion_detector._background._background = frame.pix
-                continue
-            pi_classifier.process_frame(frame, time.time())
-            if fps is not None:
-                time.sleep(1.0 / fps)
-        pi_classifier.disconnected()
+        frame.ffc_imminent = False
+        frame.ffc_status = 0
+
+        if frame.background_frame:
+            pi_classifier.motion_detector._background._background = frame.pix
+            continue
+        pi_classifier.process_frame(frame, time.time())
+        if fps is not None:
+            time.sleep(1.0 / fps)
+    pi_classifier.disconnected()
 
 
 def get_processor(process_queue, config, thermal_config, headers):

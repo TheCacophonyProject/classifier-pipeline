@@ -64,7 +64,7 @@ def preprocess_frame(
     thermal_norm_limits=None,
 ):
     median = np.median(frame.thermal)
-    cropped_frame = frame.crop_by_region(region, only_thermal=True)
+    cropped_frame = frame.crop_by_region(region, only_thermal=calculate_filtered)
     cropped_frame.thermal = np.float32(cropped_frame.thermal)
     if calculate_filtered:
         if background is None:
@@ -82,7 +82,7 @@ def preprocess_frame(
     cropped_frame.thermal -= median
     if thermal_norm_limits is None:
         np.clip(cropped_frame.thermal, 0, None, out=cropped_frame.thermal)
-    if calculate_filtered and filtered_norm_limits is not None:
+    if filtered_norm_limits is not None:
         cropped_frame.filtered, stats = imageprocessing.normalize(
             cropped_frame.filtered,
             min=filtered_norm_limits[0],

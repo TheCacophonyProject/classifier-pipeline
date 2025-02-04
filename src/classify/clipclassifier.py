@@ -107,6 +107,7 @@ class ClipClassifier:
                 self.config.use_opt_flow,
                 cache_to_disk,
                 do_tracking=False,
+                calculate_filtered=True,
             )
             logging.info("Using clip extractor")
 

@@ -211,7 +211,7 @@ def process_track(
             (int(background.shape[1] * resize), int(background.shape[0] * resize))
         )
     else:
-        backgorund = clip.background
+        background = clip.background
     x, frames_used, masses = forest_features(
         frames,
         background,
