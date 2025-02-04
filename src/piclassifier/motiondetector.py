@@ -187,7 +187,6 @@ class WeightedBackground:
             ] = frame
             self.average = np.average(frame)
             self.set_background_edges()
-
             return
         edgeless_back = self.crop_rectangle.subimage(self.background)
         new_background = np.where(

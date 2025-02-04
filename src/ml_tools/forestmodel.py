@@ -229,7 +229,7 @@ def forest_features(
     background,
     frame_temp_median,
     regions,
-    buf_len=5,
+    buf_len=1,
     cropped=True,
     normalize=True,
 ):
@@ -267,7 +267,7 @@ def forest_features(
 
         thermal = thermal + back_med - t_median
 
-        feature.calculate(thermal, sub_back)
+        feature.calculate(thermal, cropped_frame.filtered, sub_back)
         if buf_len > 1:
             count_back = min(buf_len, prev_count)
 
@@ -461,11 +461,11 @@ class FrameFeatures:
         self.speed = np.zeros(buff_len)
         self.histogram_diff = 0
 
-    def calculate(self, thermal, sub_back):
+    def calculate(self, thermal, filtered, sub_back):
         self.thermal_min = np.min(thermal)
         self.thermal_max = np.amax(thermal)
         self.thermal_std = np.std(thermal)
-        filtered = thermal - sub_back
+        # filtered = thermal - sub_back
         filtered = np.abs(filtered)
         self.filtered_max = np.amax(filtered)
         self.filtered_min = np.amin(filtered)

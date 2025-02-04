@@ -33,7 +33,7 @@ from piclassifier.motiondetector import WeightedBackground
 
 class ClipTrackExtractor(ClipTracker):
     PREVIEW = "preview"
-    VERSION = 10
+    VERSION = 11
     TYPE = "thermal"
 
     @property
