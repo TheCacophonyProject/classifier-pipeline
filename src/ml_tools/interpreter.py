@@ -452,7 +452,7 @@ class LiteInterpreter(Interpreter):
         return pred
 
     def shape(self):
-        return 1, self.input["shape"]
+        return 1, [self.input["shape"]]
 
 
 def inc3_preprocess(x):

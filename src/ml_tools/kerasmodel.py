@@ -85,10 +85,17 @@ class KerasModel(Interpreter):
     def shape(self):
         if self.model is None:
             return None
-        inputs = self.model.inputs
+        try:
+            inputs = self.model.inputs
+        except:
+            logging.info("Couldnt get model inputs so using signatures needs to be tested with multiple inputs")
+            inputs = self.model.signatures['serving_default'].structured_input_signature[1]["inputs"]
+            inputs = [inputs]
+
         shape = []
         for input in inputs:
             shape.append(tuple(input.shape.as_list()))
+
         return len(shape), shape
 
     def get_base_model(self, input, weights="imagenet"):

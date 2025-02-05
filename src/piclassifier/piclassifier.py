@@ -336,7 +336,7 @@ class PiClassifier(Processor):
             for shape in in_shape:
                 zero_input.append(np.zeros((1, *shape[1:]), np.float32))
         else:
-            zero_input = np.zeros((1, *in_shape[1:]), np.float32)
+            zero_input = np.zeros((1, *in_shape[0][1:]), np.float32)
         self.classifier.predict(zero_input)
 
     def get_active_tracks(self):
@@ -429,7 +429,7 @@ class PiClassifier(Processor):
                 track_prediction.last_frame_classified = self.clip.current_frame
                 continue
             for p, m in zip(prediction, mass):
-                track_prediction.classified_frames(frames, p, m)
+                track_prediction.classified_frames(frames, np.array(p), m)
             logging.info(
                 "Track %s is predicted as %s", track, track_prediction.get_prediction()
             )
