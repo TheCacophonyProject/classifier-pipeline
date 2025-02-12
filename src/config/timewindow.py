@@ -1,5 +1,4 @@
-""" A window time frame, which can be relative to sunset and sunrise
-"""
+"""A window time frame, which can be relative to sunset and sunrise"""
 
 from datetime import datetime, timedelta, time
 import logging
