@@ -87,7 +87,6 @@ jobs:
     needs: 
       - pypi-build
     if: github.ref == 'refs/heads/pi-classifier'
-
     runs-on: ubuntu-latest
     environment:
       name: release
