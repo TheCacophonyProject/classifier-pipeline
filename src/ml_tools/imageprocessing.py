@@ -5,6 +5,7 @@ from pathlib import Path
 from PIL import Image
 from scipy import ndimage
 from PIL import Image
+import logging
 
 
 def resize_and_pad(
@@ -19,18 +20,20 @@ def resize_and_pad(
     extra_v=0,
 ):
     scale_percent = (new_dim[:2] / np.array(frame.shape[:2])).min()
-    width = int(frame.shape[1] * scale_percent)
-    height = int(frame.shape[0] * scale_percent)
+    width = round(frame.shape[1] * scale_percent)
+    height = round(frame.shape[0] * scale_percent)
     width = max(width, 1)
     height = max(height, 1)
+
+    width = min(width, new_dim[0])
+    height = min(height, new_dim[1])
+
     if len(frame.shape) == 3:
         resize_dim = (width, height, frame.shape[2])
     else:
         resize_dim = (width, height)
     if pad is None:
         pad = np.min(frame)
-    else:
-        pad = 0
 
     resized = np.full(new_dim, pad, dtype=frame.dtype)
     offset_x = 0
@@ -40,16 +43,15 @@ def resize_and_pad(
     offset_x = (new_dim[1] - frame_width) // 2
     offset_y = (new_dim[0] - frame_height) // 2
     if keep_edge and crop_region is not None:
-        if region.left == crop_region.left:
+        if region.left <= crop_region.left:
             offset_x = 0
-
-        elif region.right == crop_region.right:
+        elif region.right >= crop_region.right:
             offset_x = new_dim[1] - frame_width
 
-        if region.top == crop_region.top:
+        if region.top <= crop_region.top:
             offset_y = 0
 
-        elif region.bottom == crop_region.bottom:
+        elif region.bottom >= crop_region.bottom:
             offset_y = new_dim[0] - frame_height
     if len(resized.shape) == 3:
         resized[
@@ -76,20 +78,14 @@ def resize_cv(image, dim, interpolation=cv2.INTER_LINEAR, extra_h=0, extra_v=0):
     )
 
 
-def square_clip(data, frames_per_row, tile_dim, normalize=True):
+def square_clip(data, frames_per_row, tile_dim, frame_samples, normalize=True):
     # lay each frame out side by side in rows
     new_frame = np.zeros((frames_per_row * tile_dim[0], frames_per_row * tile_dim[1]))
     i = 0
     success = False
     for x in range(frames_per_row):
         for y in range(frames_per_row):
-            if i >= len(data):
-                frame = data[-1]
-            else:
-                frame = data[i]
-
-            # cv2.imshow("frame", np.uint8(frame))
-            # cv2.waitKey(0)
+            frame = data[frame_samples[i]]
             if normalize:
                 frame, stats = normalize(frame, new_max=255)
                 if not stats[0]:
@@ -159,7 +155,6 @@ def normalize(data, min=None, max=None, new_max=1):
         max = np.amax(data)
     if min is None:
         min = np.amin(data)
-    # print("normalizing with", max, min, new_max)
     if max == min:
         if max == 0:
             return np.zeros((data.shape)), (False, max, min)

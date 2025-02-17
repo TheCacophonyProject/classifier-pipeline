@@ -20,7 +20,7 @@ from ml_tools.rawdb import RawDatabase
 from ml_tools import tools
 from track.region import Region
 import json
-from config.loadconfig import LoadConfig
+from config.buildconfig import BuildConfig
 from pathlib import Path
 
 
@@ -64,13 +64,13 @@ class Dataset:
         self.label_caps = {}
         self.use_segments = True
         if config:
-            self.tag_precedence = config.load.tag_precedence
+            self.tag_precedence = config.build.tag_precedence
             self.type = config.train.type
             if config.train.type == "IR":
                 self.use_segments = False
                 self.segment_length = 1
             else:
-                self.use_segments = config.train.hyper_params.get("use_segments", True)
+                self.use_segments = config.build.use_segments
                 if self.use_segments:
                     self.segment_length = config.build.segment_length
                 else:
@@ -80,13 +80,16 @@ class Dataset:
             self.banned_clips = config.build.banned_clips
             self.included_labels = config.labels
             self.segment_min_avg_mass = config.build.segment_min_avg_mass
-            self.excluded_tags = config.load.excluded_tags
+            self.excluded_tags = config.build.excluded_tags
             self.min_frame_mass = config.build.min_frame_mass
             self.filter_by_lq = config.build.filter_by_lq
-            self.segment_type = SegmentType.ALL_RANDOM
+            self.segment_types = [SegmentType.ALL_RANDOM_MASKED]
             self.max_segments = config.build.max_segments
+            self.country = config.build.country
+            self.max_frames = config.build.max_frames
         else:
-            self.tag_precedence = LoadConfig.DEFAULT_GROUPS
+            self.country = "NZ"
+            self.tag_precedence = BuildConfig.DEFAULT_GROUPS
             self.filter_by_lq = False
             # number of seconds each segment should be
             if self.use_segments:
@@ -97,7 +100,15 @@ class Dataset:
             self.segment_spacing = 1
             self.segment_min_avg_mass = 10
             self.min_frame_mass = 16
-            self.segment_type = SegmentType.ALL_RANDOM
+            self.segment_types = [SegmentType.ALL_RANDOM]
+            self.max_frames = 75
+
+        self.country_rectangle = BuildConfig.COUNTRY_LOCATIONS.get(self.country)
+        logging.info(
+            "Filtering by country %s have boundying %s",
+            self.country,
+            self.country_rectangle,
+        )
         self.max_frame_mass = None
         self.filtered_stats = {
             "confidence": 0,
@@ -204,7 +215,12 @@ class Dataset:
         except:
             logging.error("Could not load %s", db_clip, exc_info=True)
             return 0
-        if clip_header is None or filter_clip(clip_header):
+        if clip_header is None or filter_clip(
+            clip_header,
+            clip_header.location,
+            self.country_rectangle,
+            self.filtered_stats,
+        ):
             return 0
         filtered = 0
         added = 0
@@ -228,7 +244,7 @@ class Dataset:
                 track_header.get_segments(
                     segment_width,
                     segment_frame_spacing,
-                    self.segment_type,
+                    self.segment_types,
                     self.segment_min_avg_mass,
                     max_segments=self.max_segments,
                     dont_filter=dont_filter_segment,
@@ -488,46 +504,6 @@ class Dataset:
     def has_data(self):
         return len(self.samples_by_id) > 0
 
-    #
-    # def recalculate_segments(self, segment_type=SegmentType.ALL_RANDOM):
-    #     self.samples_by_bin.clear()
-    #     self.samples_by_label.clear()
-    #     del self.samples[:]
-    #     del self.samples
-    #     self.samples = []
-    #     self.samples_by_label = {}
-    #     self.samples_by_bin = {}
-    #     logging.info("%s generating segments  type %s", self.name, segment_type)
-    #     start = time.time()
-    #     empty_tracks = []
-    #     filtered_stats = 0
-    #
-    #     for track in self.tracks:
-    #         segment_frame_spacing = int(
-    #             round(self.segment_spacing * track.frames_per_second)
-    #         )
-    #         segment_width = self.segment_length
-    #         track.calculate_segments(
-    #             segment_frame_spacing,
-    #             segment_width,
-    #             segment_type,
-    #             segment_min_mass=segment_min_avg_mass,
-    #         )
-    #         filtered_stats = filtered_stats + track.filtered_stats["segment_mass"]
-    #         if len(track.segments) == 0:
-    #             empty_tracks.append(track)
-    #             continue
-    #         for sample in track.segments:
-    #             self.add_clip_sample_mappings(sample)
-    #
-    #     self.rebuild_cdf()
-    #     logging.info(
-    #         "%s #segments %s filtered stats are %s took  %s",
-    #         self.name,
-    #         len(self.samples),
-    #         filtered_stats,
-    #         time.time() - start,
-    #     )
     def remove_sample_by_id(self, id, bin_id):
         del self.samples_by_id[id]
         try:
@@ -585,7 +561,9 @@ def filter_track(track_header, excluded_tags, filtered_stats={}):
         return True
 
     if track_header.human_tags is not None:
-        found_tags = [tag for tag in track_header.human_tags if tag in excluded_tags]
+        found_tags = [
+            tag[0] for tag in track_header.human_tags if tag[0] in excluded_tags
+        ]
         if len(found_tags) > 0:
             filter_tags = filtered_stats.setdefault("tag_names", set())
             filter_tags |= set(found_tags)
@@ -614,12 +592,37 @@ def filter_track(track_header, excluded_tags, filtered_stats={}):
     return False
 
 
-def filter_clip(clip, filtered_stats={}):
+def filter_clip(clip, location, location_bounds, filtered_stats=None, after_date=None):
     # remove tracks of trapped animals
     if (clip.events is not None and "trap" in clip.events.lower()) or (
         clip.trap is not None and "trap" in clip.trap.lower()
     ):
-        self.filtered_stats["trap"] += 1
+        if filtered_stats is not None:
+            if "trap" in filtered_stats:
+                filtered_stats["trap"] += 1
+            else:
+                filtered_stats["trap"] = 1
         logging.info("Filtered because in trap")
         return True
+
+    if (
+        location is not None
+        and location_bounds is not None
+        and not location_bounds.contains(*location)
+    ):
+        if filtered_stats is not None:
+            if "location" in filtered_stats:
+                filtered_stats["location"] += 1
+            else:
+                filtered_stats["location"] = 1
+        return True
+
+    if after_date is not None and clip.rec_time <= after_date:
+        if filtered_stats is not None:
+            if "date" in filtered_stats:
+                filtered_stats["date"] += 1
+            else:
+                filtered_stats["date"] = 1
+        return True
+
     return False

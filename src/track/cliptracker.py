@@ -7,6 +7,7 @@ import numpy as np
 
 from track.track import Track
 from track.region import Region
+from ml_tools.rectangle import Rectangle
 from ml_tools.imageprocessing import normalize, hist_diff
 
 
@@ -275,6 +276,8 @@ class ClipTracker(ABC):
 
             if self.scale:
                 region.rescale(1 / self.scale)
+
+            # Make this min area
             if region.width < self.min_dimension or region.height < self.min_dimension:
                 continue
             # GP this needs to be checked for themals 29/06/2022
@@ -346,17 +349,17 @@ class ClipTracker(ABC):
             track.trim()
             track.set_end_s(clip.frames_per_second)
 
-        track_stats = [(track.get_stats(), track) for track in clip.tracks]
-        track_stats.sort(reverse=True, key=lambda record: record[0].score)
+        [track.calculate_stats() for track in clip.tracks]
+        clip.tracks.sort(reverse=True, key=lambda record: record.stats.score)
         if self.verbose:
-            for stats, track in track_stats:
+            for track in clip.tracks:
                 start_s, end_s = clip.start_and_end_in_secs(track)
                 logging.info(
                     " - track %s duration: %.1fsec, number of frames:%s, stats %s",
                     track.get_id(),
                     end_s - start_s,
                     len(track),
-                    stats,
+                    track.stats,
                 )
         # filter out tracks that probably are just noise.
         good_tracks = []
@@ -364,10 +367,10 @@ class ClipTracker(ABC):
             "{} {}".format("Number of tracks before filtering", len(clip.tracks))
         )
 
-        for stats, track in track_stats:
+        for track in clip.tracks:
             # discard any tracks that overlap too often with other tracks.  This normally means we are tracking the
             # tail of an animal.
-            if not self.filter_track(clip, track, stats):
+            if not self.filter_track(clip, track):
                 good_tracks.append(track)
 
         clip.tracks = good_tracks
@@ -392,7 +395,8 @@ class ClipTracker(ABC):
                 "filtered track {} because {}".format(key[1].get_id(), key[0])
             )
 
-    def filter_track(self, clip, track, stats):
+    def filter_track(self, clip, track):
+        stats = track.stats
         # discard any tracks that are less min_duration
         # these are probably glitches anyway, or don't contain enough information.
         if len(track) < self.config.min_duration_secs * clip.frames_per_second:

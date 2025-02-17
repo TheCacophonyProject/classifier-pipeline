@@ -22,6 +22,7 @@ import os
 import logging
 from os import path
 from .defaultconfig import DefaultConfig
+from ml_tools.rectangle import Rectangle
 
 
 @attr.s
@@ -34,6 +35,45 @@ class BuildConfig(DefaultConfig):
     min_frame_mass = attr.ib()
     filter_by_lq = attr.ib()
     max_segments = attr.ib()
+    thermal_diff_norm = attr.ib()
+    tag_precedence = attr.ib()
+    excluded_tags = attr.ib()
+    country = attr.ib()
+    use_segments = attr.ib()
+    max_frames = attr.ib()
+
+    EXCLUDED_TAGS = ["poor tracking", "part", "untagged", "unidentified"]
+    NO_MIN_FRAMES = ["stoat", "mustelid", "weasel", "ferret"]
+    # country bounding boxs
+    COUNTRY_LOCATIONS = {
+        "AU": Rectangle.from_ltrb(
+            113.338953078, -10.6681857235, 153.569469029, -43.6345972634
+        ),
+        "NZ": Rectangle.from_ltrb(
+            166.509144322, -34.4506617165, 178.517093541, -46.641235447
+        ),
+    }
+
+    DEFAULT_GROUPS = {
+        0: [
+            "bird",
+            "false-positive",
+            "hedgehog",
+            "possum",
+            "rodent",
+            "mustelid",
+            "cat",
+            "kiwi",
+            "dog",
+            "leporidae",
+            "human",
+            "insect",
+            "pest",
+        ],
+        1: ["unidentified", "other"],
+        2: ["part", "bad track"],
+        3: ["default"],
+    }
 
     @classmethod
     def load(cls, build):
@@ -46,6 +86,12 @@ class BuildConfig(DefaultConfig):
             min_frame_mass=build["min_frame_mass"],
             filter_by_lq=build["filter_by_lq"],
             max_segments=build["max_segments"],
+            thermal_diff_norm=build["thermal_diff_norm"],
+            tag_precedence=build["tag_precedence"],
+            excluded_tags=build["excluded_tags"],
+            country=build["country"],
+            use_segments=build["use_segments"],
+            max_frames=build["max_frames"],
         )
 
     @classmethod
@@ -58,7 +104,13 @@ class BuildConfig(DefaultConfig):
             segment_min_avg_mass=10,
             min_frame_mass=10,
             filter_by_lq=False,
-            max_segments=5,
+            max_segments=3,
+            thermal_diff_norm=False,
+            tag_precedence=BuildConfig.DEFAULT_GROUPS,
+            excluded_tags=BuildConfig.EXCLUDED_TAGS,
+            country=None,
+            use_segments=True,
+            max_frames=75,
         )
 
     def validate(self):

@@ -185,7 +185,6 @@ class Clip:
             self.update_background(frame.pix)
             self._background_calculated()
             return
-
         first_frame = frame
         initial_frames = None
         initial_diff = None

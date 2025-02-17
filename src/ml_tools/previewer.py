@@ -91,8 +91,8 @@ class Previewer:
         if self.debug:
             footer = Previewer.stats_footer(clip.stats)
         if predictions and (
-            self.preview_type == self.PREVIEW_CLASSIFIED
-            or self.preview_type == self.PREVIEW_TRACKING
+            self.preview_type == PREVIEW_CLASSIFIED
+            or self.preview_type == PREVIEW_TRACKING
         ):
             self.create_track_descriptions(clip, predictions)
 
@@ -103,14 +103,14 @@ class Previewer:
 
         res_x = clip.res_x
         res_y = clip.res_y
-        if self.preview_type == self.PREVIEW_TRACKING:
+        if self.preview_type == PREVIEW_TRACKING:
             res_x *= 2
             res_y *= 2
 
         mpeg = MPEGCreator(str(filename))
         frame_scale = 4
         for frame_number, frame in enumerate(clip.frame_buffer):
-            if self.preview_type == self.PREVIEW_RAW:
+            if self.preview_type == PREVIEW_RAW:
                 image = self.convert_and_resize(
                     frame.thermal, clip.stats.min_temp, clip.stats.max_temp, clip.type
                 )
