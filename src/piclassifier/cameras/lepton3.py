@@ -54,8 +54,7 @@ class Lepton3(RawFrame):
         t.ffc_status = ffc_status
         return t
 
-
-# not used for anything at the moment,  has not been tested
+    # not used for anything at the moment,  has not been tested
     def raw_telemetry(self):
         telemetry_data = b""
         telemetry_data += pack_uint16(self.telemetry.telemetry_revision)
