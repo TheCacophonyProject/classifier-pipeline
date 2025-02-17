@@ -20,8 +20,10 @@ from track.region import Region
 from ml_tools.datasetstructures import TrackHeader, ClipHeader
 from track.track import Track
 from track.cliptrackextractor import is_affected_by_ffc
-from cptv import CPTVReader
+from cptv_rs_python_bindings import CptvReader
 from ml_tools.rectangle import Rectangle
+from config.buildconfig import BuildConfig
+from datetime import timedelta
 
 special_datasets = [
     "tag_frames",
@@ -30,6 +32,8 @@ special_datasets = [
     "predictions",
     "overlay",
 ]
+
+FPS = 9
 
 
 class RawDatabase:
@@ -62,19 +66,22 @@ class RawDatabase:
         background = None
         tracker_version = self.meta_data.get("tracker_version")
         frame_i = 0
-        with open(self.file, "rb") as f:
-            reader = CPTVReader(f)
-            for frame in reader:
-                if frame.background_frame:
-                    background = frame.pix
-                    # bug in previous tracker version where background was first frame
-                    if tracker_version >= 10:
-                        continue
-                ffc = is_affected_by_ffc(frame)
-                if ffc:
-                    ffc_frames.append(frame_i)
-                cptv_frames.append(frame.pix)
-                frame_i += 1
+        reader = CptvReader(str(self.file))
+        header = reader.get_header()
+        while True:
+            frame = reader.next_frame()
+            if frame is None:
+                break
+            if frame.background_frame:
+                background = frame.pix
+                # bug in previous tracker version where background was first frame
+                if tracker_version >= 10:
+                    continue
+            ffc = is_affected_by_ffc(frame)
+            if ffc:
+                ffc_frames.append(frame_i)
+            cptv_frames.append(frame.pix)
+            frame_i += 1
         frames = np.uint16(cptv_frames)
         if background is None:
             background = np.mean(frames, axis=0)
@@ -108,12 +115,28 @@ class RawDatabase:
         self.crop_rectangle = Rectangle(
             edge_pixels, edge_pixels, resx - edge_pixels * 2, resy - edge_pixels * 2
         )
+        location = metadata.get("location")
+        lat = None
+        lng = None
+        country_code = None
+        if location is not None:
+            try:
+                lat = location.get("lat")
+                lng = location.get("lng")
+                if lat is not None and lng is not None:
+                    for country, location in BuildConfig.COUNTRY_LOCATIONS.items():
+                        if location.contains(lng, lat):
+                            country_code = country
+                            break
+            except:
+                logging.error("Could not parse lat lng", exc_info=True)
+                pass
 
         clip_header = ClipHeader(
             clip_id=int(metadata["id"]),
             station_id=metadata.get("stationId"),
             source_file=self.file,
-            location=metadata.get("location"),
+            location=None if lat is None or lng is None else (lng, lat),
             camera=metadata.get("deviceId"),
             rec_time=parse_date(metadata["recordingDateTime"]),
             frames_per_second=10 if self.file.suffix == "mp4" else 9,
@@ -121,8 +144,13 @@ class RawDatabase:
             trap=metadata.get("trap", ""),
             tracks=[],
             ffc_frames=self.ffc_frames,
+            country_code=country_code,
         )
         tracks = metadata.get("Tracks", [])
+        fp_labels = metadata.get("fp_model_labels")
+        fp_index = None
+        if fp_labels is not None:
+            fp_index = fp_labels.index("false-positive")
         meta = []
         for track_meta in tracks:
             tags = track_meta.get("tags", [])
@@ -179,6 +207,21 @@ class RawDatabase:
                 if start is None:
                     start = region.frame_number
                 end = region.frame_number
+
+            fp_meta = track_meta.get("fp_model_predictions")
+            fp_frames = None
+            if fp_meta is not None:
+                fp_frames = []
+                for pred in fp_meta.get("predictions", []):
+                    scores = pred["prediction"]
+                    best_arg = np.argmax(scores)
+                    confidence = scores[best_arg]
+                    if best_arg == fp_index and confidence > 75:
+                        frame_i = pred["frames"]
+                        if isinstance(frame_i, int):
+                            fp_frames.append(frame_i)
+                        else:
+                            fp_frames.append(frame_i[0])
             header = TrackHeader(
                 clip_id=clip_header.clip_id,
                 track_id=int(track_meta["id"]),
@@ -190,10 +233,16 @@ class RawDatabase:
                 human_tags=human_tags,
                 source_file=self.file,
                 mega_missed_regions=track_meta.get("mega_missed_regions"),
+                station_id=clip_header.station_id,
+                fp_frames=fp_frames,
+                start_time=clip_header.rec_time + timedelta(seconds=start / FPS),
                 # frame_temp_median=frame_temp_median,
             )
             clip_header.tracks.append(header)
         return clip_header
+
+    def get_id(self):
+        return self.meta_data_file
 
     def get_clip_meta(self, tag_precedence):
         return self.get_clip_tracks(tag_precedence)

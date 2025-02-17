@@ -11,13 +11,8 @@ from classify.trackprediction import Predictions
 from track.clip import Clip
 from track.cliptrackextractor import ClipTrackExtractor, is_affected_by_ffc
 from ml_tools import tools
-from ml_tools.kerasmodel import KerasModel
 from track.irtrackextractor import IRTrackExtractor
 from ml_tools.previewer import Previewer
-from track.track import Track
-
-from cptv import CPTVReader
-from datetime import datetime
 from ml_tools.interpreter import get_interpreter
 
 
@@ -108,7 +103,10 @@ class ClipClassifier:
         )
         if ext == ".cptv":
             track_extractor = ClipTrackExtractor(
-                self.config.tracking, self.config.use_opt_flow, cache_to_disk
+                self.config.tracking,
+                self.config.use_opt_flow,
+                cache_to_disk,
+                do_tracking=False,
             )
             logging.info("Using clip extractor")
 
@@ -134,7 +132,7 @@ class ClipClassifier:
         clip = Clip(track_extractor.config, filename)
         clip.load_metadata(
             meta_data,
-            self.config.load.tag_precedence,
+            self.config.build.tag_precedence,
         )
         track_extractor.parse_clip(clip)
 
@@ -167,7 +165,6 @@ class ClipClassifier:
             self.previewer.export_clip_preview(
                 mpeg_filename, clip, list(predictions_per_model.values())[0]
             )
-        logging.info("saving meta data %s", meta_file)
         models = [self.model] if self.model else self.config.classify.models
         meta_data = self.save_metadata(
             meta_data,
@@ -207,15 +204,16 @@ class ClipClassifier:
                             logging.info("Reusing previous prediction frames %s", model)
                             segment_frames = prediction_tag["data"]["prediction_frames"]
                             segment_frames = np.uint16(segment_frames)
+
             prediction = classifier.classify_track(
-                clip, track, segment_frames=segment_frames
+                clip, track, segment_frames=segment_frames, min_segments=1
             )
             if prediction is not None:
                 predictions.prediction_per_track[track.get_id()] = prediction
                 description = prediction.description()
                 logging.info(
-                    " - [{}/{}] prediction: {}".format(
-                        i + 1, len(clip.tracks), description
+                    "{} - [{}/{}] prediction: {}".format(
+                        track.get_id(), i + 1, len(clip.tracks), description
                     )
                 )
         if self.config.verbose:
@@ -223,7 +221,8 @@ class ClipClassifier:
                 (time.time() - start) * 1000 / max(1, len(clip.frame_buffer.frames))
             )
             logging.info("Took {:.1f}ms per frame".format(ms_per_frame))
-        tools.clear_session()
+        if classifier.TYPE == "Keras":
+            tools.clear_session()
         del classifier
         gc.collect()
 
@@ -250,7 +249,6 @@ class ClipClassifier:
                 prediction = predictions.prediction_for(track.get_id())
                 if prediction is None:
                     continue
-
                 prediction_meta = prediction.get_metadata()
                 prediction_meta["model_id"] = model_id
                 prediction_info.append(prediction_meta)
@@ -267,8 +265,11 @@ class ClipClassifier:
 
         meta_data["models"] = model_dictionaries
         if self.config.classify.meta_to_stdout:
+            logging.info("Printing json meta data")
+
             print(json.dumps(meta_data, cls=tools.CustomJSONEncoder))
         else:
+            logging.info("saving meta data %s", meta_filename)
             with open(meta_filename, "w") as f:
                 json.dump(meta_data, f, indent=4, cls=tools.CustomJSONEncoder)
         return meta_data

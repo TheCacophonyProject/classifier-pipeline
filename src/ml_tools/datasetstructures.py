@@ -6,6 +6,7 @@ from ml_tools import tools
 from track.region import Region
 from abc import ABC, abstractmethod
 from ml_tools.rectangle import Rectangle
+from config.buildconfig import BuildConfig
 from ml_tools import imageprocessing
 from enum import Enum
 import attr
@@ -17,6 +18,9 @@ CPTV_FILE_HEIGHT = 120
 FRAME_SIZE = 32
 MIN_SIZE = 4
 
+# hard coded for now
+FP_LABELS = ["other", "unidentified", "rain", "false-positive", "water", "insect"]
+
 
 class SegmentType(Enum):
     IMPORTANT_RANDOM = 0
@@ -27,6 +31,7 @@ class SegmentType(Enum):
     ALL_SECTIONS = 5
     TOP_RANDOM = 6
     ALL_RANDOM_NOMIN = 7
+    ALL_RANDOM_MASKED = 8
 
 
 class BaseSample(ABC):
@@ -114,6 +119,7 @@ class ClipHeader:
     trap = attr.ib()
     tracks = attr.ib()
     ffc_frames = attr.ib()
+    country_code = attr.ib()
     frame_temp_median = attr.ib(default=None)
 
     def get_samples(self):
@@ -137,14 +143,19 @@ class TrackHeader:
         ffc_frames=None,
         sample_frames_indices=None,
         station_id=None,
-        rec_time=None,
+        start_time=None,
         source_file=None,
         camera=None,
         confidence=None,
         human_tags=None,
         remapped_lbl=None,
         mega_missed_regions=None,
+        skip_ffc=True,
+        fp_frames=None,
     ):
+
+        self.fp_frames = fp_frames
+        self.start_time = start_time
         # regions that megadetector found nothing in
         self.mega_missed_regions = mega_missed_regions
         self.station_id = station_id
@@ -173,12 +184,8 @@ class TrackHeader:
         self.frame_crop = None
         self.num_frames = num_frames
         self.important_predicted = 0
-
-        mass_history = np.uint16(
-            [region.mass for region in self.regions_by_frame.values()]
-        )
         mass_history = [
-            region.frame_number
+            region.mass
             for region in self.regions_by_frame.values()
             if region.mass > 0
             and (
@@ -241,31 +248,62 @@ class TrackHeader:
         self.samples.append(sample)
 
     def calculate_sample_frames(
-        self, min_mass=None, max_mass=None, ffc_frames=None, skip_last=None
+        self,
+        min_mass=None,
+        max_mass=None,
+        ffc_frames=None,
+        skip_last=None,
+        max_frames=None,
     ):
+        crop_rectangle = Rectangle(2, 2, 160 - 2 * 2, 140 - 2 * 2)
+
+        logging.debug(
+            "Calculating sample with min %s and max %s ffc %s and skip %s",
+            min_mass,
+            max_mass,
+            ffc_frames,
+            skip_last,
+        )
         frame_numbers = list(self.regions_by_frame.keys())
+        previous_mass = None
+
         if skip_last is not None:
             skip_x = int(len(frame_numbers) * skip_last)
             frame_numbers = frame_numbers[:-skip_x]
-        frame_numbers = [
-            frame
-            for frame in frame_numbers
-            if (ffc_frames is None or frame not in ffc_frames)
-            and (
-                self.mega_missed_regions is None
-                or frame not in self.mega_missed_regions
-            )
-        ]
-        frame_numbers.sort()
 
+        frame_numbers.sort()
         for frame_num in frame_numbers:
             region = self.regions_by_frame[frame_num]
-            if region.mass == 0 or region.blank:
+
+            if (
+                region.mass == 0
+                or region.blank
+                or region.width <= 0
+                or region.height <= 0
+            ):
                 continue
+            if ffc_frames is not None and frame_num in ffc_frames:
+                continue
+
+            if (
+                self.mega_missed_regions is not None
+                and frame_num in self.mega_missed_regions
+            ):
+                continue
+
             if min_mass is not None and region.mass < min_mass:
                 continue
             if max_mass is not None and region.mass > max_mass:
                 continue
+            # dont use regions on the edge if the mass deviates too much from the last known good mass
+            region.set_is_along_border(crop_rectangle)
+            if region.is_along_border:
+                if previous_mass is not None:
+                    previous_mass_thresh = previous_mass * 0.1
+                    if (abs(previous_mass - region.mass)) >= previous_mass_thresh:
+                        continue
+            else:
+                previous_mass = region.mass
             f = FrameSample(
                 self.clip_id,
                 self.track_id,
@@ -279,6 +317,8 @@ class TrackHeader:
                 track_median_mass=self.median_mass,
             )
             self.samples.append(f)
+        if max_frames is not None and len(self.samples) > max_frames:
+            self.samples = np.random.choice(self.samples, max_frames, replace=False)
 
     def remove_sample(self, f):
         self.samples.remove(f)
@@ -329,7 +369,7 @@ class TrackHeader:
         self,
         segment_width,
         segment_frame_spacing=9,
-        segment_type=SegmentType.ALL_RANDOM,
+        segment_types=[SegmentType.ALL_RANDOM],
         segment_min_mass=None,
         repeats=1,
         max_segments=None,
@@ -339,16 +379,22 @@ class TrackHeader:
         location=None,
         segment_frames=None,
         from_last=None,
+        frame_min_mass=None,
+        filter_by_fp=True,
+        min_segments=None,
     ):
         if segment_frames is not None:
             raise Exception("Have not implement this path")
-        min_frames = segment_width
-        if self.label == "vehicle" or self.label == "human":
-            min_frames = segment_width / 4.0
+        min_frames = segment_width / 4.0
+        if self.label in BuildConfig.NO_MIN_FRAMES:
+            # try and always get one for these
+            min_frames = 0
+            if min_segments is None:
+                min_segments = 1
 
         # in python3.7+ can just take the values and it guarantees order it was added to dict
         regions = self.bounds_history
-        self.samples, self.filtered_stats = get_segments(
+        self.samples, filtered_stats = get_segments(
             self.clip_id,
             self.track_id,
             self.start_frame,
@@ -361,13 +407,18 @@ class TrackHeader:
             lower_mass=self.lower_mass,
             repeats=repeats,
             min_frames=min_frames,
-            segment_type=segment_type,
+            segment_types=segment_types,
             max_segments=max_segments,
             station_id=self.station_id,
             source_file=self.source_file,
             dont_filter=dont_filter,
             skip_ffc=skip_ffc,
+            frame_min_mass=frame_min_mass,
+            fp_frames=self.fp_frames if filter_by_fp else None,
+            rec_time=self.start_time,
+            min_segments=min_segments,
         )
+        self.filtered_stats.update(filtered_stats)
         # GP could get this from the tracks when writing
         # but might be best to keep samples independent for ease
         for s in self.samples:
@@ -922,16 +973,15 @@ def get_segments(
     track_id,
     start_frame,
     regions,
-    segment_frame_spacing=9,
     segment_width=25,
+    segment_frame_spacing=9,
     label=None,
     segment_min_mass=None,
     ffc_frames=[],
     lower_mass=0,
     repeats=1,
     min_frames=None,
-    segment_frames=None,
-    segment_type=SegmentType.ALL_RANDOM,
+    segment_types=[SegmentType.ALL_RANDOM],
     max_segments=None,
     location=None,
     station_id=None,
@@ -940,169 +990,236 @@ def get_segments(
     source_file=None,
     dont_filter=False,
     skip_ffc=True,
+    frame_min_mass=None,
+    fp_frames=None,
+    repeat_frame_indices=True,
+    min_segments=None,
 ):
-    if segment_type == SegmentType.ALL_RANDOM_NOMIN:
-        segment_min_mass = None
     if min_frames is None:
-        min_frames = 25
+        min_frames = segment_width / 4.0
     segments = []
     mass_history = np.uint16([region.mass for region in regions])
     filtered_stats = {"segment_mass": 0, "too short": 0}
-
     has_no_mass = np.sum(mass_history) == 0
-    frame_indices = [
-        region.frame_number
-        for region in regions
-        if (has_no_mass or region.mass > 0)
-        and (
-            ffc_frames is None
-            or skip_ffc is False
-            or region.frame_number not in ffc_frames
-        )
-        and not region.blank
-        and region.width > 0
-        and region.height > 0
-    ]
-    if len(frame_indices) == 0:
-        logging.warn("Nothing to load for %s - %s", clip_id, track_id)
-        return [], filtered_stats
-    if segment_min_mass is not None:
-        segment_min_mass = min(
-            segment_min_mass,
-            np.median(mass_history[frame_indices - start_frame]),
-        )
-    else:
-        segment_min_mass = 1
-        # remove blank frames
 
-    if segment_type == SegmentType.TOP_RANDOM:
-        # take top 50 mass frames
-        frame_indices = sorted(
-            frame_indices,
-            key=lambda f_i: mass_history[f_i - start_frame],
-            reverse=True,
-        )
-        frame_indices = frame_indices[:50]
-        frame_indices.sort()
-    if segment_type == SegmentType.TOP_SEQUENTIAL:
-        return get_top_mass_segments(
-            clip_id,
-            track_id,
-            label,
-            camera,
-            segment_width,
-            segment_frame_spacing,
-            mass_history,
-            ffc_frames,
-            regions,
-            start_frame,
-            lower_mass,
-            segment_min_mass,
-            source_file=source_file,
-        )
-    # if len(frame_indices) < min_frames:
-    # filtered_stats["too short"] += 1
-    # return segments, filtered_stats
-    frame_indices = np.array(frame_indices)
-    segment_count = max(1, len(frame_indices) // segment_frame_spacing)
-    segment_count = int(segment_count)
-    if max_segments is not None:
-        segment_count = min(max_segments, segment_count)
-    # take any segment_width frames, this could be done each epoch
-    whole_indices = frame_indices
-    random_frames = segment_type in [
-        SegmentType.IMPORTANT_RANDOM,
-        SegmentType.ALL_RANDOM,
-        SegmentType.ALL_RANDOM_NOMIN,
-        SegmentType.TOP_RANDOM,
-        None,
-    ]
-    for _ in range(repeats):
-        frame_indices = whole_indices.copy()
-        if random_frames:
-            # random_frames and not random_sections:
-            np.random.shuffle(frame_indices)
-        for i in range(segment_count):
-            # always get atleast one segmnet
-            if i > 0:
-                if (len(frame_indices) < segment_width and len(segments) > 1) or len(
-                    frame_indices
-                ) < (segment_width / 4.0):
-                    break
+    for segment_type in segment_types:
+        s_min_mass = segment_min_mass
+        if segment_type == SegmentType.ALL_RANDOM_NOMIN:
+            s_min_mass = None
 
-            if segment_type == SegmentType.ALL_SECTIONS:
-                # random frames from section 2.2 * segment_width
-                section = frame_indices[: int(segment_width * 2.2)]
-                indices = np.random.choice(
-                    len(section),
-                    min(segment_width, len(section)),
-                    replace=False,
-                )
-                frames = section[indices]
-                frame_indices = frame_indices[segment_frame_spacing:]
-            elif random_frames:
-                # frame indices already randomized so just need to grab some
-                frames = frame_indices[:segment_width]
-                frame_indices = frame_indices[segment_width:]
-            else:
-                segment_start = i * segment_frame_spacing
-                segment_end = segment_start + segment_width
-                segment_end = min(len(frame_indices), segment_end)
-                frames = frame_indices[segment_start:segment_end]
+        frame_indices = [
+            region.frame_number
+            for region in regions
+            if (has_no_mass or region.mass > 0)
+            and (
+                ffc_frames is None
+                or skip_ffc is False
+                or region.frame_number not in ffc_frames
+            )
+            and not region.blank
+            and region.width > 0
+            and region.height > 0
+            and (
+                (has_no_mass or frame_min_mass is None) or region.mass >= frame_min_mass
+            )
+        ]
+        if fp_frames is not None and label not in FP_LABELS:
+            frame_indices = [f for f in frame_indices if f not in fp_frames]
+        if len(frame_indices) == 0:
+            logging.warn("Nothing to load for %s - %s", clip_id, track_id)
+            return [], filtered_stats
+        if s_min_mass is not None:
+            s_min_mass = min(
+                s_min_mass,
+                np.median(mass_history[frame_indices - start_frame]),
+            )
+        else:
+            s_min_mass = 1
+            # remove blank frames
 
-            remaining = segment_width - len(frames)
-            # sample another same frames again if need be
-            if remaining > 0:
-                extra_frames = np.random.choice(
-                    frames,
-                    min(remaining, len(frames)),
-                    replace=False,
-                )
-                frames = np.concatenate([frames, extra_frames])
-            frames.sort()
-            relative_frames = frames - start_frame
-            mass_slice = mass_history[relative_frames]
-            segment_mass = np.sum(mass_slice)
-            segment_avg_mass = segment_mass / len(mass_slice)
-            filtered = False
-            if segment_min_mass and segment_avg_mass < segment_min_mass:
-                if dont_filter:
-                    filtered = True
-                else:
-                    filtered_stats["segment_mass"] += 1
-                    continue
-
-            # temp_slice = frame_temp_median[relative_frames]
-            region_slice = regions[relative_frames]
-            movement_data = None
-            if segment_avg_mass < 50:
-                segment_weight_factor = 0.75
-            elif segment_avg_mass < 100:
-                segment_weight_factor = 1
-            else:
-                segment_weight_factor = 1.2
-
-            for z, f in enumerate(frames):
-                assert region_slice[z].frame_number == f
-            segment = SegmentHeader(
+        if segment_type == SegmentType.TOP_RANDOM:
+            # take top 50 mass frames
+            frame_indices = sorted(
+                frame_indices,
+                key=lambda f_i: mass_history[f_i - start_frame],
+                reverse=True,
+            )
+            frame_indices = frame_indices[:50]
+            frame_indices.sort()
+        if segment_type == SegmentType.TOP_SEQUENTIAL:
+            new_segments, filtered = get_top_mass_segments(
                 clip_id,
                 track_id,
-                start_frame=start_frame,
-                frames=segment_width,
-                weight=segment_weight_factor,
-                mass=segment_mass,
-                label=label,
-                regions=region_slice,
-                frame_indices=frames,
-                movement_data=movement_data,
-                camera=camera,
-                location=location,
-                station_id=station_id,
-                rec_time=rec_time,
+                label,
+                camera,
+                segment_width,
+                segment_frame_spacing,
+                mass_history,
+                ffc_frames,
+                regions,
+                start_frame,
+                lower_mass,
+                s_min_mass,
                 source_file=source_file,
-                filtered=filtered,
             )
-            segments.append(segment)
+            segments.extend(new_segments)
+            filtered_stats.merge(filtered)
+            continue
+        if len(frame_indices) < min_frames and (
+            min_segments == 0 or min_segments is None
+        ):
+            filtered_stats["too short"] += 1
+            continue
+
+        frame_indices = np.array(frame_indices)
+        segment_count = max(1, len(frame_indices) // segment_frame_spacing)
+        segment_count = int(segment_count)
+        mask_length = 25
+        # probably only counts for all random
+        if max_segments is not None and segment_type not in [SegmentType.ALL_SECTIONS]:
+            segment_count = min(max_segments, segment_count)
+            # adjust size of mask if we take less segments
+            mask_length = max(mask_length, len(frame_indices) // segment_count)
+        # take any segment_width frames, this could be done each epoch
+        whole_indices = frame_indices
+        random_frames = segment_type in [
+            SegmentType.IMPORTANT_RANDOM,
+            SegmentType.ALL_RANDOM,
+            SegmentType.ALL_RANDOM_NOMIN,
+            SegmentType.TOP_RANDOM,
+            SegmentType.ALL_RANDOM_MASKED,
+            None,
+        ]
+        for _ in range(repeats):
+            if segment_type == SegmentType.ALL_RANDOM_MASKED:
+                segment_indices = np.arange(len(regions))
+                all_frames = np.arange(len(regions)) + start_frame
+
+                available_indices = np.full(len(regions), False)
+                available_indices[frame_indices - start_frame] = True
+                # use all frames and make out onces filtered by other criteria like mass and blank etc
+                # this way we are always making as 25 frame period
+            if segment_type != SegmentType.ALL_RANDOM_MASKED or len(whole_indices) < 40:
+                frame_indices = whole_indices.copy()
+
+                if random_frames:
+                    # random_frames and not random_sections:
+                    np.random.shuffle(frame_indices)
+            for i in range(segment_count):
+                if segment_type == SegmentType.ALL_RANDOM_MASKED:
+                    if len(whole_indices) < 40:
+                        frame_indices = segment_indices[available_indices]
+                    else:
+                        mask = available_indices.copy()
+                        mask_start = i * mask_length
+                        mask[mask_start : mask_start + mask_length] = False
+
+                        frame_indices = segment_indices[mask]
+                        frame_indices = np.uint32(frame_indices)
+                        np.random.shuffle(frame_indices)
+
+                # always get atleast one segment, not doing annymore
+                if (
+                    len(frame_indices) == 0
+                    or min_segments is None
+                    or len(segments) >= min_segments
+                ):
+                    if (
+                        len(frame_indices) < segment_width / 2.0 and len(segments) > 1
+                    ) or len(frame_indices) < segment_width / 4:
+                        break
+
+                if segment_type == SegmentType.ALL_SECTIONS:
+                    # random frames from section 2.2 * segment_width
+                    section = frame_indices[: int(segment_width * 2.2)]
+
+                    indices = np.random.choice(
+                        len(section),
+                        min(segment_width, len(section)),
+                        replace=False,
+                    )
+                    frames = section[indices]
+                    # might need to change that gp 11/05 - 2024
+                    frame_indices = frame_indices[segment_width:]
+                elif segment_type == SegmentType.ALL_RANDOM_MASKED:
+                    indices = frame_indices[:segment_width]
+                    available_indices[indices] = False
+                    frames = all_frames[indices]
+                elif random_frames:
+                    # frame indices already randomized so just need to grab some
+                    frames = frame_indices[:segment_width]
+                    frame_indices = frame_indices[segment_width:]
+                else:
+                    segment_start = i * segment_frame_spacing
+                    segment_end = segment_start + segment_width
+                    segment_end = min(len(frame_indices), segment_end)
+                    frames = frame_indices[segment_start:segment_end]
+
+                remaining = segment_width - len(frames)
+                # sample another same frames again if need be
+                if remaining > 0:
+                    extra_frames = np.random.choice(
+                        frames,
+                        min(remaining, len(frames)),
+                        replace=False,
+                    )
+                    frames = np.concatenate([frames, extra_frames])
+                frames.sort()
+                relative_frames = frames - start_frame
+                mass_slice = mass_history[relative_frames]
+                segment_mass = np.sum(mass_slice)
+                segment_avg_mass = segment_mass / len(mass_slice)
+                filtered = False
+                if s_min_mass and segment_avg_mass < s_min_mass:
+                    if dont_filter:
+                        filtered = True
+                    else:
+                        filtered_stats["segment_mass"] += 1
+                        continue
+
+                # temp_slice = frame_temp_median[relative_frames]
+                region_slice = regions[relative_frames]
+                movement_data = None
+                if segment_avg_mass < 50:
+                    segment_weight_factor = 0.75
+                elif segment_avg_mass < 100:
+                    segment_weight_factor = 1
+                else:
+                    segment_weight_factor = 1.2
+
+                for z, f in enumerate(frames):
+                    assert region_slice[z].frame_number == f
+
+                if repeat_frame_indices:
+                    # i think this can be default, means we dont need to handle
+                    # short segments elsewhere
+                    if len(frames) < segment_width:
+                        extra_samples = np.random.choice(
+                            frames, segment_width - len(frames)
+                        )
+                        frames = list(frames)
+                        frames.extend(extra_samples)
+                        frames.sort()
+
+                segment = SegmentHeader(
+                    clip_id,
+                    track_id,
+                    start_frame=start_frame,
+                    frames=segment_width,
+                    weight=segment_weight_factor,
+                    mass=segment_mass,
+                    label=label,
+                    regions=region_slice,
+                    frame_indices=frames,
+                    movement_data=movement_data,
+                    camera=camera,
+                    location=location,
+                    station_id=station_id,
+                    rec_time=rec_time,
+                    source_file=source_file,
+                    filtered=filtered,
+                )
+                segments.append(segment)
     return segments, filtered_stats
 
 

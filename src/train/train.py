@@ -28,7 +28,7 @@ def remove_fp_segments(datasets, ignore_file):
                 print("deleting segment", segment.unique_track_id)
         for delete in delete_me:
             try:
-                datset.remove_track(delete.track_id)
+                dataset.remove_track(delete.track_id)
             except:
                 pass
             dataset.segments.remove(delete)
@@ -44,6 +44,7 @@ def train_model(
     do_grid_search=None,
     ignore=None,
     epochs=None,
+    fine_tune=None,
 ):
     init_logging()
     """Trains a model with the given hyper parameters."""
@@ -77,6 +78,7 @@ def train_model(
             weights=weights,
             resample=False,
             rebalance=False,
+            fine_tune=fine_tune,
         )
     except KeyboardInterrupt:
         pass

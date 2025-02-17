@@ -406,6 +406,7 @@ class Track:
         # self.tracker = RegionTracker(
         #     self.get_id(), tracking_config, self.crop_rectangle
         # )
+        self.score = None
 
     def get_tracker(self, tracking_config):
         tracker = tracking_config.tracker
@@ -439,11 +440,13 @@ class Track:
         repeats=1,
         min_frames=0,
         segment_frames=None,
-        segment_type=SegmentType.ALL_RANDOM,
+        segment_types=[SegmentType.ALL_RANDOM],
         from_last=None,
         max_segments=None,
         ffc_frames=None,
         dont_filter=False,
+        filter_by_fp=False,
+        min_segments=1,
     ):
         if from_last is not None:
             if from_last == 0:
@@ -485,13 +488,13 @@ class Track:
                 regions=regions,
                 ffc_frames=ffc_frames,
                 repeats=repeats,
-                # frame_temp_median=frame_temp_median,
                 min_frames=min_frames,
-                segment_frames=None,
-                segment_type=segment_type,
+                segment_types=segment_types,
                 max_segments=max_segments,
                 dont_filter=dont_filter,
+                min_segments=min_segments,
             )
+
         return segments
 
     @classmethod
@@ -679,15 +682,16 @@ class Track:
         self.prev_frame_num = region.frame_number
         self.update_velocity()
 
-    def get_stats(self):
+    def calculate_stats(self):
         """
-        Returns statistics for this track, including how much it moves, and a score indicating how likely it is
-        that this is a good track.
-        :return: a TrackMovementStatistics record
+        Calculates statistics for this track, including how much it moves, and a score indicating how likely it is
+        that this is a good track. This should be done once tracking is finished
+        # :return: a TrackMovementStatistics record
         """
 
         if len(self) <= 1:
-            return TrackMovementStatistics()
+            self.stats = TrackMovementStatistics()
+            return
         # get movement vectors only from non blank regions
         non_blank = [bound for bound in self.bounds_history if not bound.blank]
         mass_history = [int(bound.mass) for bound in non_blank]
@@ -774,8 +778,7 @@ class Track:
             mass_std=float(np.std(mass_history)),
             average_velocity=float(avg_vel),
         )
-
-        return stats
+        self.stats = stats
 
     def smooth(self, frame_bounds: Rectangle):
         """
@@ -960,6 +963,7 @@ class Track:
         track_info["frame_start"] = self.start_frame
         track_info["frame_end"] = self.end_frame
         track_info["positions"] = self.bounds_history
+        track_info["tracking_score"] = 0 if self.stats is None else self.stats.score
         prediction_info = []
         if predictions_per_model:
             for model_id, predictions in predictions_per_model.items():

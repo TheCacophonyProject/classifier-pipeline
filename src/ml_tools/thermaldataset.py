@@ -12,6 +12,7 @@ import logging
 
 from ml_tools.featurenorms import mean_v, std_v
 from ml_tools.frame import TrackChannels
+from pathlib import Path
 
 # seed = 1341
 # tf.random.set_seed(seed)
@@ -33,12 +34,30 @@ def get_excluded():
         "pest",
         "pig",
         "sealion",
+        "bat",
+        "mammal",
+        "frog",
+        "cow",
+        # added gp forretrain
+        "wombat",
+        "gray kangaroo",
+        "echidna",
+        "fox",
+        "deer",
+        "sheep",
+        # "wombat",
     ]
 
 
 def get_remapped(multi_label=False):
     land_bird = "land-bird" if multi_label else "bird"
     return {
+        "echidna": "hedgehog",
+        "grey kangaroo": "wallaby",
+        "sambar deer": "deer",
+        "mouse": "rodent",
+        "rat": "rodent",
+        "rain": "false-positive",
         "water": "false-positive",
         "insect": "false-positive",
         "allbirds": "bird",
@@ -117,7 +136,9 @@ def load_dataset(filenames, remap_lookup, labels, args):
             extra_label_map=extra_label_map,
             include_track=args.get("include_track", False),
             num_frames=args.get("num_frames", 25),
-            channels=args.get("channels", [TrackChannels.thermal.name]),
+            channels=args.get(
+                "channels", [TrackChannels.thermal.name, TrackChannels.filtered.name]
+            ),
         ),
         num_parallel_calls=AUTOTUNE,
         deterministic=deterministic,
@@ -170,7 +191,7 @@ def read_tfrecord(
     channels=[TrackChannels.thermal.name, TrackChannels.filtered.name],
 ):
     logging.info(
-        "Read tf record with image %s lbls %s labeld %s aug  %s  prepr %s only features %s one hot %s include fetures %s",
+        "Read tf record with image %s lbls %s labeld %s aug  %s  prepr %s only features %s one hot %s include fetures %s num frames %s",
         image_size,
         num_labels,
         labeled,
@@ -179,6 +200,7 @@ def read_tfrecord(
         only_features,
         one_hot,
         include_features,
+        num_frames,
     )
     load_images = not only_features
     tfrecord_format = {
@@ -197,7 +219,6 @@ def read_tfrecord(
     if include_track:
         tfrecord_format["image/track_id"] = tf.io.FixedLenFeature((), tf.int64, -1)
         tfrecord_format["image/avg_mass"] = tf.io.FixedLenFeature((), tf.int64, -1)
-
     if include_features or only_features:
         tfrecord_format["image/features"] = tf.io.FixedLenSequenceFeature(
             [36 * 5 + 8], dtype=tf.float32, allow_missing=True
@@ -252,6 +273,7 @@ def read_tfrecord(
             if extra_label_map is not None:
                 label = tf.reduce_max(label, axis=0)
         if include_track:
+
             track_id = tf.cast(example["image/track_id"], tf.int32)
             avg_mass = tf.cast(example["image/avg_mass"], tf.int32)
             label = (label, track_id, avg_mass)
@@ -266,17 +288,6 @@ def read_tfrecord(
     elif include_features:
         return (rgb_image, tf.squeeze(example["image/features"]))
     return rgb_image
-
-
-def decode_image(thermals, filtereds, image_size):
-    deoced_thermals = []
-    decoded_filtered = []
-    for thermal, filtered in zip(thermals, filtereds):
-        image = tf.image.decode_png(image, channels=1)
-        filtered = tf.image.decode_png(filtered, channels=1)
-        decoded_thermal.append(image)
-        decoded_filtered.append(filtered)
-    return decoded_thermal, decoded_filtered
 
 
 def tile_images(images):
@@ -299,12 +310,13 @@ from collections import Counter
 # test stuff
 def main():
     init_logging()
-    config = Config.load_from_file()
+    config = Config.load_from_file("classifier-thermal.yaml")
     from .tfdataset import get_dataset, get_distribution
 
     # file = "/home/gp/cacophony/classifier-data/thermal-training/cp-training/training-meta.json"
-    file = f"{config.tracks_folder}/training-meta.json"
-    with open(file, "r") as f:
+    training_folder = Path(config.base_folder) / "training-data"
+    meta_f = training_folder / "training-meta.json"
+    with open(meta_f, "r") as f:
         meta = json.load(f)
     labels = meta.get("labels", [])
     datasets = []
@@ -312,7 +324,7 @@ def main():
     resampled_ds, remapped, labels, epoch_size = get_dataset(
         # dir,
         load_dataset,
-        f"{config.tracks_folder}/training-data/test",
+        training_folder / "test",
         labels,
         batch_size=32,
         image_size=(160, 160),
@@ -322,25 +334,31 @@ def main():
         include_features=False,
         remapped_labels=get_remapped(),
         excluded_labels=get_excluded(),
-        include_track=False,
+        include_track=True,
         num_frames=1,
     )
     print("Ecpoh size is", epoch_size)
-    print(get_distribution(resampled_ds, len(labels), extra_meta=False))
+    # print(get_distribution(resampled_ds, len(labels), extra_meta=False))
     # return
     #
-    for e in range(2):
+    save_dir = Path("./test-images")
+    save_dir.mkdir(exist_ok=True)
+    for e in range(1):
+        batch_i = 0
         print("epoch", e)
         for x, y in resampled_ds:
-            show_batch(x, y, labels)
-
+            show_batch(x, y, labels, save=save_dir / f"{batch_i}.jpg", tracks=True)
+            batch_i += 1
     # return
 
 
-def show_batch(image_batch, label_batch, labels):
+def show_batch(image_batch, label_batch, labels, save=None, tracks=False):
     plt.figure(figsize=(10, 10))
     print("images in batch", len(image_batch), len(label_batch))
     num_images = min(len(image_batch), 25)
+    if tracks:
+        track_batch = label_batch[1]
+        label_batch = label_batch[0]
     for n in range(num_images):
         ax = plt.subplot(5, 5, n + 1)
         img = np.uint8(image_batch[n])
@@ -352,10 +370,15 @@ def show_batch(image_batch, label_batch, labels):
         # if repeat > 0:
         # print(img.shape, " repeating", repeat)
         plt.imshow(img)
-        plt.title("C-" + str(image_batch[n]))
-        plt.title(labels[np.argmax(label_batch[n])])
+        if tracks:
+            plt.title(f"{labels[np.argmax(label_batch[n])]}-{track_batch[n]}")
+        else:
+            plt.title(labels[np.argmax(label_batch[n])])
+
         plt.axis("off")
     # return
+    if save:
+        plt.savefig(save)
     plt.show()
 
 

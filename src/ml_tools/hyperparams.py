@@ -24,10 +24,11 @@ class HyperParams(dict):
         self["square_width"] = self.square_width
         self["frame_size"] = self.frame_size
         self["segment_width"] = self.segment_width
-
-        self["segment_type"] = self.segment_type
-        self["multi_label"] = False
+        self["segment_types"] = self.segment_types
+        self["multi_label"] = True
         self["diff_norm"] = self.diff_norm
+        self["thermal_diff_norm"] = self.thermal_diff_norm
+
         self["smooth_predictions"] = self.smooth_predictions
         self["channels"] = self.channels
 
@@ -50,6 +51,18 @@ class HyperParams(dict):
     @property
     def smooth_predictions(self):
         return self.get("smooth_predictions", True)
+
+    @property
+    def excluded_labels(self):
+        return self.get("excluded_labels", None)
+
+    @property
+    def remapped_labels(self):
+        return self.get("remapped_labels", None)
+
+    @property
+    def thermal_diff_norm(self):
+        return self.get("thermal_diff_norm", False)
 
     @property
     def diff_norm(self):
@@ -76,12 +89,16 @@ class HyperParams(dict):
         return self.get("segment_width", 25 if self.use_segments else 1)
 
     @property
-    def segment_type(self):
-        segment_type = self.get("segment_type", SegmentType.ALL_RANDOM.name)
-        if isinstance(segment_type, str):
-            return SegmentType[segment_type]
-        else:
-            return segment_type
+    def segment_types(self):
+        segment_types = self.get("segment_type", [SegmentType.ALL_RANDOM])
+        # convert string to enum type
+        if isinstance(segment_types, str):
+            # old metadata
+            segment_types = [SegmentType[segment_types]]
+        elif isinstance(segment_types[0], str):
+            for i in range(len(segment_types)):
+                segment_types[i] = SegmentType[segment_types[i]]
+        return segment_types
 
     @property
     def mvm(self):
@@ -105,7 +122,7 @@ class HyperParams(dict):
 
     @property
     def base_training(self):
-        return self.get("base_training", False)
+        return self.get("base_training", True)
 
     @property
     def retrain_layer(self):
@@ -150,6 +167,13 @@ class HyperParams(dict):
     @property
     def frame_size(self):
         return self.get("frame_size", 32)
+
+    def set_use_segments(self, use_segments):
+        self["use_segments"] = use_segments
+        if use_segments:
+            self["square_width"] = 5
+        else:
+            self["square_width"] = 1
 
     #
     # @property

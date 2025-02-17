@@ -79,6 +79,9 @@ class Prediction:
         best = np.argsort(self.prediction)
         return self.prediction[best[-1]] - self.prediction[best[-2]]
 
+    def __str__(self):
+        return f"{self.frames} conf: {np.round(100*self.prediction)}"
+
 
 class TrackPrediction:
     """
@@ -106,19 +109,30 @@ class TrackPrediction:
         self.tracking = False
         self.masses = []
 
+    def cap_confidences(self, max_confidence):
+        max_score = np.sum(self.class_best_score)
+        if max_score > max_confidence:
+            scale = max_confidence / max_score
+            self.class_best_score *= scale
+
     def classified_clip(
-        self, predictions, smoothed_predictions, prediction_frames, top_score=None
+        self,
+        predictions,
+        smoothed_predictions,
+        prediction_frames,
+        masses,
+        top_score=None,
     ):
         self.num_frames_classified = len(predictions)
-        for prediction, smoothed_prediction, frames in zip(
-            predictions, smoothed_predictions, prediction_frames
+        for prediction, smoothed_prediction, frames, mass in zip(
+            predictions, smoothed_predictions, prediction_frames, masses
         ):
             prediction = Prediction(
                 prediction,
                 smoothed_prediction,
                 frames,
                 np.amax(frames),
-                None,
+                mass,
             )
             self.predictions.append(prediction)
 
@@ -162,11 +176,10 @@ class TrackPrediction:
             self.class_best_score += smoothed_prediction
 
     def classified_frame(self, frame_number, predictions, mass):
-        self.prediction_frames.append([frame_number])
         self.last_frame_classified = frame_number
         self.num_frames_classified += 1
         self.masses.append(mass)
-        smoothed_prediction = prediction * prediction * mass
+        smoothed_prediction = predictions**2 * mass
 
         prediction = Prediction(
             predictions,
@@ -249,7 +262,9 @@ class TrackPrediction:
                 self.labels[self.best_label_index], score * 10, self.clarity * 10
             )
         else:
-            first_guess = "[nothing]"
+            first_guess = "[nothing] {} {:.1f} (clarity {:.1f})".format(
+                self.labels[self.best_label_index], score * 10, self.clarity * 10
+            )
 
         second_score = self.score(2)
 

@@ -1,0 +1,5 @@
+#run the first of every month
+SHELL=/bin/bash
+BASH_ENV=~/.bashrc_conda
+
+* * 1 * * cp ( cd /home/cp/cacophony/classifier-pipeline/src && ./autobuild.sh /data2/cptv-files) 2>&1 | logger --tag classifier-auto-build

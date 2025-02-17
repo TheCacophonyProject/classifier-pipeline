@@ -6,7 +6,6 @@ import os.path
 import numpy as np
 import pickle
 import json
-import dateutil
 import datetime
 import glob
 import cv2
@@ -15,6 +14,8 @@ import timezonefinder
 from PIL import Image, ImageFont, ImageDraw
 from pathlib import Path
 from ml_tools.rectangle import Rectangle
+from dateutil import parser
+from enum import Enum
 
 EPISON = 1e-5
 
@@ -52,6 +53,10 @@ class CustomJSONEncoder(json.JSONEncoder):
             return obj.isoformat()
         elif isinstance(obj, Rectangle):
             return obj.meta_dictionary()
+        elif isinstance(obj, Path):
+            return str(obj)
+        elif isinstance(obj, Enum):
+            return str(obj.name)
         # Let the base class default method raise the TypeError
         return json.JSONEncoder.default(self, obj)
 
@@ -92,7 +97,7 @@ def load_clip_metadata(filename):
         # add in some metadata stats
         meta = json.load(t)
     if meta.get("recordingDateTime"):
-        meta["recordingDateTime"] = dateutil.parser.parse(meta["recordingDateTime"])
+        meta["recordingDateTime"] = parser.parse(meta["recordingDateTime"])
     if meta.get("tracks") is None and meta.get("Tracks"):
         meta["tracks"] = meta["Tracks"]
     return meta
@@ -189,8 +194,17 @@ def saveclassify_image(data, filename):
     # saves image channels side by side, expected data to be values in the range of 0->1
     Path(filename).parent.mkdir(parents=True, exist_ok=True)
     r = Image.fromarray(np.uint8(data[:, :, 0]))
-    g = Image.fromarray(np.uint8(data[:, :, 1]))
-    b = Image.fromarray(np.uint8(data[:, :, 2]))
+    _, _, channels = data.shape
+
+    if channels == 1:
+        g = r
+    else:
+        g = Image.fromarray(np.uint8(data[:, :, 1]))
+
+    if channels == 2:
+        b = r
+    else:
+        b = Image.fromarray(np.uint8(data[:, :, 2]))
     concat = np.concatenate((r, g, b), axis=1)  # horizontally
     img = Image.fromarray(np.uint8(concat))
     img.save(filename + ".png")

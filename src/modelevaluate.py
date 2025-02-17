@@ -44,9 +44,10 @@ from ml_tools.preprocess import preprocess_frame
 from ml_tools.frame import Frame
 from ml_tools import imageprocessing
 import cv2
-from config.loadconfig import LoadConfig
+from config.buildconfig import BuildConfig
 from sklearn.metrics import confusion_matrix
 from multiprocessing import Pool
+from dateutil.parser import parse as parse_date
 
 
 root_logger = logging.getLogger()
@@ -72,8 +73,9 @@ land_birds = [
 def model_score(cm, labels):
     cm = np.around(cm.astype("float") / cm.sum(axis=1)[:, np.newaxis], decimals=2)
     cm = np.nan_to_num(cm)
-
-    fp_index = labels.index("false-positive")
+    fp_index = None
+    if "false-positive" in labels:
+        fp_index = labels.index("false-positive")
     none_index = None
     unid_index = None
     if "None" in labels:
@@ -82,7 +84,9 @@ def model_score(cm, labels):
         unid_index = labels.index("unidentified")
     score = 0
     for l_i, l in enumerate(labels):
-        fp_acc = cm[l_i][fp_index]
+        fp_acc = 0
+        if fp_index is not None:
+            fp_acc = cm[l_i][fp_index]
         none_acc = 0
         unid_acc = 0
         accuracy = cm[l_i][l_i]
@@ -157,12 +161,20 @@ def load_args():
         "--evaluate-dir",
         help="Evalute directory of cptv files",
     )
-
+    parser.add_argument(
+        "--model-metadata",
+        help="Meta data file for model, used with confusion from meta",
+    )
     parser.add_argument("-c", "--config-file", help="Path to config file to use")
 
     parser.add_argument("-d", "--date", help="Use clips after this")
 
     parser.add_argument("--split-file", help="Use split for evaluation")
+    parser.add_argument(
+        "--confusion-from-meta",
+        action="count",
+        help="Use metadata to produce a confusion matrix",
+    )
 
     parser.add_argument(
         "confusion",
@@ -213,69 +225,113 @@ def filter_diffs(track_frames, background):
     return min_diff, max_diff
 
 
-def evalute_prod_confusion(dir, confusion_file):
+# evaluate a confusion matrix from metadata of files, already evaluated by our current model on browse
+
+
+def metadata_confusion(dir, confusion_file, after_date=None, model_metadata=None):
     with open("label_paths.json", "r") as f:
         label_paths = json.load(f)
     label_mapping = get_mappings(label_paths)
-
-    labels = [
-        "bird",
-        "cat",
-        "deer",
-        "dog",
-        "false-positive",
-        "hedgehog",
-        "human",
-        "kiwi",
-        "leporidae",
-        "mustelid",
-        "penguin",
-        "possum",
-        "rodent",
-        "sheep",
-        "vehicle",
-        "wallaby",
-        "land-bird",
-        "None",
-        "unidentified",
-    ]
+    if model_metadata is not None and Path(model_metadata).exists():
+        with open(model_metadata, "r") as t:
+            # add in some metadata stats
+            model_meta = json.load(t)
+        labels = model_meta.get("labels", [])
+        excluded_labels = model_meta.get("excluded_labels", {})
+        remapped_labels = model_meta.get("remapped_labels", {})
+        for k, v in remapped_labels.items():
+            if v == "land-bird":
+                remapped_labels[k] = "bird"
+        if "None" not in labels:
+            labels.append("None")
+        if "unidentified" not in labels:
+            labels.append("unidentified")
+    else:
+        labels = [
+            "bird",
+            "cat",
+            "deer",
+            "dog",
+            "falsepositive",
+            "hedgehog",
+            "human",
+            "kiwi",
+            "leporidae",
+            "mustelid",
+            "penguin",
+            "possum",
+            "rodent",
+            "sheep",
+            "vehicle",
+            "wallaby",
+            "landbird",
+            "None",
+            "unidentified",
+        ]
+        excluded_labels, remapped_labels = get_excluded("thermal")
+    logging.info(
+        "Labels are %s excluded %s remapped %s",
+        labels,
+        excluded_labels,
+        remapped_labels,
+    )
     y_true = []
     y_pred = []
     dir = Path(dir)
     for cptv_file in dir.glob(f"**/*cptv"):
         meta_f = cptv_file.with_suffix(".txt")
+        if not meta_f.exists():
+            continue
         meta_data = None
         with open(meta_f, "r") as t:
             # add in some metadata stats
             meta_data = json.load(t)
-
+        rec_time = parse_date(meta_data["recordingDateTime"])
+        if after_date is not None and rec_time <= after_date:
+            continue
         for track in meta_data.get("Tracks", []):
             tags = track.get("tags", [])
             human_tags = [
-                tag.get("what")
-                for tag in tags
-                if tag.get("automatic") == False
-                # and tag.get("what", "") not in LoadConfig.EXCLUDED_TAGS
+                tag.get("what") for tag in tags if tag.get("automatic") == False
             ]
             human_tags = set(human_tags)
             if len(human_tags) > 1:
                 print("Conflicting tags for ", track.get("id"), cptv_file)
             if len(human_tags) == 0:
-                print("No humans in ", tags)
+                print("No humans in ", meta_f)
                 continue
             human_tag = human_tags.pop()
             human_tag = label_mapping.get(human_tag, human_tag)
-            ai_tag = [
-                tag.get("what")
-                for tag in tags
-                if tag.get("automatic") is True
-                and tag.get("data", {}).get("name") == "Inc3 RF"
-            ]
+            if human_tag in excluded_labels:
+                logging.info("Excluding %s", human_tag)
+                continue
+            if human_tag in remapped_labels:
+                logging.info(
+                    "Remapping %s to %s", human_tag, remapped_labels[human_tag]
+                )
+                human_tag = remapped_labels[human_tag]
+            # if human_tag not in labels:
+            # logging.info("Excluding %s", human_tag)
+
+            ai_tags = []
+            for tag in tags:
+                if tag.get("automatic") is True:
+                    data = tag.get("data", {})
+                    if isinstance(data, str):
+                        if data == "Master":
+                            ai_tags.append(tag["what"])
+                    elif data.get("name") == "Master":
+                        ai_tags.append(tag["what"])
+
             y_true.append(human_tag)
-            if len(ai_tag) == 0:
+            if human_tag not in labels:
+                labels.append(human_tag)
+            if len(ai_tags) == 0:
                 y_pred.append("None")
             else:
-                y_pred.append(ai_tag[0])
+                y_pred.append(ai_tags[0])
+                if ai_tags[0] not in labels:
+                    labels.append(ai_tags[0])
 
     cm = confusion_matrix(y_true, y_pred, labels=labels)
     # Log the confusion matrix as an image summary.
@@ -288,24 +344,26 @@ def evalute_prod_confusion(dir, confusion_file):
 
 EXCLUDED_TAGS = ["poor tracking", "part", "untagged", "unidentified"]
 worker_model = None
+after_date = None
 
 
-def init_worker(model):
-    global worker_model
+def init_worker(model, date):
+    global worker_model, after_date
     worker_model = model
+    after_date = date
 
 
 def load_clip_data(cptv_file):
     # for clip in dataset.clips:
     reason = {}
     clip_db = RawDatabase(cptv_file)
-    clip = clip_db.get_clip_tracks(LoadConfig.DEFAULT_GROUPS)
+    clip = clip_db.get_clip_tracks(BuildConfig.DEFAULT_GROUPS)
     if clip is None:
         logging.warn("No clip for %s", cptv_file)
         return None
 
-    if filter_clip(clip, reason):
-        logging.info("Filtering %s", cptv_file)
+    if filter_clip(clip, None, None, reason, after_date=after_date):
+        # logging.info("Filtering %s", cptv_file)
         return None
     clip.tracks = [
         track for track in clip.tracks if not filter_track(track, EXCLUDED_TAGS, reason)
@@ -321,18 +379,21 @@ def load_clip_data(cptv_file):
     thermal_medians = np.uint16(thermal_medians)
     data = []
     for track in clip.tracks:
-        frames, preprocessed, masses = worker_model.preprocess(
-            clip_db, track, frames_per_classify=25, dont_filter=True
-        )
-        data.append(
-            (
-                f"{track.clip_id}-{track.get_id()}",
-                track.label,
-                frames,
-                preprocessed,
-                masses,
+        try:
+            frames, preprocessed, masses = worker_model.preprocess(
+                clip_db, track, frames_per_classify=25, dont_filter=True, min_segments=1
             )
-        )
+            data.append(
+                (
+                    f"{track.clip_id}-{track.get_id()}",
+                    track.label,
+                    frames,
+                    preprocessed,
+                    masses,
+                )
+            )
+        except:
+            logging.error("Could not load %s", clip.clip_id, exc_info=True)
     return data
 
 
@@ -350,6 +411,7 @@ def evaluate_dir(
     split_file=None,
     split_dataset="test",
     threshold=0.5,
+    after_date=None,
 ):
     logging.info("Evaluating cptv files in %s with threshold %s", dir, threshold)
 
@@ -375,25 +437,40 @@ def evaluate_dir(
     # files = files[:8]
     start = time.time()
     # quite faster with just one process for loading and using main process for predicting
-    with Pool(processes=1, initializer=init_worker, initargs=(model,)) as pool:
+    with Pool(
+        processes=1,
+        initializer=init_worker,
+        initargs=(
+            model,
+            after_date,
+        ),
+    ) as pool:
         for clip_data in pool.imap_unordered(load_clip_data, files):
             if clip_data is None:
                 continue
             for data in clip_data:
                 label = data[1]
                 preprocessed = data[3]
+                if len(preprocessed) == 0:
+                    logging.info("No data found for %s", data[0])
+                    y_true.append(label_mapping.get(label, label))
+                    y_pred.append("None")
+                    continue
                 output = model.predict(preprocessed)
+
                 prediction = TrackPrediction(data[0], model.labels)
                 masses = np.array(data[4])
                 masses = masses[:, None]
                 top_score = None
-                # if model.params.multi_label is True:
-                #     # every label could be 1 for each prediction
-                #     top_score = len(output)
+                if model.params.multi_label is True:
+                    #     # every label could be 1 for each prediction
+                    top_score = np.sum(masses)
                 #     smoothed = output
                 # else:
-                # smoothed = output * output * masses
-                prediction.classified_clip(output, output, data[2], top_score=top_score)
+                smoothed = output * masses
+                prediction.classified_clip(
+                    output, smoothed, data[2], masses, top_score=top_score
+                )
                 y_true.append(label_mapping.get(label, label))
                 predicted_labels = [prediction.predicted_tag()]
                 confidence = prediction.max_score
@@ -407,16 +484,13 @@ def evaluate_dir(
                     predicted_tag = ",".join(predicted_labels)
                     y_pred.append(predicted_tag)
                 if y_pred[-1] != y_true[-1]:
-                    print(
+                    logging.info(
+                        "%s predicted %s but should be %s with confidence %s",
                         data[0],
-                        "Got a prediction of",
                         y_pred[-1],
-                        " should be ",
                         label,
                         np.round(100 * prediction.class_best_score),
                     )
-                # if predicted_tag not in model.labels:
-                # model.labels.append(predicted_tag)
     model.labels.append("None")
     model.labels.append("unidentified")
     cm = confusion_matrix(y_true, y_pred, labels=model.labels)
@@ -466,53 +540,69 @@ def main():
     if args.weights:
         weights = model_file / args.weights
     base_dir = Path(config.base_folder) / "training-data"
+    if args.evaluate_dir and args.confusion_from_meta:
+        metadata_confusion(
+            Path(args.evaluate_dir), args.confusion, args.date, args.model_metadata
+        )
+    else:
 
-    model = KerasModel(train_config=config.train)
-    model.load_model(model_file, training=False, weights=weights)
+        model = KerasModel(train_config=config.train)
+        model.load_model(model_file, training=False, weights=weights)
+        if args.evaluate_dir:
+            evaluate_dir(
+                model,
+                Path(args.evaluate_dir),
+                config,
+                args.confusion,
+                args.split_file,
+                args.dataset,
+                threshold=args.threshold,
+                after_date=args.date,
+            )
+        elif args.dataset:
+            model_labels = model.labels.copy()
+            model.load_training_meta(base_dir)
+            # model.labels = model_labels
+            if model.params.multi_label:
+                model.labels.append("land-bird")
+            excluded, remapped = get_excluded(model.data_type)
 
-    if args.evaluate_dir:
-        evaluate_dir(
-            model,
-            Path(args.evaluate_dir),
-            config,
-            args.confusion,
-            args.split_file,
-            args.dataset,
-            threshold=args.threshold,
-        )
-    elif args.dataset:
-        model.load_training_meta(base_dir)
-        if model.params.multi_label:
-            model.labels.append("land-bird")
-        excluded, remapped = get_excluded(model.data_type)
-        files = base_dir / args.dataset
-        dataset, _, new_labels, _ = get_dataset(
-            files,
-            model.data_type,
-            model.labels,
-            batch_size=64,
-            image_size=model.params.output_dim[:2],
-            preprocess_fn=model.preprocess_fn,
-            augment=False,
-            resample=False,
-            include_features=model.params.mvm,
-            one_hot=True,
-            deterministic=True,
-            shuffle=False,
-            excluded_labels=excluded,
-            remapped_labels=remapped,
-            multi_label=model.params.multi_label,
-            include_track=True,
-            cache=True,
-            channels=model.params.channels,
-        )
-        model.labels = new_labels
-        logging.info(
-            "Dataset loaded %s, using labels %s",
-            args.dataset,
-            model.labels,
-        )
-        model.confusion_tracks(dataset, args.confusion, threshold=args.threshold)
+            if model.params.excluded_labels is not None:
+                excluded = model.params.excluded_labels
+
+            if model.params.remapped_labels is not None:
+                remapped = model.params.remapped_labels
+
+            files = base_dir / args.dataset
+            dataset, _, new_labels, _ = get_dataset(
+                files,
+                model.data_type,
+                model.labels,
+                model_labels=model_labels,
+                batch_size=64,
+                image_size=model.params.output_dim[:2],
+                preprocess_fn=model.preprocess_fn,
+                augment=False,
+                resample=False,
+                include_features=model.params.mvm,
+                one_hot=True,
+                deterministic=True,
+                shuffle=False,
+                excluded_labels=excluded,
+                remapped_labels=remapped,
+                multi_label=model.params.multi_label,
+                include_track=True,
+                cache=True,
+                channels=model.params.channels,
+                num_frames=model.params.square_width**2,
+            )
+            model.labels = new_labels
+            logging.info(
+                "Dataset loaded %s, using labels %s",
+                args.dataset,
+                model.labels,
+            )
+            model.confusion_tracks(dataset, args.confusion, threshold=args.threshold)
 
 
 if __name__ == "__main__":
