@@ -1,8 +1,9 @@
 from struct import unpack_from
-
 from datetime import timedelta
 from .rawframe import RawFrame, get_uint32, get_uint16, get_uint64
 from piclassifier.telemetry import Telemetry
+
+import struct
 
 
 class Lepton3(RawFrame):
@@ -26,9 +27,7 @@ class Lepton3(RawFrame):
         offset += 8 + 6
         frame_counter = get_uint32(raw_bytes, offset)
         offset += 4
-        frame_mean = get_uint16(raw_bytes, offset)
-        fpa_temp_counts = get_uint16(raw_bytes, offset + 2)
-        fpa_temp = get_uint16(raw_bytes, offset + 4)
+
         frame_mean, fpa_temp_counts, fpa_temp = unpack_from(
             ">HHH", raw_bytes, offset=offset
         )
@@ -54,3 +53,43 @@ class Lepton3(RawFrame):
         t.ffc_imminent = ffc_imminent
         t.ffc_status = ffc_status
         return t
+
+    # not used for anything at the moment,  has not been tested
+    def raw_telemetry(self):
+        telemetry_data = b""
+        telemetry_data += pack_uint16(self.telemetry.telemetry_revision)
+        telemetry_data += pack_uint32(self.telemetry.timeon.milliseconds)
+        status_bits = self.telemetry.status_bits << 4
+        telemetry_data += pack_uint32(status_bits)
+
+        telemetry_data += pack_uint64(self.telemetry.software_revision)
+
+        telemetry_data += pack_uint32(self.telemetry.frame_counter)
+
+        telemetry_data += pack_uint16(self.telemetry.frame_mean)
+        telemetry_data += pack_uint16(self.telemetry.fpa_temp_counts)
+        telemetry_data += pack_uint16(self.telemetry.fpa_temp * 100 + 27315)
+
+        telemetry_data += pack_uint16(self.telemetry.fpa_temp_last_ffc * 100 + 27315)
+        telemetry_data += pack_uint32(self.telemetry.last_ffc_time.milliseconds)
+        remaining = self.get_telemetry_size() - len(telemetry_data)
+        telemetry_data += bytearray(remaining)
+
+        return telemetry_data
+
+    def raw_data(self):
+        telemetry_bytes = self.raw_telemetry
+        frame_bytes = self.pix.tobytes()
+        return telemetry_bytes + frame_bytes
+
+
+def pack_uint16(data):
+    return struct.pack(">H", data)
+
+
+def pack_uint64(data):
+    return struct.pack(">L", data)
+
+
+def pack_uint32(data):
+    return struct.pack(">L", data)
