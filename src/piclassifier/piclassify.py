@@ -285,7 +285,7 @@ def preview_socket(headers, frame_queue):
             except:
                 pass
             # could not connect wait a few seconds
-            time.sleep(3)
+            time.sleep(2)
 
 
 def parse_cptv(file, config, thermal_config_file, preview_type, fps):
@@ -356,8 +356,7 @@ def parse_cptv(file, config, thermal_config_file, preview_type, fps):
             time.sleep(1.0 / fps)
     pi_classifier.disconnected()
     frame_queue.put(STOP_SIGNAL)
-    frame_queue.put(STOP_SIGNAL)
-    preview_process.join(5)
+    preview_process.join(7)
     if preview_process.is_alive():
         logging.info("Killing preview process")
         try:
