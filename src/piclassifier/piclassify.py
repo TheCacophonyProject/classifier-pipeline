@@ -277,6 +277,7 @@ def preview_socket(headers, frame_queue):
             try:
                 # empty the queue
                 items = frame_queue.qsize()
+                items = max(items, 1)
                 for _ in range(items):
                     item = frame_queue.get(0)
                     if isinstance(item, str):
