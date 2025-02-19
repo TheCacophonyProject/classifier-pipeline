@@ -279,9 +279,7 @@ def preview_socket(headers, frame_queue):
                 items = frame_queue.qsize()
                 items = max(items, 1)
                 for _ in range(items):
-                    print("Trying to get one item")
-                    item = frame_queue.get(0)
-                    print("Item is ", item)
+                    item = frame_queue.get(100)
                     if isinstance(item, str):
                         if item == STOP_SIGNAL:
                             return
