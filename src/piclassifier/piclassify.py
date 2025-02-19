@@ -255,24 +255,33 @@ def preview_socket(headers, frame_queue):
         try:
             # connect to management socket
             frameSocket = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+            logging.info("trying connect")
             frameSocket.connect("/var/spool/managementd")
-            print("Connected to management interface")
+            logging.info("Connected to management interface")
             frameSocket.send(header_bytes)
             telemetry_bytes = bytearray(640)
             # if we need this can add the correct info
             while True:
                 frame = frame_queue.get()
+                if isinstance(frame,str):
+                    if frame == STOP_SIGNAL:
+                        return
                 if frame is None:
-                    print("Disconnected")
+                    logging.info("Disconnected")
                     break
                 frame_bytes = frame.pix.byteswap().tobytes()
                 frame_bytes = telemetry_bytes + frame_bytes
                 frameSocket.send(frame_bytes)
         except:
-            # empty the queue
+            logging.error("Failed to connect to /var/spool/managementd",exc_info=True)
             try:
-                for queue in frame_queue.get(1):
-                    continue
+                # empty the queue
+                items = frame_queue.qsize()
+                for _ in range(items):
+                    item = frame_queue.get(0)
+                    if isinstance(item,str):
+                        if item == STOP_SIGNAL:
+                            return
             except:
                 pass
             # could not connect wait a few seconds
@@ -346,8 +355,15 @@ def parse_cptv(file, config, thermal_config_file, preview_type, fps):
         if fps is not None:
             time.sleep(1.0 / fps)
     pi_classifier.disconnected()
-    preview_process.terminate()
-
+    frame_queue.put(STOP_SIGNAL)
+    frame_queue.put(STOP_SIGNAL)
+    preview_process.join(5)
+    if preview_process.is_alive():
+        logging.info("Killing preview process")
+        try:
+            preview_process.kill()
+        except:
+            pass
 
 def get_processor(process_queue, config, thermal_config, headers):
     p_processor = multiprocessing.Process(
