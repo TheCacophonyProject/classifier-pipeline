@@ -263,7 +263,7 @@ def preview_socket(headers, frame_queue):
             # if we need this can add the correct info
             while True:
                 frame = frame_queue.get()
-                if isinstance(frame,str):
+                if isinstance(frame, str):
                     if frame == STOP_SIGNAL:
                         return
                 if frame is None:
@@ -273,13 +273,13 @@ def preview_socket(headers, frame_queue):
                 frame_bytes = telemetry_bytes + frame_bytes
                 frameSocket.send(frame_bytes)
         except:
-            logging.error("Failed to connect to /var/spool/managementd",exc_info=True)
+            logging.error("Failed to connect to /var/spool/managementd", exc_info=True)
             try:
                 # empty the queue
                 items = frame_queue.qsize()
                 for _ in range(items):
                     item = frame_queue.get(0)
-                    if isinstance(item,str):
+                    if isinstance(item, str):
                         if item == STOP_SIGNAL:
                             return
             except:
@@ -364,6 +364,7 @@ def parse_cptv(file, config, thermal_config_file, preview_type, fps):
             preview_process.kill()
         except:
             pass
+
 
 def get_processor(process_queue, config, thermal_config, headers):
     p_processor = multiprocessing.Process(
