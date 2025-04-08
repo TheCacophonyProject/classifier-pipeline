@@ -66,6 +66,7 @@ def main(cmd_args=None):
     parser.add_argument(
         "-t",
         "--track",
+        action="store_true",
         help="Run tracking on the file before extracting",
     )
 
@@ -120,6 +121,7 @@ def main(cmd_args=None):
         args.source,
         cache=args.cache,
         reuse_frames=args.reuse_prediction_frames,
+        track=args.track,
     )
 
 

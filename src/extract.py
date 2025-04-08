@@ -86,7 +86,7 @@ def main(cmd_args=None):
     if args.meta_to_stdout:
         config.classify.meta_to_stdout = True
     extractor = TrackExtractor(config, cache_to_disk=args.cache, retrack=args.retrack)
-    extractor.extract(args.source,to_stdout = to_stdout)
+    extractor.extract(args.source, to_stdout=to_stdout)
 
 
 if __name__ == "__main__":

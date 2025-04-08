@@ -16,6 +16,7 @@ from ml_tools.previewer import Previewer
 from ml_tools.interpreter import get_interpreter
 from track.trackextractor import extract_file
 
+
 class ClipClassifier:
     """Classifies tracks within CPTV files."""
 
@@ -80,21 +81,25 @@ class ClipClassifier:
         else:
             return None
 
-    def process(self, source, cache=None, reuse_frames=None):
+    def process(self, source, cache=None, reuse_frames=None, track=False):
         # IF passed a dir extract all cptv files, if a cptv just extract this cptv file
         if not os.path.exists(source):
             logging.error("Could not find file or directory %s", source)
             return
         if os.path.isfile(source):
-            self.process_file(source, cache=cache, reuse_frames=reuse_frames)
+            self.process_file(
+                source, cache=cache, reuse_frames=reuse_frames, track=track
+            )
             return
         for folder_path, _, files in os.walk(source):
             for name in files:
                 if os.path.splitext(name)[1] in [".mp4", ".cptv", ".avi"]:
                     full_path = os.path.join(folder_path, name)
-                    self.process_file(full_path, cache=cache, reuse_frames=reuse_frames)
+                    self.process_file(
+                        full_path, cache=cache, reuse_frames=reuse_frames, track=track
+                    )
 
-    def process_file(self, filename, cache=None, reuse_frames=None, track = False):
+    def process_file(self, filename, cache=None, reuse_frames=None, track=False):
         """
         Process a file extracting tracks and identifying them.
         :param filename: filename to process
@@ -107,7 +112,9 @@ class ClipClassifier:
 
         if track:
             logging.info("Doing tracking")
-            clip,track_extractor = extract_file(filename,to_stdout = False)
+            clip, track_extractor = extract_file(
+                filename, self.config, cache_to_disk, to_stdout=False
+            )
         elif ext == ".cptv":
             track_extractor = ClipTrackExtractor(
                 self.config.tracking,
@@ -124,8 +131,7 @@ class ClipClassifier:
         else:
             logging.error("Unknown extention %s", ext)
             return False
-    
-    
+
         base_filename = os.path.splitext(os.path.basename(filename))[0]
         meta_file = os.path.join(os.path.dirname(filename), base_filename + ".txt")
         if not os.path.exists(filename):
@@ -137,7 +143,6 @@ class ClipClassifier:
         meta_data = tools.load_clip_metadata(meta_file)
 
         logging.info("Processing file '{}'".format(filename))
-
 
         if not track:
             clip = Clip(track_extractor.config, filename)
