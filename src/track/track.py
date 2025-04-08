@@ -545,6 +545,8 @@ class Track:
             self.tag = tag["what"]
             self.confidence = tag["confidence"]
 
+        self.stats = TrackMovementStatistics(score=track_meta.get("tracking_score", 0))
+
         positions = track_meta.get("positions")
         if not positions:
             return False
