@@ -64,6 +64,12 @@ def main(cmd_args=None):
     )
 
     parser.add_argument(
+        "-t",
+        "--track",
+        help="Run tracking on the file before extracting",
+    )
+
+    parser.add_argument(
         "--reuse-prediction-frames",
         action="count",
         help="Use supplied prediction frames from metadata.txt",

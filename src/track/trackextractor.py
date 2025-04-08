@@ -62,7 +62,7 @@ class TrackExtractor:
         else:
             return None
 
-    def extract(self, base):
+    def extract(self, base,to_stdout = False):
         # IF passed a dir extract all cptv files, if a cptv just extract this cptv file
         base = Path(base)
         if not base.exists():
@@ -70,7 +70,7 @@ class TrackExtractor:
             return
         if base.is_file():
             init_worker(self.config, self.cache_to_disk)
-            extract_file(base, self.retrack)
+            extract_file(base, self.retrack,to_stdout)
             return
         data = []
         for folder_path, _, files in os.walk(base):
@@ -79,7 +79,7 @@ class TrackExtractor:
                     full_path = os.path.join(folder_path, name)
                     data.append(full_path, self.retrack)
         with Pool(
-            self.worker_threads, init_worker, (self.config, self.cache_to_disk)
+            self.worker_threads, init_worker, (self.config, self.cache_to_disk,to_stdout)
         ) as pool:
             pool.map(extract_file, data)
 
@@ -99,7 +99,7 @@ def init_worker(c, cache):
     cache_to_disk = cache
 
 
-def extract_file(filename, retrack=False):
+def extract_file(filename, retrack=False, to_stdout = False):
     """
     Process a file extracting tracks and identifying them.
     :param filename: filename to process
@@ -110,7 +110,7 @@ def extract_file(filename, retrack=False):
     global cache_to_disk
     if not filename.is_file():
         raise Exception("File {} not found.".format(filename))
-    logging.info("Processing file '{}'".format(filename))
+    logging.info("Tracking %s",filename)
     previewer = Previewer.create_if_required(config, config.classify.preview)
     extension = filename.suffix
     if extension == ".cptv":
@@ -118,11 +118,7 @@ def extract_file(filename, retrack=False):
             config.tracking,
             config.use_opt_flow,
             cache_to_disk,
-            high_quality_optical_flow=config.tracking[
-                "thermal"
-            ].high_quality_optical_flow,
             verbose=config.verbose,
-            keep_frames=True,
         )
         logging.info("Using cptv extractor")
 
@@ -142,12 +138,14 @@ def extract_file(filename, retrack=False):
         clip.frames_per_second = 9
     else:
         clip.frames_per_second = 10
+    existing_metadata = None
+    if filename.with_suffix(".txt").exists():
+        existing_metadata =tools.load_clip_metadata(filename.with_suffix(".txt"))
 
     if retrack:
         logging.info("Retracking")
-        metadata = tools.load_clip_metadata(filename.with_suffix(".txt"))
-        clip.load_metadata(metadata)
-    start = time.time()
+        clip.load_metadata(existing_metadata)
+
     success = track_extractor.parse_clip(clip)
 
     # clip, success, tracking_time = extract_tracks(filename, config, cache_to_disk)
@@ -166,13 +164,13 @@ def extract_file(filename, retrack=False):
         previewer.export_clip_preview(mpeg_filename, clip)
     logging.info("saving meta data %s", meta_filename)
 
-    save_metadata(filename, meta_filename, clip, track_extractor, config)
+    save_metadata(existing_metadata,filename, meta_filename, clip, track_extractor,to_stdout)
     if cache_to_disk:
         clip.frame_buffer.remove_cache()
 
+    return clip,track_extractor
 
-def save_metadata(filename, meta_filename, clip, track_extractor, config):
-    # record results in text file.
+def save_metadata(existing_metadata,filename, meta_filename, clip, track_extractor,to_stdout = False):
     metadata = clip.get_metadata()
     for i, track in enumerate(clip.tracks):
         best_thumb, best_score = get_thumbnail_info(clip, track)
@@ -195,7 +193,14 @@ def save_metadata(filename, meta_filename, clip, track_extractor, config):
     metadata["algorithm"] = {}
     metadata["algorithm"]["tracker_version"] = track_extractor.tracker_version
     metadata["algorithm"]["tracker_config"] = track_extractor.config.as_dict()
-    if config.classify.meta_to_stdout:
+
+    if existing_metadata is not None:
+        del existing_metadata["tracks"]
+        del existing_metadata["Tracks"]
+
+        existing_metadata.update(metadata)
+        metadata = existing_metadata
+    if to_stdout:
         print(json.dumps(metadata, cls=tools.CustomJSONEncoder))
     else:
         with open(meta_filename, "w") as f:
