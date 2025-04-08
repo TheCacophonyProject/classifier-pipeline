@@ -82,6 +82,9 @@ class ClipClassifier:
 
     def process(self, source, cache=None, reuse_frames=None):
         # IF passed a dir extract all cptv files, if a cptv just extract this cptv file
+        if not os.path.exists(source):
+            logging.error("Could not find file or directory %s", source)
+            return
         if os.path.isfile(source):
             self.process_file(source, cache=cache, reuse_frames=reuse_frames)
             return

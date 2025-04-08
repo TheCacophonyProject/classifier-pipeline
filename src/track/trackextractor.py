@@ -66,6 +66,7 @@ class TrackExtractor:
         # IF passed a dir extract all cptv files, if a cptv just extract this cptv file
         base = Path(base)
         if not base.exists():
+            logging.error("Could not find file or directory %s", base)
             return
         if base.is_file():
             init_worker(self.config, self.cache_to_disk)
