@@ -43,7 +43,7 @@ jobs:
         run: |
           sudo mkdir /var/spool/cptv
           sudo chmod -R 777 /var/spool/cptv
-          wget -O thermal-model.tar https://github.com/TheCacophonyProject/AI-Model/releases/download/v0.5/inc3-19012023-tflite.tar
+          wget -O thermal-model.tar https://github.com/TheCacophonyProject/AI-Model/releases/download/pi-v0.6/inc3-tflite-15122023.tar
           mkdir thermal-model
           tar xzvf thermal-model.tar -C thermal-model --strip-components=1
           pip install tflite-runtime==2.14.0
