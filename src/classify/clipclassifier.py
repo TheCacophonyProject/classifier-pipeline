@@ -122,7 +122,7 @@ class ClipClassifier:
                 cache_to_disk,
                 do_tracking=track,
                 calculate_filtered=True,
-                verbose=self.config.verbose
+                verbose=self.config.verbose,
             )
             logging.info("Using clip extractor")
 
