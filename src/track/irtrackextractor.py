@@ -108,15 +108,14 @@ class IRTrackExtractor(ClipTracker):
     # RIGHT_BOTTOM = Line(-5 / 12, 421.7)
 
     @property
-    def tracker_version(self):
-        return IRTrackExtractor.VERSION
-        #  GPuntil api takes a string
-        # return f"IRTrackExtractor-{IRTrackExtractor.VERSION}"
-
-    @property
     def type(self):
         return IRTrackExtractor.TYPE
 
+
+    @property
+    def tracker_version(self):
+        return self.version
+    
     @property
     def tracking_time(self):
         return self._tracking_time
@@ -135,6 +134,7 @@ class IRTrackExtractor(ClipTracker):
         trap_size="L",
         tracking_alg="mog2",
         check_trapped=False,
+        from_pi=False,
     ):
         super().__init__(
             config,
@@ -145,6 +145,12 @@ class IRTrackExtractor(ClipTracker):
             do_tracking=do_tracking,
             scale=scale,
         )
+
+        if from_pi:
+            self.version = f"PI-IR-{IRTrackExtractor.VERSION}"
+        else:
+            self.version = f"IR-{IRTrackExtractor.VERSION}"
+
         self.check_trapped = check_trapped
         self.tracking_alg = tracking_alg
         self.on_trapped = on_trapped

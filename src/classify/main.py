@@ -69,6 +69,11 @@ def main(cmd_args=None):
         action="store_true",
         help="Run tracking on the file before extracting",
     )
+    parser.add_argument(
+        "--calculate-thumbnails",
+        action="store_true",
+        help="Calculate thumbnails",
+    )
 
     parser.add_argument(
         "--reuse-prediction-frames",
@@ -122,6 +127,7 @@ def main(cmd_args=None):
         cache=args.cache,
         reuse_frames=args.reuse_prediction_frames,
         track=args.track,
+        calculate_thumbnails=args.calculate_thumbnails,
     )
 
 

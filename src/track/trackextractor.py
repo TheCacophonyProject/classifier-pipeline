@@ -18,7 +18,7 @@ from ml_tools import tools
 from ml_tools.previewer import Previewer
 from track.track import Track
 
-from classify.thumbnail import get_thumbnail_info, thumbnail_debug, best_trackless_thumb
+from classify.thumbnail import get_thumbnail_info, best_trackless_thumb
 
 
 class TrackExtractor:
