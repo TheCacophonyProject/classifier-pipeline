@@ -21,9 +21,11 @@ class ClipTracker(ABC):
         verbose=False,
         do_tracking=True,
         scale=None,
+        calculate_thumbnail_info=False,
     ):
         config = config.get(self.type)
         self.scale = scale
+        self.calculate_thumbnail_info = calculate_thumbnail_info
         # if scale:
         # config.rescale(scale)
         self.do_tracking = do_tracking

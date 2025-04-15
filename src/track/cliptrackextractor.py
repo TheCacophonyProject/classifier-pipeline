@@ -38,9 +38,7 @@ class ClipTrackExtractor(ClipTracker):
 
     @property
     def tracker_version(self):
-        return ClipTrackExtractor.VERSION
-        # until api takes a string
-        # return f"ClipTrackExtractor-{ClipTrackExtractor.VERSION}"
+        return self.version
 
     @property
     def type(self):
@@ -58,6 +56,8 @@ class ClipTrackExtractor(ClipTracker):
         do_tracking=True,
         update_background=True,
         calculate_filtered=False,
+        calculate_thumbnail_info=False,
+        from_pi=False,
     ):
         super().__init__(
             config,
@@ -66,7 +66,14 @@ class ClipTrackExtractor(ClipTracker):
             calc_stats=calc_stats,
             verbose=verbose,
             do_tracking=do_tracking,
+            calculate_thumbnail_info=calculate_thumbnail_info,
         )
+
+        if from_pi:
+            self.version = f"PI-{ClipTrackExtractor.VERSION}"
+        else:
+            self.version = ClipTrackExtractor.VERSION
+
         self.use_opt_flow = use_opt_flow
         self.high_quality_optical_flow = high_quality_optical_flow
         self.background_alg = None
@@ -204,9 +211,9 @@ class ClipTrackExtractor(ClipTracker):
         clip.ffc_affected = ffc_affected
         mask = None
         filtered = None
-        if self.do_tracking or self.calculate_filtered:
+        if self.do_tracking or self.calculate_filtered or self.calculate_thumbnail_info:
             filtered = np.float32(frame.pix) - self.background_alg.background
-        if self.do_tracking:
+        if self.do_tracking or self.calculate_thumbnail_info:
             obj_filtered, threshold = self._get_filtered_frame(
                 clip, thermal, denoise=self.config.denoise
             )

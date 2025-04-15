@@ -15,6 +15,7 @@ from track.irtrackextractor import IRTrackExtractor
 from ml_tools.previewer import Previewer
 from ml_tools.interpreter import get_interpreter
 from track.trackextractor import extract_file
+from classify.thumbnail import get_thumbnail_info, best_trackless_thumb
 
 
 class ClipClassifier:
@@ -81,14 +82,25 @@ class ClipClassifier:
         else:
             return None
 
-    def process(self, source, cache=None, reuse_frames=None, track=False):
+    def process(
+        self,
+        source,
+        cache=None,
+        reuse_frames=None,
+        track=False,
+        calculate_thumbnails=False,
+    ):
         # IF passed a dir extract all cptv files, if a cptv just extract this cptv file
         if not os.path.exists(source):
             logging.error("Could not find file or directory %s", source)
             return
         if os.path.isfile(source):
             self.process_file(
-                source, cache=cache, reuse_frames=reuse_frames, track=track
+                source,
+                cache=cache,
+                reuse_frames=reuse_frames,
+                track=track,
+                calculate_thumbnails=calculate_thumbnails,
             )
             return
         for folder_path, _, files in os.walk(source):
@@ -96,10 +108,21 @@ class ClipClassifier:
                 if os.path.splitext(name)[1] in [".mp4", ".cptv", ".avi"]:
                     full_path = os.path.join(folder_path, name)
                     self.process_file(
-                        full_path, cache=cache, reuse_frames=reuse_frames, track=track
+                        full_path,
+                        cache=cache,
+                        reuse_frames=reuse_frames,
+                        track=track,
+                        calculate_thumbnails=calculate_thumbnails,
                     )
 
-    def process_file(self, filename, cache=None, reuse_frames=None, track=False):
+    def process_file(
+        self,
+        filename,
+        cache=None,
+        reuse_frames=None,
+        track=False,
+        calculate_thumbnails=False,
+    ):
         """
         Process a file extracting tracks and identifying them.
         :param filename: filename to process
@@ -123,6 +146,7 @@ class ClipClassifier:
                 do_tracking=track,
                 calculate_filtered=True,
                 verbose=self.config.verbose,
+                calculate_thumbnail_info=calculate_thumbnails,
             )
             logging.info("Using clip extractor")
 
@@ -189,6 +213,7 @@ class ClipClassifier:
             clip,
             predictions_per_model,
             models,
+            calculate_thumbnails=calculate_thumbnails,
         )
         if cache_to_disk:
             clip.frame_buffer.remove_cache()
@@ -252,6 +277,7 @@ class ClipClassifier:
         clip,
         predictions_per_model,
         models,
+        calculate_thumbnails=False,
     ):
         tracks = meta_data.get("tracks")
         for track in clip.tracks:
@@ -270,6 +296,23 @@ class ClipClassifier:
                 prediction_meta["model_id"] = model_id
                 prediction_info.append(prediction_meta)
             meta_track["predictions"] = prediction_info
+
+            if calculate_thumbnails:
+                best_thumb, best_score = get_thumbnail_info(clip, track)
+                if best_thumb is None:
+                    meta_track["thumbnail"] = None
+                else:
+                    thumbnail_info = {
+                        "region": best_thumb.region,
+                        "contours": best_thumb.contours,
+                        "median_diff": best_thumb.median_diff,
+                        "score": round(best_score),
+                    }
+                    meta_track["thumbnail"] = thumbnail_info
+        if calculate_thumbnails and len(clip.tracks) == 0:
+            # if no tracks choose a clip thumb
+            region = best_trackless_thumb(clip)
+            meta_data["thumbnail_region"] = region
 
         model_dictionaries = []
         for model in models:
