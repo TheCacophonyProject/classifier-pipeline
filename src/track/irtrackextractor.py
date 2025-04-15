@@ -111,11 +111,10 @@ class IRTrackExtractor(ClipTracker):
     def type(self):
         return IRTrackExtractor.TYPE
 
-
     @property
     def tracker_version(self):
         return self.version
-    
+
     @property
     def tracking_time(self):
         return self._tracking_time
