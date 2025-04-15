@@ -79,7 +79,7 @@ class ClipTrackExtractor(ClipTracker):
         self.background_alg = None
         self.update_background = update_background
         self.calculate_filtered = calculate_filtered
-
+        self.weighting_percent = 1
         # self.cache_to_disk = cache_to_disk
         # self.max_tracks = config.max_tracks
         # # frame_padding < 3 causes problems when we get small areas...
@@ -126,9 +126,9 @@ class ClipTrackExtractor(ClipTracker):
 
         clip.set_video_stats(video_start_time)
         if camera_model == "lepton3.5":
-            weight_add = 1
+            weight_add = 1 / self.weighting_percent
         else:
-            weight_add = 0.1
+            weight_add = 0.1 / self.weighting_percent
 
         frame = reader.next_frame()
         clip.update_background(frame.pix)

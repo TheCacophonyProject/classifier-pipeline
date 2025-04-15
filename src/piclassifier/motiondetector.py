@@ -175,7 +175,6 @@ class WeightedBackground:
 
     def process_frame(self, frame):
         frame = np.int32(self.crop_rectangle.subimage(frame))
-
         if self._background is None:
             res_y, res_x = frame.shape
             self._background = np.empty(
