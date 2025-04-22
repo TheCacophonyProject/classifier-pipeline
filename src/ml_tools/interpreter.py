@@ -18,7 +18,7 @@ class Interpreter(ABC):
         filename = filename.with_suffix(".json")
         logging.info("Loading metadata from %s", filename)
         metadata = json.load(open(filename, "r"))
-        self.version = metadata.get("version", None)
+        self.version = metadata.get("version", 0.0)
         self.labels = metadata["labels"]
         self.params = HyperParams()
         self.params.update(metadata.get("hyperparams", {}))
