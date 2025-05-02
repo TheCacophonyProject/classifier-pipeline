@@ -22,6 +22,7 @@ class Recorder(ABC):
         on_recording_stopping=None,
         file_suffix=None,
     ):
+
         self.file_suffix = file_suffix
         self.file_extention = file_extention
         self.name = name
@@ -41,7 +42,7 @@ class Recorder(ABC):
         self.recording = False
         self.frames = 0
         self.headers = headers
-        self.min_disk_space = thermal_config.recorder.min_disk_space
+        self.min_disk_space_mb = thermal_config.recorder.min_disk_space_mb
         self.min_frames = thermal_config.recorder.min_secs * headers.fps
         self.max_frames = thermal_config.recorder.max_secs * headers.fps
         self.min_recording = self.preview_secs * headers.fps + self.min_frames
@@ -74,16 +75,16 @@ class Recorder(ABC):
         self.rec_time += time.time() - start
 
     def can_record(self, frame_time):
-        stat = shutil.disk_usage(self.output_dir)
-        free = stat[2] * 0.000001
-        if free < self.min_disk_space:
+        _, _, free = shutil.disk_usage(self.output_dir)
+        free = free * 0.000001
+        if free <= self.min_disk_space_mb:
             logging.warn(
                 "%s cannot record as only have %s MB and need %s MB",
                 self.name,
                 free,
-                self.min_disk_space,
+                self.min_disk_space_mb,
             )
-        return free > self.min_disk_space
+        return free > self.min_disk_space_mb
 
     def force_stop(self):
         if not self.recording:
@@ -163,9 +164,6 @@ class Recorder(ABC):
             logging.warn("%s Already recording, stop recording first", self.name)
             return False
 
-        if not self.can_record(frame_time):
-            # logging.warn("%s Cannot record", self.name)
-            return False
         self.frames = 0
 
         self.filename = self.new_temp_name(frame_time)

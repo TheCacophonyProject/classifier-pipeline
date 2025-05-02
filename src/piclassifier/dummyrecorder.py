@@ -33,6 +33,8 @@ class DummyRecorder(Recorder):
     ):
         if self.recording:
             return False
+        if not self.can_record(frame_time):
+            return False
         self.recording = True
         self.frames = 0
         for f in preview_frames:
