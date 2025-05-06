@@ -223,9 +223,10 @@ class Interpreter(ABC):
                     if thermal_max_diff is None or new_max > thermal_max_diff:
                         thermal_max_diff = new_max
                 if self.params.diff_norm:
-                    diff_frame = region.subimage(f.thermal) - region.subimage(
-                        clip.background
-                    )
+                    diff_frame = region.subimage(f.filtered)
+                    # region.subimage(f.thermal) - region.subimage(
+                    # clip.background
+                    # )
 
                     new_max = np.amax(diff_frame)
                     new_min = np.amin(diff_frame)
@@ -276,6 +277,7 @@ class Interpreter(ABC):
                 region,
                 clip.background,
                 clip.crop_rectangle,
+                calculate_filtered=False,
                 filtered_norm_limits=filtered_norm_limits,
                 thermal_norm_limits=thermal_norm_limits,
             )
@@ -357,9 +359,10 @@ class Interpreter(ABC):
                     if thermal_max_diff is None or new_max > thermal_max_diff:
                         thermal_max_diff = new_max
                 if self.params.diff_norm:
-                    diff_frame = region.subimage(f.thermal) - region.subimage(
-                        clip.background
-                    )
+                    diff_frame = region.subimage(f.filtered)
+                    # - region.subimage(
+                    #     clip.background
+                    # )
                     new_max = np.amax(diff_frame)
                     new_min = np.amin(diff_frame)
                     if min_diff is None or new_min < min_diff:
@@ -394,6 +397,7 @@ class Interpreter(ABC):
                 region,
                 clip.background,
                 clip.crop_rectangle,
+                calculate_filtered=False,
                 filtered_norm_limits=filtered_norm_limits,
                 thermal_norm_limits=thermal_norm_limits,
             )

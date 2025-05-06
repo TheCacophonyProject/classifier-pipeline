@@ -272,7 +272,7 @@ def get_data(clip_samples, extra_args):
             logging.debug("Saving %s samples %s", track_id, len(samples))
             used_frames = []
 
-            features = forest_features(
+            features, _, _ = forest_features(
                 track_frames,
                 background,
                 frame_temp_median,
@@ -295,7 +295,7 @@ def get_data(clip_samples, extra_args):
 
                 by_frame_number[f.frame_number] = (f, frame_temp_median[f.frame_number])
                 f.float_arrays()
-                diff_frame = f.thermal - f.region.subimage(background)
+                diff_frame = f.filtered
                 new_max = np.amax(diff_frame)
                 new_min = np.amin(diff_frame)
                 if min_diff is None or new_min < min_diff:
@@ -324,9 +324,9 @@ def get_data(clip_samples, extra_args):
                     # no need to do work twice
                     if frame_number not in used_frames:
                         used_frames.append(frame_number)
-                        frame.filtered = frame.thermal - frame.region.subimage(
-                            background
-                        )
+                        # frame.filtered = frame.thermal - frame.region.subimage(
+                        #     background
+                        # )
                         frame.resize_with_aspect(
                             (32, 32), crop_rectangle, keep_edge=True
                         )
