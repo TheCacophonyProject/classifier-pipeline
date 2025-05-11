@@ -194,6 +194,7 @@ class WeightedBackground:
             frame,
         )
         # update weighting
+        # weights could be adjusts to less while recording
         self.background_weight = np.where(
             edgeless_back < frame - self.background_weight,
             self.background_weight + self.weight_add,
