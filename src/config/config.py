@@ -48,6 +48,7 @@ class Config(DefaultConfig):
             filename = find_config()
         if filename is None:
             return Config.get_defaults()
+        logging.info("Loading config from %s", filename)
         with open(filename) as stream:
             return cls.load_from_stream(stream)
 

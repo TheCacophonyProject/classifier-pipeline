@@ -138,6 +138,7 @@ class PiClassifier(Processor):
                     on_trapped=on_track_trapped,
                     update_background=False,
                     trap_size=thermal_config.device_setup.trap_size,
+                    from_pi=True,
                 )
             self.tracking_config = self.config.tracking.get(IRTrackExtractor.TYPE)
 
@@ -179,6 +180,8 @@ class PiClassifier(Processor):
                     self.config.classify.cache_to_disk,
                     keep_frames=False,
                     calc_stats=False,
+                    update_background=False,
+                    from_pi=True,
                 )
             self.tracking_config = self.config.tracking.get("thermal")
 
@@ -424,6 +427,7 @@ class PiClassifier(Processor):
                 scale=self.track_extractor.scale,
                 frames_per_classify=self.frames_per_classify,
                 num_predictions=1,
+                calculate_filtered=True,
             )
             if prediction is None:
                 track_prediction.last_frame_classified = self.clip.current_frame
@@ -547,7 +551,6 @@ class PiClassifier(Processor):
                 )
                 if self.recording and not self.use_low_power_mode:
                     set_recording_state(True)
-
         if (
             not self.recorder.recording
             and self.motion_detector.movement_detected
@@ -793,8 +796,8 @@ def on_recording_stopping(filename):
             predictions_per_model = {predictions.model.id: predictions}
         meta_data = clip.get_metadata(predictions_per_model)
         meta_data["algorithm"] = {}
-        meta_data["algorithm"]["tracker_version"] = track_extractor.VERSION
-
+        meta_data["algorithm"]["tracker_version"] = f"PI-{track_extractor.VERSION}"
+        meta_data["metadata_source"] = "PI"
         if predictions is not None:
             meta_data["models"] = [predictions.model.as_dict()]
             meta_data["algorithm"]["model_name"] = predictions.model.name

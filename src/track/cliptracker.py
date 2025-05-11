@@ -21,9 +21,11 @@ class ClipTracker(ABC):
         verbose=False,
         do_tracking=True,
         scale=None,
+        calculate_thumbnail_info=False,
     ):
         config = config.get(self.type)
         self.scale = scale
+        self.calculate_thumbnail_info = calculate_thumbnail_info
         # if scale:
         # config.rescale(scale)
         self.do_tracking = do_tracking
@@ -40,6 +42,7 @@ class ClipTracker(ABC):
         self.calc_stats = calc_stats
         self._tracking_time = None
         self.min_dimension = config.min_dimension
+        self.background_alg = None
         # if self.config.dilation_pixels > 0:
         #     size = self.config.dilation_pixels * 2 + 1
         #     self.dilate_kernel = np.ones((size, size), np.uint8)
@@ -66,7 +69,9 @@ class ClipTracker(ABC):
 
     @property
     @abstractmethod
-    def start_tracking(self, clip, preview_frames, track_frames=True):
+    def start_tracking(
+        self, clip, preview_frames, track_frames=True, background_alg=None
+    ):
         """start_tracking"""
         ...
 
@@ -82,7 +87,7 @@ class ClipTracker(ABC):
             for track in clip.active_tracks:
                 track.smooth(Rectangle(0, 0, clip.res_x, clip.res_y))
 
-    def _get_filtered_frame(self, clip, thermal):
+    def _get_filtered_frame(self, clip, thermal, sub_change=True, denoise=True):
         """
         Calculates filtered frame from thermal
         :param thermal: the thermal frame
@@ -91,10 +96,21 @@ class ClipTracker(ABC):
         """
 
         filtered = np.float32(thermal.copy())
-        avg_change = int(round(np.average(thermal) - clip.stats.mean_background_value))
-        np.clip(filtered - clip.background - avg_change, 0, None, out=filtered)
+        if sub_change:
+            avg_change = int(
+                round(np.average(thermal) - self.background_alg.get_average())
+            )
+        else:
+            avg_change = 0
+
+        np.clip(
+            filtered - self.background_alg.background - avg_change,
+            0,
+            None,
+            out=filtered,
+        )
         filtered, stats = normalize(filtered, new_max=255)
-        if self.config.denoise:
+        if denoise:
             filtered = cv2.fastNlMeansDenoising(np.uint8(filtered), None)
         if stats[1] == stats[2]:
             mapped_thresh = clip.background_thresh
@@ -146,7 +162,7 @@ class ClipTracker(ABC):
             unmatched_regions.remove(region)
             if not self.config.filter_regions_pre_match:
                 if self.config.min_hist_diff is not None:
-                    background = clip.background
+                    background = self.background_alg.background
                     # if self.scale:
                     #     background = clip.rescaled_background(
                     #         (int(self.res_x), int(self.res_y))

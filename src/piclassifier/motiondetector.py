@@ -170,7 +170,11 @@ class WeightedBackground:
         )
         self.average = init_average
 
+    def get_average(self):
+        return self.average
+
     def process_frame(self, frame):
+        frame = np.int32(self.crop_rectangle.subimage(frame))
         if self._background is None:
             res_y, res_x = frame.shape
             self._background = np.empty(
@@ -182,7 +186,6 @@ class WeightedBackground:
             ] = frame
             self.average = np.average(frame)
             self.set_background_edges()
-
             return
         edgeless_back = self.crop_rectangle.subimage(self.background)
         new_background = np.where(
