@@ -24,6 +24,7 @@ from cptv_rs_python_bindings import CptvReader
 from ml_tools.rectangle import Rectangle
 from config.buildconfig import BuildConfig
 from datetime import timedelta
+from piclassifier.motiondetector import WeightedBackground
 
 special_datasets = [
     "tag_frames",
@@ -35,6 +36,9 @@ special_datasets = [
 
 FPS = 9
 
+RES_X = 160
+RES_Y = 120
+
 
 class RawDatabase:
     def __init__(self, database_filename):
@@ -44,7 +48,7 @@ class RawDatabase:
         self.background = None
         self.ffc_frames = None
         self.frames = None
-        self.crop_rectangle = Rectangle(1, 1, 160 - 2, 140 - 2)
+        self.crop_rectangle = Rectangle(1, 1, 160 - 2, 120 - 2)
 
     def frames_kept(self):
         return None
@@ -68,27 +72,57 @@ class RawDatabase:
         frame_i = 0
         reader = CptvReader(str(self.file))
         header = reader.get_header()
+
+        background_alg = None
+        back_processed = False
+        self.frames = []
         while True:
             frame = reader.next_frame()
             if frame is None:
                 break
+
+            if background_alg is None:
+                average = np.mean(frame.pix)
+                if average > 10000:
+                    model = "lepton3.5"
+                    weight_add = 1
+                else:
+                    model = "lepton3"
+                    weight_add = 0.1
+                background_alg = WeightedBackground(
+                    self.crop_rectangle.x,
+                    self.crop_rectangle,
+                    RES_X,
+                    RES_Y,
+                    weight_add,
+                    average,
+                )
+                background_alg.process_frame(frame.pix)
+                back_processed = True
+                background = background_alg.background
+
             if frame.background_frame:
-                background = frame.pix
+                # background = frame.pix
                 # bug in previous tracker version where background was first frame
                 if tracker_version >= 10:
                     continue
             ffc = is_affected_by_ffc(frame)
             if ffc:
                 ffc_frames.append(frame_i)
-            cptv_frames.append(frame.pix)
-            frame_i += 1
-        frames = np.uint16(cptv_frames)
-        if background is None:
-            background = np.mean(frames, axis=0)
+            self.frames.append(
+                Frame(
+                    frame.pix,
+                    np.float32(frame.pix) - background_alg.background,
+                    None,
+                    frame_i,
+                )
+            )
 
-        self.frames = []
-        for i, f in enumerate(frames):
-            self.frames.append(Frame(f, None, None, i))
+            if not back_processed:
+                background_alg.process_frame(frame.pix)
+
+            frame_i += 1
+
         self.ffc_frames = ffc_frames
         self.background = background
 

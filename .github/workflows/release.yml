@@ -137,6 +137,5 @@ jobs:
         with:
           file: ./docker/Dockerfile
           push: true
-          # tags: cacophonyproject/classifier:latest
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}

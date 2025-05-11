@@ -143,8 +143,9 @@ class ClipClassifier:
                 self.config.tracking,
                 self.config.use_opt_flow,
                 cache_to_disk,
-                verbose=self.config.verbose,
                 do_tracking=track,
+                calculate_filtered=True,
+                verbose=self.config.verbose,
                 calculate_thumbnail_info=calculate_thumbnails,
             )
             logging.info("Using clip extractor")
