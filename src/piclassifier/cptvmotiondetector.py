@@ -28,7 +28,8 @@ class CPTVMotionDetector(MotionDetector):
                 self.compare_gap,
                 np.int32,
             )
-
+        self.running_mean = None
+        self.running_mean_frames = 0
         self.thermal_window = SlidingWindow(self.num_preview_frames + 1, "O")
         self.processed = 0
         self.thermal_thresh = 0
@@ -130,16 +131,30 @@ class CPTVMotionDetector(MotionDetector):
         prev_ffc = self.ffc_affected
         self.ffc_affected = is_affected_by_ffc(cptv_frame)
         if self.can_record() or force_process:
+            oldest_thermal = self.thermal_window.oldest_nonffc
             self.thermal_window.add(cptv_frame, self.ffc_affected)
             cropped_frame = np.int32(self.crop_rectangle.subimage(cptv_frame.pix))
             if not self.ffc_affected:
                 # This may be too slow on pi will need to adjust
-                last_45 = [
-                    f.pix
-                    for f in self.thermal_window.get_frames()[:45]
-                    if not is_affected_by_ffc(f)
-                ]
-                self._background.process_frame(np.mean(last_45, axis=0))
+
+                if self.running_mean is None:
+                    frames = self.thermal_window.get_frames()[:45]
+                    last_45 = [f.pix for f in frames if not is_affected_by_ffc(f)]
+                    self.running_mean_frames = len(last_45)
+                    self.running_mean = np.mean(last_45, axis=0)
+                else:
+                    oldest_thermal = oldest_thermal.pix
+                    if self.running_mean_frames == 45:
+                        self.running_mean -= oldest_thermal / self.running_mean_frames
+                        self.running_mean += cptv_frame.pix / self.running_mean_frames
+                    else:
+                        self.running_mean = (
+                            self.running_mean * self.running_mean_frames
+                            + cptv_frame.pix
+                        )
+                        self.running_mean_frames += 1
+                        self.running_mean /= self.running_mean_frames
+                self._background.process_frame(self.running_mean)
             if self.ffc_affected or prev_ffc:
                 logging.debug("{} MotionDetector FFC".format(self.num_frames))
                 self.movement_detected = False
