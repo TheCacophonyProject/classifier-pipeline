@@ -28,18 +28,17 @@ from ml_tools.imageprocessing import detect_objects, normalize
 from track.cliptracker import ClipTracker
 import logging
 from cptv_rs_python_bindings import CptvReader
+from piclassifier.motiondetector import WeightedBackground
 
 
 class ClipTrackExtractor(ClipTracker):
     PREVIEW = "preview"
-    VERSION = 10
+    VERSION = 11
     TYPE = "thermal"
 
     @property
     def tracker_version(self):
-        return ClipTrackExtractor.VERSION
-        # until api takes a string
-        # return f"ClipTrackExtractor-{ClipTrackExtractor.VERSION}"
+        return self.version
 
     @property
     def type(self):
@@ -55,6 +54,10 @@ class ClipTrackExtractor(ClipTracker):
         high_quality_optical_flow=False,
         verbose=False,
         do_tracking=True,
+        update_background=True,
+        calculate_filtered=False,
+        calculate_thumbnail_info=False,
+        from_pi=False,
     ):
         super().__init__(
             config,
@@ -63,9 +66,20 @@ class ClipTrackExtractor(ClipTracker):
             calc_stats=calc_stats,
             verbose=verbose,
             do_tracking=do_tracking,
+            calculate_thumbnail_info=calculate_thumbnail_info,
         )
+
+        if from_pi:
+            self.version = f"PI-{ClipTrackExtractor.VERSION}"
+        else:
+            self.version = ClipTrackExtractor.VERSION
+
         self.use_opt_flow = use_opt_flow
         self.high_quality_optical_flow = high_quality_optical_flow
+        self.background_alg = None
+        self.update_background = update_background
+        self.calculate_filtered = calculate_filtered
+        self.weighting_percent = 1
         # self.cache_to_disk = cache_to_disk
         # self.max_tracks = config.max_tracks
         # # frame_padding < 3 causes problems when we get small areas...
@@ -109,8 +123,25 @@ class ClipTrackExtractor(ClipTracker):
                 clip.temp_thresh = temp_thresh
         video_start_time = datetime.fromtimestamp(header.timestamp / 1000000)
         video_start_time = video_start_time.astimezone(Clip.local_tz)
+
         clip.set_video_stats(video_start_time)
-        clip.calculate_background(reader)
+        if camera_model == "lepton3.5":
+            weight_add = 1 / self.weighting_percent
+        else:
+            weight_add = 0.1 / self.weighting_percent
+
+        frame = reader.next_frame()
+        clip.update_background(frame.pix)
+        clip._background_calculated()
+        self.background_alg = WeightedBackground(
+            clip.crop_rectangle.x,
+            clip.crop_rectangle,
+            clip.res_x,
+            clip.res_y,
+            weight_add,
+            clip.temp_thresh,
+        )
+        self.background_alg.process_frame(frame.pix)
 
     def parse_clip(self, clip, process_background=False):
         """
@@ -127,17 +158,27 @@ class ClipTrackExtractor(ClipTracker):
         return True
 
     def _track_clip(self, clip, process_background=False):
+
         if clip.background is None:
             logging.error("Clip has no background have you called init_clip first")
             raise Exception("Clip has no background have you called init_clip first")
         reader = CptvReader(str(clip.source_file))
         while True:
             frame = reader.next_frame()
+
             if frame is None:
                 break
+
             if not process_background and frame.background_frame:
                 continue
             self.process_frame(clip, frame)
+            if self.update_background or self.background_alg.background is None:
+                # use mean of last 45 frames to update background, this will help
+                # when pixels become cooler for a very short time i.e. tracked object is cooler than background
+                last_avg = np.mean(
+                    [f.thermal for f in clip.frame_buffer.get_last_x(x=45)], axis=0
+                )
+                self.background_alg.process_frame(last_avg)
 
         if not clip.from_metadata and self.do_tracking:
             self.apply_track_filtering(clip)
@@ -146,9 +187,12 @@ class ClipTrackExtractor(ClipTracker):
     def tracking_time(self):
         return self._tracking_time
 
-    def start_tracking(self, clip, frames, track_frames=True, **args):
+    def start_tracking(
+        self, clip, frames, track_frames=True, background_alg=None, **args
+    ):
         # no need to retrack all of preview
         do_tracking = self.do_tracking
+        self.background_alg = background_alg
         self.do_tracking = self.do_tracking and track_frames
         for frame in frames:
             self.process_frame(clip, frame)
@@ -167,13 +211,14 @@ class ClipTrackExtractor(ClipTracker):
         clip.ffc_affected = ffc_affected
         mask = None
         filtered = None
-        if self.do_tracking:
-            # pretty sure we dont need filtered unless we are tracking
-            # need to check for on PI
-            filtered, threshold = self._get_filtered_frame(clip, thermal)
-
+        if self.do_tracking or self.calculate_filtered or self.calculate_thumbnail_info:
+            filtered = np.float32(frame.pix) - self.background_alg.background
+        if self.do_tracking or self.calculate_thumbnail_info:
+            obj_filtered, threshold = self._get_filtered_frame(
+                clip, thermal, denoise=self.config.denoise
+            )
             _, mask, component_details, centroids = detect_objects(
-                filtered.copy(), otsus=False, threshold=threshold, kernel=(5, 5)
+                obj_filtered, otsus=False, threshold=threshold, kernel=(5, 5)
             )
         cur_frame = clip.add_frame(thermal, filtered, mask, ffc_affected)
         if not self.do_tracking:
@@ -201,20 +246,3 @@ class ClipTrackExtractor(ClipTracker):
                 )
                 self._apply_region_matchings(clip, regions)
             clip.region_history.append(regions)
-
-
-def get_background_filtered(background, thermal):
-    """
-    Calculates filtered frame from thermal
-    :param thermal: the thermal frame
-    :param background: (optional) used for background subtraction
-    :return: uint8 filtered frame and adjusted clip threshold for normalized frame
-    """
-
-    filtered = np.float32(thermal.copy())
-
-    avg_change = 0
-    filtered = filtered - background
-    filtered[filtered < 0] = 0
-    filtered, stats = normalize(filtered, new_max=255)
-    return filtered, 0
