@@ -19,8 +19,8 @@ from ml_tools.datasetstructures import Camera
 from ml_tools.tfwriter import create_tf_records
 from ml_tools.irwriter import save_data as save_ir_data
 from ml_tools.thermalwriter import save_data as save_thermal_data
-
-
+from ml_tools.tools import CustomJSONEncoder
+import attrs
 import numpy as np
 
 from pathlib import Path
@@ -57,7 +57,7 @@ def parse_args():
     )
     parser.add_argument("--split-file", help="Json file defining a split")
     parser.add_argument(
-        "--ext", default=".hdf5", help="Extension of files to load .mp4,.cptv,.hdf5"
+        "--ext", default=".cptv", help="Extension of files to load .mp4,.cptv,.hdf5"
     )
 
     parser.add_argument("-c", "--config-file", help="Path to config file to use")
@@ -571,7 +571,7 @@ def add_samples(
     dataset.add_samples(samples)
 
 
-def validate_datasets(datasets, test_bins, date):
+def validate_datasets(datasets, test_bins, after_date):
     # check that clips are only in one dataset
     # that only test set has clips after date
     # that test set is the only dataset with test_clips
@@ -580,7 +580,7 @@ def validate_datasets(datasets, test_bins, date):
     #     for track in dataset.tracks:
     #         assert track.start_time < date
 
-    for i, dataset in enumerate(datasets):
+    for i, dataset in enumerate(datasets[:2]):
         dont_check = set(
             [
                 sample.bin_id
@@ -608,6 +608,15 @@ def validate_datasets(datasets, test_bins, date):
                     if sample.label in split_by_clip
                 ]
             )
+            if other.name == "test" and after_date is not None:
+                dont_check_other = set(
+                    [
+                        sample.bin_id
+                        for sample in other.samples_by_id.values()
+                        if sample.rec_time > after_date
+                    ]
+                )
+                dont_check = dont_check | dont_check_other
             other_bins = set([sample.bin_id for sample in other.samples_by_id.values()])
             other_bins = other_bins - dont_check
             other_clips = set(
@@ -717,6 +726,42 @@ def dump_split_ids(datasets, out_file="datasplit.json"):
     return
 
 
+def rough_balance(datasets):
+    dev_threshold = 2000
+    logging.info("Roughly Balancing")
+    print_counts(*datasets)
+
+    for dataset in datasets:
+        lbl_counts = {}
+        counts = []
+        for label in dataset.labels:
+            label_count = len(dataset.samples_by_label.get(label, []))
+            lbl_counts[label] = label_count
+            counts.append(label_count)
+        counts.sort()
+        std_dev = np.std(counts)
+        logging.info("Counts are %s std dev %s", counts, std_dev)
+        if std_dev < dev_threshold or len(counts) <= 1:
+            logging.info("Not balancing")
+            continue
+        if len(counts) <= 2:
+            cap_at = counts[-2]
+        elif len(counts) < 7:
+            cap_at = counts[-2]
+        else:
+            cap_at = counts[-2]
+        logging.info("Capping dataset %s at %s", dataset.name, cap_at)
+        for lbl, count in lbl_counts.items():
+            if count <= cap_at:
+                continue
+            samples_to_remove = count - cap_at
+            by_labels = dataset.samples_by_label[lbl]
+            np.random.shuffle(by_labels)
+            for i in range(samples_to_remove):
+                dataset.remove_sample(by_labels[i])
+    print_counts(*datasets)
+
+
 def main():
     init_logging()
     args = parse_args()
@@ -782,6 +827,8 @@ def main():
         print("Splitting data set into train / validation")
 
         datasets = split_randomly(master_dataset, config, args.date, test_clips)
+
+        rough_balance(datasets)
         validate_datasets(datasets, test_clips, args.date)
         dump_split_ids(datasets, record_dir / "datasplit.json")
 
@@ -849,15 +896,20 @@ def main():
                     {
                         "segment_frame_spacing": master_dataset.segment_spacing * 9,
                         "segment_width": master_dataset.segment_length,
-                        "segment_type": master_dataset.segment_type,
+                        "segment_types": master_dataset.segment_types,
                         "segment_min_avg_mass": master_dataset.segment_min_avg_mass,
                         "max_segments": master_dataset.max_segments,
                         "dont_filter_segment": True,
                         "skip_ffc": True,
-                        "tag_precedence": config.load.tag_precedence,
+                        "tag_precedence": config.build.tag_precedence,
                         "min_mass": master_dataset.min_frame_mass,
+                        "thermal_diff_norm": config.build.thermal_diff_norm,
+                        "filter_by_lq": master_dataset.filter_by_lq,
+                        "max_frames": master_dataset.max_frames,
                     }
                 )
+            # dont filter the test set,
+            extra_args["filter_by_fp"] = dataset.name != "test"
             create_tf_records(
                 dataset,
                 dir,
@@ -879,10 +931,12 @@ def main():
         "type": config.train.type,
         "counts": dataset_counts,
         "by_label": False,
+        "config": attrs.asdict(config),
+        "segment_types": master_dataset.segment_types,
     }
 
     with open(meta_filename, "w") as f:
-        json.dump(meta_data, f, indent=4)
+        json.dump(meta_data, f, indent=4, cls=CustomJSONEncoder)
 
 
 if __name__ == "__main__":

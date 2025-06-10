@@ -23,6 +23,7 @@ Example usage:
       --output_file_prefix="${OUTPUT_DIR/FILE_PREFIX}" \
       --num_shards=100
 """
+import cv2
 from PIL import Image
 from pathlib import Path
 import time
@@ -54,7 +55,7 @@ crop_rectangle = Rectangle(0, 0, 640, 480)
 from functools import lru_cache
 
 
-def create_tf_example(sample, data, features, labels, num_frames):
+def create_tf_example(sample, data, features, labels, num_frames, country_code):
     """Converts image and annotations to a tf.Example proto.
 
     Args:
@@ -89,7 +90,7 @@ def create_tf_example(sample, data, features, labels, num_frames):
     average_dim = int(round(np.mean(average_dim) ** 0.5))
     thermals = list(data[0])
     filtereds = list(data[1])
-    image_id = sample.unique_track_id
+    image_id = sample.unique_id
     image_height, image_width = thermals[0].shape
     while len(thermals) < num_frames:
         # ensure 25 frames even if 0s
@@ -127,6 +128,9 @@ def create_tf_example(sample, data, features, labels, num_frames):
         "image/format": tfrecord_util.bytes_feature("jpeg".encode("utf8")),
         "image/class/text": tfrecord_util.bytes_feature(sample.label.encode("utf8")),
         "image/class/label": tfrecord_util.int64_feature(labels.index(sample.label)),
+        "image/country_id": tfrecord_util.bytes_feature(
+            str(country_code).encode("utf8")
+        ),
     }
 
     example = tf.train.Example(features=tf.train.Features(feature=feature_dict))
@@ -156,9 +160,11 @@ def save_data(samples, writer, labels, extra_args):
         return 0
     saved = 0
     try:
-        for data in sample_data:
+        country_code = sample_data[1]
+        sample_data = sample_data[0]
+        for sample, images, features in sample_data:
             tf_example = create_tf_example(
-                data[0], data[1], data[2], labels, extra_args["num_frames"]
+                sample, images, features, labels, extra_args["num_frames"], country_code
             )
             writer.write(tf_example.SerializeToString())
             saved += 1
@@ -175,13 +181,14 @@ def get_data(clip_samples, extra_args):
         return None
     data = []
     crop_rectangle = tools.Rectangle(2, 2, 160 - 2 * 2, 140 - 2 * 2)
+
     if clip_samples[0].source_file.suffix == ".hdf5":
         db = TrackDatabase(clip_samples[0].source_file)
     else:
         db = RawDatabase(clip_samples[0].source_file)
         db.load_frames()
-        # going to redo segments to get rid of ffc segments
 
+    # going to redo segments to get rid of ffc segments
     clip_id = clip_samples[0].clip_id
     try:
         background = db.get_clip_background()
@@ -216,14 +223,18 @@ def get_data(clip_samples, extra_args):
                 # GP All assumes we dont have a track over multiple bins (Whcih we probably never want)
                 if extra_args.get("use_segments", True):
                     track.get_segments(
-                        extra_args.get("segment_frame_spacing", 9),
-                        extra_args.get("segment_width", 25),
-                        extra_args.get("segment_type"),
-                        extra_args.get("segment_min_avg_mass"),
-                        max_segments=extra_args.get("max_segments"),
+                        segment_width=extra_args.get("segment_width", 25),
+                        segment_frame_spacing=extra_args.get(
+                            "segment_frame_spacing", 9
+                        ),
+                        segment_types=extra_args.get("segment_types"),
+                        segment_min_mass=extra_args.get("segment_min_avg_mass"),
                         dont_filter=extra_args.get("dont_filter_segment", False),
                         skip_ffc=extra_args.get("skip_ffc", True),
                         ffc_frames=clip_meta.ffc_frames,
+                        max_segments=len(samples),
+                        frame_min_mass=extra_args.get("min_mass"),
+                        filter_by_fp=extra_args.get("filter_by_fp"),
                     )
                 else:
                     filter_by_lq = extra_args.get("filter_by_lq", False)
@@ -239,6 +250,7 @@ def get_data(clip_samples, extra_args):
                             else track.upper_mass
                         ),
                         ffc_frames=clip_meta.ffc_frames,
+                        max_frames=extra_args.get("max_frames"),
                     )
                 samples = track.samples
                 frame_temp_median = {}
@@ -260,7 +272,7 @@ def get_data(clip_samples, extra_args):
             logging.debug("Saving %s samples %s", track_id, len(samples))
             used_frames = []
 
-            features = forest_features(
+            features, _, _ = forest_features(
                 track_frames,
                 background,
                 frame_temp_median,
@@ -270,21 +282,35 @@ def get_data(clip_samples, extra_args):
             )
 
             by_frame_number = {}
-            max_diff = 0
-            min_diff = 0
+            thermal_max_diff = None
+            thermal_min_diff = None
+            max_diff = None
+            min_diff = None
+
+            thermal_diff_norm = extra_args.get("thermal_diff_norm", False)
+
             for f in track_frames:
                 if f.region.blank or f.region.width <= 0 or f.region.height <= 0:
                     continue
 
                 by_frame_number[f.frame_number] = (f, frame_temp_median[f.frame_number])
                 f.float_arrays()
-                diff_frame = f.thermal - f.region.subimage(background)
+                diff_frame = f.filtered
                 new_max = np.amax(diff_frame)
                 new_min = np.amin(diff_frame)
-                if new_min < min_diff:
+                if min_diff is None or new_min < min_diff:
                     min_diff = new_min
-                if new_max > max_diff:
+                    # min_diff = max(0, new_min)
+                if max_diff is None or new_max > max_diff:
                     max_diff = new_max
+                if thermal_diff_norm:
+                    diff_frame = f.thermal - frame_temp_median[f.frame_number]
+                    new_max = np.amax(diff_frame)
+                    new_min = np.amin(diff_frame)
+                    if thermal_min_diff is None or new_min < thermal_min_diff:
+                        thermal_min_diff = new_min
+                    if thermal_max_diff is None or new_max > thermal_max_diff:
+                        thermal_max_diff = new_max
 
             # normalize by maximum difference between background and tracked region
             # probably only need to use difference on the frames used for this record
@@ -298,30 +324,44 @@ def get_data(clip_samples, extra_args):
                     # no need to do work twice
                     if frame_number not in used_frames:
                         used_frames.append(frame_number)
-                        frame.filtered = frame.thermal - frame.region.subimage(
-                            background
-                        )
+                        # frame.filtered = frame.thermal - frame.region.subimage(
+                        #     background
+                        # )
                         frame.resize_with_aspect(
                             (32, 32), crop_rectangle, keep_edge=True
                         )
-                        frame.thermal -= temp_median
-                        np.clip(frame.thermal, a_min=0, a_max=None, out=frame.thermal)
+                        if (
+                            np.amax(frame.thermal) > 50000
+                            or np.amin(frame.thermal) < 1000
+                        ):
+                            logging.error(
+                                "Strange values for %s max %s min %s",
+                                clip_id,
+                                np.amax(frame.thermal),
+                                np.amin(frame.thermal),
+                            )
+                            raise Exception(
+                                f"Strange values for {clip_id} - {track_id} #{frame_number}"
+                            )
 
+                        frame.thermal -= temp_median
+                        if not thermal_diff_norm:
+                            np.clip(
+                                frame.thermal, a_min=0, a_max=None, out=frame.thermal
+                            )
                         frame.thermal, stats = imageprocessing.normalize(
-                            frame.thermal, new_max=255
+                            frame.thermal,
+                            min=thermal_min_diff,
+                            max=thermal_max_diff,
+                            new_max=255,
                         )
                         if not stats[0]:
                             frame.thermal = np.zeros((frame.thermal.shape))
-                            # continue
-                        # f2 = frame.filtered.copy()
-                        # frame.filtered, stats = imageprocessing.normalize(
-                        #     frame.filtered, new_max=255
-                        # )
-                        # np.clip(frame.filtered, a_min=min_diff, a_max=None, out=frame.filtered)
 
                         frame.filtered, stats = imageprocessing.normalize(
                             frame.filtered, min=min_diff, max=max_diff, new_max=255
                         )
+                        np.clip(frame.filtered, a_min=0, a_max=None, out=frame.filtered)
 
                         if not stats[0]:
                             frame.filtered = np.zeros((frame.filtered.shape))
@@ -337,4 +377,4 @@ def get_data(clip_samples, extra_args):
             "Cant get Samples for %s", clip_samples[0].source_file, exc_info=True
         )
         return None
-    return data
+    return (data, clip_meta.country_code)

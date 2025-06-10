@@ -140,18 +140,18 @@ Multi frame models use:
 
 ### Releasing prcoessing changes
 
-1. Create a release on GitHub (https://github.com/TheCacophonyProject/classifier-pipeline)
+1. Create a release on GitHub (https://github.com/TheCacophonyProject/classifier-pipeline) This will make a release on docker hub https://hub.docker.com/repository/docker/cacophonyproject/classifier
 
 2. SSH into processing server
 
-3. By default processing will use the latest pipeline release. If you have changed these settings, make sure that in the  config file ( Default location is `/etc/cacophony/processing.yaml` ) the key `classify_image` references the release version you just made
+3. Upadte processing config file ( Default location is `/etc/cacophony/processing.yaml` ) the key `classify_image` should reference the release version you just made
 
 
 ### Release pi tracking code
 
 1. In order to built a release for pi update the version in `pyproject.toml`
 
-2. Then you need to merge the changes into the `pi-classifier` branch. This will automatically create a release here
+2. Then make a release that starts with `pi-v<version in pyrpoject.toml>`. This will automatically create a release here
 https://pypi.org/project/classifier-pipeline/
 
 3. This can then be installed on via pip

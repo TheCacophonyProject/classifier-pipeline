@@ -61,9 +61,10 @@ def preprocess_frame(
     crop_rectangle=None,
     calculate_filtered=True,
     filtered_norm_limits=None,
+    thermal_norm_limits=None,
 ):
     median = np.median(frame.thermal)
-    cropped_frame = frame.crop_by_region(region, only_thermal=True)
+    cropped_frame = frame.crop_by_region(region, only_thermal=calculate_filtered)
     cropped_frame.thermal = np.float32(cropped_frame.thermal)
     if calculate_filtered:
         if background is None:
@@ -79,8 +80,9 @@ def preprocess_frame(
         True,
     )
     cropped_frame.thermal -= median
-    np.clip(cropped_frame.thermal, 0, None, out=cropped_frame.thermal)
-    if calculate_filtered and filtered_norm_limits is not None:
+    if thermal_norm_limits is None:
+        np.clip(cropped_frame.thermal, 0, None, out=cropped_frame.thermal)
+    if filtered_norm_limits is not None:
         cropped_frame.filtered, stats = imageprocessing.normalize(
             cropped_frame.filtered,
             min=filtered_norm_limits[0],
@@ -88,8 +90,12 @@ def preprocess_frame(
             new_max=255,
         )
         if frame.thermal is not None:
+            thermal_min = None
+            thermal_max = None
+            if thermal_norm_limits is not None:
+                thermal_min, thermal_max = thermal_norm_limits
             cropped_frame.thermal, _ = imageprocessing.normalize(
-                cropped_frame.thermal, new_max=255
+                cropped_frame.thermal, min=thermal_min, max=thermal_max, new_max=255
             )
     else:
         cropped_frame.normalize()
@@ -115,6 +121,13 @@ def preprocess_single_frame(
         data,
         axis=2,
     )
+    # global index
+    # index += 1
+    # tools.saveclassify_image(
+    #     image,
+    #     f"samples/{save_info}-{index}",
+    # )
+
     if preprocess_fn:
         image = preprocess_fn(image)
     return image
@@ -134,6 +147,13 @@ def preprocess_movement(
 ):
     frame_types = {}
     data = []
+    frame_samples = list(np.arange(len(preprocess_frames)))
+    if len(preprocess_frames) < frames_per_row * 5:
+        extra_samples = np.random.choice(
+            frame_samples, frames_per_row * 5 - len(preprocess_frames)
+        )
+        frame_samples.extend(extra_samples)
+        frame_samples.sort()
     for channel in channels:
         if isinstance(channel, str):
             channel = TrackChannels[channel]
@@ -145,6 +165,7 @@ def preprocess_movement(
             channel_segment,
             frames_per_row,
             (frame_size, frame_size),
+            frame_samples,
             normalize=False,
         )
         # already done normalization
@@ -161,7 +182,7 @@ def preprocess_movement(
     # index += 1
     # tools.saveclassify_image(
     #     data,
-    #     f"samples/{index}",
+    #     f"samples/{sample}-{index}",
     # )
 
     if preprocess_fn:

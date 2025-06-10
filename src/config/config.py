@@ -5,7 +5,6 @@ import attr
 import logging
 import yaml
 
-from .loadconfig import LoadConfig
 from .trackingconfig import TrackingConfig
 from .trainconfig import TrainConfig
 from .classifyconfig import ClassifyConfig
@@ -31,7 +30,6 @@ class Config(DefaultConfig):
         "wallaby",
     ]
     base_folder = attr.ib()
-    load = attr.ib()
     labels = attr.ib()
     build = attr.ib()
     tracking = attr.ib()
@@ -50,6 +48,7 @@ class Config(DefaultConfig):
             filename = find_config()
         if filename is None:
             return Config.get_defaults()
+        logging.info("Loading config from %s", filename)
         with open(filename) as stream:
             return cls.load_from_stream(stream)
 
@@ -66,7 +65,6 @@ class Config(DefaultConfig):
         return cls(
             base_folder=Path(base_folder),
             tracking=TrackingConfig.load(raw["tracking"]),
-            load=LoadConfig.load(raw["load"]),
             train=TrainConfig.load(raw["train"], base_folder),
             classify=ClassifyConfig.load(raw["classify"]),
             reprocess=raw["reprocess"],
@@ -89,7 +87,6 @@ class Config(DefaultConfig):
             worker_threads=0,
             build=BuildConfig.get_defaults(),
             tracking=TrackingConfig.get_defaults(),
-            load=LoadConfig.get_defaults(),
             train=TrainConfig.get_defaults(),
             classify=ClassifyConfig.get_defaults(),
             debug=False,
@@ -101,7 +98,6 @@ class Config(DefaultConfig):
         self.build.validate()
         for tracker in self.tracking.values():
             tracker.validate()
-        self.load.validate()
         self.train.validate()
         self.classify.validate()
         return True

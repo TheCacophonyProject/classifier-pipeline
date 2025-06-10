@@ -139,7 +139,6 @@ class Clip:
     def _background_calculated(self):
         if self.type != "IR" or self.calc_stats:
             self.stats.mean_background_value = np.average(self._background)
-            self.set_temp_thresh()
         self.background_calculated = True
 
     def on_preview(self):
@@ -181,56 +180,56 @@ class Clip:
         the intital_diff frame - this is the maximum change between first average frame and all other average frames in the clip
         """
         frame = frame_reader.next_frame()
-        if frame.background_frame:
-            self.update_background(frame.pix)
-            self._background_calculated()
-            return
-
-        first_frame = frame
-        initial_frames = None
-        initial_diff = None
-        frames = [frame.pix]
-        while True:
-            frame = frame_reader.next_frame()
-            if frame is None:
-                break
-            ffc_affected = is_affected_by_ffc(frame)
-            if ffc_affected:
-                continue
-            frames.append(frame.pix)
-            if len(frames) == 9:
-                frame_average = np.average(frames, axis=0)
-                self.update_background(frame_average)
-                initial_diff = self.calculate_initial_diff(
-                    frame_average, initial_frames, initial_diff
-                )
-                if initial_frames is None:
-                    initial_frames = frame_average
-
-                frames = []
-        if len(frames) > 0:
-            frame_average = np.average(frames, axis=0)
-            if initial_frames is None:
-                initial_frames = frame_average
-            self.update_background(frame_average)
-            initial_diff = self.calculate_initial_diff(
-                frame_average, initial_frames, initial_diff
-            )
-
-            if initial_frames is None:
-                initial_frames = frame_average
-        frames = []
-        if initial_diff is None:
-            if first_frame is not None:
-                # fall back if whole clip is ffc
-                self.update_background(frame.pix)
-                self._background_calculated()
-            return
-        np.clip(initial_diff, 0, None, out=initial_diff)
-        initial_frames = self.remove_background_animals(initial_frames, initial_diff)
-
-        self.update_background(initial_frames)
+        self.update_background(frame.pix)
         self._background_calculated()
+        return
+
+        # i dont think this is nessesary
+        # first_frame = frame
+        # initial_frames = None
+        # initial_diff = None
+        # frames = [frame.pix]
+        # while True:
+        #     frame = frame_reader.next_frame()
+        #     if frame is None:
+        #         break
+        #     ffc_affected = is_affected_by_ffc(frame)
+        #     if ffc_affected:
+        #         continue
+        #     frames.append(frame.pix)
+        #     if len(frames) == 9:
+        #         frame_average = np.average(frames, axis=0)
+        #         self.update_background(frame_average)
+        #         initial_diff = self.calculate_initial_diff(
+        #             frame_average, initial_frames, initial_diff
+        #         )
+        #         if initial_frames is None:
+        #             initial_frames = frame_average
+
+        #         frames = []
+        # if len(frames) > 0:
+        #     frame_average = np.average(frames, axis=0)
+        #     if initial_frames is None:
+        #         initial_frames = frame_average
+        #     self.update_background(frame_average)
+        #     initial_diff = self.calculate_initial_diff(
+        #         frame_average, initial_frames, initial_diff
+        #     )
+
+        #     if initial_frames is None:
+        #         initial_frames = frame_average
+        # frames = []
+        # if initial_diff is None:
+        #     if first_frame is not None:
+        #         # fall back if whole clip is ffc
+        #         self.update_background(frame.pix)
+        #         self._background_calculated()
+        #     return
+        # np.clip(initial_diff, 0, None, out=initial_diff)
+        # initial_frames = self.remove_background_animals(initial_frames, initial_diff)
+
+        # self.update_background(initial_frames)
+        # self._background_calculated()
 
     def remove_background_animals(self, initial_frame, initial_diff):
         """
@@ -312,19 +311,19 @@ class Clip:
     def get_id(self):
         return str(self._id)
 
-    def set_temp_thresh(self):
-        if self.config.motion.dynamic_thresh:
-            min_temp = self.threshold_config.min_temp_thresh
-            max_temp = self.threshold_config.max_temp_thresh
-            if max_temp:
-                self.temp_thresh = min(max_temp, self.stats.mean_background_value)
-            else:
-                self.temp_thresh = self.stats.mean_background_value
-            if min_temp:
-                self.temp_thresh = max(min_temp, self.temp_thresh)
-            self.stats.temp_thresh = self.temp_thresh
-        else:
-            self.temp_thresh = self.config.motion.temp_thresh
+    # def set_temp_thresh(self):
+    #     if self.config.motion.dynamic_thresh:
+    #         min_temp = self.threshold_config.min_temp_thresh
+    #         max_temp = self.threshold_config.max_temp_thresh
+    #         if max_temp:
+    #             self.temp_thresh = min(max_temp, self.stats.mean_background_value)
+    #         else:
+    #             self.temp_thresh = self.stats.mean_background_value
+    #         if min_temp:
+    #             self.temp_thresh = max(min_temp, self.temp_thresh)
+    #         self.stats.temp_thresh = self.temp_thresh
+    #     else:
+    #         self.temp_thresh = self.config.motion.temp_thresh
 
     def set_video_stats(self, video_start_time):
         """
