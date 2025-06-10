@@ -86,7 +86,7 @@ jobs:
     name: Upload release to PyPI
     needs: 
       - pypi-build
-    if: github.ref == 'refs/heads/pi-classifier'
+    if: startsWith(github.ref, 'refs/tags/pi-v')
     runs-on: ubuntu-latest
     environment:
       name: release
