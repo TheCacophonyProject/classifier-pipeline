@@ -292,8 +292,6 @@ def preview_socket(headers, frame_queue):
 def parse_cptv(file, config, thermal_config_file, preview_type, fps):
     from cptv import Frame
     from cptv_rs_python_bindings import CptvReader
-    import yaml
-    from piclassifier.telemetry import Telemetry
 
     reader = CptvReader(str(file))
     header = reader.get_header()
