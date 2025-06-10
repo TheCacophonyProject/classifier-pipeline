@@ -135,8 +135,6 @@ class CPTVMotionDetector(MotionDetector):
             self.thermal_window.add(cptv_frame, self.ffc_affected)
             cropped_frame = np.int32(self.crop_rectangle.subimage(cptv_frame.pix))
             if not self.ffc_affected:
-                # This may be too slow on pi will need to adjust
-
                 if self.running_mean is None:
                     frames = self.thermal_window.get_frames()[:45]
                     last_45 = [f.pix for f in frames if not is_affected_by_ffc(f)]
