@@ -33,6 +33,9 @@ class CPTVRecorder(Recorder):
         )
 
     def new_recording(self, background_frame, preview_frames, temp_thresh, frame_time):
+        can_rec = self.can_record(frame_time)
+        if not can_rec:
+            return False
         self.rec_p = multiprocessing.Process(
             target=record,
             args=(

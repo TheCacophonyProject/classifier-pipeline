@@ -234,24 +234,89 @@ def parse_ir(file, config, thermal_config, preview_type, fps):
     pi_classifier.disconnected()
 
 
+def preview_socket(headers, frame_queue):
+    import yaml
+
+    # convert casing
+    python_dic = headers.__dict__
+    go_dic = {}
+    for k, v in python_dic.items():
+        new_key = f"{k[0].upper()}{k[1:]}"
+        try:
+            under_index = new_key.index("_")
+            new_key = f"{new_key[:under_index]}{new_key[under_index+1].upper()}{new_key[under_index+2:]}"
+        except:
+            pass
+        go_dic[new_key] = v
+    header_bytes = yaml.dump(go_dic).encode()
+    header_bytes += b"\nclear"
+
+    while True:
+        try:
+            # connect to management socket
+            frameSocket = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+            logging.info("trying connect")
+            frameSocket.connect("/var/spool/managementd")
+            logging.info("Connected to management interface")
+            frameSocket.send(header_bytes)
+            telemetry_bytes = bytearray(640)
+            # if we need this can add the correct info
+            while True:
+                frame = frame_queue.get()
+                if isinstance(frame, str):
+                    if frame == STOP_SIGNAL:
+                        return
+                if frame is None:
+                    logging.info("Disconnected")
+                    break
+                frame_bytes = frame.pix.byteswap().tobytes()
+                frame_bytes = telemetry_bytes + frame_bytes
+                frameSocket.send(frame_bytes)
+        except:
+            logging.error("Failed to connect to /var/spool/managementd", exc_info=True)
+            try:
+                # empty the queue
+                items = frame_queue.qsize()
+                items = max(items, 1)
+                for _ in range(items):
+                    item = frame_queue.get(100)
+                    if isinstance(item, str):
+                        if item == STOP_SIGNAL:
+                            return
+            except:
+                pass
+            # could not connect wait a few seconds
+            time.sleep(2)
+
+
 def parse_cptv(file, config, thermal_config_file, preview_type, fps):
     from cptv import Frame
     from cptv_rs_python_bindings import CptvReader
 
     reader = CptvReader(str(file))
     header = reader.get_header()
-
+    telemetry_size = 160 * 4
     headers = HeaderInfo(
         res_x=header.x_resolution,
         res_y=header.y_resolution,
         fps=9,
         brand=header.brand if header.brand else None,
         model=header.model if header.model else None,
-        frame_size=header.x_resolution * header.y_resolution * 2,
+        frame_size=header.x_resolution * header.y_resolution * 2 + telemetry_size,
         pixel_bits=16,
         serial="",
         firmware="",
     )
+
+    frame_queue = multiprocessing.Queue()
+    preview_process = multiprocessing.Process(
+        target=preview_socket,
+        args=(
+            headers,
+            frame_queue,
+        ),
+    )
+    preview_process.start()
     thermal_config = ThermalConfig.load_from_file(thermal_config_file, headers.model)
 
     pi_classifier = PiClassifier(
@@ -267,7 +332,6 @@ def parse_cptv(file, config, thermal_config_file, preview_type, fps):
 
         if frame is None:
             break
-
         # to get extra properties and allow pickling convert to cptv.Frame
         frame = Frame(
             frame.pix,
@@ -277,6 +341,9 @@ def parse_cptv(file, config, thermal_config_file, preview_type, fps):
             frame.last_ffc_temp_c,
             frame.background_frame,
         )
+
+        frame_queue.put(frame)
+
         frame.ffc_imminent = False
         frame.ffc_status = 0
 
@@ -287,6 +354,14 @@ def parse_cptv(file, config, thermal_config_file, preview_type, fps):
         if fps is not None:
             time.sleep(1.0 / fps)
     pi_classifier.disconnected()
+    frame_queue.put(STOP_SIGNAL)
+    preview_process.join(7)
+    if preview_process.is_alive():
+        logging.info("Killing preview process")
+        try:
+            preview_process.kill()
+        except:
+            pass
 
 
 def get_processor(process_queue, config, thermal_config, headers):
@@ -320,8 +395,7 @@ def handle_headers(connection):
             if left_over[:5] == b"clear":
                 left_over = left_over[5:]
             break
-    headers = headers.decode()
-    return HeaderInfo.parse_header(headers), left_over
+    return HeaderInfo.parse_header(headers.decode()), left_over
 
 
 def ir_camera(config, thermal_config, process_queue):
@@ -517,6 +591,7 @@ def handle_connection(connection, config, thermal_config_file, process_queue):
             except:
                 pass
             read += 1
+
             frame = raw_frame.parse(data)
             frame.received_at = time.time()
             cropped_frame = crop_rectangle.subimage(frame.pix)

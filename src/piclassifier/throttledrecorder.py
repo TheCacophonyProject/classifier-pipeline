@@ -141,10 +141,9 @@ class ThrottledRecorder(Recorder):
             self.throttle(frame_time)
             return False
         self.take_token(frame_time, len(preview_frames))
-        self.recorder.new_recording(
+        return self.recorder.new_recording(
             background_frame, preview_frames, temp_thresh, frame_time
         )
-        return True
 
     def can_record(self, frame_time):
         prev_throttled = self.throttling

@@ -140,15 +140,14 @@ class RecorderConfig:
     rec_window = attr.ib()
     output_dir = attr.ib()
     disable_recordings = attr.ib()
-    min_disk_space = attr.ib()
     constant_recorder = attr.ib()
     use_low_power_mode = attr.ib()
+    min_disk_space_mb = attr.ib()
 
     @classmethod
     def load(cls, recorder, window, location_config):
         return cls(
             constant_recorder=recorder.get("constant-recorder", False),
-            min_disk_space=recorder.get("min-disk-space-mb", 200),
             disable_recordings=recorder.get("disable-recordings", False),
             min_secs=recorder.get("min-secs", 5),
             max_secs=recorder.get("max-secs", 600),
@@ -159,6 +158,7 @@ class RecorderConfig:
                 *location_config.get_lat_long(use_default=True),
                 location_config.altitude,
             ),
+            min_disk_space_mb=recorder.get("min-disk-space-mb", 200),
             output_dir=recorder.get("output-dir", "/var/spool/cptv"),
             use_low_power_mode=recorder.get("use-low-power-mode", False),
         )
