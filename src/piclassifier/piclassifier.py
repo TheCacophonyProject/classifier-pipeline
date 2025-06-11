@@ -448,7 +448,7 @@ class PiClassifier(Processor):
                     track_prediction.normalize_score()
                     self.service.tracking(
                         self.clip._id,
-                        self.tracking,
+                        track,
                         track_prediction.class_best_score,
                         track.bounds_history[-1],
                         True,
@@ -459,7 +459,7 @@ class PiClassifier(Processor):
                     track_prediction.normalize_score()
                     self.service.tracking(
                         self.clip._id,
-                        self.tracking,
+                        track,
                         track_prediction.class_best_score,
                         track.bounds_history[-1],
                         False,
@@ -551,7 +551,7 @@ class PiClassifier(Processor):
                     track.thumb_info.region is not None
                     and track.thumb_info.region.frame_number >= regions[-1].frame_number
                 ):
-                    logging.info("Already up to date for track %s", track.get_id())
+                    # logging.info("Already up to date for track %s", track.get_id())
                     break
                 # if track.thumb_info is not None:
                 #     if best_contour is None or best_contour.points < track.thumb_info.points:

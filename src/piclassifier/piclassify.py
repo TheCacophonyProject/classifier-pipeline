@@ -255,7 +255,6 @@ def preview_socket(headers, frame_queue):
         try:
             # connect to management socket
             frameSocket = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-            logging.info("trying connect")
             frameSocket.connect("/var/spool/managementd")
             logging.info("Connected to management interface")
             frameSocket.send(header_bytes)
@@ -273,7 +272,7 @@ def preview_socket(headers, frame_queue):
                 frame_bytes = telemetry_bytes + frame_bytes
                 frameSocket.send(frame_bytes)
         except:
-            logging.error("Failed to connect to /var/spool/managementd", exc_info=True)
+            # logging.error("Failed to connect to /var/spool/managementd", exc_info=True)
             try:
                 # empty the queue
                 items = frame_queue.qsize()
