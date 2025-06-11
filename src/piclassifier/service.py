@@ -17,7 +17,9 @@ DBUS_PATH = "/org/cacophony/thermalrecorder"
 
 
 class Service(dbus.service.Object):
-    def __init__(self, dbus, get_frame, headers, take_snapshot_fn, labels, get_thumbnail):
+    def __init__(
+        self, dbus, get_frame, headers, take_snapshot_fn, labels, get_thumbnail
+    ):
         super().__init__(dbus, DBUS_PATH)
         self.get_frame = get_frame
         self.get_thumbnail = get_thumbnail
@@ -89,19 +91,20 @@ class Service(dbus.service.Object):
             json.dumps(track_meta, cls=CustomJSONEncoder),
         )
 
-
     @dbus.service.method(
         DBUS_NAME,
         out_signature="aaqiai",
-
     )
-    def GetThumbnail(self,track_id):
+    def GetThumbnail(self, clip_id, track_id):
         if track_id == 0:
             track_id = None
-        thumb,track_id,region =  self.get_thumbnail(track_id)
+        if clip_id == 0:
+            clip_id = None
+        thumb, track_id, region = self.get_thumbnail(clip_id, track_id)
         if thumb is None:
             raise Exception("No thumbnail")
-        return thumb,track_id, region.to_ltrb()
+        return thumb, track_id, region.to_ltrb()
+
     @dbus.service.method(
         DBUS_NAME,
     )
@@ -142,13 +145,13 @@ class Service(dbus.service.Object):
 
 
 class SnapshotService:
-    def __init__(self, get_frame, headers, take_snapshot_fn, labels,get_thumbnail):
+    def __init__(self, get_frame, headers, take_snapshot_fn, labels, get_thumbnail):
         DBusGMainLoop(set_as_default=True)
         dbus.mainloop.glib.threads_init()
         self.loop = GLib.MainLoop()
         self.t = threading.Thread(
             target=self.run_server,
-            args=(get_frame, headers, take_snapshot_fn, labels,get_thumbnail),
+            args=(get_frame, headers, take_snapshot_fn, labels, get_thumbnail),
         )
         self.t.start()
         self.service = None
@@ -156,21 +159,23 @@ class SnapshotService:
     def quit(self):
         self.loop.quit()
 
-    def run_server(self, get_frame, headers, take_snapshot_fn, labels,get_thumbnail):
+    def run_server(self, get_frame, headers, take_snapshot_fn, labels, get_thumbnail):
         session_bus = dbus.SystemBus(mainloop=DBusGMainLoop())
         name = dbus.service.BusName(DBUS_NAME, session_bus)
         self.service = Service(
-            session_bus, get_frame, headers, take_snapshot_fn, labels,get_thumbnail
+            session_bus, get_frame, headers, take_snapshot_fn, labels, get_thumbnail
         )
         self.loop.run()
 
-    def tracking(self,track, prediction, region, tracking, last_prediction_frame):
+    def tracking(
+        self, clip_id, track, prediction, region, tracking, last_prediction_frame
+    ):
         logging.debug(
             "Tracking?  %s region %s prediction %s track %s",
             tracking,
             region,
             prediction,
-            track.get_id()
+            track.get_id(),
         )
         if self.service is None:
             return
@@ -179,6 +184,7 @@ class SnapshotService:
             predictions = np.uint8(np.round(predictions * 100))
             best = np.argmax(predictions)
             self.service.Tracking(
+                clip_id,
                 track.get_id(),
                 predictions,
                 self.service.labels[best],
@@ -192,6 +198,7 @@ class SnapshotService:
             )
         else:
             self.service.Tracking(
+                clip_id,
                 track.get_id(),
                 [],
                 "",
