@@ -18,6 +18,8 @@ import numpy as np
 
 labels = []
 
+active_tracks = {}
+
 
 def catchall_tracking_signals_handler(
     clip_id,
@@ -32,21 +34,26 @@ def catchall_tracking_signals_handler(
     tracking,
     last_prediction_frame,
 ):
-    # print(
-    #     f"Received a tracking signal for clip {clip_id} track {track_id} and it says {what} {confidence}% at {region} tracking? {tracking} prediction {prediction} frame {frame} mass {mass} blank? {blank} last predicted frame {last_prediction_frame}"
-    # )
+    print(
+        f"Received a tracking signal for clip {clip_id} track {track_id} and it says {what} {confidence}% at {region} tracking? {tracking} prediction {prediction} frame {frame} mass {mass} blank? {blank} last predicted frame {last_prediction_frame}"
+    )
     index = 0
-    # for x in prediction:
-    #     print("For  ", labels[index], " have confidence ", int(x), "%")
-    #     index += 1
+    for x in prediction:
+        print("For  ", labels[index], " have confidence ", int(x), "%")
+        index += 1
 
     bus = dbus.SystemBus()
     dbus_object = bus.get_object(DBUS_NAME, DBUS_PATH)
     thumb, track_id, region = dbus_object.GetThumbnail(clip_id, track_id)
-    # if track_id ==2:
-    # return
-    print("Got thumb for track", clip_id, track_id)
-    return
+
+    if tracking:
+        if track_id not in active_tracks:
+            active_tracks[track_id] = True
+            print("Tracking", track_id)
+    else:
+        active_tracks[track_id] = False
+        print("Stopped tracking", track_id)
+
     thumb = np.uint16(thumb)
     thumb = normalize(thumb)
     cv2.imshow("t", thumb)

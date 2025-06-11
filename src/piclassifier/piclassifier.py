@@ -538,7 +538,7 @@ class PiClassifier(Processor):
                 tag = None
                 if predictions is not None:
                     pred = predictions.prediction_for(track.get_id())
-                    if pred is not None:
+                    if pred is not None and pred.max_score is not None:
                         confidence = round(100 * pred.max_score)
                         tag = pred.predicted_tag()
                 regions = track.bounds_history
