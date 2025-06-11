@@ -100,9 +100,11 @@ class Service(dbus.service.Object):
             track_id = None
         if clip_id == 0:
             clip_id = None
-        thumb, track_id, region = self.get_thumbnail(clip_id, track_id)
-        if thumb is None:
+        result = self.get_thumbnail(clip_id, track_id)
+        if result is None:
             raise Exception("No thumbnail")
+        thumb, track_id, region = result
+
         return thumb, track_id, region.to_ltrb()
 
     @dbus.service.method(
