@@ -98,7 +98,7 @@ class PiClassifier(Processor):
         self.identify_time = 0
         self.total_time = 0
         self.rec_time = 0
-        self.tracking = None
+        self.monitored_tracks = {}
         self.recording = False
         self.tracking_events = thermal_config.motion.tracking_events
         self.bluetooth_beacons = thermal_config.motion.bluetooth_beacons
@@ -444,7 +444,7 @@ class PiClassifier(Processor):
             if self.tracking_events:
                 if track_prediction.predicted_tag() != "false-positive":
                     track_prediction.tracking = True
-                    self.tracking = track
+                    self.monitored_tracks[track.get_id()] = track
                     track_prediction.normalize_score()
                     self.service.tracking(
                         self.clip._id,
@@ -465,7 +465,8 @@ class PiClassifier(Processor):
                         False,
                         track_prediction.last_frame_classified,
                     )
-                    self.tracking = None
+                    if track.get_id() in self.monitored_tracks:
+                        del self.monitored_tracks[track.get_id()]
 
             new_prediction = True
         if self.bluetooth_beacons:
@@ -519,85 +520,83 @@ class PiClassifier(Processor):
         elif self.clip is None:
             logging.info("Have no clip")
             return None
-        else:
-            if clip.frame_buffer.frames is None or len(clip.frame_buffer.frames) == 0:
-                logging.info("Have no frames")
-                return None
-            with clip.frame_buffer.frame_lock:
+        if clip.frame_buffer.frames is None or len(clip.frame_buffer.frames) == 0:
+            logging.info("Have no frames")
+            return None
+        with clip.frame_buffer.frame_lock:
 
-                tracks = clip.tracks
-                oldest_frame_num = clip.frame_buffer.frames[0].frame_number
-                best_contour = None
-                if track_id is not None:
-                    tracks = [track for track in tracks if track.get_id() == track_id]
-                    if len(tracks) == 0:
-                        logging.info("Couldn't find track %s", track.get_id())
-                        return None
-                for track in tracks:
-                    confidence = None
-                    tag = None
-                    if predictions is not None:
-                        pred = predictions.prediction_for(track.get_id())
-                        if pred is not None:
-                            confidence = round(100 * pred.max_score)
-                            tag = pred.predicted_tag()
-                    regions = track.bounds_history
-                    if track.thumb_info is None:
-                        track.thumb_info = ThumbInfo(track.get_id())
-                    track.thumb_info.predicted_confidence = confidence
-                    track.thumb_info.predicted_tag = tag
+            tracks = clip.tracks
+            oldest_frame_num = clip.frame_buffer.frames[0].frame_number
+            best_contour = None
+            if track_id is not None:
+                tracks = [track for track in tracks if track.get_id() == track_id]
+                if len(tracks) == 0:
+                    logging.info("Couldn't find track %s", track.get_id())
+                    return None
+            for track in tracks:
+                confidence = None
+                tag = None
+                if predictions is not None:
+                    pred = predictions.prediction_for(track.get_id())
+                    if pred is not None:
+                        confidence = round(100 * pred.max_score)
+                        tag = pred.predicted_tag()
+                regions = track.bounds_history
+                if track.thumb_info is None:
+                    track.thumb_info = ThumbInfo(track.get_id())
+                track.thumb_info.predicted_confidence = confidence
+                track.thumb_info.predicted_tag = tag
 
+                if (
+                    track.thumb_info.region is not None
+                    and track.thumb_info.region.frame_number >= regions[-1].frame_number
+                ):
+                    logging.info("Already up to date for track %s", track.get_id())
+                    break
+                # if track.thumb_info is not None:
+                #     if best_contour is None or best_contour.points < track.thumb_info.points:
+                #         best_contour = track.thumb_info
+
+                i = len(regions) - 1
+                first_loop = True
+                while i >= 0:
+                    region = regions[i]
                     if (
-                        track.thumb_info.region is not None
-                        and track.thumb_info.region.frame_number
-                        >= regions[-1].frame_number
+                        track.thumb_info.last_frame_check is not None
+                        and track.thumb_info.last_frame_check >= region.frame_number
                     ):
-                        logging.info("Already up to date for track %s", track.get_id())
                         break
-                    # if track.thumb_info is not None:
-                    #     if best_contour is None or best_contour.points < track.thumb_info.points:
-                    #         best_contour = track.thumb_info
+                    if region.frame_number >= oldest_frame_num:
+                        frame = clip.frame_buffer.frames[
+                            region.frame_number - oldest_frame_num
+                        ]
 
-                    i = len(regions) - 1
-                    first_loop = True
-                    while i >= 0:
-                        region = regions[i]
-                        if (
-                            track.thumb_info.last_frame_check is not None
-                            and track.thumb_info.last_frame_check >= region.frame_number
-                        ):
-                            break
-                        if region.frame_number >= oldest_frame_num:
-                            frame = clip.frame_buffer.frames[
-                                region.frame_number - oldest_frame_num
-                            ]
-
-                            if first_loop:
-                                track.thumb_info.last_frame_check = region.frame_number
-                            first_loop = False
-                            assert frame.frame_number == region.frame_number
-                            contour_image = (
-                                frame.filtered if frame.mask is None else frame.mask
-                            )
-                            contours, _ = cv2.findContours(
-                                np.uint8(region.subimage(contour_image)),
-                                cv2.RETR_EXTERNAL,
-                                # cv2.CHAIN_APPROX_SIMPLE,
-                                cv2.CHAIN_APPROX_TC89_L1,
-                            )
-                            if len(contours) > 0:
-                                if track.thumb_info.points < len(contours[0]):
-                                    track.thumb_info.points = len(contours[0])
-                                    track.thumb_info.region = region
-                                    track.thumb_info.thumb = None
-                        else:
-                            break
-                        i -= 1
-                    if (
-                        best_contour is None
-                        or track.thumb_info.score() > best_contour.score()
-                    ):
-                        best_contour = track.thumb_info
+                        if first_loop:
+                            track.thumb_info.last_frame_check = region.frame_number
+                        first_loop = False
+                        assert frame.frame_number == region.frame_number
+                        contour_image = (
+                            frame.filtered if frame.mask is None else frame.mask
+                        )
+                        contours, _ = cv2.findContours(
+                            np.uint8(region.subimage(contour_image)),
+                            cv2.RETR_EXTERNAL,
+                            # cv2.CHAIN_APPROX_SIMPLE,
+                            cv2.CHAIN_APPROX_TC89_L1,
+                        )
+                        if len(contours) > 0:
+                            if track.thumb_info.points < len(contours[0]):
+                                track.thumb_info.points = len(contours[0])
+                                track.thumb_info.region = region
+                                track.thumb_info.thumb = None
+                    else:
+                        break
+                    i -= 1
+                if (
+                    best_contour is None
+                    or track.thumb_info.score() > best_contour.score()
+                ):
+                    best_contour = track.thumb_info
 
             if track_id is not None:
                 track = tracks[0]
@@ -616,7 +615,7 @@ class PiClassifier(Processor):
                     track.thumb_info.thumb = np.uint16(thumb_thermal)
                     track.thumb_info.thumb_frame = thumb_frame
 
-            logging.info("Took %s to get thumbnail", time.time() - start)
+            # logging.info("Took %s to get thumbnail", time.time() - start)
             return best_contour.thumb, best_contour.track_id, best_contour.region
 
     def get_recent_frame(self, last_frame=None):
@@ -734,31 +733,33 @@ class PiClassifier(Processor):
                 self.get_thumbnail()
             self.tracking_time += time.time() - t_start
             s_r = time.time()
-            if self.tracking is not None:
-                tracking = self.tracking in self.clip.active_tracks
-                score = 0
-                prediction = ""
-                all_scores = None
-                last_prediction = 0
-                if self.classify:
-                    track_prediction = self.predictions.prediction_for(
-                        self.tracking.get_id()
-                    )
-                    all_scores = track_prediction.class_best_score
-                    last_prediction = track_prediction.last_frame_classified
-                self.service.tracking(
-                    self.clip._id,
-                    self.tracking,
-                    all_scores,
-                    self.tracking.bounds_history[-1],
-                    tracking,
-                    last_prediction,
-                )
-
-                if not tracking:
+            if len(self.monitored_tracks) > 0:
+                monitored_tracks = list(self.monitored_tracks.values())
+                for monitored_track in monitored_tracks:
+                    tracking = monitored_track in self.clip.active_tracks
+                    score = 0
+                    prediction = ""
+                    all_scores = None
+                    last_prediction = 0
                     if self.classify:
-                        track_prediction.tracking = False
-                    self.tracking = None
+                        track_prediction = self.predictions.prediction_for(
+                            monitored_track.get_id()
+                        )
+                        all_scores = track_prediction.class_best_score
+                        last_prediction = track_prediction.last_frame_classified
+                    self.service.tracking(
+                        self.clip._id,
+                        monitored_track,
+                        all_scores,
+                        monitored_track.bounds_history[-1],
+                        tracking,
+                        last_prediction,
+                    )
+
+                    if not tracking:
+                        del self.monitored_tracks[monitored_track.get_id()]
+                        if self.classify:
+                            track_prediction.tracking = False
 
             self.recorder.process_frame(
                 self.motion_detector.movement_detected, lepton_frame, received_at
@@ -783,7 +784,7 @@ class PiClassifier(Processor):
                             self.classified_consec = 0
                 else:
                     self.classified_consec = 0
-            elif self.tracking is None and self.tracking_events:
+            elif len(self.monitored_tracks) == 0 and self.tracking_events:
                 active_tracks = self.get_active_tracks()
 
                 active_tracks = [
@@ -807,7 +808,7 @@ class PiClassifier(Processor):
                         "tracking by biggest mass %s",
                         active_tracks[0],
                     )
-                    self.tracking = active_tracks[0]
+                    self.monitored_tracks[active_tracks[0].get_id()] = active_tracks[0]
 
         elif self.clip is not None:
             self.end_clip()
@@ -857,6 +858,7 @@ class PiClassifier(Processor):
 
     def end_clip(self):
         if self.clip:
+            global clip
             if self.preview_type:
                 self.create_mp4()
             logging.debug(
@@ -877,9 +879,8 @@ class PiClassifier(Processor):
             self.prev_clip = clip
             self.prev_clip.frame_buffer = None
             self.clip = None
-            self.tracking = None
-        global clip
-        clip = None
+            self.monitored_tracks = {}
+            clip = None
 
     @property
     def res_x(self):
