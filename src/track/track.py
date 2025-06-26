@@ -328,7 +328,7 @@ def get_max_size_change(track, region):
 
 class ThumbInfo:
     def __init__(self, track_id):
-        self.points = 0
+        self.points = -1
         self.region = None
         self.thumb = None
         self.thumb_frame = None

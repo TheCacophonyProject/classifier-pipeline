@@ -120,12 +120,12 @@ class Service(dbus.service.Object):
 
         return result
 
-    @dbus.service.method(DBUS_NAME, signature="as")
+    @dbus.service.method(DBUS_NAME, signature="a{ias}")
     def ClassificationLabels(self):
         logging.info("Getting labels %s", self.labels)
         return self.labels
 
-    @dbus.service.signal(DBUS_NAME, signature="iiaisiaiiibbi")
+    @dbus.service.signal(DBUS_NAME, signature="iiaisiaiiibbii")
     def Tracking(
         self,
         clip_id,
@@ -139,6 +139,7 @@ class Service(dbus.service.Object):
         blank,
         tracking,
         last_prediction_frame,
+        model_id,
     ):
         pass
 
@@ -171,7 +172,15 @@ class SnapshotService:
         self.loop.run()
 
     def tracking(
-        self, clip_id, track, prediction, region, tracking, last_prediction_frame
+        self,
+        clip_id,
+        track,
+        prediction,
+        region,
+        tracking,
+        last_prediction_frame,
+        labels,
+        model_id,
     ):
         logging.debug(
             "Tracking?  %s region %s prediction %s track %s",
@@ -190,7 +199,7 @@ class SnapshotService:
                 clip_id,
                 track.get_id(),
                 predictions,
-                self.service.labels[best],
+                labels[best],
                 predictions[best],
                 region.to_ltrb(),
                 region.frame_number,
@@ -198,6 +207,7 @@ class SnapshotService:
                 region.blank,
                 tracking,
                 last_prediction_frame,
+                model_id,
             )
         else:
             self.service.Tracking(
@@ -212,6 +222,7 @@ class SnapshotService:
                 region.blank,
                 tracking,
                 last_prediction_frame,
+                0,
             )
 
     def recording(self, is_recording):

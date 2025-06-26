@@ -6,6 +6,7 @@ import joblib
 from ml_tools.interpreter import Interpreter
 from classify.trackprediction import TrackPrediction
 import cv2
+import time
 
 FEAT_LABELS = [
     "sqrt_area",
@@ -45,6 +46,7 @@ FEAT_LABELS = [
     "avg_rel_speed_y",
     "hist_diff",
 ]
+
 # EXTRA_FEATURES = [
 #     "speed_distance_ratio",
 #     "speed_ratio",
@@ -119,6 +121,9 @@ class ForestModel(Interpreter):
         self.model = joblib.load(model_file)
         self.buffer_length = self.params.get("buffer_length", 1)
         self.features_used = self.params.get("features_used")
+        self.features = self.params.get("features")
+        self.mgrid = np.mgrid[:120, :160]
+        # sligtly faster to reuse this mgrd
 
     def classify_track(
         self, clip, track, last_x_frames=None, segment_frames=None, min_segments=None
@@ -132,7 +137,7 @@ class ForestModel(Interpreter):
         return track_prediction
 
     def shape(self):
-        return 1, (1, 188)
+        return 1, (1, len(self.features))
 
     def preprocess(self):
         return
@@ -141,22 +146,27 @@ class ForestModel(Interpreter):
         return self.model.predict_proba(x)
 
     def predict_track(self, clip, track, **args):
-        last_x_frames = args.get(
-            "last_x_frames",
+        predict_from_last = args.get(
+            "predict_from_last",
+        )
+        max_frames = args.get(
+            "max_frames",
         )
         scale = args.get("scale")
-        x, frames, masses = process_track(
+        result = process_track(
             clip,
             track,
-            last_x_frames,
+            self.mgrid,
+            predict_from_last=predict_from_last,
+            max_frames=max_frames,
             scale=scale,
             normalize=args.get("normalize", True),
             buf_len=self.buffer_length,
+            last_frame_predicted=args.get("last_frame_predicted"),
         )
-
-        if x is None:
-            logging.warning("Random forest could not classify track")
-            return None, None
+        if result is None:
+            return None
+        x, frames, masses = result
         if self.features_used is not None and len(self.features_used) > 0:
             f_mask = feature_mask(self.features_used)
             x = np.take(x, f_mask)
@@ -164,47 +174,84 @@ class ForestModel(Interpreter):
         # x = x[np.newaxis, :]
         predictions = self.model.predict_proba(x)
         # print("predictions", predictions.shape)
-        return predictions, frames, masses
+        return frames, predictions, masses
 
 
 def process_track(
-    clip, track, predict_from_last=None, buf_len=5, scale=None, normalize=True
+    clip,
+    track,
+    mgrid,
+    predict_from_last=None,
+    max_frames=None,
+    buf_len=5,
+    scale=None,
+    normalize=True,
+    last_frame_predicted=None,
 ):
     background = clip.background
     all_frames = None
     frame_temp_median = {}
+    available_frames = len(clip.frame_buffer)
     if predict_from_last is None:
         bounds = track.bounds_history
+        if last_frame_predicted is not None:
+            last_track_frame = bounds[-1].frame_number
+            bounds = bounds[-(last_track_frame - last_frame_predicted) :]
     else:
-        bounds = track.bounds_history[-predict_from_last:]
-        all_frames = clip.frame_buffer.get_last_x(len(bounds))
 
+        bounds = track.bounds_history[-min(available_frames, predict_from_last) :]
+        if last_frame_predicted is not None:
+            last_track_frame = bounds[-1].frame_number
+            bounds = bounds[-(last_track_frame - last_frame_predicted) :]
+    all_frames = clip.frame_buffer.get_last_x(len(bounds))
+
+    indices = [
+        i
+        for i, region in enumerate(bounds)
+        if not region.blank and region.width > 0 and region.height > 0
+    ]
+    if len(indices) == 0:
+        logging.info("No valid regions to predict on  track %s", track)
+        return None
     logging.debug(
         "taking %s from %s with scale %s", len(bounds), len(track.bounds_history), scale
     )
     frames = []
     # bounds = bounds[:50]
-    data_bounds = np.empty_like(bounds)
+    # np.empty_like(bounds)
+    # logging.info("Bunds shape is %s",data_bounds.shape,data_bounds.dtype)
     if clip.crop_rectangle is None:
         logging.warning("Clip has no crop rectangle")
-    for i, r in enumerate(bounds):
+
+    # iterator =enumerate(range(len(bounds)))
+    if max_frames is not None:
+        if len(indices) > max_frames:
+            indices = np.random.choice(indices, max_frames, replace=False)
+            indices.sort()
+    data_bounds = np.empty(len(indices), dtype="O")
+
+    iterator = enumerate(indices)
+
+    # for i, r in enumerate(bounds):
+    for i, frame_i in iterator:
+
         # if scale is not None and scale != 1:
         #     r = r.copy()
         #     r.rescale(1 / scale)
         #     data_bounds[i] = r
         # else:
-        data_bounds[i] = bounds[i].copy()
+        region = bounds[frame_i].copy()
+        data_bounds[i] = region
         if clip.crop_rectangle is not None:
-            data_bounds[i].crop(clip.crop_rectangle)
+            region.crop(clip.crop_rectangle)
 
         if all_frames is None:
-            frame = clip.get_frame(r.frame_number)
+            frame = clip.get_frame(region.frame_number)
         else:
-            frame = all_frames[i]
-        thermal = frame.thermal
+            frame = all_frames[frame_i]
         frames.append(frame)
-        frame_temp_median[r.frame_number] = np.median(frame.thermal)
-        assert frame.frame_number == r.frame_number
+        frame_temp_median[region.frame_number] = np.median(frame.thermal)
+        assert frame.frame_number == region.frame_number
     if scale is not None and scale != 1:
         resize = 1 / scale
         background = clip.rescaled_background(
@@ -212,15 +259,18 @@ def process_track(
         )
     else:
         background = clip.background
+    start = time.time()
     x, frames_used, masses = forest_features(
         frames,
         background,
         frame_temp_median,
         data_bounds,
+        mgrid,
         cropped=False,
         normalize=normalize,
         buf_len=buf_len,
     )
+    # logging.info("Feature time was %s",time.time()-start)
     return x, frames_used, masses
 
 
@@ -229,6 +279,7 @@ def forest_features(
     background,
     frame_temp_median,
     regions,
+    mgrid,
     buf_len=1,
     cropped=True,
     normalize=True,
@@ -245,7 +296,6 @@ def forest_features(
     back_med = np.median(background)
     if len(track_frames) < buf_len:
         return None, None, None
-
     for i, frame in enumerate(track_frames):
         region = regions[i]
         if region.blank or region.width <= 0 or region.height <= 0:
@@ -261,13 +311,13 @@ def forest_features(
         else:
             cropped_frame = frame.crop_by_region(region)
         thermal = cropped_frame.thermal
-        feature.calc_histogram(sub_back, thermal, normalize=normalize)
+        # feature.calc_histogram(sub_back, thermal, normalize=normalize)
 
         f_count += 1
 
         thermal = thermal + back_med - t_median
 
-        feature.calculate(thermal, cropped_frame.filtered, sub_back)
+        feature.calculate(thermal, cropped_frame.filtered, sub_back, mgrid)
         if buf_len > 1:
             count_back = min(buf_len, prev_count)
 
@@ -302,6 +352,7 @@ def forest_features(
                 # Aggregate
                 avg_features += features
     if f_count < buf_len:
+        logging.error("Count is less than buff len %s %s", f_count, buf_len)
         return None
     # Compute statistics for all tracks that have the min required duration
     if buf_len == 1:
@@ -461,7 +512,7 @@ class FrameFeatures:
         self.speed = np.zeros(buff_len)
         self.histogram_diff = 0
 
-    def calculate(self, thermal, filtered, sub_back):
+    def calculate(self, thermal, filtered, sub_back, mgrid):
         self.thermal_min = np.min(thermal)
         self.thermal_max = np.amax(thermal)
         self.thermal_std = np.std(thermal)
@@ -472,7 +523,7 @@ class FrameFeatures:
         self.filtered_std = np.std(filtered)
 
         # Calculate weighted centroid and second moments etc
-        cent, extent, theta = intensity_weighted_moments(filtered, self.region)
+        cent, extent, theta = intensity_weighted_moments(filtered, mgrid, self.region)
 
         self.cent = cent
         self.extent = extent
@@ -496,7 +547,7 @@ class FrameFeatures:
                 self.peak_snr,
                 self.mean_snr,
                 self.fill_factor,
-                self.histogram_diff,
+                # self.histogram_diff,
                 self.thermal_max,
                 self.thermal_min,
                 self.thermal_std,
@@ -647,16 +698,20 @@ class FrameFeatures:
 
 
 # Find centre of mass and size/orientation of the hot spot
-def intensity_weighted_moments(sub, region=None):
+def intensity_weighted_moments(sub, mgrid, region=None):
     tot = np.sum(sub)
     # print(tot, "using", region)
     if tot <= 0.0:
         # Zero image - replace with ones so calculations can continue
         sub = np.ones(sub.shape)
         tot = sub.size
+        # surely all zeros in this case
 
     # Calculate weighted centroid
-    Y, X = np.mgrid[0 : sub.shape[0], 0 : sub.shape[1]]
+    Y = mgrid[0][: sub.shape[0], : sub.shape[1]]
+    X = mgrid[1][: sub.shape[0], : sub.shape[1]]
+    # Y, X = np.mgrid[0 : sub.shape[0], 0 : sub.shape[1]]
+   
     cx = np.sum(sub * X) / tot
     cy = np.sum(sub * Y) / tot
     X = X - cx

@@ -95,10 +95,11 @@ class TrackPrediction:
             fp_index = labels.index("false-positive")
         except ValueError:
             fp_index = None
+
         self.track_id = track_id
         self.predictions = []
         self.fp_index = fp_index
-        self.class_best_score = None
+        self.class_best_score = np.zeros((len(labels)))
         self.start_frame = start_frame
 
         self.last_frame_classified = None
@@ -108,6 +109,7 @@ class TrackPrediction:
         self.classify_time = None
         self.tracking = False
         self.masses = []
+        self.normalized = False
 
     def cap_confidences(self, max_confidence):
         max_score = np.sum(self.class_best_score)
@@ -147,12 +149,24 @@ class TrackPrediction:
                 # possibility it doesn't sum to 1 i.e multi label model
                 self.class_best_score /= top_score
 
+    def normalized_best_score(self):
+        return self.class_best_score[self.best_label_index] / np.sum(
+            self.class_best_score
+        )
+
+    def get_normalized_score(self):
+        score = None
+        if self.class_best_score is not None:
+            score = self.class_best_score / np.sum(self.class_best_score)
+        return score
+
     def normalize_score(self):
         # normalize so it sums to 1
         if self.class_best_score is not None:
             self.class_best_score = self.class_best_score / np.sum(
                 self.class_best_score
             )
+            self.normalized = True
 
     def classified_frames(self, frame_numbers, predictions, mass):
         self.num_frames_classified += len(frame_numbers)
@@ -170,6 +184,8 @@ class TrackPrediction:
         else:
             self.predictions = [prediction]
 
+        if self.normalized:
+            logging.warning("Already normalized and still adding predicitions")
         if self.class_best_score is None:
             self.class_best_score = smoothed_prediction.copy()
         else:
@@ -193,6 +209,8 @@ class TrackPrediction:
         else:
             self.predictions = [prediction]
 
+        if self.normalized:
+            logging.warning("Already normalized and still adding predicitions")
         if self.class_best_score is None:
             self.class_best_score = smoothed_prediction
         else:
@@ -227,7 +245,7 @@ class TrackPrediction:
         return self.description()
 
     def get_classified_footer(self, frame_number=None):
-        if len(self.smoothed_predictions) == 0 or not self.keep_all:
+        if len(self.predictions) == 0 or not self.keep_all:
             return "no classification"
         score = self.score_at_time(frame_number) * 10
         label = self.labels[self.label_at_time(frame_number)]
@@ -240,7 +258,7 @@ class TrackPrediction:
         return footer
 
     def get_result(self):
-        if self.smoothed_predictions:
+        if len(self.predictions) > 0:
             return TrackResult(
                 self.labels[self.best_label_index],
                 self.max_score,
@@ -314,6 +332,7 @@ class TrackPrediction:
     @property
     def clarity(self):
         """The distance between our highest scoring class and second highest scoring class."""
+
         if self.class_best_score is None or len(self.class_best_score) < 2:
             return None
         return self.max_score - self.score(2)
@@ -350,12 +369,12 @@ class TrackPrediction:
             return None
         predictions = []
         class_best_score = None
-        for i, frames in enumerate(self.prediction_frames):
-            a_min = np.amin(frames)
-            a_max = np.amax(frames)
+        for pred in self.predictions:
+            a_min = np.amin(pred.frames)
+            a_max = np.amax(pred.frames)
 
             if a_min <= frame_number:
-                predictions.append(self.smoothed_predictions[i])
+                predictions.append(pred.smoothed_prediction)
 
         class_best_score = np.sum(predictions, axis=0)
         if len(predictions) == 0:
@@ -369,12 +388,13 @@ class TrackPrediction:
             return None
         predictions = []
         class_best_score = None
-        for i, frames in enumerate(self.prediction_frames):
-            a_min = np.amin(frames)
-            a_max = np.amax(frames)
+        for pred in self.predictions:
+
+            a_min = np.amin(pred.frames)
+            a_max = np.amax(pred.frames)
 
             if a_min <= frame_number:
-                predictions.append(self.smoothed_predictions[i])
+                predictions.append(pred.smoothed_prediction)
         class_best_score = np.sum(predictions, axis=0)
         if len(predictions) == 0:
             return 0

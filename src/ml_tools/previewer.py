@@ -249,7 +249,9 @@ class Previewer:
         # look for any tracks that occur on this frame
 
         for track in clip.tracks:
-            guesses = predictions.guesses_for(track.get_id())
+            guesses = []
+            for model_pred in predictions.values():
+                guesses.extend(model_pred.guesses_for(track.get_id()))
             track_description = "\n".join(guesses)
             track_description.strip()
             self.track_descs[track] = track_description
@@ -279,7 +281,9 @@ class Previewer:
                 region = track.bounds_history[frame_offset]
                 prediction = None
                 if track_predictions:
-                    prediction = track_predictions.prediction_for(track.get_id())
+                    # need to handle mulitple models better here
+                    model_pred = list(track_predictions.values())[1]
+                    prediction = model_pred.prediction_for(track.get_id())
                 add_track(
                     draw,
                     track,

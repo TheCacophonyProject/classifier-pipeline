@@ -26,15 +26,17 @@ class Processor(ABC):
     def __init__(
         self,
     ):
+        model_labels = {}
+        if self.classifier is not None:
+            model_labels[self.classifier.id] = self.classifier.labels
+        if self.fp_model is not None:
+            model_labels[self.fp_model.id] = self.fp_model.labels
+
         self.service = SnapshotService(
             self.get_recent_frame,
             self.headers,
             self.take_snapshot,
-            (
-                self.classifier.labels
-                if self.classifier is not None
-                else ["Not classifying"]
-            ),
+            model_labels,
             self.get_thumbnail,
         )
 

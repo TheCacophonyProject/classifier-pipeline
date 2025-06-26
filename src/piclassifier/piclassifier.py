@@ -24,6 +24,8 @@ STOP_SIGNAL = "stop"
 SKIP_SIGNAL = "skip"
 track_extractor = None
 clip = None
+fp_model = None
+classifier = None
 
 
 def run_classifier(
@@ -67,8 +69,16 @@ class PiClassifier(Processor):
     MAX_CONSEC = 1
     # after every MAX_CONSEC frames skip this many frames
     # this gives the cpu a break
-    SKIP_FRAMES = 30
+
+    # try classify a non fp track every X frames
+    SKIP_FRAMES = 25
+    # only do another full classification on the same track after this many frames
     PREDICT_EVERY = 40
+
+    # run fp model predictions every X frames
+    FP_MODEL_SKIP_FRAMES = 10
+    # only do another fp classification on the same track after this many frames
+    FP_PREDICT_EVERY = 30
 
     def __init__(
         self,
@@ -88,11 +98,12 @@ class PiClassifier(Processor):
         self.prev_clip = None
         self.enable_per_track_information = False
         self.rolling_track_classify = {}
-        self.skip_classifying = 0
+        self.next_classify_frame = 0
+        self.next_fp_classification_frame = 0
         self.classified_consec = 0
         self.classify = classify
         self.config = config
-        self.predictions = None
+        self.predictions = {}
         self.process_time = 0
         self.tracking_time = 0
         self.identify_time = 0
@@ -245,23 +256,23 @@ class PiClassifier(Processor):
             os.makedirs(self.meta_dir)
 
         self.max_keep_frames = 25
+        self.max_pred_frames = None
         if self.classify and self.do_tracking:
             from ml_tools.interpreter import get_interpreter
             from classify.trackprediction import Predictions
 
-            model = config.classify.models[0]
-            self.classifier = get_interpreter(model)
+            model = None
+            fp_config = None
+            for model_config in config.classify.models:
+                if model_config.type != "RandomForest":
+                    model = model_config
+                else:
+                    fp_config = model_config
 
-            if self.classifier.TYPE == "RandomForest":
-                self.predict_from_last = 5 * headers.fps
-                self.frames_per_classify = self.predict_from_last
-                PiClassifier.SKIP_FRAMES = 30
-                # probably could be even more
-
-            else:
-                # self.preprocess_fn = self.get_preprocess_fn()
-
-                self.predict_from_last = 1
+            if model is not None:
+                self.classifier = get_interpreter(model)
+                global classifier
+                classifier = self.classifier
                 self.frames_per_classify = (
                     self.classifier.params.square_width
                     * self.classifier.params.square_width
@@ -269,19 +280,40 @@ class PiClassifier(Processor):
                 if self.frames_per_classify > 1:
                     self.predict_from_last = self.frames_per_classify * 2
 
-            self.max_keep_frames = (
-                self.frames_per_classify * 2 if not preview_type else None
-            )
-            self.predictions = Predictions(self.classifier.labels, model)
-            self.num_labels = len(self.classifier.labels)
-            logging.info("Labels are %s ", self.classifier.labels)
-            global predictions
-            predictions = self.predictions
-            try:
-                self.fp_index = self.classifier.labels.index("false-positive")
-            except ValueError:
-                self.fp_index = None
-            self.startup_classifier()
+                self.max_keep_frames = (
+                    self.frames_per_classify * 2 if not preview_type else None
+                )
+                self.predictions[model.id] = Predictions(self.classifier.labels, model)
+                self.num_labels = len(self.classifier.labels)
+                logging.info("Labels are %s ", self.classifier.labels)
+                global predictions
+                predictions = self.predictions
+                try:
+                    self.fp_index = self.classifier.labels.index("false-positive")
+                except ValueError:
+                    self.fp_index = None
+                self.startup_classifier()
+            FP_MODEL = True
+            if FP_MODEL:
+
+                if fp_config is None:
+                    logging.info("Found no fp model")
+                else:
+                    self.fp_model = get_interpreter(fp_config)
+                    global fp_model
+                    fp_model = self.fp_model
+                    self.predictions[self.fp_model.id] = Predictions(
+                        self.fp_model.labels, fp_config
+                    )
+            # if self.classifier.TYPE == "RandomForest":
+            #     self.predict_from_last = 5 * headers.fps
+            #     self.frames_per_classify = self.predict_from_last
+            #     PiClassifier.SKIP_FRAMES = 30
+            #     self.max_pred_frames = 5
+            #     # probably could be even more
+
+            # else:
+            #     # self.preprocess_fn = self.get_preprocess_fn()
         super().__init__()
 
     def new_clip(self, preview_frames):
@@ -351,6 +383,7 @@ class PiClassifier(Processor):
         """
         active_tracks = self.clip.active_tracks
         active_tracks = [track for track in active_tracks if len(track) >= 8]
+        return active_tracks
         filtered = []
         for track in active_tracks:
             pred = None
@@ -411,50 +444,122 @@ class PiClassifier(Processor):
 
         prediction = 0.0
         novelty = 0.0
+        if (
+            self.next_fp_classification_frame >= self.clip.current_frame
+            and self.next_classify_frame >= self.clip.current_frame
+        ):
+            return
 
+        self.next_fp_classification_frame += PiClassifier.FP_MODEL_SKIP_FRAMES
         active_tracks = self.get_active_tracks()
         new_prediction = False
         if len(active_tracks) == 0:
             return False
 
-        logging.info("Identifying %s", active_tracks)
-        for i, track in enumerate(active_tracks):
-            regions = []
-            track_prediction = self.predictions.get_or_create_prediction(
-                track, keep_all=True
-            )
-            frames, prediction, mass = self.classifier.predict_track(
-                clip,
-                track,
-                predict_from_last=self.predict_from_last,
-                scale=self.track_extractor.scale,
-                frames_per_classify=self.frames_per_classify,
-                num_predictions=1,
-                calculate_filtered=True,
-            )
-            if prediction is None:
-                track_prediction.last_frame_classified = self.clip.current_frame
-                continue
-            for p, m in zip(prediction, mass):
-                track_prediction.classified_frames(frames, p, m)
-            logging.info(
-                "Track %s is predicted as %s", track, track_prediction.get_prediction()
-            )
+        if self.fp_model is not None:
+            for track in active_tracks:
+                start = time.time()
+                if self.classifier is not None:
+                    full_model = self.predictions[self.classifier.id].prediction_for(
+                        track.get_id()
+                    )
+                    if full_model is not None and full_model.num_frames_classified > 0:
+                        logging.debug(
+                            "Skipping fp model for %s as has full model prediction",
+                            track,
+                        )
+                        continue
+                track_prediction = self.predictions[
+                    self.fp_model.id
+                ].get_or_create_prediction(track, keep_all=True)
+                if (
+                    track_prediction.last_frame_classified is not None
+                    and self.clip.current_frame - track_prediction.last_frame_classified
+                    < PiClassifier.FP_PREDICT_EVERY
+                ):
+                    logging.debug(
+                        "Skipping %s #%s last %s",
+                        track,
+                        self.clip.current_frame,
+                        track_prediction.last_frame_classified,
+                    )
+                    continue
+                result = self.fp_model.predict_track(
+                    clip,
+                    track,
+                    predict_from_last=45,
+                    max_frames=PiClassifier.FP_PREDICT_EVERY // 5,
+                    num_predictions=1,
+                    last_frame_predicted=track_prediction.last_frame_classified,
+                )
+                if result is None:
+                    track_prediction.last_frame_classified = self.clip.current_frame
+                    continue
+                frames, prediction, mass = result
+                if prediction is None:
+                    track_prediction.last_frame_classified = self.clip.current_frame
+                    continue
+                for p, m, frame in zip(prediction, mass, frames):
+                    track_prediction.classified_frame(frame, p, m)
 
+                logging.debug(
+                    "Track %s is predicted as %s took %s track frames %s",
+                    track,
+                    track_prediction.get_prediction(),
+                    time.time() - start,
+                    len(track),
+                )
+                new_prediction = True
+
+        if (
+            self.classifier is not None
+            and self.next_classify_frame <= self.clip.current_frame
+        ):
+            self.next_classify_frame += PiClassifier.SKIP_FRAMES
+            animal_tracks = self.get_active_animal_tracks_for_predicting()
+            # filter based of fp model
+            for i, track in enumerate(animal_tracks):
+                logging.debug("Running full classifier on %s", track)
+                track_prediction = self.predictions[
+                    self.classifier.id
+                ].get_or_create_prediction(track, keep_all=True)
+                start = time.time()
+                frames, prediction, mass = self.classifier.predict_track(
+                    clip,
+                    track,
+                    predict_from_last=self.predict_from_last,
+                    scale=self.track_extractor.scale,
+                    frames_per_classify=self.frames_per_classify,
+                    max_frames=self.max_pred_frames,
+                    num_predictions=1,
+                    calculate_filtered=True,
+                    last_frame_predicted=track_prediction.last_frame_classified,
+                )
+
+                if prediction is None:
+                    track_prediction.last_frame_classified = self.clip.current_frame
+                    continue
+                for p, m in zip(prediction, mass):
+                    track_prediction.classified_frames(frames, p, m)
+
+                logging.info(
+                    "Track %s is predicted as %s took %s track frames %s",
+                    track,
+                    track_prediction.get_prediction(),
+                    time.time() - start,
+                    len(track),
+                )
+                new_prediction = True
+
+        for i, track in enumerate(active_tracks):
             if self.tracking_events:
+                track_prediction, model_id = self.get_best_prediction(track.get_id())
+
                 if track_prediction.predicted_tag() != "false-positive":
                     track_prediction.tracking = True
                     self.monitored_tracks[track.get_id()] = track
-                    track_prediction.normalize_score()
-                    self.service.tracking(
-                        self.clip._id,
-                        track,
-                        track_prediction.class_best_score,
-                        track.bounds_history[-1],
-                        True,
-                        track_prediction.last_frame_classified,
-                    )
                 elif track_prediction.tracking:
+                    # tracking ended as is false-positive
                     track_prediction.tracking = False
                     track_prediction.normalize_score()
                     self.service.tracking(
@@ -464,20 +569,102 @@ class PiClassifier(Processor):
                         track.bounds_history[-1],
                         False,
                         track_prediction.last_frame_classified,
+                        self.predictions[model_id].labels,
+                        model_id,
                     )
                     if track.get_id() in self.monitored_tracks:
                         del self.monitored_tracks[track.get_id()]
 
-            new_prediction = True
         if self.bluetooth_beacons:
             if new_prediction:
                 active_predictions = []
                 for track in self.clip.active_tracks:
-                    track_prediction = self.predictions.prediction_for(track.get_id())
+                    track_prediction, model_id = self.get_best_prediction(
+                        track.get_id()
+                    )
                     if track_prediction:
                         active_predictions.append(track_prediction)
                 beacon.classification(active_predictions)
-        return True
+        return new_prediction
+
+    def get_active_animal_tracks_for_predicting(self):
+        active_tracks = self.get_active_tracks()
+        filtered = []
+        least_fp_track = None
+        for track in active_tracks:
+            if self.fp_model is not None:
+                pred, model_id = self.get_best_prediction(track.get_id())
+                logging.debug(
+                    "track %s -%s - %s",
+                    track.get_id(),
+                    pred.predicted_tag(),
+                    pred.normalized_best_score(),
+                )
+                if pred is not None:
+                    if pred.predicted_tag() == "false-positive":
+                        confidence = pred.normalized_best_score()
+
+                        if confidence >= 0.7:
+                            if least_fp_track is None or least_fp_track[0] > confidence:
+                                least_fp_track = (confidence, track)
+                            logging.debug(
+                                "Skipping track %s as is FP confidence %s",
+                                track,
+                                confidence,
+                            )
+                            continue
+
+            pred = None
+            if self.predictions is not None:
+                pred = self.predictions[self.classifier.id].prediction_for(
+                    track.get_id()
+                )
+            if pred is not None:
+                if len(pred.predictions) < 2:
+                    classify_every = PiClassifier.PREDICT_EVERY // 2
+                else:
+                    classify_every = PiClassifier.PREDICT_EVERY
+                if (
+                    pred.last_frame_classified is not None
+                    and self.clip.current_frame - pred.last_frame_classified
+                    < classify_every
+                ):
+                    logging.debug(
+                        "Skipping %s as predicted %s and now at %s",
+                        track,
+                        pred.last_frame_classified,
+                        self.clip.current_frame,
+                    )
+                    continue
+
+            filtered.append(track)
+
+        active_tracks = filtered
+        if len(active_tracks) == 0:
+            if least_fp_track is None:
+                return []
+            logging.debug("Using least fp track %s", least_fp_track[1])
+            return [least_fp_track[1]]
+
+        # choose most likely animals first
+        active_tracks = sorted(
+            active_tracks,
+            key=lambda track: self.animal_ranking(track),
+            reverse=True,
+        )
+        if len(active_tracks) > PiClassifier.NUM_CONCURRENT_TRACKS:
+            active_tracks = active_tracks[: PiClassifier.NUM_CONCURRENT_TRACKS]
+        return active_tracks
+
+    def animal_ranking(self, track):
+        track_pred, model_id = self.get_best_prediction(track.get_id())
+
+        if track_pred is None or track_pred.class_best_score is None:
+            return 0
+        fp_confidence = track_pred.class_best_score[track_pred.fp_index] / np.sum(
+            track_pred.class_best_score
+        )
+        return 1 - fp_confidence
 
     def get_thumbnail(self, clip_id=None, track_id=None):
         import cv2
@@ -524,8 +711,7 @@ class PiClassifier(Processor):
             logging.info("Have no frames")
             return None
         with clip.frame_buffer.frame_lock:
-
-            tracks = clip.tracks
+            tracks = clip.active_tracks
             oldest_frame_num = clip.frame_buffer.frames[0].frame_number
             best_contour = None
             if track_id is not None:
@@ -533,11 +719,12 @@ class PiClassifier(Processor):
                 if len(tracks) == 0:
                     logging.info("Couldn't find track %s", track.get_id())
                     return None
+
             for track in tracks:
                 confidence = None
                 tag = None
                 if predictions is not None:
-                    pred = predictions.prediction_for(track.get_id())
+                    pred, model_id = self.get_best_prediction(track.get_id())
                     if pred is not None and pred.max_score is not None:
                         confidence = round(100 * pred.max_score)
                         tag = pred.predicted_tag()
@@ -546,17 +733,12 @@ class PiClassifier(Processor):
                     track.thumb_info = ThumbInfo(track.get_id())
                 track.thumb_info.predicted_confidence = confidence
                 track.thumb_info.predicted_tag = tag
-
-                if (
-                    track.thumb_info.region is not None
-                    and track.thumb_info.region.frame_number >= regions[-1].frame_number
-                ):
-                    # logging.info("Already up to date for track %s", track.get_id())
-                    break
-                # if track.thumb_info is not None:
-                #     if best_contour is None or best_contour.points < track.thumb_info.points:
-                #         best_contour = track.thumb_info
-
+                # if (
+                #     track.thumb_info.region is not None
+                #     and track.thumb_info.region.frame_number >= regions[-1].frame_number
+                # ):
+                #     # logging.info("Already up to date for track %s", track.get_id())
+                #     continue
                 i = len(regions) - 1
                 first_loop = True
                 while i >= 0:
@@ -584,17 +766,24 @@ class PiClassifier(Processor):
                             # cv2.CHAIN_APPROX_SIMPLE,
                             cv2.CHAIN_APPROX_TC89_L1,
                         )
+
+                        contour_points = 0
                         if len(contours) > 0:
-                            if track.thumb_info.points < len(contours[0]):
-                                track.thumb_info.points = len(contours[0])
-                                track.thumb_info.region = region
-                                track.thumb_info.thumb = None
+                            contour_points = len(contours[0])
+                        if track.thumb_info.points < contour_points:
+                            track.thumb_info.points = contour_points
+                            track.thumb_info.region = region
+                            track.thumb_info.thumb = None
                     else:
                         break
                     i -= 1
                 if (
                     best_contour is None
                     or track.thumb_info.score() > best_contour.score()
+                    or (
+                        track.thumb_info.predicted_tag != "false-positive"
+                        and best_contour.predicted_tag == "false-positive"
+                    )
                 ):
                     best_contour = track.thumb_info
 
@@ -604,6 +793,8 @@ class PiClassifier(Processor):
             if best_contour is None:
                 return None
             for track in tracks:
+                if track.thumb_info.region is None:
+                    continue
                 thumb_frame = track.thumb_info.region.frame_number
                 if (
                     track.thumb_info.thumb is None
@@ -611,10 +802,12 @@ class PiClassifier(Processor):
                 ):
                     frame = clip.frame_buffer.frames[thumb_frame - oldest_frame_num]
                     thumb_thermal = track.thumb_info.region.subimage(frame.thermal)
-                    thumb_thermal = resize_and_pad(thumb_thermal, (32, 32), None, None)
+                    if thumb_thermal.shape[0] > 32 or thumb_thermal.shape[1] > 32:
+                        thumb_thermal = resize_and_pad(
+                            thumb_thermal, (32, 32), None, None
+                        )
                     track.thumb_info.thumb = np.uint16(thumb_thermal)
                     track.thumb_info.thumb_frame = thumb_frame
-
             # logging.info("Took %s to get thumbnail", time.time() - start)
             return best_contour.thumb, best_contour.track_id, best_contour.region
 
@@ -631,7 +824,11 @@ class PiClassifier(Processor):
             for track in tracks:
                 pred = None
                 if self.predictions:
-                    pred = {self.predictions.model.id: self.predictions}
+                    pred = {
+                        self.predictions[self.classifier.id].model.id: self.predictions[
+                            self.classifier.id
+                        ]
+                    }
                 meta = track.get_metadata(pred)
                 last_pos = meta["positions"][-1].copy()
                 # if self.track_extractor.scale is not None:
@@ -661,8 +858,6 @@ class PiClassifier(Processor):
         self.service.quit()
 
     def skip_frame(self):
-        self.skip_classifying -= 1
-
         if self.clip:
             self.clip.current_frame += 1
 
@@ -733,33 +928,6 @@ class PiClassifier(Processor):
                 self.get_thumbnail()
             self.tracking_time += time.time() - t_start
             s_r = time.time()
-            if len(self.monitored_tracks) > 0:
-                monitored_tracks = list(self.monitored_tracks.values())
-                for monitored_track in monitored_tracks:
-                    tracking = monitored_track in self.clip.active_tracks
-                    score = 0
-                    prediction = ""
-                    all_scores = None
-                    last_prediction = 0
-                    if self.classify:
-                        track_prediction = self.predictions.prediction_for(
-                            monitored_track.get_id()
-                        )
-                        all_scores = track_prediction.class_best_score
-                        last_prediction = track_prediction.last_frame_classified
-                    self.service.tracking(
-                        self.clip._id,
-                        monitored_track,
-                        all_scores,
-                        monitored_track.bounds_history[-1],
-                        tracking,
-                        last_prediction,
-                    )
-
-                    if not tracking:
-                        del self.monitored_tracks[monitored_track.get_id()]
-                        if self.classify:
-                            track_prediction.tracking = False
 
             self.recorder.process_frame(
                 self.motion_detector.movement_detected, lepton_frame, received_at
@@ -768,22 +936,21 @@ class PiClassifier(Processor):
             if self.classify:
                 if self.motion_detector.calibrating:
                     # dont think we will get ffcs if we are recording
-                    self.skip_classifying = PiClassifier.SKIP_FRAMES
                     self.classified_consec = 0
-                elif (
-                    self.motion_detector.calibrating is False
-                    and self.skip_classifying <= 0
-                ):
+                else:
                     id_start = time.time()
                     identified = self.identify_last_frame()
                     if identified:
                         self.identify_time += time.time() - id_start
-                        self.classified_consec += 1
-                        if self.classified_consec == PiClassifier.MAX_CONSEC:
-                            self.skip_classifying = PiClassifier.SKIP_FRAMES
-                            self.classified_consec = 0
-                else:
-                    self.classified_consec = 0
+                        # self.classified_consec += 1
+                        # if self.classified_consec == PiClassifier.MAX_CONSEC:
+                        #     self.next_classify_frame = (
+                        #         self.clip.current_frame + PiClassifier.SKIP_FRAMES
+                        #     )
+                        #     # self.skip_classifying = PiClassifier.SKIP_FRAMES
+                        #     self.classified_consec = 0
+                    else:
+                        self.classified_consec = 0
             elif len(self.monitored_tracks) == 0 and self.tracking_events:
                 active_tracks = self.get_active_tracks()
 
@@ -810,6 +977,37 @@ class PiClassifier(Processor):
                     )
                     self.monitored_tracks[active_tracks[0].get_id()] = active_tracks[0]
 
+            if len(self.monitored_tracks) > 0:
+                monitored_tracks = list(self.monitored_tracks.values())
+                for monitored_track in monitored_tracks:
+                    tracking = monitored_track in self.clip.active_tracks
+                    score = 0
+                    prediction = ""
+                    all_scores = None
+                    model_id = 0
+                    track_prediction = None
+                    last_prediction = 0
+                    if self.classify:
+                        track_prediction, model_id = self.get_best_prediction(
+                            monitored_track.get_id()
+                        )
+                        all_scores = track_prediction.get_normalized_score()
+                        last_prediction = track_prediction.last_frame_classified
+                    self.service.tracking(
+                        self.clip._id,
+                        monitored_track,
+                        all_scores,
+                        monitored_track.bounds_history[-1],
+                        tracking,
+                        last_prediction,
+                        [] if model_id is None else self.predictions[model_id].labels,
+                        model_id,
+                    )
+
+                    if not tracking:
+                        del self.monitored_tracks[monitored_track.get_id()]
+                        if self.classify:
+                            track_prediction.tracking = False
         elif self.clip is not None:
             self.end_clip()
 
@@ -817,7 +1015,6 @@ class PiClassifier(Processor):
             self.recording = False
             self.service.recording(False)
 
-        self.skip_classifying -= 1
         self.frame_num += 1
         self.total_time += time.time() - start
         if (
@@ -856,6 +1053,23 @@ class PiClassifier(Processor):
             self.predictions if self.classify else None,
         )
 
+    def get_best_prediction(self, track_id):
+        if self.classifier is not None:
+            main_classifier = self.predictions[self.classifier.id].prediction_for(
+                track_id
+            )
+            if (
+                main_classifier is not None
+                and main_classifier.num_frames_classified > 0
+            ):
+                return main_classifier, self.classifier.id
+        if self.fp_model is not None:
+            return (
+                self.predictions[self.fp_model.id].prediction_for(track_id),
+                self.fp_model.id,
+            )
+        return None, None
+
     def end_clip(self):
         if self.clip:
             global clip
@@ -865,16 +1079,18 @@ class PiClassifier(Processor):
                 "Ending clip with %s tracks post filtering", len(self.clip.tracks)
             )
             if self.classify:
-                for t_id, prediction in self.predictions.prediction_per_track.items():
-                    if prediction.max_score:
-                        logging.info(
-                            "Clip {} {} {}".format(
-                                self.clip.get_id(),
-                                t_id,
-                                prediction.description(),
+                for pred in self.predictions.values():
+                    logging.info("Pred for model %s", pred.model)
+                    for t_id, prediction in pred.prediction_per_track.items():
+                        if prediction.max_score:
+                            logging.info(
+                                "Clip {} {} {}".format(
+                                    self.clip.get_id(),
+                                    t_id,
+                                    prediction.description(),
+                                )
                             )
-                        )
-                self.predictions.clear_predictions()
+                    pred.clear_predictions()
             # set so we can get thumbnail info
             self.prev_clip = clip
             self.prev_clip.frame_buffer = None
@@ -921,18 +1137,21 @@ def on_recording_stopping(filename):
     if "-snap" in filename.stem:
         return
     global clip, track_extractor, predictions
-
     if clip and track_extractor:
         track_extractor.apply_track_filtering(clip)
         if predictions is not None:
             valid_preds = {}
+
+            # remove track prediction
             for track in clip.tracks:
-                if track.get_id() in predictions.prediction_per_track:
-                    valid_preds[track.get_id()] = predictions.prediction_per_track[
-                        track.get_id()
-                    ]
-                    valid_preds[track.get_id()].normalize_score()
-            predictions.prediction_per_track = valid_preds
+                for model_pred in predictions.values():
+                    pred = model_pred.prediction_for(track.get_id)
+                    if pred is not None:
+                        pred.normalize_score()
+            #             valid_preds[model_pred.model.id] = pred
+            # for model_id in predictions.keys():
+            #     if model_id in valid_preds:
+            #         predictions[model_id].prediction_per_track = valid_preds[model_id].prediction_per_track
 
         # filter criteria has been scaled so resize after
         # if track_extractor.scale is not None:
@@ -946,14 +1165,21 @@ def on_recording_stopping(filename):
         predictions_per_model = None
 
         if predictions is not None:
-            predictions_per_model = {predictions.model.id: predictions}
+            predictions_per_model = predictions
         meta_data = clip.get_metadata(predictions_per_model)
         meta_data["algorithm"] = {}
         meta_data["algorithm"]["tracker_version"] = f"PI-{track_extractor.VERSION}"
         meta_data["metadata_source"] = "PI"
         if predictions is not None:
-            meta_data["models"] = [predictions.model.as_dict()]
-            meta_data["algorithm"]["model_name"] = predictions.model.name
+            models = []
+            model_name = ""
+            joiner = ""
+            for model_preds in predictions.values():
+                models.append(model_preds.model.as_dict())
+                model_name = f"{model_name}{joiner}{model_preds.model.name}"
+                joiner = " and "
+            meta_data["algorithm"]["model_name"] = model_name
+            meta_data["models"] = models
 
         with open(meta_name, "w") as f:
             json.dump(meta_data, f, indent=4, cls=CustomJSONEncoder)
