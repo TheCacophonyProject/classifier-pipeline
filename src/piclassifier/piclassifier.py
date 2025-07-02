@@ -107,8 +107,10 @@ class PiClassifier(Processor):
         self.process_time = 0
         self.tracking_time = 0
         self.identify_time = 0
+        self.fp_identify_time = 0
         self.total_time = 0
         self.rec_time = 0
+        self.fp_time = 0
         self.monitored_tracks = {}
         self.recording = False
         self.tracking_events = thermal_config.motion.tracking_events
@@ -293,27 +295,14 @@ class PiClassifier(Processor):
                 except ValueError:
                     self.fp_index = None
                 self.startup_classifier()
-            FP_MODEL = True
-            if FP_MODEL:
+            if fp_config is not None:
+                self.fp_model = get_interpreter(fp_config)
+                global fp_model
+                fp_model = self.fp_model
+                self.predictions[self.fp_model.id] = Predictions(
+                    self.fp_model.labels, fp_config
+                )
 
-                if fp_config is None:
-                    logging.info("Found no fp model")
-                else:
-                    self.fp_model = get_interpreter(fp_config)
-                    global fp_model
-                    fp_model = self.fp_model
-                    self.predictions[self.fp_model.id] = Predictions(
-                        self.fp_model.labels, fp_config
-                    )
-            # if self.classifier.TYPE == "RandomForest":
-            #     self.predict_from_last = 5 * headers.fps
-            #     self.frames_per_classify = self.predict_from_last
-            #     PiClassifier.SKIP_FRAMES = 30
-            #     self.max_pred_frames = 5
-            #     # probably could be even more
-
-            # else:
-            #     # self.preprocess_fn = self.get_preprocess_fn()
         super().__init__()
 
     def new_clip(self, preview_frames):
@@ -332,7 +321,8 @@ class PiClassifier(Processor):
         )
 
         self.clip.num_preview_frames = len(preview_frames)
-
+        self.next_classify_frame = 0
+        self.next_fp_classification_frame = 0
         self.clip.set_res(self.res_x, self.res_y)
         self.clip.set_frame_buffer(
             self.tracking_config.high_quality_optical_flow,
@@ -457,6 +447,7 @@ class PiClassifier(Processor):
             return False
 
         if self.fp_model is not None:
+            fp_time = time.time()
             for track in active_tracks:
                 start = time.time()
                 if self.classifier is not None:
@@ -510,11 +501,13 @@ class PiClassifier(Processor):
                     len(track),
                 )
                 new_prediction = True
-
+            self.fp_identify_time += time.time() - fp_time
         if (
             self.classifier is not None
             and self.next_classify_frame <= self.clip.current_frame
         ):
+            id_start = time.time()
+
             self.next_classify_frame += PiClassifier.SKIP_FRAMES
             animal_tracks = self.get_active_animal_tracks_for_predicting()
             # filter based of fp model
@@ -550,6 +543,8 @@ class PiClassifier(Processor):
                     len(track),
                 )
                 new_prediction = True
+
+            self.identify_time += time.time() - id_start
 
         for i, track in enumerate(active_tracks):
             if self.tracking_events:
@@ -938,18 +933,8 @@ class PiClassifier(Processor):
                     # dont think we will get ffcs if we are recording
                     self.classified_consec = 0
                 else:
-                    id_start = time.time()
                     identified = self.identify_last_frame()
-                    if identified:
-                        self.identify_time += time.time() - id_start
-                        # self.classified_consec += 1
-                        # if self.classified_consec == PiClassifier.MAX_CONSEC:
-                        #     self.next_classify_frame = (
-                        #         self.clip.current_frame + PiClassifier.SKIP_FRAMES
-                        #     )
-                        #     # self.skip_classifying = PiClassifier.SKIP_FRAMES
-                        #     self.classified_consec = 0
-                    else:
+                    if not identified:
                         self.classified_consec = 0
             elif len(self.monitored_tracks) == 0 and self.tracking_events:
                 active_tracks = self.get_active_tracks()
@@ -1025,10 +1010,11 @@ class PiClassifier(Processor):
                 average = np.mean(self.fps_timer.get_frames())
                 mem = process_mem()
                 logging.debug(
-                    "tracking %s %% process %s %%  identify %s %% rec %s %% fps %s/sec process  system cpu %s process memory %s%% system memory %s behind by %s seconds",
+                    "tracking %s %% process %s %%  identify %s %% FP Id %s %%  rec %s %% fps %s/sec process  system cpu %s process memory %s%% system memory %s behind by %s seconds",
                     round(100 * self.tracking_time / self.total_time, 3),
                     round(100 * self.process_time / self.total_time, 3),
                     round(100 * self.identify_time / self.total_time, 3),
+                    round(100 * self.fp_identify_time / self.total_time, 3),
                     round(100 * self.rec_time / self.total_time, 3),
                     round(1 / average),
                     psutil.cpu_percent(),
@@ -1039,6 +1025,7 @@ class PiClassifier(Processor):
             self.tracking_time = 0
             self.process_time = 0
             self.identify_time = 0
+            self.fp_identify_time = 0
             self.total_time = 0
             self.rec_time = 0
         self.fps_timer.add(time.time() - start)

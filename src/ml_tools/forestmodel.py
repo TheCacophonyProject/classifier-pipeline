@@ -711,7 +711,7 @@ def intensity_weighted_moments(sub, mgrid, region=None):
     Y = mgrid[0][: sub.shape[0], : sub.shape[1]]
     X = mgrid[1][: sub.shape[0], : sub.shape[1]]
     # Y, X = np.mgrid[0 : sub.shape[0], 0 : sub.shape[1]]
-   
+
     cx = np.sum(sub * X) / tot
     cy = np.sum(sub * Y) / tot
     X = X - cx
