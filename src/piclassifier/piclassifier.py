@@ -93,6 +93,7 @@ class PiClassifier(Processor):
         self._output_dir = thermal_config.recorder.output_dir
         self.headers = headers
         self.classifier = None
+        self.fp_model = None
         self.frame_num = 0
         self.clip = None
         self.prev_clip = None
