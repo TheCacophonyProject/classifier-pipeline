@@ -197,18 +197,32 @@ def process_track(
         if last_frame_predicted is not None:
             last_track_frame = bounds[-1].frame_number
             bounds = bounds[-(last_track_frame - last_frame_predicted) :]
-    else:
 
+        if len(bounds) == 0:
+            return None
+        first_frame = bounds[0].frame_number
+        last_frame = bounds[-1].frame_number
+    else:
         bounds = track.bounds_history[-min(available_frames, predict_from_last) :]
         if last_frame_predicted is not None:
             last_track_frame = bounds[-1].frame_number
             bounds = bounds[-(last_track_frame - last_frame_predicted) :]
-    all_frames = clip.frame_buffer.get_last_x(len(bounds))
+        all_frames = clip.frame_buffer.get_last_x(len(bounds))
+        if len(all_frames) == 0:
+            return None
+
+        # possibility of last bound in track not being the last frame
+        first_frame = all_frames[0].frame_number
+        last_frame = all_frames[-1].frame_number
 
     indices = [
         i
         for i, region in enumerate(bounds)
-        if not region.blank and region.width > 0 and region.height > 0
+        if not region.blank
+        and region.width > 0
+        and region.height > 0
+        and region.frame_number >= first_frame
+        and region.frame_number <= last_frame
     ]
     if len(indices) == 0:
         logging.info("No valid regions to predict on  track %s", track)
@@ -217,9 +231,6 @@ def process_track(
         "taking %s from %s with scale %s", len(bounds), len(track.bounds_history), scale
     )
     frames = []
-    # bounds = bounds[:50]
-    # np.empty_like(bounds)
-    # logging.info("Bunds shape is %s",data_bounds.shape,data_bounds.dtype)
     if clip.crop_rectangle is None:
         logging.warning("Clip has no crop rectangle")
 
@@ -228,18 +239,10 @@ def process_track(
         if len(indices) > max_frames:
             indices = np.random.choice(indices, max_frames, replace=False)
             indices.sort()
+
     data_bounds = np.empty(len(indices), dtype="O")
 
-    iterator = enumerate(indices)
-
-    # for i, r in enumerate(bounds):
-    for i, frame_i in iterator:
-
-        # if scale is not None and scale != 1:
-        #     r = r.copy()
-        #     r.rescale(1 / scale)
-        #     data_bounds[i] = r
-        # else:
+    for i, frame_i in enumerate(indices):
         region = bounds[frame_i].copy()
         data_bounds[i] = region
         if clip.crop_rectangle is not None:
@@ -248,7 +251,9 @@ def process_track(
         if all_frames is None:
             frame = clip.get_frame(region.frame_number)
         else:
-            frame = all_frames[frame_i]
+            frame_index = region.frame_number - last_frame - 1
+            # logging.info("Frame index is %s frame_i is %s",frame_index, frame_i)
+            frame = all_frames[frame_index]
         frames.append(frame)
         frame_temp_median[region.frame_number] = np.median(frame.thermal)
         assert frame.frame_number == region.frame_number

@@ -577,6 +577,7 @@ def handle_connection(connection, config, thermal_config_file, process_queue):
                         pass
                 break
             if not processor.is_alive():
+                # this potentially loops on indefinately on an error if the error is to do with the headers
                 logging.info("Processor stopped restarting")
                 processor = get_processor(
                     process_queue, config, thermal_config, headers
