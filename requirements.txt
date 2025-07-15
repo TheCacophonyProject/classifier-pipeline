@@ -1,9 +1,9 @@
 tensorflow~=2.19.0
 matplotlib~=3.10.1
 pytz
+opencv-contrib-python-headless~=4.12.0.88
 numpy
 cptv~=1.5.4
-opencv-contrib-python-headless~=4.12.0.88
 scipy==1.16.0
 python-dateutil
 scikit-learn==1.7.0
@@ -19,10 +19,9 @@ dbus-python~=1.4.0
 
 # sudo apt install libgirepository-2.0-dev
 PyGObject~=3.52.3 
-
 joblib
 inotify_simple==1.3.5
-python-cptv==0.0.6
+python-cptv==0.0.8
 # multiprocess
 pillow~=11.3.0
 h5py~=3.14.0
