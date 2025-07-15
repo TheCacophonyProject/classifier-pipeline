@@ -27,7 +27,7 @@ jobs:
       - name: Install dependencies
         run: |
           pip install cmake freezegun gdown
-          sudo apt install -y python3-dbus ffmpeg build-essential libdbus-glib-1-dev libgirepository1.0-dev tzdata libcairo2-dev libjpeg-dev python3-cairo libhdf5-dev libopencv-dev cmake
+          sudo apt install -y python3-dbus ffmpeg build-essential libdbus-glib-1-dev libgirepository-2.0-dev tzdata libcairo2-dev libjpeg-dev python3-cairo libhdf5-dev libopencv-dev cmake
           pip install -r requirements.txt
      
 
