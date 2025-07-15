@@ -3,7 +3,7 @@
 from datetime import datetime, timedelta, time
 import logging
 import enum
-from astral import LocationInfo
+from astral import Location
 
 from ml_tools import tools
 
@@ -172,7 +172,7 @@ class TimeWindow:
             )
 
     def set_location(self, lat, lng, altitude=0):
-        self.location = LocationInfo()
+        self.location = Location()
         self.location.latitude = lat
         self.location.longitude = lng
         self.location.altitude = altitude

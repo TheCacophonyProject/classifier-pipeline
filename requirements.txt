@@ -9,7 +9,7 @@ scikit-learn==1.7.0
 pyyaml>=6.0.2
 attrs~=25.3.0
 filelock~=3.18.0
-Astral~=3.2
+Astral~=1.10.1
 timezonefinder~=6.5.9
 portalocker~=3.2.0
 toml~=0.10.2

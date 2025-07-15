@@ -33,7 +33,7 @@ dependencies = [
   "pyyaml==6.0",
   "attrs==24.2.0",
   "filelock==3.0.12",
-  "Astral==3.2",
+  "Astral==1.10.1",
   "timezonefinder==4.1.0",
   "portalocker==1.5.2",
   "toml==0.10.2",
