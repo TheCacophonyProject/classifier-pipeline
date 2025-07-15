@@ -3,9 +3,9 @@ matplotlib~=3.10.1
 pytz
 cptv~=1.5.4
 opencv-contrib-python-headless~=4.12.0.88
-scipy
+scipy==1.16.0
 python-dateutil
-scikit-learn
+scikit-learn==1.7.0
 pyyaml>=6.0.2
 attrs~=25.3.0
 filelock~=3.18.0
