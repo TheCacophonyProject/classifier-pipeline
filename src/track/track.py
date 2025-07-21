@@ -326,6 +326,41 @@ def get_max_size_change(track, region):
     return region_percent
 
 
+class ThumbInfo:
+    def __init__(self, track_id):
+        self.points = -1
+        self.region = None
+        self.thumb = None
+        self.thumb_frame = None
+        self.last_frame_check = None
+        self.predicted_tag = None
+        self.predicted_confidence = None
+        self.track_id = track_id
+
+    # score thumbs based on not being false positive having priority
+    # then if sure of the prediction (above 80%) choose the most confidence
+    # and then choose the one with more points
+    def score(self):
+        confidence_threshold = 80
+
+        score = self.points
+        score_offset = 100000
+
+        if self.predicted_tag is not None:
+            if self.predicted_tag != "false-positive":
+                score = score + 1000 * score_offset
+                if self.predicted_confidence > confidence_threshold:
+                    confidence = self.predicted_confidence
+                else:
+                    confidence = 0
+            else:
+                confidence = 100 - self.predicted_confidence
+
+            score = score + confidence * score_offset
+        # logging.info("%s score for %s %s %s is %s",self.track_id,self.points,self.predicted_tag,self.predicted_confidence, score)
+        return score
+
+
 class Track:
     """Bounds of a tracked object over time."""
 
@@ -405,7 +440,8 @@ class Track:
             self.tracker = self.get_tracker(tracking_config)
         # self.tracker = RegionTracker(
         #     self.get_id(), tracking_config, self.crop_rectangle
-        # )
+        #
+        self.thumb_info = None
         self.score = None
 
     def get_tracker(self, tracking_config):

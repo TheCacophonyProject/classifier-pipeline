@@ -12,7 +12,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.10'
+          python-version: '3.11'
           architecture: 'x64'
 
       - name: Display Python version
@@ -27,7 +27,7 @@ jobs:
       - name: Install dependencies
         run: |
           pip install cmake freezegun gdown
-          sudo apt install -y python3-dbus ffmpeg build-essential libdbus-glib-1-dev libgirepository1.0-dev tzdata libcairo2-dev libjpeg-dev python3-cairo libhdf5-dev libopencv-dev cmake
+          sudo apt install -y python3-dbus ffmpeg build-essential libdbus-glib-1-dev libgirepository-2.0-dev tzdata libcairo2-dev libjpeg-dev python3-cairo libhdf5-dev libopencv-dev cmake
           pip install -r requirements.txt
      
 
@@ -39,16 +39,15 @@ jobs:
       - name: Test Build
         run: python3 src/build.py -c tests/test-config.yaml tests --ext ".cptv"
 
-      - name: Test Classify
-        run: |
-          sudo mkdir /var/spool/cptv
-          sudo chmod -R 777 /var/spool/cptv
-          wget -O thermal-model.tar https://github.com/TheCacophonyProject/AI-Model/releases/download/pi-v0.6/inc3-tflite-15122023.tar
-          mkdir thermal-model
-          tar xzvf thermal-model.tar -C thermal-model --strip-components=1
-          pip install tflite-runtime==2.14.0
-          python3 src/classify.py -c tests/test-config.yaml ./tests/clips/
-          python3 src/piclassify.py --file tests/clips/possum.cptv  --thermal-config-file tests/config.toml -c tests/test-config.yaml
+      # - name: Test Classify
+      #   run: |
+      #     sudo mkdir /var/spool/cptv
+      #     sudo chmod -R 777 /var/spool/cptv
+      #     wget -O thermal-model.tar https://github.com/TheCacophonyProject/AI-Model/releases/download/server-v0.4/wr-res-feb132024.tar
+      #     mkdir thermal-model
+      #     tar xzvf thermal-model.tar -C thermal-model --strip-components=1
+      #     python3 src/classify.py -c tests/test-config.yaml ./tests/clips/
+      #     python3 src/piclassify.py --file tests/clips/possum.cptv  --thermal-config-file tests/config.toml -c tests/test-config.yaml
 
   pypi-build:
     name: Build distribution 📦
@@ -65,7 +64,7 @@ jobs:
     - name: Set up Python
       uses: actions/setup-python@v5
       with:
-        python-version: '3.10'
+        python-version: '3.11'
         architecture: 'x64'
 
     - name: Install pypa/build

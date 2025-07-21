@@ -13,11 +13,17 @@ import dbus.mainloop.glib
 import time
 import threading
 from datetime import datetime
+import cv2
+import numpy as np
 
-labels = []
+model_labels = []
+
+active_tracks = {}
 
 
 def catchall_tracking_signals_handler(
+    clip_id,
+    track_id,
     prediction,
     what,
     confidence,
@@ -27,29 +33,40 @@ def catchall_tracking_signals_handler(
     blank,
     tracking,
     last_prediction_frame,
+    model_id,
 ):
     print(
-        "Received a trackng signal and it says " + what,
-        confidence,
-        "% at ",
-        region,
-        " tracking?",
-        tracking,
-        "prediction",
-        prediction,
-        "frame",
-        frame,
-        "mass",
-        mass,
-        "blank",
-        blank,
-        "last prediction frame",
-        last_prediction_frame,
+        f"Received a tracking signal for clip {clip_id} track {track_id} and it says {what} {confidence}% at {region} tracking? {tracking} prediction {prediction} frame {frame} mass {mass} blank? {blank} last predicted frame {last_prediction_frame}"
     )
     index = 0
+    print("Model is ", model_id)
+    labels = model_labels[model_id]
     for x in prediction:
         print("For  ", labels[index], " have confidence ", int(x), "%")
         index += 1
+
+    if tracking:
+        if track_id not in active_tracks:
+            active_tracks[track_id] = True
+            print("Tracking", track_id)
+    else:
+        # active_tracks[track_id] = False
+        print("Stopped tracking", track_id)
+
+    print("Active tracks are ", active_tracks.keys())
+    bus = dbus.SystemBus()
+    dbus_object = bus.get_object(DBUS_NAME, DBUS_PATH)
+    thumb, track_id, region = dbus_object.GetThumbnail(clip_id, track_id)
+    thumb = np.uint16(thumb)
+    thumb = normalize(thumb)
+    cv2.imshow("t", thumb)
+    cv2.waitKey(100)
+
+
+def normalize(thumb):
+    a_max = np.amax(thumb)
+    a_min = np.amin(thumb)
+    return np.uint8(255 * (np.float32(thumb) - a_min) / (a_max - a_min))
 
 
 def catchall_rec_signals_handler(dt, is_recording):
@@ -82,9 +99,9 @@ class TrackingService:
         except dbus.exceptions.DBusException as e:
             print("Failed to initialize D-Bus object: '%s'" % str(e))
             sys.exit(2)
-        global labels
-        labels = dbus_object.ClassificationLabels()
-        print("Labels are ", labels)
+        global model_labels
+        model_labels = dbus_object.ClassificationLabels()
+
         bus.add_signal_receiver(
             self.callback,
             dbus_interface=DBUS_NAME,
@@ -104,6 +121,5 @@ if __name__ == "__main__":
     )
 
     # just to keep program alive
-    # replace with your code
     while tracking.t.is_alive():
         time.sleep(1)

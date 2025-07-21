@@ -9,3 +9,7 @@ classify:
     thumbnail_model: true
     wallaby: false
     type: TFLite
+  - id: 1004
+    model_file: /home/pi/rf-fp-model/model.pkl
+    name: FP Model
+    type: RandomForest

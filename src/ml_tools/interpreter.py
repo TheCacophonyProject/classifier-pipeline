@@ -11,6 +11,7 @@ from classify.trackprediction import TrackPrediction
 class Interpreter(ABC):
     def __init__(self, model_file):
         self.load_json(model_file)
+        self.id = None
 
     def load_json(self, filename):
         """Loads model and parameters from file."""
@@ -543,5 +544,5 @@ def get_interpreter(model):
 
         classifier = KerasModel()
         classifier.load_model(model.model_file, weights=model.model_weights)
-
+    classifier.id = model.id
     return classifier

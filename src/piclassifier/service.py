@@ -17,9 +17,12 @@ DBUS_PATH = "/org/cacophony/thermalrecorder"
 
 
 class Service(dbus.service.Object):
-    def __init__(self, dbus, get_frame, headers, take_snapshot_fn, labels):
+    def __init__(
+        self, dbus, get_frame, headers, take_snapshot_fn, labels, get_thumbnail
+    ):
         super().__init__(dbus, DBUS_PATH)
         self.get_frame = get_frame
+        self.get_thumbnail = get_thumbnail
         self.headers = headers
         self.take_snapshot = take_snapshot_fn
         self.labels = labels
@@ -90,6 +93,22 @@ class Service(dbus.service.Object):
 
     @dbus.service.method(
         DBUS_NAME,
+        out_signature="aaqiai",
+    )
+    def GetThumbnail(self, clip_id, track_id):
+        if track_id == 0:
+            track_id = None
+        if clip_id == 0:
+            clip_id = None
+        result = self.get_thumbnail(clip_id, track_id)
+        if result is None:
+            raise Exception("No thumbnail")
+        thumb, track_id, region = result
+
+        return thumb, track_id, region.to_ltrb()
+
+    @dbus.service.method(
+        DBUS_NAME,
     )
     def TakeTestRecording(self):
         logging.info("Take test recording")
@@ -101,14 +120,16 @@ class Service(dbus.service.Object):
 
         return result
 
-    @dbus.service.method(DBUS_NAME, signature="as")
+    @dbus.service.method(DBUS_NAME, signature="a{ias}")
     def ClassificationLabels(self):
         logging.info("Getting labels %s", self.labels)
         return self.labels
 
-    @dbus.service.signal(DBUS_NAME, signature="aisiaiiibbi")
+    @dbus.service.signal(DBUS_NAME, signature="iiaisiaiiibbii")
     def Tracking(
         self,
+        clip_id,
+        track_id,
         prediction,
         what,
         confidence,
@@ -118,6 +139,7 @@ class Service(dbus.service.Object):
         blank,
         tracking,
         last_prediction_frame,
+        model_id,
     ):
         pass
 
@@ -127,13 +149,13 @@ class Service(dbus.service.Object):
 
 
 class SnapshotService:
-    def __init__(self, get_frame, headers, take_snapshot_fn, labels):
+    def __init__(self, get_frame, headers, take_snapshot_fn, labels, get_thumbnail):
         DBusGMainLoop(set_as_default=True)
         dbus.mainloop.glib.threads_init()
         self.loop = GLib.MainLoop()
         self.t = threading.Thread(
             target=self.run_server,
-            args=(get_frame, headers, take_snapshot_fn, labels),
+            args=(get_frame, headers, take_snapshot_fn, labels, get_thumbnail),
         )
         self.t.start()
         self.service = None
@@ -141,20 +163,31 @@ class SnapshotService:
     def quit(self):
         self.loop.quit()
 
-    def run_server(self, get_frame, headers, take_snapshot_fn, labels):
+    def run_server(self, get_frame, headers, take_snapshot_fn, labels, get_thumbnail):
         session_bus = dbus.SystemBus(mainloop=DBusGMainLoop())
         name = dbus.service.BusName(DBUS_NAME, session_bus)
         self.service = Service(
-            session_bus, get_frame, headers, take_snapshot_fn, labels
+            session_bus, get_frame, headers, take_snapshot_fn, labels, get_thumbnail
         )
         self.loop.run()
 
-    def tracking(self, prediction, region, tracking, last_prediction_frame):
+    def tracking(
+        self,
+        clip_id,
+        track,
+        prediction,
+        region,
+        tracking,
+        last_prediction_frame,
+        labels,
+        model_id,
+    ):
         logging.debug(
-            "Tracking? %s region %s prediction %s",
+            "Tracking?  %s region %s prediction %s track %s",
             tracking,
             region,
             prediction,
+            track.get_id(),
         )
         if self.service is None:
             return
@@ -163,8 +196,10 @@ class SnapshotService:
             predictions = np.uint8(np.round(predictions * 100))
             best = np.argmax(predictions)
             self.service.Tracking(
+                clip_id,
+                track.get_id(),
                 predictions,
-                self.service.labels[best],
+                labels[best],
                 predictions[best],
                 region.to_ltrb(),
                 region.frame_number,
@@ -172,9 +207,12 @@ class SnapshotService:
                 region.blank,
                 tracking,
                 last_prediction_frame,
+                model_id,
             )
         else:
             self.service.Tracking(
+                clip_id,
+                track.get_id(),
                 [],
                 "",
                 0,
@@ -184,6 +222,7 @@ class SnapshotService:
                 region.blank,
                 tracking,
                 last_prediction_frame,
+                0,
             )
 
     def recording(self, is_recording):

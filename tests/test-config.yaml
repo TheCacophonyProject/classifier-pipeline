@@ -5,5 +5,5 @@ classify:
     models:
       - id: 2
         name: "Thermal WR"
-        type: "TFLite"
-        model_file: "./thermal-model/converted_model.tflite"
+        type: "Keras"
+        model_file: "./thermal-model/saved_model.pb"

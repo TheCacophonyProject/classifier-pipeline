@@ -255,7 +255,6 @@ def preview_socket(headers, frame_queue):
         try:
             # connect to management socket
             frameSocket = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-            logging.info("trying connect")
             frameSocket.connect("/var/spool/managementd")
             logging.info("Connected to management interface")
             frameSocket.send(header_bytes)
@@ -273,7 +272,7 @@ def preview_socket(headers, frame_queue):
                 frame_bytes = telemetry_bytes + frame_bytes
                 frameSocket.send(frame_bytes)
         except:
-            logging.error("Failed to connect to /var/spool/managementd", exc_info=True)
+            # logging.error("Failed to connect to /var/spool/managementd", exc_info=True)
             try:
                 # empty the queue
                 items = frame_queue.qsize()
@@ -317,51 +316,66 @@ def parse_cptv(file, config, thermal_config_file, preview_type, fps):
         ),
     )
     preview_process.start()
-    thermal_config = ThermalConfig.load_from_file(thermal_config_file, headers.model)
-
-    pi_classifier = PiClassifier(
-        config,
-        thermal_config,
-        headers,
-        thermal_config.motion.run_classifier,
-        0,
-        preview_type,
-    )
-    while True:
-        frame = reader.next_frame()
-
-        if frame is None:
-            break
-        # to get extra properties and allow pickling convert to cptv.Frame
-        frame = Frame(
-            frame.pix,
-            timedelta(milliseconds=frame.time_on),
-            timedelta(milliseconds=frame.last_ffc_time),
-            frame.temp_c,
-            frame.last_ffc_temp_c,
-            frame.background_frame,
+    try:
+        thermal_config = ThermalConfig.load_from_file(
+            thermal_config_file, headers.model
         )
 
-        frame_queue.put(frame)
+        pi_classifier = PiClassifier(
+            config,
+            thermal_config,
+            headers,
+            thermal_config.motion.run_classifier,
+            0,
+            preview_type,
+        )
+        while True:
+            frame = reader.next_frame()
 
-        frame.ffc_imminent = False
-        frame.ffc_status = 0
+            if frame is None:
+                break
+            # to get extra properties and allow pickling convert to cptv.Frame
+            frame = Frame(
+                frame.pix,
+                timedelta(milliseconds=frame.time_on),
+                timedelta(milliseconds=frame.last_ffc_time),
+                frame.temp_c,
+                frame.last_ffc_temp_c,
+                frame.background_frame,
+            )
 
-        if frame.background_frame:
-            pi_classifier.motion_detector._background._background = frame.pix
-            continue
-        pi_classifier.process_frame(frame, time.time())
-        if fps is not None:
-            time.sleep(1.0 / fps)
-    pi_classifier.disconnected()
-    frame_queue.put(STOP_SIGNAL)
-    preview_process.join(7)
-    if preview_process.is_alive():
-        logging.info("Killing preview process")
-        try:
-            preview_process.kill()
-        except:
-            pass
+            frame_queue.put(frame)
+
+            frame.ffc_imminent = False
+            frame.ffc_status = 0
+
+            if frame.background_frame:
+                pi_classifier.motion_detector._background._background = frame.pix
+                continue
+            pi_classifier.process_frame(frame, time.time())
+            if fps is not None:
+                time.sleep(1.0 / fps)
+        pi_classifier.disconnected()
+        frame_queue.put(STOP_SIGNAL)
+        preview_process.join(7)
+        if preview_process.is_alive():
+            logging.info("Killing preview process")
+            try:
+                preview_process.kill()
+            except:
+                pass
+    except Exception as ex:
+        pi_classifier.disconnected()
+        logging.error("EXception all done")
+        frame_queue.put(STOP_SIGNAL)
+        preview_process.join(7)
+        if preview_process.is_alive():
+            logging.info("Killing preview process")
+            try:
+                preview_process.kill()
+            except:
+                pass
+        raise ex
 
 
 def get_processor(process_queue, config, thermal_config, headers):
@@ -563,6 +577,7 @@ def handle_connection(connection, config, thermal_config_file, process_queue):
                         pass
                 break
             if not processor.is_alive():
+                # this potentially loops on indefinately on an error if the error is to do with the headers
                 logging.info("Processor stopped restarting")
                 processor = get_processor(
                     process_queue, config, thermal_config, headers
