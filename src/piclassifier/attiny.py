@@ -8,7 +8,6 @@ DBUS_PATH = "/org/cacophony/i2c"
 
 
 def set_recording_state(is_recording):
-    return True
     bus = dbus.SystemBus(mainloop=DBusGMainLoop())
     try:
         proxy = bus.get_object(DBUS_NAME, DBUS_PATH)
