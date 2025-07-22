@@ -204,7 +204,7 @@ class ClipClassifier:
             logging.info("Exporting preview to '{}'".format(mpeg_filename))
 
             self.previewer.export_clip_preview(
-                mpeg_filename, clip, list(predictions_per_model.values())[0]
+                mpeg_filename, clip, predictions_per_model
             )
         models = [self.model] if self.model else self.config.classify.models
         meta_data = self.save_metadata(

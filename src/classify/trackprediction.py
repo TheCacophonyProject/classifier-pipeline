@@ -332,7 +332,6 @@ class TrackPrediction:
     @property
     def clarity(self):
         """The distance between our highest scoring class and second highest scoring class."""
-
         if self.class_best_score is None or len(self.class_best_score) < 2:
             return None
         return self.max_score - self.score(2)
