@@ -1133,7 +1133,7 @@ def on_recording_stopping(filename):
             # remove track prediction
             for track in clip.tracks:
                 for model_pred in predictions.values():
-                    pred = model_pred.prediction_for(track.get_id)
+                    pred = model_pred.prediction_for(track.get_id())
                     if pred is not None:
                         pred.normalize_score()
             #             valid_preds[model_pred.model.id] = pred
