@@ -130,9 +130,12 @@ class ForestModel(Interpreter):
     ):
 
         track_prediction = TrackPrediction(track.get_id(), self.labels)
-        predictions, frames, masses = self.predict_track(
+        result = self.predict_track(
             clip, track, last_x_frames=last_x_frames, normalize=True
         )
+        if result is None:
+            return None
+        frames, predictions, masses = result
         track_prediction.classified_clip(predictions, predictions, frames, masses)
         return track_prediction
 

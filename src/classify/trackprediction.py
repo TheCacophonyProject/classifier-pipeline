@@ -162,6 +162,10 @@ class TrackPrediction:
 
     def normalize_score(self):
         # normalize so it sums to 1
+        # this isn't 100% correct since our predictions don't nessesarily add up to 1
+        # need to inverstigate on a test set,what gives the best results.
+        # correct way would be to calculate the max for each prediction and divide by the sum of that
+        # per pred (np.sum(p.prediction) ** 2) * p.mass
         if self.class_best_score is not None:
             self.class_best_score = self.class_best_score / np.sum(
                 self.class_best_score
@@ -332,7 +336,6 @@ class TrackPrediction:
     @property
     def clarity(self):
         """The distance between our highest scoring class and second highest scoring class."""
-
         if self.class_best_score is None or len(self.class_best_score) < 2:
             return None
         return self.max_score - self.score(2)
