@@ -518,7 +518,7 @@ class PiClassifier(Processor):
                     self.classifier.id
                 ].get_or_create_prediction(track, keep_all=True)
                 start = time.time()
-                frames, prediction, mass = self.classifier.predict_track(
+                frames, preprocessed, mass = self.classifier.preprocess(
                     clip,
                     track,
                     predict_from_last=self.predict_from_last,
@@ -529,6 +529,26 @@ class PiClassifier(Processor):
                     calculate_filtered=True,
                     last_frame_predicted=track_prediction.last_frame_classified,
                 )
+                if preprocessed is None or len(preprocessed) == 0:
+                    track_prediction.last_frame_classified = self.clip.current_frame
+                    continue
+                import requests
+
+                start = time.time()
+                headers = {"content-type": "application/octet-stream"}
+                print("Length iss ", len(preprocessed[0].tostring()))
+                response = requests.post(
+                    "http://127.0.0.1:5000/predict",
+                    data=preprocessed[0].tostring(),
+                    headers=headers,
+                )
+                prediction = np.frombuffer(response.content, dtype=np.float32)
+                flask_prediction = [prediction]
+                logging.info("Via flask took %s", time.time() - start)
+                start = time.time()
+                prediction = self.classifier.predict(preprocessed)
+                assert np.all(flask_prediction == prediction)
+                logging.info("Via local took %s", time.time() - start)
 
                 if prediction is None:
                     track_prediction.last_frame_classified = self.clip.current_frame
@@ -550,7 +570,8 @@ class PiClassifier(Processor):
         for i, track in enumerate(active_tracks):
             if self.tracking_events:
                 track_prediction, model_id = self.get_best_prediction(track.get_id())
-
+                if track_prediction is None:
+                    continue
                 if track_prediction.predicted_tag() != "false-positive":
                     track_prediction.tracking = True
                     self.monitored_tracks[track.get_id()] = track

@@ -39,15 +39,16 @@ jobs:
       - name: Test Build
         run: python3 src/build.py -c tests/test-config.yaml tests --ext ".cptv"
 
-      # - name: Test Classify
-      #   run: |
-      #     sudo mkdir /var/spool/cptv
-      #     sudo chmod -R 777 /var/spool/cptv
-      #     wget -O thermal-model.tar https://github.com/TheCacophonyProject/AI-Model/releases/download/server-v0.4/wr-res-feb132024.tar
-      #     mkdir thermal-model
-      #     tar xzvf thermal-model.tar -C thermal-model --strip-components=1
-      #     python3 src/classify.py -c tests/test-config.yaml ./tests/clips/
-      #     python3 src/piclassify.py --file tests/clips/possum.cptv  --thermal-config-file tests/config.toml -c tests/test-config.yaml
+      - name: Test Classify
+        run: |
+          sudo mkdir /var/spool/cptv
+          sudo chmod -R 777 /var/spool/cptv
+          wget -O thermal-model.tar https://github.com/TheCacophonyProject/AI-Model/releases/download/pi-v0.6/inc3-tflite-15122023.tar
+          mkdir thermal-model
+          tar xzvf thermal-model.tar -C thermal-model --strip-components=1
+          pip install ai-edge-litert
+          python3 src/classify.py -c tests/test-config.yaml ./tests/clips/
+          python3 src/piclassify.py --file tests/clips/possum.cptv  --thermal-config-file tests/config.toml -c tests/test-config.yaml
 
   pypi-build:
     name: Build distribution 📦

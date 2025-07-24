@@ -486,11 +486,13 @@ class LiteInterpreter(Interpreter):
     def __init__(self, model_name):
         super().__init__(model_name)
 
-        import tflite_runtime.interpreter as tflite
+        from ai_edge_litert.interpreter import Interpreter
+
+        # import tflite_runtime.interpreter as tflite
 
         model_name = Path(model_name)
         model_name = model_name.with_suffix(".tflite")
-        self.interpreter = tflite.Interpreter(str(model_name))
+        self.interpreter = Interpreter(str(model_name))
 
         self.interpreter.allocate_tensors()  # Needed before execution!
 
