@@ -550,7 +550,8 @@ class PiClassifier(Processor):
         for i, track in enumerate(active_tracks):
             if self.tracking_events:
                 track_prediction, model_id = self.get_best_prediction(track.get_id())
-
+                if track_prediction is None:
+                    continue
                 if track_prediction.predicted_tag() != "false-positive":
                     track_prediction.tracking = True
                     self.monitored_tracks[track.get_id()] = track
@@ -590,13 +591,14 @@ class PiClassifier(Processor):
         for track in active_tracks:
             if self.fp_model is not None:
                 pred, model_id = self.get_best_prediction(track.get_id())
-                logging.debug(
-                    "track %s -%s - %s",
-                    track.get_id(),
-                    pred.predicted_tag(),
-                    pred.normalized_best_score(),
-                )
+
                 if pred is not None:
+                    logging.debug(
+                        "track %s -%s - %s",
+                        track.get_id(),
+                        pred.predicted_tag(),
+                        pred.normalized_best_score(),
+                    )
                     if pred.predicted_tag() == "false-positive":
                         confidence = pred.normalized_best_score()
 
