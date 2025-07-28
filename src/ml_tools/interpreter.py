@@ -6,11 +6,14 @@ import numpy as np
 from ml_tools.hyperparams import HyperParams
 from pathlib import Path
 from classify.trackprediction import TrackPrediction
+import requests
 
 
 class Interpreter(ABC):
-    def __init__(self, model_file):
+    def __init__(self, model_file, run_over_network=False):
         self.load_json(model_file)
+        self.run_over_network = run_over_network
+        self.port = 8123
         self.id = None
 
     def load_json(self, filename):
@@ -38,6 +41,16 @@ class Interpreter(ABC):
     def predict(self, frames):
         """predict"""
         ...
+
+    def predict_over_network(self, data):
+        headers = {"content-type": "application/octet-stream"}
+        response = requests.post(
+            f"http://127.0.0.1:{self.port}/predict",
+            data=data.tostring(),
+            headers=headers,
+        )
+        prediction = np.frombuffer(response.content, dtype=np.float32)
+        return [prediction]
 
     def get_preprocess_fn(self):
         model_name = self.params.model_name
@@ -483,9 +496,11 @@ class NeuralInterpreter(Interpreter):
 class LiteInterpreter(Interpreter):
     TYPE = "TFLite"
 
-    def __init__(self, model_name):
-        super().__init__(model_name)
+    def __init__(self, model_name, run_over_network=False):
+        super().__init__(model_name, run_over_network)
 
+        if run_over_network:
+            return
         from ai_edge_litert.interpreter import Interpreter
 
         # import tflite_runtime.interpreter as tflite
@@ -504,6 +519,8 @@ class LiteInterpreter(Interpreter):
         # inc3_preprocess
 
     def predict(self, input_x):
+        if self.run_over_network:
+            return self.predict_over_network(np.float32(input_x[0]))
         input_x = np.float32(input_x)
         preds = []
         # only works on input of 1
@@ -524,19 +541,20 @@ def inc3_preprocess(x):
     return x
 
 
-def get_interpreter(model):
+def get_interpreter(model, run_over_network=False):
     # model_name, type = os.path.splitext(model.model_file)
 
     logging.info(
-        "Loading %s of type %s",
+        "Loading %s of type %s over netowrk?? %s",
         model.model_file,
         model.type,
+        model.run_over_network,
     )
 
     if model.type == LiteInterpreter.TYPE:
-        classifier = LiteInterpreter(model.model_file)
+        classifier = LiteInterpreter(model.model_file, run_over_network)
     elif model.type == NeuralInterpreter.TYPE:
-        classifier = NeuralInterpreter(model.model_file)
+        classifier = NeuralInterpreter(model.model_file, run_over_network)
     elif model.type == "RandomForest":
         from ml_tools.forestmodel import ForestModel
 
@@ -544,7 +562,10 @@ def get_interpreter(model):
     else:
         from ml_tools.kerasmodel import KerasModel
 
-        classifier = KerasModel()
-        classifier.load_model(model.model_file, weights=model.model_weights)
+        classifier = KerasModel(run_over_network)
+        classifier.run_over_network = run_over_network
+        if not run_over_network:
+            classifier.load_model(model.model_file, weights=model.model_weights)
     classifier.id = model.id
+    classifier.port = model.port
     return classifier

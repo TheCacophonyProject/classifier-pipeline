@@ -273,7 +273,10 @@ class PiClassifier(Processor):
                     fp_config = model_config
 
             if model is not None:
-                self.classifier = get_interpreter(model)
+
+                self.classifier = get_interpreter(
+                    model, run_over_network=model.run_over_network
+                )
                 global classifier
                 classifier = self.classifier
                 self.frames_per_classify = (
@@ -358,6 +361,8 @@ class PiClassifier(Processor):
         )
 
     def startup_classifier(self):
+        if self.classifier.run_over_network:
+            return
         # classifies an empty frame to force loading of the model into memory
         num_inputs, in_shape = self.classifier.shape()
         if num_inputs > 1:
@@ -532,22 +537,10 @@ class PiClassifier(Processor):
                 if preprocessed is None or len(preprocessed) == 0:
                     track_prediction.last_frame_classified = self.clip.current_frame
                     continue
-                import requests
 
                 start = time.time()
-                headers = {"content-type": "application/octet-stream"}
-                print("Length iss ", len(preprocessed[0].tostring()))
-                response = requests.post(
-                    "http://127.0.0.1:5000/predict",
-                    data=preprocessed[0].tostring(),
-                    headers=headers,
-                )
-                prediction = np.frombuffer(response.content, dtype=np.float32)
-                flask_prediction = [prediction]
-                logging.info("Via flask took %s", time.time() - start)
-                start = time.time()
                 prediction = self.classifier.predict(preprocessed)
-                assert np.all(flask_prediction == prediction)
+                # assert np.all(flask_prediction == prediction)
                 logging.info("Via local took %s", time.time() - start)
 
                 if prediction is None:

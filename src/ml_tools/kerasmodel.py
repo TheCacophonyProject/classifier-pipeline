@@ -82,7 +82,7 @@ class KerasModel(Interpreter):
         self.excluded_labels = meta.get("excluded_labels")
         self.remapped_labels = meta.get("remapped_labels")
         self.params.set_use_segments(
-            meta.get("config").get("build", {}).get("use_segments", True)
+            meta.get("config", {}).get("build", {}).get("use_segments", True)
         )
 
     def shape(self):
@@ -91,7 +91,13 @@ class KerasModel(Interpreter):
         inputs = self.model.inputs
         shape = []
         for input in inputs:
-            shape.append(tuple(input.shape.as_list()))
+            in_shape = input.shape
+            if isinstance(in_shape, tuple):
+                shape.append(in_shape)
+            else:
+                shape.append(tuple(in_shape.as_list()))
+        if len(shape) == 1:
+            return len(shape), shape[0]
         return len(shape), shape
 
     def get_base_model(self, input, weights="imagenet"):
