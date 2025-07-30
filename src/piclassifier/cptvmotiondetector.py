@@ -155,6 +155,15 @@ class CPTVMotionDetector(MotionDetector):
                         self.running_mean /= self.running_mean_frames
                 if self.running_mean is not None:
                     self._background.process_frame(self.running_mean)
+                    running_mean_mean = np.mean(self.running_mean)
+                    current_frame_mean = np.mean(cptv_frame.pix)
+                    if current_frame_mean > running_mean_mean + 1000:
+                        logging.error(
+                            "Running mean is %s %s mean frmaes %s",
+                            running_mean_mean,
+                            current_frame_mean,
+                            self.running_mean_frames,
+                        )
             if self.ffc_affected or prev_ffc:
                 logging.debug("{} MotionDetector FFC".format(self.num_frames))
                 self.movement_detected = False
