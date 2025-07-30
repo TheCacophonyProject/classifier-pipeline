@@ -24,9 +24,9 @@ class ClipClassifier:
     # skips every nth frame.  Speeds things up a little, but reduces prediction quality.
     FRAME_SKIP = 1
 
-    def __init__(self, config, model=None):
+    def __init__(self, config, model=None, keep_original_predictions=False):
         """Create an instance of a clip classifier"""
-
+        self.keep_original_predictions = keep_original_predictions
         self.config = config
         # super(ClipClassifier, self).__init__(config, tracking_config)
         self.model = model
@@ -50,7 +50,7 @@ class ClipClassifier:
             return self.models[model.id]
         load_start = time.time()
         logging.info("classifier loading %s", model.model_file)
-        classifier = get_interpreter(model)
+        classifier = get_interpreter(model, model.run_over_network)
         logging.info("classifier loaded (%s)", time.time() - load_start)
         self.models[model.id] = classifier
         return classifier
@@ -294,7 +294,14 @@ class ClipClassifier:
                     continue
                 prediction_meta = prediction.get_metadata()
                 prediction_meta["model_id"] = model_id
+                if self.keep_original_predictions:
+                    prediction_meta["reprocessed"] = True
                 prediction_info.append(prediction_meta)
+            if self.keep_original_predictions:
+                existing_predictions = meta_track.get("predictions", [])
+                if existing_predictions is None:
+                    existing_predictions = []
+                prediction_info.extend(existing_predictions)
             meta_track["predictions"] = prediction_info
 
             if calculate_thumbnails:

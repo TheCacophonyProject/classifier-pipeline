@@ -74,6 +74,7 @@ class CameraMotionConfig:
     bluetooth_beacons = attr.ib(default=False)
     tracking_events = attr.ib(default=False)
     do_tracking = attr.ib(default=False)
+    reprocess_after = attr.ib(default=False)
 
     @classmethod
     def defaults_for(cls, model):
@@ -125,6 +126,7 @@ class CameraMotionConfig:
             ),
             tracking_events=motion.get("tracking-events", default.tracking_events),
             do_tracking=motion.get("do-tracking", default.do_tracking),
+            reprocess_after=motion.get("reprocess-after", default.reprocess_after),
         )
         return motion
 

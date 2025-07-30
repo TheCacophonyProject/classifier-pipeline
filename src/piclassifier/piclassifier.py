@@ -6,6 +6,7 @@ import time
 import psutil
 import numpy as np
 import logging
+import subprocess
 from track.clip import Clip
 from track.track import ThumbInfo
 
@@ -273,7 +274,7 @@ class PiClassifier(Processor):
                     fp_config = model_config
 
             if model is not None:
-
+                startup_network_classifier(model.run_over_network)
                 self.classifier = get_interpreter(
                     model, run_over_network=model.run_over_network
                 )
@@ -1191,3 +1192,19 @@ def process_mem():
     # return the memory usage in percentage like top
     process = psutil.Process(os.getppid())
     return process.memory_percent()
+
+
+def startup_network_classifier(enable):
+    if enable:
+        cmd = "sudo systemctl enable thermal-classifier && sudo systemctl start thermal-classifier"
+    else:
+        cmd = "sudo systemctl disable thermal-classifier && sudo systemctl stop thermal-classifier"
+    try:
+        subprocess.run(
+            cmd,
+            shell=True,
+            encoding="ascii",
+            check=True,
+        )
+    except:
+        logging.error("Could not run command %s", cmd, exc_info=True)

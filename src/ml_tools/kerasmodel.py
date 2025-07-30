@@ -43,10 +43,13 @@ class KerasModel(Interpreter):
     VERSION = 1
     TYPE = "Keras"
 
-    def __init__(self, train_config=None, labels=None, data_dir=None):
+    def __init__(
+        self, train_config=None, labels=None, data_dir=None, run_over_network=False
+    ):
         self.model = None
         self.datasets = None
         self.remapped = None
+        self.run_over_network = run_over_network
         # dictionary containing current hyper parameters
         self.params = HyperParams()
         self.data_type = None
@@ -831,6 +834,8 @@ class KerasModel(Interpreter):
         return track_prediction
 
     def predict(self, frames):
+        if self.run_over_network:
+            return self.predict_over_network(frames)
         return self.model.predict(frames)
 
     def confusion_tracks(self, dataset, filename, threshold=0.8):

@@ -3,7 +3,7 @@ from flask import request
 from flask import Response
 import numpy as np
 import sys
-from ml_tools.interpreter import LiteInterpreter
+from ml_tools.interpreter import get_interpreter
 from config.config import Config
 import logging
 from ml_tools.logs import init_logging
@@ -11,16 +11,23 @@ from config.thermalconfig import ThermalConfig
 
 
 app = Flask(__name__)
-app.config["MAX_CONTENT_LENGTH"] = 407200
+# app.config["MAX_CONTENT_LENGTH"] = 407200
 
 
 @app.route("/predict", methods=["POST"])
 def main():
     data = request.data
     input_data = np.frombuffer(data, dtype=np.float32)
-    input_data = input_data.reshape(160, 160, 3)
-    prediction = np.squeeze(interpreter.predict([input_data]))
-    response = Response(prediction.tostring(), mimetype="application/octet-stream")
+    input_data = input_data.reshape(input_shape)
+    if interpreter.TYPE == "TFLite":
+        predictions = []
+        for input in input_data:
+            prediction = interpreter.predict([input])
+            predictions.append(prediction[0])
+        predictions = np.array(predictions)
+    else:
+        predictions = interpreter.predict(input_data)
+    response = Response(predictions.tostring(), mimetype="application/octet-stream")
     return response
 
 
@@ -62,6 +69,12 @@ if __name__ == "__main__":
     network_model = get_model()
     if network_model is None:
         sys.exit(0)
-    interpreter = LiteInterpreter(network_model.model_file)
+    interpreter = get_interpreter(network_model)
+    num_inputs, input_shape = interpreter.shape()
+    if num_inputs > 1:
+        logging.error("Not support multiple input models")
+        sys.exit(0)
+    input_shape = (-1, *input_shape[1:])
+    # interpreter = LiteInterpreter(network_model.model_file)
     startup_classifier()
     app.run(port=network_model.port, debug=True)  # Set debug=False for production

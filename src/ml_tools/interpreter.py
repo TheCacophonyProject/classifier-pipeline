@@ -49,8 +49,9 @@ class Interpreter(ABC):
             data=data.tostring(),
             headers=headers,
         )
-        prediction = np.frombuffer(response.content, dtype=np.float32)
-        return [prediction]
+        predictions = np.frombuffer(response.content, dtype=np.float32)
+        predictions = predictions.reshape(len(data), -1)
+        return predictions
 
     def get_preprocess_fn(self):
         model_name = self.params.model_name
@@ -170,6 +171,7 @@ class Interpreter(ABC):
             top_score = np.sum(masses)
             masses = masses[:, None]
             smoothed_predictions = output * masses
+
         track_prediction.classified_clip(
             output,
             smoothed_predictions,
@@ -520,7 +522,7 @@ class LiteInterpreter(Interpreter):
 
     def predict(self, input_x):
         if self.run_over_network:
-            return self.predict_over_network(np.float32(input_x[0]))
+            return self.predict_over_network(np.float32(input_x))
         input_x = np.float32(input_x)
         preds = []
         # only works on input of 1
@@ -528,8 +530,8 @@ class LiteInterpreter(Interpreter):
             self.interpreter.set_tensor(self.input["index"], data[np.newaxis, :])
             self.interpreter.invoke()
             pred = self.interpreter.get_tensor(self.output["index"])
-            preds.append(pred)
-        return pred
+            preds.append(pred[0])
+        return preds
 
     def shape(self):
         return 1, self.input["shape"]
@@ -562,8 +564,7 @@ def get_interpreter(model, run_over_network=False):
     else:
         from ml_tools.kerasmodel import KerasModel
 
-        classifier = KerasModel(run_over_network)
-        classifier.run_over_network = run_over_network
+        classifier = KerasModel(run_over_network=run_over_network)
         if not run_over_network:
             classifier.load_model(model.model_file, weights=model.model_weights)
     classifier.id = model.id
