@@ -136,13 +136,13 @@ class CPTVMotionDetector(MotionDetector):
         if self.can_record() or force_process:
 
             self.thermal_window.add(cptv_frame, self.ffc_affected)
-            oldest_thermal = self.thermal_window.oldest_nonffc
+            oldest_thermal = self.thermal_window.oldest
             if oldest_thermal is not None:
                 oldest_thermal = oldest_thermal.pix
             cropped_frame = np.int32(self.crop_rectangle.subimage(cptv_frame.pix))
             if self.running_mean is None:
                 frames = self.thermal_window.get_frames()[: self.MEAN_FRAMES]
-                last_45 = [f.pix for f in frames if not is_affected_by_ffc(f)]
+                last_45 = [f.pix for f in frames]
                 if len(last_45) > 0:
                     self.running_mean_frames = len(last_45)
                     self.running_mean = np.sum(last_45, axis=0, dtype=np.uint32)
@@ -160,6 +160,7 @@ class CPTVMotionDetector(MotionDetector):
                     self.running_mean / self.running_mean_frames
                 )
                 frames = self.thermal_window.get_frames()[-self.MEAN_FRAMES :]
+                frames = [f.pix for f in frames]
                 running_mean_mean = np.mean(
                     self.running_mean / self.running_mean_frames
                 )
