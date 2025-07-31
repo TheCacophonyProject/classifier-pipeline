@@ -131,23 +131,20 @@ class CPTVMotionDetector(MotionDetector):
     def process_frame(self, cptv_frame, force_process=False):
         prev_ffc = self.ffc_affected
         self.ffc_affected = is_affected_by_ffc(cptv_frame)
-        if self.ffc_affected:
-            logging.info("FFC Affected %s", self.processed)
         if self.can_record() or force_process:
-
             self.thermal_window.add(cptv_frame, self.ffc_affected)
             oldest_thermal = self.thermal_window.oldest
+            # dont think this check is needed... 01/08/25
             if oldest_thermal is not None:
                 oldest_thermal = oldest_thermal.pix
             cropped_frame = np.int32(self.crop_rectangle.subimage(cptv_frame.pix))
             if self.running_mean is None:
-                frames = self.thermal_window.get_frames()[: self.MEAN_FRAMES]
-                last_45 = [f.pix for f in frames]
+                last_45 = self.thermal_window.get_frames()[: self.MEAN_FRAMES]
+                last_45 = [f.pix for f in last_45]
                 if len(last_45) > 0:
                     self.running_mean_frames = len(last_45)
                     self.running_mean = np.sum(last_45, axis=0, dtype=np.uint32)
             else:
-                # oldest_thermal = oldest_thermal.pix
                 if self.running_mean_frames == self.MEAN_FRAMES:
                     self.running_mean -= oldest_thermal
                     self.running_mean += cptv_frame.pix
@@ -159,45 +156,44 @@ class CPTVMotionDetector(MotionDetector):
                 self._background.process_frame(
                     self.running_mean / self.running_mean_frames
                 )
-                frames = self.thermal_window.get_frames()[-self.MEAN_FRAMES :]
-                frames = [f.pix for f in frames]
+
+                # debug stuff
                 running_mean_mean = np.mean(
                     self.running_mean / self.running_mean_frames
                 )
-                if len(frames) == 0:
-                    actual_mean = 0
-                else:
-                    actual_mean = np.mean(np.mean(frames, axis=0))
+                # frames = self.thermal_window.get_frames()[-self.MEAN_FRAMES :]
+                # frames = [f.pix for f in frames]
+                # if len(frames) == 0:
+                #     actual_mean = 0
+                # else:
+                #     actual_mean = np.mean(np.mean(frames, axis=0))
 
-                    assert np.isclose(
-                        actual_mean, running_mean_mean
-                    ), f"{actual_mean} differs from {running_mean_mean} {self.processed}"
+                #     assert np.isclose(
+                #         actual_mean, running_mean_mean
+                #     ), f"{actual_mean} differs from {running_mean_mean} {self.processed}"
+
                 current_frame_mean = np.mean(cptv_frame.pix)
                 mean_diff = abs(current_frame_mean - running_mean_mean)
-                if self.processed % (9 * 30) == 0:
+                if self.processed % (9 * 60) == 0:
 
                     logging.info(
-                        "Running mean is %s frame mean is %s frames %s processed %s oldest mean %s since ffc %s actual mean %s background mean %s",
+                        "Running mean is %s frame mean is %s frames %s processed %s since ffc %s background mean %s",
                         running_mean_mean,
                         current_frame_mean,
                         self.running_mean_frames,
                         self.processed,
-                        ("None" if oldest_thermal is None else np.mean(oldest_thermal)),
                         since_ffc(cptv_frame),
-                        actual_mean,
                         np.mean(self._background.background),
                     )
 
                 if mean_diff > 1000:
                     logging.error(
-                        "Running mean is %s current frame mean %s mean frames %s processed %s oldest mean %s since ffc %s actual mean %s background mean %s",
+                        "Running mean is %s current frame mean %s mean frames %s processed %s since ffc %s background mean %s",
                         running_mean_mean,
                         current_frame_mean,
                         self.running_mean_frames,
                         self.processed,
-                        ("None" if oldest_thermal is None else np.mean(oldest_thermal)),
                         since_ffc(cptv_frame),
-                        actual_mean,
                         np.mean(self._background.background),
                     )
             if self.ffc_affected or prev_ffc:
