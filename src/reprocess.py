@@ -52,6 +52,7 @@ if __name__ == "__main__":
     reprocess_dir.mkdir(exist_ok=True)
     network_model = get_model(thermal_config, config)
     if network_model is None:
+        logging.info("No network model exiting")
         sys.exit(0)
 
     dir_watcher = DirWatcher()
@@ -69,9 +70,7 @@ if __name__ == "__main__":
             try:
                 new_file = process_queue.get(block=False)
             except:
-                new_file = None
-            if new_file is None:
-                time.sleep(10)
+                time.sleep(20)
                 continue
             new_file = Path(new_file)
 
