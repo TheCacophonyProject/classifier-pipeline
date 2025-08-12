@@ -161,16 +161,6 @@ class CPTVMotionDetector(MotionDetector):
                 running_mean_mean = np.mean(
                     self.running_mean / self.running_mean_frames
                 )
-                # frames = self.thermal_window.get_frames()[-self.MEAN_FRAMES :]
-                # frames = [f.pix for f in frames]
-                # if len(frames) == 0:
-                #     actual_mean = 0
-                # else:
-                #     actual_mean = np.mean(np.mean(frames, axis=0))
-
-                #     assert np.isclose(
-                #         actual_mean, running_mean_mean
-                #     ), f"{actual_mean} differs from {running_mean_mean} {self.processed}"
 
                 current_frame_mean = np.mean(cptv_frame.pix)
                 mean_diff = abs(current_frame_mean - running_mean_mean)
