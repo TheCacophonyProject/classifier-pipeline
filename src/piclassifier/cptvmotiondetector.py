@@ -9,6 +9,7 @@ from ml_tools.rectangle import Rectangle
 class CPTVMotionDetector(MotionDetector):
     FFC_PERIOD = timedelta(seconds=9.9)
     BACKGROUND_WEIGHT_ADD = 0.1
+    MEAN_FRAMES = 45
 
     def __init__(self, thermal_config, dynamic_thresh, headers, detect_after=None):
         super().__init__(thermal_config, headers)
@@ -131,30 +132,60 @@ class CPTVMotionDetector(MotionDetector):
         prev_ffc = self.ffc_affected
         self.ffc_affected = is_affected_by_ffc(cptv_frame)
         if self.can_record() or force_process:
-            oldest_thermal = self.thermal_window.oldest_nonffc
             self.thermal_window.add(cptv_frame, self.ffc_affected)
+            oldest_thermal = self.thermal_window.oldest
+            # dont think this check is needed... 01/08/25
+            if oldest_thermal is not None:
+                oldest_thermal = oldest_thermal.pix
             cropped_frame = np.int32(self.crop_rectangle.subimage(cptv_frame.pix))
-            if not self.ffc_affected:
-                if self.running_mean is None:
-                    frames = self.thermal_window.get_frames()[:45]
-                    last_45 = [f.pix for f in frames if not is_affected_by_ffc(f)]
-                    if len(last_45) > 0:
-                        self.running_mean_frames = len(last_45)
-                        self.running_mean = np.mean(last_45, axis=0)
+            if self.running_mean is None:
+                last_45 = self.thermal_window.get_frames()[: self.MEAN_FRAMES]
+                last_45 = [f.pix for f in last_45]
+                if len(last_45) > 0:
+                    self.running_mean_frames = len(last_45)
+                    self.running_mean = np.sum(last_45, axis=0, dtype=np.uint32)
+            else:
+                if self.running_mean_frames == self.MEAN_FRAMES:
+                    self.running_mean -= oldest_thermal
+                    self.running_mean += cptv_frame.pix
                 else:
-                    oldest_thermal = oldest_thermal.pix
-                    if self.running_mean_frames == 45:
-                        self.running_mean -= oldest_thermal / self.running_mean_frames
-                        self.running_mean += cptv_frame.pix / self.running_mean_frames
-                    else:
-                        self.running_mean = (
-                            self.running_mean * self.running_mean_frames
-                            + cptv_frame.pix
-                        )
-                        self.running_mean_frames += 1
-                        self.running_mean /= self.running_mean_frames
-                if self.running_mean is not None:
-                    self._background.process_frame(self.running_mean)
+                    self.running_mean = self.running_mean + cptv_frame.pix
+
+                    self.running_mean_frames += 1
+            if self.running_mean is not None and not self.ffc_affected:
+                self._background.process_frame(
+                    self.running_mean / self.running_mean_frames
+                )
+
+                # debug stuff
+                running_mean_mean = np.mean(
+                    self.running_mean / self.running_mean_frames
+                )
+
+                current_frame_mean = np.mean(cptv_frame.pix)
+                mean_diff = abs(current_frame_mean - running_mean_mean)
+                if self.processed % (9 * 60) == 0:
+
+                    logging.info(
+                        "Running mean is %s frame mean is %s frames %s processed %s since ffc %s background mean %s",
+                        running_mean_mean,
+                        current_frame_mean,
+                        self.running_mean_frames,
+                        self.processed,
+                        since_ffc(cptv_frame),
+                        np.mean(self._background.background),
+                    )
+
+                if mean_diff > 1000:
+                    logging.error(
+                        "Running mean is %s current frame mean %s mean frames %s processed %s since ffc %s background mean %s",
+                        running_mean_mean,
+                        current_frame_mean,
+                        self.running_mean_frames,
+                        self.processed,
+                        since_ffc(cptv_frame),
+                        np.mean(self._background.background),
+                    )
             if self.ffc_affected or prev_ffc:
                 logging.debug("{} MotionDetector FFC".format(self.num_frames))
                 self.movement_detected = False
@@ -196,3 +227,14 @@ def is_affected_by_ffc(cptv_frame):
     return (
         cptv_frame.time_on - cptv_frame.last_ffc_time
     ) < CPTVMotionDetector.FFC_PERIOD
+
+
+def since_ffc(cptv_frame):
+    if hasattr(cptv_frame, "ffc_status") and cptv_frame.ffc_status in [1, 2]:
+        return True
+
+    if cptv_frame.time_on is None or cptv_frame.last_ffc_time is None:
+        return False
+    if isinstance(cptv_frame.time_on, int):
+        return cptv_frame.time_on - cptv_frame.last_ffc_time
+    return cptv_frame.time_on - cptv_frame.last_ffc_time
