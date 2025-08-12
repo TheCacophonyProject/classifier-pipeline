@@ -100,9 +100,9 @@ def makecsv(dir):
 
 def main():
     args = parse_params()
-    latest_date(args.target)
-    # makecsv(args.target)
-    return
+    # latest_date(args.target)
+    # # makecsv(args.target)
+    # return
     f = h5py.File(args.target, "r")
     clip_attrs = f.attrs
     print(
