@@ -16,7 +16,7 @@ from ml_tools.previewer import Previewer
 from ml_tools.interpreter import get_interpreter
 from track.trackextractor import extract_file
 from classify.thumbnail import get_thumbnail_info, best_trackless_thumb
-
+from pathlib import Path
 
 class ClipClassifier:
     """Classifies tracks within CPTV files."""
@@ -340,3 +340,95 @@ class ClipClassifier:
             with open(meta_filename, "w") as f:
                 json.dump(meta_data, f, indent=4, cls=tools.CustomJSONEncoder)
         return meta_data
+
+
+    def process_file_low_mem(self, filename):
+        from cptv_rs_python_bindings import CptvReader
+        from ml_tools.frame import Frame
+        filename = Path(filename)
+        meta_file = filename.with_suffix(".txt")
+        if  not filename.exists():
+            logging.error("File %s not found.", filename)
+            return False
+        if not meta_file.exists():
+            logging.error("File %s not found.", meta_file)
+            return False
+        meta_data = tools.load_clip_metadata(meta_file):
+        filename = Path(filename)
+        meta_file = filename.with_suffix(".txt")
+        if  not filename.exists():
+            logging.error("File %s not found.", filename)
+            return False
+        if not meta_file.exists():
+            logging.error("File %s not found.", meta_file)
+            return False
+        meta_data = tools.load_clip_metadata(meta_file)
+       
+        # get segments here, or frames
+        # only extra data for segments
+        track_extractor = ClipTrackExtractor(
+                    self.config.tracking,
+                    self.config.use_opt_flow,                    
+                    calculate_filtered=True,
+                    verbose=self.config.verbose,
+                )
+
+        clip = Clip(track_extractor.config, filename)
+        clip.load_metadata(
+            meta_data,
+            self.config.build.tag_precedence,
+        )
+        track_extractor.init_clip(clip)
+
+        logging.info("Just running on first model")
+        model = self.config.classify.models[0]
+        classifier = self.get_classifier(model)
+        track_samples = []
+        track_data = {}
+        for track in clip.tracks:
+            track_data [track.get_id()]={}
+            pred_frame = classifier.frames_or_prediction(clip,track)
+            for r in pred_frame.regions:
+
+                frame_samples = track_samples[r.frame_number].getdefault(track.get_id(),[])
+                frame_samples.append(f)
+        reader = CptvReader(str(clip.source_file))
+        current_frame_num = 0
+        while True:
+            frame = reader.next_frame()
+
+            if frame is None:
+                break
+            if frame.backgorund_frame:
+                continue
+
+            if current_frame_num in track_samples:
+                for track_id,region in track_samples[current_frame_num].items():
+                    region = track_samples[current_frame_num]
+                    thermal = region.subimage(frame.pix).astype(np.float32)
+                    background = region.subimage(track_extractor.background_alg.background)
+                    filtered = thermal - background
+                    f = Frame(thermal,filtered,current_frame_num)
+                    track_data[track_id][region.frame_number]=f
+                    
+            # track_extractor.process_frame(clip, frame)
+            # move this code into background code
+            last_avg = np.mean(
+                [f.thermal for f in clip.frame_buffer.get_last_x(x=45)], axis=0
+            )
+            self.background_alg.process_frame(last_avg)
+            current_frame_num +=1
+        self._track_clip(clip)
+        if self.calc_stats:
+            clip.stats.completed()
+        self._tracking_time = time.time() - start
+        return True
+    
+        clip.parse_clip
+
+        # get prediction segments
+
+        # load data for these segments
+
+
+        # track_extractor.parse_clip(clip)

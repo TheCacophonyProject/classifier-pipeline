@@ -21,7 +21,7 @@ class TrackChannels(enum.Enum):
 class Frame:
     thermal = attr.ib()
     filtered = attr.ib()
-    mask = attr.ib()
+    mask = attr.ib(default=None)
     frame_number = attr.ib()
     flow = attr.ib(default=None)
     flow_clipped = attr.ib(default=False)

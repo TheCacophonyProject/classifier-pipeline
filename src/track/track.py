@@ -665,22 +665,25 @@ class Track:
             region.crop(self.crop_rectangle)
 
     def add_frame_for_existing_region(self, frame, mass_delta_threshold, prev_filtered):
-        region = self.bounds_history[self.current_frame_num]
-        if prev_filtered is not None:
-            prev_filtered = region.subimage(prev_filtered)
-        filtered = region.subimage(frame.filtered)
-        region.calculate_mass(filtered, mass_delta_threshold)
-        region.calculate_variance(filtered, prev_filtered)
-        if self.prev_frame_num and frame.frame_number:
-            frame_diff = frame.frame_number - self.prev_frame_num - 1
-            for _ in range(frame_diff):
-                self.add_blank_frame()
-        if self.tracker:
-            self.tracker.add_region(region)
+        # i dont think we need any of this gp
+        logging.error("add_frame_for_existing_region is not impemented anymore")
+        # # region = self.bounds_history[self.current_frame_num]
+        # # if prev_filtered is not None:
+        # #     prev_filtered = region.subimage(prev_filtered)
+        # # filtered = region.subimage(frame.filtered)
+        # # region.calculate_mass(filtered, mass_delta_threshold)
+        # # region.calculate_variance(filtered, prev_filtered)
 
-        self.update_velocity()
-        self.prev_frame_num = frame.frame_number
-        self.current_frame_num += 1
+        # if self.prev_frame_num and frame.frame_number:
+        #     frame_diff = frame.frame_number - self.prev_frame_num - 1
+        #     for _ in range(frame_diff):
+        #         self.add_blank_frame()
+        # if self.tracker:
+        #     self.tracker.add_region(region)
+
+        # self.update_velocity()
+        # self.prev_frame_num = frame.frame_number
+        # self.current_frame_num += 1
 
     def average_area(self):
         """Average mass of last 5 frames that weren't blank"""

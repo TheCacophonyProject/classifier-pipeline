@@ -220,23 +220,23 @@ class ClipTrackExtractor(ClipTracker):
             _, mask, component_details, centroids = detect_objects(
                 obj_filtered, otsus=False, threshold=threshold, kernel=(5, 5)
             )
-        cur_frame = clip.add_frame(thermal, filtered, mask, ffc_affected)
+        _ = clip.add_frame(thermal, filtered, mask, ffc_affected)
         if not self.do_tracking:
             return
 
-        if clip.from_metadata:
-            for track in clip.tracks:
-                if clip.current_frame in track.frame_list:
-                    track.add_frame_for_existing_region(
-                        cur_frame,
-                        threshold,
-                        (
-                            clip.frame_buffer.prev_frame.filtered
-                            if clip.frame_buffer.prev_frame is not None
-                            else None
-                        ),
-                    )
-        else:
+        # if clip.from_metadata:
+        #     for track in clip.tracks:
+        #         if clip.current_frame in track.frame_list:
+        #             track.add_frame_for_existing_region(
+        #                 cur_frame,
+        #                 threshold,
+        #                 (
+        #                     clip.frame_buffer.prev_frame.filtered
+        #                     if clip.frame_buffer.prev_frame is not None
+        #                     else None
+        #                 ),
+        #             )
+        if not clip.from_metadata:
             regions = []
             if ffc_affected:
                 clip.active_tracks = set()
