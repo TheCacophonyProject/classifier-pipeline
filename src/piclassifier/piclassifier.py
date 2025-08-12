@@ -985,7 +985,7 @@ class PiClassifier(Processor):
                     score = 0
                     prediction = ""
                     all_scores = None
-                    model_id = 0
+                    model_id = None
                     track_prediction = None
                     last_prediction = 0
                     if self.classify:
