@@ -157,6 +157,24 @@ class MotionDetector(ABC):
         """Tracker type IR or Thermal"""
 
 
+class RunningMean:
+    def __init__(self, data, window_size):
+        self.running_mean = np.sum(data, axis=0, dtype=np.uint32)
+        self.running_mean_frames = len(data)
+        self.window_size = window_size
+
+    def add(self, new_data, oldest_data):
+        if self.running_mean_frames == self.window_size:
+            self.running_mean -= oldest_data
+            self.running_mean += new_data
+        else:
+            self.running_mean = self.running_mean + new_data
+            self.running_mean_frames += 1
+
+    def mean(self):
+        return self.running_mean / self.running_mean_frames
+
+
 class WeightedBackground:
     def __init__(
         self, edge_pixels, crop_rectangle, res_x, res_y, weight_add, init_average

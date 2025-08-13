@@ -21,8 +21,8 @@ class TrackChannels(enum.Enum):
 class Frame:
     thermal = attr.ib()
     filtered = attr.ib()
-    mask = attr.ib(default=None)
     frame_number = attr.ib()
+    mask = attr.ib(default=None)
     flow = attr.ib(default=None)
     flow_clipped = attr.ib(default=False)
     scaled_thermal = attr.ib(default=None)
@@ -225,8 +225,8 @@ class Frame:
             frame = Frame(
                 thermal,
                 filtered,
-                mask,
                 self.frame_number,
+                mask=mask,
                 flow_clipped=self.flow_clipped,
                 ffc_affected=self.ffc_affected,
                 region=region,
@@ -312,8 +312,8 @@ class Frame:
         return Frame(
             None if self.thermal is None else self.thermal.copy(),
             None if self.filtered is None else self.filtered.copy(),
-            None if self.mask is None else self.mask.copy(),
             self.frame_number,
+            mask=None if self.mask is None else self.mask.copy(),
             flow=None if self.flow is None else self.flow.copy(),
             flow_clipped=self.flow_clipped,
             ffc_affected=self.ffc_affected,
