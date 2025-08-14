@@ -203,16 +203,26 @@ class Interpreter(ABC):
                 valid_regions = 0
                 if available_frames > predict_from_last:
                     # want to get rid of any blank frames
+
+                    target_frames = predict_from_last
                     predict_from_last = 0
-                for i, r in enumerate(
-                    reversed(track.bounds_history[-available_frames:])
-                ):
-                    if r.blank:
-                        continue
-                    valid_regions += 1
-                    predict_from_last = i + 1
-                    if valid_regions >= predict_from_last:
-                        break
+                    for i, r in enumerate(
+                        reversed(track.bounds_history[-available_frames:])
+                    ):
+                        logging.info(
+                            "Checking regoins in reverse %s", predict_from_last
+                        )
+                        if r.blank:
+                            continue
+                        valid_regions += 1
+                        predict_from_last = i + 1
+                        if valid_regions >= target_frames:
+                            logging.info(
+                                "Valid regions %s bigger than predict from last %s",
+                                valid_regions,
+                                predict_from_last,
+                            )
+                            break
                 logging.debug(
                     "After checking blanks have predict from last %s from last available frames %s track is of length %s",
                     predict_from_last,
