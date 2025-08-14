@@ -124,7 +124,15 @@ class Interpreter(ABC):
         if output is None:
             logging.info("Skipping track %s", track.get_id())
             return None
-        track_prediction = TrackPrediction(track.get_id(), self.labels)
+        track_pred = self.track_prediction_from_raw(
+            track.get_id(), prediction_frames, output, masses
+        )
+        track_pred.classify_time = time.time() - start
+
+        return track_pred
+
+    def track_prediction_from_raw(self, track_id, prediction_frames, output, masses):
+        track_prediction = TrackPrediction(track_id, self.labels)
         # self.model.predict(preprocessed)
         top_score = None
         smoothed_predictions = None
@@ -149,7 +157,6 @@ class Interpreter(ABC):
             # if we don't have many frames to get a good prediction, lets assume only false-positive is a good prediction and filter the rest to a maximum of 0.5
             if track_prediction.predicted_tag() != "false-positive":
                 track_prediction.cap_confidences(0.5)
-        track_prediction.classify_time = time.time() - start
         return track_prediction
 
     def predict_track(self, clip, track, **args):
@@ -188,15 +195,15 @@ class Interpreter(ABC):
                 if available_frames > predict_from_last:
                     # want to get rid of any blank frames
                     predict_from_last = 0
-                    for i, r in enumerate(
-                        reversed(track.bounds_history[-available_frames:])
-                    ):
-                        if r.blank:
-                            continue
-                        valid_regions += 1
-                        predict_from_last = i + 1
-                        if valid_regions >= predict_from_last:
-                            break
+                for i, r in enumerate(
+                    reversed(track.bounds_history[-available_frames:])
+                ):
+                    if r.blank:
+                        continue
+                    valid_regions += 1
+                    predict_from_last = i + 1
+                    if valid_regions >= predict_from_last:
+                        break
                 logging.debug(
                     "After checking blanks have predict from last %s from last available frames %s track is of length %s",
                     predict_from_last,
@@ -292,6 +299,8 @@ class Interpreter(ABC):
         max_diff = 0
         thermal_max_diff = None
         thermal_min_diff = None
+        thermal_norm_limits = None
+        filtered_norm_limits = None
         for i, region in enumerate(reversed(track.bounds_history)):
             if region.blank:
                 continue
@@ -343,9 +352,6 @@ class Interpreter(ABC):
             for region in segment.regions:
                 if region.frame_number not in unique_regions:
                     unique_regions[region.frame_number] = region
-            unique_regions.update(set(segment.regions))
-        # unique_regions = list(unique_regions)
-        # unique_regions.sort()
 
         # should really be over whole track buts let just do the indices we predict of
         #  seems to make little different to just doing a min max normalization

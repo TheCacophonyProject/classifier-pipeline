@@ -18,6 +18,7 @@ from track.trackextractor import extract_file
 from classify.thumbnail import get_thumbnail_info, best_trackless_thumb
 from pathlib import Path
 
+
 class ClipClassifier:
     """Classifies tracks within CPTV files."""
 
@@ -341,37 +342,40 @@ class ClipClassifier:
                 json.dump(meta_data, f, indent=4, cls=tools.CustomJSONEncoder)
         return meta_data
 
-
     def process_file_low_mem(self, filename):
         from cptv_rs_python_bindings import CptvReader
+        from piclassifier.motiondetector import RunningMean, SlidingWindow
+        from piclassifier.cptvmotiondetector import CPTVMotionDetector
         from ml_tools.frame import Frame
+        from ml_tools.preprocess import preprocess_frame, preprocess_movement
+
         filename = Path(filename)
         meta_file = filename.with_suffix(".txt")
-        if  not filename.exists():
-            logging.error("File %s not found.", filename)
-            return False
-        if not meta_file.exists():
-            logging.error("File %s not found.", meta_file)
-            return False
-        meta_data = tools.load_clip_metadata(meta_file):
-        filename = Path(filename)
-        meta_file = filename.with_suffix(".txt")
-        if  not filename.exists():
+        if not filename.exists():
             logging.error("File %s not found.", filename)
             return False
         if not meta_file.exists():
             logging.error("File %s not found.", meta_file)
             return False
         meta_data = tools.load_clip_metadata(meta_file)
-       
+        filename = Path(filename)
+        meta_file = filename.with_suffix(".txt")
+        if not filename.exists():
+            logging.error("File %s not found.", filename)
+            return False
+        if not meta_file.exists():
+            logging.error("File %s not found.", meta_file)
+            return False
+        meta_data = tools.load_clip_metadata(meta_file)
+
         # get segments here, or frames
         # only extra data for segments
         track_extractor = ClipTrackExtractor(
-                    self.config.tracking,
-                    self.config.use_opt_flow,                    
-                    calculate_filtered=True,
-                    verbose=self.config.verbose,
-                )
+            self.config.tracking,
+            self.config.use_opt_flow,
+            calculate_filtered=True,
+            verbose=self.config.verbose,
+        )
 
         clip = Clip(track_extractor.config, filename)
         clip.load_metadata(
@@ -381,54 +385,150 @@ class ClipClassifier:
         track_extractor.init_clip(clip)
 
         logging.info("Just running on first model")
+        start = time.time()
         model = self.config.classify.models[0]
         classifier = self.get_classifier(model)
-        track_samples = []
-        track_data = {}
-        for track in clip.tracks:
-            track_data [track.get_id()]={}
-            pred_frame = classifier.frames_or_prediction(clip,track)
-            for r in pred_frame.regions:
+        predictions = Predictions(classifier.labels, model)
+        predictions.model_load_time = time.time() - start
 
-                frame_samples = track_samples[r.frame_number].getdefault(track.get_id(),[])
-                frame_samples.append(f)
+        track_samples = {}
+        track_data = {}
+
+        for track in clip.tracks:
+            pred_frames = classifier.frames_for_prediction(clip, track)
+            # print("For track ", len(pred_frames), " track length", len(track))
+            # 1/0
+            track_data[track.get_id()] = {
+                "pred_frames": pred_frames,
+                "limits": None,
+                "frames": {},
+            }
+
+            for seg in pred_frames:
+
+                for r in seg.regions:
+                    frame_data = track_samples.setdefault(r.frame_number, {})
+                    frame_data[track.get_id()] = r
+                    # frame_samples.append(r)
         reader = CptvReader(str(clip.source_file))
         current_frame_num = 0
+        running_mean = None
+        thermal_window = SlidingWindow(CPTVMotionDetector.MEAN_FRAMES, "O")
+
+        if classifier.params.thermal_diff_norm:
+            logging.error("Thermal min diff is not implemented so will not be used")
+
         while True:
             frame = reader.next_frame()
 
             if frame is None:
                 break
-            if frame.backgorund_frame:
+            if frame.background_frame:
                 continue
 
             if current_frame_num in track_samples:
-                for track_id,region in track_samples[current_frame_num].items():
-                    region = track_samples[current_frame_num]
+                thermal_median = np.median(frame.pix)
+                for track_id, region in track_samples[current_frame_num].items():
+                    # region = track_samples[current_frame_num]
                     thermal = region.subimage(frame.pix).astype(np.float32)
-                    background = region.subimage(track_extractor.background_alg.background)
+                    background = region.subimage(
+                        track_extractor.background_alg.background
+                    )
                     filtered = thermal - background
-                    f = Frame(thermal,filtered,current_frame_num)
-                    track_data[track_id][region.frame_number]=f
-                    
+                    thermal -= thermal_median
+                    f = Frame(thermal, filtered, current_frame_num, region=region)
+                    track_data[track_id]["frames"][region.frame_number] = f
+                    if classifier.params.diff_norm:
+                        f_min = np.min(filtered)
+                        f_max = np.max(filtered)
+                        existing_limits = track_data[track_id]["limits"]
+
+                        if existing_limits is None:
+                            track_data[track_id]["limits"] = [f_min, f_max]
+                        else:
+                            if f_min < existing_limits[0]:
+                                existing_limits[0] = f_min
+                            if f_max > existing_limits[1]:
+                                existing_limits[1] = f_max
+                            track_data[track_id]["limits"] = existing_limits
             # track_extractor.process_frame(clip, frame)
-            # move this code into background code
-            last_avg = np.mean(
-                [f.thermal for f in clip.frame_buffer.get_last_x(x=45)], axis=0
+            is_ffc = is_affected_by_ffc(frame)
+            oldest_thermal = thermal_window.oldest
+            thermal_window.add(frame, is_ffc)
+
+            if running_mean is None:
+                running_mean = RunningMean([frame.pix], CPTVMotionDetector.MEAN_FRAMES)
+            else:
+                running_mean.add(frame.pix, oldest_thermal.pix)
+            if not is_ffc:
+                track_extractor.background_alg.process_frame(running_mean.mean())
+            current_frame_num += 1
+        i = 0
+        for track_id, data in track_data.items():
+            i += 1
+            pred_frames = data["pred_frames"]
+            pred_frame_numbers = []
+            preprocessed = []
+            masses = []
+            for segment in pred_frames:
+                segment_frames = []
+                for frame_i in segment.frame_indices:
+                    f = data["frames"][frame_i]
+                    if not f.preprocessed:
+                        f = preprocess_frame(
+                            f,
+                            (
+                                classifier.params.frame_size,
+                                classifier.params.frame_size,
+                            ),
+                            region,
+                            clip.background,
+                            clip.crop_rectangle,
+                            calculate_filtered=False,
+                            filtered_norm_limits=data["limits"],
+                            cropped=True,
+                            sub_median=False,
+                        )
+                        data["frames"][frame_i] = f
+                    # probably no need to copy
+                    segment_frames.append(f)
+                frames = preprocess_movement(
+                    segment_frames,
+                    classifier.params.square_width,
+                    classifier.params.frame_size,
+                    classifier.params.channels,
+                    classifier.preprocess_fn,
+                    sample=f"{clip.get_id()}-{track_id}",
+                )
+                preprocessed.append(frames)
+                masses.append(segment.mass)
+                pred_frame_numbers.append(segment.frame_indices)
+            if len(preprocessed) == 0:
+                logging.info("No prediction made for track %s", track_id)
+                continue
+                # dont think this should happen
+            preprocessed = np.array(preprocessed)
+            pred = classifier.predict(preprocessed)
+            track_prediction = classifier.track_prediction_from_raw(
+                track_id, pred_frame_numbers, pred, masses
             )
-            self.background_alg.process_frame(last_avg)
-            current_frame_num +=1
-        self._track_clip(clip)
-        if self.calc_stats:
-            clip.stats.completed()
-        self._tracking_time = time.time() - start
-        return True
-    
-        clip.parse_clip
+            predictions.prediction_per_track[track.get_id()] = track_prediction
 
-        # get prediction segments
+            description = track_prediction.description()
+            logging.info(
+                "{} - [{}/{}] prediction: {}".format(
+                    track.get_id(), i, len(clip.tracks), description
+                )
+            )
 
-        # load data for these segments
+        models = [model]
+        predictions_per_model = {model.id: predictions}
 
-
-        # track_extractor.parse_clip(clip)
+        meta_data = self.save_metadata(
+            meta_data,
+            meta_file,
+            clip,
+            predictions_per_model,
+            models,
+            calculate_thumbnails=False,
+        )

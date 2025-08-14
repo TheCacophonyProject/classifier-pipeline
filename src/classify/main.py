@@ -122,13 +122,18 @@ def main(cmd_args=None):
         config,
         model,
     )
-    clip_classifier.process(
-        args.source,
-        cache=args.cache,
-        reuse_frames=args.reuse_prediction_frames,
-        track=args.track,
-        calculate_thumbnails=args.calculate_thumbnails,
-    )
+    import time
+
+    start = time.time()
+    clip_classifier.process_file_low_mem(args.source)
+    logging.info("Took %s", time.time() - start)
+    # clip_classifier.process(
+    #     args.source,
+    #     cache=args.cache,
+    #     reuse_frames=args.reuse_prediction_frames,
+    #     track=args.track,
+    #     calculate_thumbnails=args.calculate_thumbnails,
+    # )
 
 
 if __name__ == "__main__":
