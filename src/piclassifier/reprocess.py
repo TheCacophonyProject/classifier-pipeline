@@ -14,16 +14,18 @@ import shutil
 
 
 class DirWatcher(FileSystemEventHandler):
+    def __init__(self, process_queue):
+        self.process_queue = process_queue
+
     def on_created(self, event):
         if not event.is_directory:
             event_file = Path(event.src_path)
             if event_file.suffix == ".cptv":
                 if event_file.with_suffix(".txt").exists():
-                    process_queue.put(event_file)
+                    self.process_queue.put(event_file)
             elif event_file.suffix == ".txt":
                 if event_file.with_suffix(".cptv").exists():
-                    process_queue.put(event_file.with_suffix(".cptv"))
-            print(f"File created: {event.src_path}")
+                    self.process_queue.put(event_file.with_suffix(".cptv"))
 
 
 def get_model(thermal_config, config):
@@ -43,7 +45,7 @@ def get_model(thermal_config, config):
     return network_model[0]
 
 
-if __name__ == "__main__":
+def main():
     init_logging()
     config = Config.load_from_file()
     thermal_config = ThermalConfig.load_from_file()
@@ -55,10 +57,15 @@ if __name__ == "__main__":
         logging.info("No network model exiting")
         sys.exit(0)
 
-    dir_watcher = DirWatcher()
-    observer = Observer()
     process_queue = multiprocessing.Queue()
+    dir_watcher = DirWatcher(process_queue)
+    observer = Observer()
 
+    for cptv_f in reprocess_dir.glob("*.cptv"):
+        logging.info("Adding existing %s", cptv_f)
+        process_queue.put(cptv_f)
+
+    logging.info("Watching %s", reprocess_dir)
     observer.schedule(dir_watcher, reprocess_dir, recursive=False)
     observer.start()
     config.validate()
@@ -76,7 +83,7 @@ if __name__ == "__main__":
 
             # reprocess file
             try:
-                clip_classifier.process_file(new_file)
+                clip_classifier.process_file_low_mem(new_file)
             except:
                 logging.error("Error reprocessing %s", new_file, exc_info=True)
 
@@ -94,3 +101,7 @@ if __name__ == "__main__":
 
     except KeyboardInterrupt:
         observer.stop()
+
+
+if __name__ == "__main__":
+    main()

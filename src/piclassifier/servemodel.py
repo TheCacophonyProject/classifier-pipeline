@@ -12,6 +12,8 @@ from config.thermalconfig import ThermalConfig
 
 app = Flask(__name__)
 # app.config["MAX_CONTENT_LENGTH"] = 407200
+interpreter = None
+input_shape = None
 
 
 @app.route("/predict", methods=["POST"])
@@ -63,9 +65,10 @@ def get_model():
     return network_model[0]
 
 
-if __name__ == "__main__":
+def main():
     init_logging()
-
+    global interpreter
+    global input_shape
     network_model = get_model()
     if network_model is None:
         sys.exit(0)
@@ -78,3 +81,7 @@ if __name__ == "__main__":
     # interpreter = LiteInterpreter(network_model.model_file)
     startup_classifier()
     app.run(port=network_model.port, debug=True)  # Set debug=False for production
+
+
+if __name__ == "__main__":
+    main()

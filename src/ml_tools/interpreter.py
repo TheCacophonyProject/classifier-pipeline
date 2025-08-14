@@ -91,6 +91,15 @@ class Interpreter(ABC):
         logging.warn("pretrained model %s has no preprocessing function", model_name)
         return None
 
+    # use when predictin as tracks are being tracked i.e not finished yet
+    def predict_recent_frames(self, clip, track, **args):
+        samples = self.frames_for_prediction(clip, track, **args)
+        frames, preprocessed, mass = self.preprocess(clip, track, samples, **args)
+        if preprocessed is None or len(preprocessed) == 0:
+            return None
+        prediction = self.predict(preprocessed)
+        return prediction, frames, mass
+
     def preprocess(self, clip, track, samples, **args):
         frames_per_classify = args.get("frames_per_classify", 25)
 

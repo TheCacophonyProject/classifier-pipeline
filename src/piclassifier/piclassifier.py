@@ -524,7 +524,7 @@ class PiClassifier(Processor):
                     self.classifier.id
                 ].get_or_create_prediction(track, keep_all=True)
                 start = time.time()
-                frames, preprocessed, mass = self.classifier.preprocess(
+                pred_result = self.classifier.predict_recent_frames(
                     clip,
                     track,
                     predict_from_last=self.predict_from_last,
@@ -535,14 +535,10 @@ class PiClassifier(Processor):
                     calculate_filtered=True,
                     last_frame_predicted=track_prediction.last_frame_classified,
                 )
-                if preprocessed is None or len(preprocessed) == 0:
+                if pred_result is None:
                     track_prediction.last_frame_classified = self.clip.current_frame
                     continue
-
-                start = time.time()
-                prediction = self.classifier.predict(preprocessed)
-                # assert np.all(flask_prediction == prediction)
-                logging.info("Via local took %s", time.time() - start)
+                prediction, frames, mass = pred_result
 
                 if prediction is None:
                     track_prediction.last_frame_classified = self.clip.current_frame
