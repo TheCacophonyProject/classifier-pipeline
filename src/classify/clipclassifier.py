@@ -512,12 +512,12 @@ class ClipClassifier:
             track_prediction = classifier.track_prediction_from_raw(
                 track_id, pred_frame_numbers, pred, masses
             )
-            predictions.prediction_per_track[track.get_id()] = track_prediction
+            predictions.prediction_per_track[track_id] = track_prediction
 
             description = track_prediction.description()
             logging.info(
                 "{} - [{}/{}] prediction: {}".format(
-                    track.get_id(), i, len(clip.tracks), description
+                    track_id, i, len(clip.tracks), description
                 )
             )
 
