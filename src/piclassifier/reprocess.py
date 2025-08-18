@@ -70,7 +70,10 @@ def main():
     observer.start()
     config.validate()
     clip_classifier = ClipClassifier(
-        config, network_model, keep_original_predictions=True
+        config,
+        network_model,
+        keep_original_predictions=True,
+        tracking_events=thermal_config.motion.tracking_events,
     )
     try:
         while True:
@@ -84,6 +87,7 @@ def main():
             # reprocess file
             try:
                 clip_classifier.process_file_low_mem(new_file)
+
             except:
                 logging.error("Error reprocessing %s", new_file, exc_info=True)
 

@@ -147,6 +147,39 @@ class Service(dbus.service.Object):
     def Recording(self, timestamp, is_recording):
         pass
 
+    @dbus.service.method(DBUS_NAME, in_signature="iiaisiaiiibbii")
+    def TrackReprocessed(
+        self,
+        clip_id,
+        track_id,
+        prediction,
+        what,
+        confidence,
+        region,
+        frame,
+        mass,
+        blank,
+        tracking,
+        last_prediction_frame,
+        model_id,
+    ):
+        # just passing on the tracking info
+        return self.Tracking(
+            clip_id,
+            track_id,
+            prediction,
+            what,
+            confidence,
+            region,
+            frame,
+            mass,
+            blank,
+            tracking,
+            last_prediction_frame,
+            model_id,
+        )
+        pass
+
 
 class SnapshotService:
     def __init__(self, get_frame, headers, take_snapshot_fn, labels, get_thumbnail):

@@ -25,10 +25,13 @@ class ClipClassifier:
     # skips every nth frame.  Speeds things up a little, but reduces prediction quality.
     FRAME_SKIP = 1
 
-    def __init__(self, config, model=None, keep_original_predictions=False):
+    def __init__(
+        self, config, model=None, keep_original_predictions=False, tracking_events=False
+    ):
         """Create an instance of a clip classifier"""
         self.keep_original_predictions = keep_original_predictions
         self.config = config
+        self.tracking_events = tracking_events
         # super(ClipClassifier, self).__init__(config, tracking_config)
         self.model = model
         # prediction record for each track
@@ -322,16 +325,25 @@ class ClipClassifier:
             region = best_trackless_thumb(clip)
             meta_data["thumbnail_region"] = region
 
-        model_dictionaries = []
-        for model in models:
-            model_dic = model.as_dict()
-            model_predictions = predictions_per_model[model.id]
-            model_dic["classify_time"] = round(
-                model_predictions.classify_time + model_predictions.model_load_time, 1
-            )
-            model_dictionaries.append(model_dic)
+        model_dictionaries = {}
 
-        meta_data["models"] = model_dictionaries
+        for existing_model in meta_data.get("models", []):
+            model_dictionaries[existing_model["id"]] = existing_model
+
+        for model in models:
+            if model.id in model_dictionaries:
+                model_dic = model_dictionaries[model.id]
+            else:
+                model_dic = model.as_dict()
+            model_predictions = predictions_per_model[model.id]
+            model_dic["classify_time"] = float(
+                round(
+                    model_predictions.classify_time + model_predictions.model_load_time,
+                    1,
+                )
+            )
+            model_dictionaries[model.id] = model_dic
+        meta_data["models"] = list(model_dictionaries.values())
         if self.config.classify.meta_to_stdout:
             logging.info("Printing json meta data")
 
@@ -348,6 +360,8 @@ class ClipClassifier:
         from piclassifier.cptvmotiondetector import CPTVMotionDetector
         from ml_tools.frame import Frame
         from ml_tools.preprocess import preprocess_frame, preprocess_movement
+        from piclassifier import service
+        import dbus
 
         filename = Path(filename)
         meta_file = filename.with_suffix(".txt")
@@ -391,6 +405,10 @@ class ClipClassifier:
         predictions = Predictions(classifier.labels, model)
         predictions.model_load_time = time.time() - start
 
+        if self.tracking_events:
+            bus = dbus.SystemBus()
+            dbus_object = bus.get_object(service.DBUS_NAME, service.DBUS_PATH)
+
         track_samples = {}
         track_data = {}
 
@@ -402,6 +420,7 @@ class ClipClassifier:
                 "pred_frames": pred_frames,
                 "limits": None,
                 "frames": {},
+                "track": track,
             }
 
             for seg in pred_frames:
@@ -520,6 +539,26 @@ class ClipClassifier:
                     track_id, i, len(clip.tracks), description
                 )
             )
+
+            if self.tracking_events:
+                dbus_preds = track_prediction.class_best_score.copy()
+                dbus_preds = np.uint8(np.round(dbus_preds * 100))
+                best = np.argmax(predictions)
+                dbus_preds = dbus_preds.tolist()
+                dbus_object.TrackReprocessed(
+                    0,
+                    track_id,
+                    dbus_preds,
+                    classifier.labels[best],
+                    dbus_preds[best],
+                    region.to_ltrb(),
+                    region.frame_number,
+                    region.mass,
+                    region.blank,
+                    True,
+                    data["track"].bounds_history[-1].frame_number,
+                    model.id,
+                )
 
         models = [model]
         predictions_per_model = {model.id: predictions}
