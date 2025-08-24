@@ -177,7 +177,7 @@ class RunningMean:
 
 class WeightedBackground:
     def __init__(
-        self, edge_pixels, crop_rectangle, res_x, res_y, weight_add, init_average
+        self, edge_pixels, crop_rectangle, res_x, res_y, weight_add, init_average=None
     ):
         self.edge_pixels = edge_pixels
         self.crop_rectangle = crop_rectangle
@@ -186,7 +186,10 @@ class WeightedBackground:
         self.background_weight = np.zeros(
             (res_y - edge_pixels * 2, res_x - edge_pixels * 2)
         )
-        self.average = init_average
+        # there is not much need to this as it gets updated after processing 1 frame
+        # and can just calculate it from the background frame
+        if init_average is not None:
+            self.average = init_average
 
     def get_average(self):
         return self.average

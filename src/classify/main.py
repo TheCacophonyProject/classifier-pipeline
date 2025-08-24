@@ -125,15 +125,16 @@ def main(cmd_args=None):
     import time
 
     start = time.time()
-    clip_classifier.process_file_low_mem(args.source)
+    # testing stuff
+    # clip_classifier.post_process_file(args.source, None)
+    clip_classifier.process(
+        args.source,
+        cache=args.cache,
+        reuse_frames=args.reuse_prediction_frames,
+        track=args.track,
+        calculate_thumbnails=args.calculate_thumbnails,
+    )
     logging.info("Took %s", time.time() - start)
-    # clip_classifier.process(
-    #     args.source,
-    #     cache=args.cache,
-    #     reuse_frames=args.reuse_prediction_frames,
-    #     track=args.track,
-    #     calculate_thumbnails=args.calculate_thumbnails,
-    # )
 
 
 if __name__ == "__main__":

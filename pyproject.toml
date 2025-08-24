@@ -8,7 +8,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "classifier_pipeline"
-version = "0.0.36"
+version = "0.0.34"
 authors = [
   { name="Giampaolo Ferraro", email="giampaolo@cacophony.org.nz" },
 ]
@@ -52,6 +52,7 @@ dependencies = [
 pi_classify = "piclassifier:pi_classify"
 serve_model = "piclassifier:serve_model"
 reprocess_watcher = "piclassifier:reprocess_watcher"
+dbus_listener = "piclassifier:dbus_listener"
 
 
 [project.urls]

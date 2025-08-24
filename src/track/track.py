@@ -360,6 +360,14 @@ class ThumbInfo:
         # logging.info("%s score for %s %s %s is %s",self.track_id,self.points,self.predicted_tag,self.predicted_confidence, score)
         return score
 
+    def to_metadata(self):
+        thumbnail_info = {
+            "region": self.region.meta_dictionary(),
+            "contours": self.points,
+            "score": round(self.score()),
+        }
+        return thumbnail_info
+
 
 class Track:
     """Bounds of a tracked object over time."""
@@ -1004,6 +1012,8 @@ class Track:
         track_info["frame_start"] = self.start_frame
         track_info["frame_end"] = self.end_frame
         track_info["positions"] = self.bounds_history
+        if self.thumb_info is not None:
+            track_info["thumbnail"] = self.thumb_info.to_metadata()
         track_info["tracking_score"] = 0 if self.stats is None else self.stats.score
         prediction_info = []
         if predictions_per_model:

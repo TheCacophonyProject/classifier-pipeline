@@ -114,13 +114,6 @@ class ClipTrackExtractor(ClipTracker):
             camera_model = header.model
         clip.set_model(camera_model)
 
-        # if we have the triggered motion threshold should use that
-        # maybe even override dynamic threshold with this value
-        if header.motion_config:
-            motion = yaml.safe_load(header.motion_config)
-            temp_thresh = motion.get("triggeredthresh")
-            if temp_thresh:
-                clip.temp_thresh = temp_thresh
         video_start_time = datetime.fromtimestamp(header.timestamp / 1000000)
         video_start_time = video_start_time.astimezone(Clip.local_tz)
 
@@ -139,7 +132,6 @@ class ClipTrackExtractor(ClipTracker):
             clip.res_x,
             clip.res_y,
             weight_add,
-            clip.temp_thresh,
         )
         self.background_alg.process_frame(frame.pix)
 

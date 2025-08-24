@@ -14,3 +14,9 @@ def reprocess_watcher():
     from piclassifier.reprocess import main
 
     main()
+
+
+def dbus_listener():
+    from piclassifier.dbuslistener import main
+
+    main()

@@ -11,6 +11,11 @@ from ml_tools.logs import init_logging
 import time
 import sys
 import shutil
+from piclassifier import service
+from functools import partial
+import threading
+import dbus
+from gi.repository import GLib
 
 
 class DirWatcher(FileSystemEventHandler):
@@ -29,7 +34,6 @@ class DirWatcher(FileSystemEventHandler):
 
 
 def get_model(thermal_config, config):
-
     if not thermal_config.motion.run_classifier:
         logging.info("Classifier isn't configured to run in config")
         return None
@@ -43,6 +47,20 @@ def get_model(thermal_config, config):
     if len(network_model) > 1:
         logging.info("Got multiple network models using first")
     return network_model[0]
+
+
+def rec_callback(dt, is_recording, set_function):
+    if is_recording:
+        logging.info("Recording started pausing processing")
+    else:
+        logging.info("Recording ended resuming processing")
+    set_function(is_recording)
+
+
+def service_started():
+    logging.info("Service started")
+    # if we receive this means we need to reconnect, signals still work
+    # but calling methods wont
 
 
 def main():
@@ -60,33 +78,75 @@ def main():
     process_queue = multiprocessing.Queue()
     dir_watcher = DirWatcher(process_queue)
     observer = Observer()
-
-    for cptv_f in reprocess_dir.glob("*.cptv"):
+    reprocess_files = len(reprocess_dir.glob("*.cptv"))
+    for cptv_f in reprocess_files:
         logging.info("Adding existing %s", cptv_f)
         process_queue.put(cptv_f)
 
-    logging.info("Watching %s", reprocess_dir)
-    observer.schedule(dir_watcher, reprocess_dir, recursive=False)
-    observer.start()
-    config.validate()
+    reprocess_after = thermal_config.motion.reprocess_after
+    pending_exit = False
+    if not reprocess_after:
+        if len(reprocess_files) == 0:
+            logging.info(
+                "No files to reprocess and config is not set to reprocess, exiting"
+            )
+            return
+        logging.info(
+            "Reprocessing stale files then exiting as config is not set to reprocess after"
+        )
+        pending_exit = True
+    else:
+        logging.info("Watching %s", reprocess_dir)
+        observer.schedule(dir_watcher, reprocess_dir, recursive=False)
+        observer.start()
+        config.validate()
     clip_classifier = ClipClassifier(
         config,
         network_model,
         keep_original_predictions=True,
-        tracking_events=thermal_config.motion.tracking_events,
+        tracking_events=thermal_config.motion.postprocess_events,
     )
+
+    dbus.mainloop.glib.DBusGMainLoop(set_as_default=True)
+    bus = dbus.SystemBus()
+    dbus_object = bus.get_object(service.DBUS_NAME, service.DBUS_PATH)
+    callback_fn = partial(rec_callback, set_function=clip_classifier.set_is_recording)
+    loop = GLib.MainLoop()
+
+    dbus_thread = threading.Thread(target=dbus_events, args=(loop, bus, callback_fn))
+    dbus_thread.start()
     try:
         while True:
             try:
                 new_file = process_queue.get(block=False)
             except:
-                time.sleep(20)
+                if pending_exit:
+                    logging.info("Finished processing exit")
+                    break
+                time.sleep(5)
                 continue
             new_file = Path(new_file)
-
+            if not new_file.exists():
+                continue
             # reprocess file
             try:
-                clip_classifier.process_file_low_mem(new_file)
+                if clip_classifier._is_recording:
+                    while clip_classifier._is_recording:
+                        logging.info(
+                            "Waiting for current recording to finish before processing"
+                        )
+                        time.sleep(10)
+                # ensures dbus service is always valid
+                try:
+                    dbus_object = bus.get_object(service.DBUS_NAME, service.DBUS_PATH)
+                except:
+                    logging.error(
+                        "Could not connect to dbus service %s",
+                        service.DBUS_NAME,
+                        exc_info=True,
+                    )
+                    break
+                clip_classifier.post_process_file(new_file, dbus_object)
 
             except:
                 logging.error("Error reprocessing %s", new_file, exc_info=True)
@@ -105,6 +165,23 @@ def main():
 
     except KeyboardInterrupt:
         observer.stop()
+    loop.quit()
+    if observer.is_alive:
+        observer.stop()
+
+
+def dbus_events(loop, dbus_object, callback_fn):
+    dbus_object.add_signal_receiver(
+        callback_fn,
+        dbus_interface=service.DBUS_NAME,
+        signal_name="Recording",
+    )
+    dbus_object.add_signal_receiver(
+        service_started,
+        dbus_interface=service.DBUS_NAME,
+        signal_name="ServiceStarted",
+    )
+    loop.run()
 
 
 if __name__ == "__main__":

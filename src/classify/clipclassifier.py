@@ -3,7 +3,7 @@ import json
 import logging
 import os.path
 import time
-
+import math
 import numpy as np
 
 import cv2
@@ -31,7 +31,6 @@ class ClipClassifier:
         """Create an instance of a clip classifier"""
         self.keep_original_predictions = keep_original_predictions
         self.config = config
-        self.tracking_events = tracking_events
         # super(ClipClassifier, self).__init__(config, tracking_config)
         self.model = model
         # prediction record for each track
@@ -39,6 +38,11 @@ class ClipClassifier:
         self.previewer = Previewer.create_if_required(config, config.classify.preview)
 
         self.models = {}
+        self.tracking_events = tracking_events
+        self._is_recording = False
+
+    def set_is_recording(self, is_recording):
+        self._is_recording = is_recording
 
     def load_models(self):
         for model in self.config.classify.models:
@@ -354,13 +358,13 @@ class ClipClassifier:
                 json.dump(meta_data, f, indent=4, cls=tools.CustomJSONEncoder)
         return meta_data
 
-    def process_file_low_mem(self, filename):
+    def post_process_file(self, filename, service):
         from cptv_rs_python_bindings import CptvReader
         from piclassifier.motiondetector import RunningMean, SlidingWindow
         from piclassifier.cptvmotiondetector import CPTVMotionDetector
         from ml_tools.frame import Frame
         from ml_tools.preprocess import preprocess_frame, preprocess_movement
-        from piclassifier import service
+        from datetime import datetime
         import dbus
 
         filename = Path(filename)
@@ -381,6 +385,8 @@ class ClipClassifier:
             logging.error("File %s not found.", meta_file)
             return False
         meta_data = tools.load_clip_metadata(meta_file)
+
+        rec_end = datetime.fromisoformat(meta_data["end_time"])
 
         # get segments here, or frames
         # only extra data for segments
@@ -405,17 +411,12 @@ class ClipClassifier:
         predictions = Predictions(classifier.labels, model)
         predictions.model_load_time = time.time() - start
 
-        if self.tracking_events:
-            bus = dbus.SystemBus()
-            dbus_object = bus.get_object(service.DBUS_NAME, service.DBUS_PATH)
-
         track_samples = {}
         track_data = {}
 
         for track in clip.tracks:
             pred_frames = classifier.frames_for_prediction(clip, track)
-            # print("For track ", len(pred_frames), " track length", len(track))
-            # 1/0
+
             track_data[track.get_id()] = {
                 "pred_frames": pred_frames,
                 "limits": None,
@@ -527,9 +528,35 @@ class ClipClassifier:
                 continue
                 # dont think this should happen
             preprocessed = np.array(preprocessed)
-            pred = classifier.predict(preprocessed)
+
+            # what to do if recording
+            if self._is_recording:
+                while self._is_recording:
+                    logging.info("Waiting for current recording to finish")
+                    time.sleep(10)
+                # sleep here until not recording
+
+            preds = []
+            chunk_size = 5
+            chunks = int(math.ceil(len(preprocessed) / chunk_size))
+            # if is a very long track should break this up into samller chunks
+            for chunk in range(chunks):
+                preprocessed_chunk = preprocessed[
+                    chunk * chunk_size : chunk * chunk_size + chunk_size
+                ]
+                logging.info(
+                    "Predicting chunk %s (%s #) of %s %s:%s total preprocessed %s",
+                    chunk,
+                    len(preprocessed_chunk),
+                    chunks,
+                    chunk * chunk_size,
+                    chunk * chunk_size + chunk_size,
+                    len(preprocessed),
+                )
+                pred = classifier.predict(preprocessed_chunk)
+                preds.extend(pred)
             track_prediction = classifier.track_prediction_from_raw(
-                track_id, pred_frame_numbers, pred, masses
+                track_id, pred_frame_numbers, preds, masses
             )
             predictions.prediction_per_track[track_id] = track_prediction
 
@@ -540,17 +567,23 @@ class ClipClassifier:
                 )
             )
 
-            if self.tracking_events:
+            if (
+                self.tracking_events
+                and len(track_prediction.predictions) > 0
+                # incase wasn't false positive during active tracking would want it reported now as FP
+                # and track_prediction.predicted_tag() != "false-positive"
+            ):
                 dbus_preds = track_prediction.class_best_score.copy()
                 dbus_preds = np.uint8(np.round(dbus_preds * 100))
                 best = np.argmax(predictions)
                 dbus_preds = dbus_preds.tolist()
-                dbus_object.TrackReprocessed(
-                    0,
+
+                service.TrackReprocessed(
+                    meta_data.get("id", 0),
                     track_id,
                     dbus_preds,
-                    classifier.labels[best],
-                    dbus_preds[best],
+                    track_prediction.predicted_tag(),
+                    int(round(100 * track_prediction.max_score)),
                     region.to_ltrb(),
                     region.frame_number,
                     region.mass,
@@ -558,6 +591,7 @@ class ClipClassifier:
                     True,
                     data["track"].bounds_history[-1].frame_number,
                     model.id,
+                    rec_end.timestamp(),
                 )
 
         models = [model]
