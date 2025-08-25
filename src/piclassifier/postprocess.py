@@ -68,7 +68,7 @@ def main():
     config = Config.load_from_file()
     thermal_config = ThermalConfig.load_from_file()
     output_dir = Path(thermal_config.recorder.output_dir)
-    reprocess_dir = output_dir / "reprocess"
+    reprocess_dir = output_dir / "postprocess"
     reprocess_dir.mkdir(exist_ok=True)
     network_model = get_model(thermal_config, config)
     if network_model is None:
@@ -83,9 +83,9 @@ def main():
         logging.info("Adding existing %s", cptv_f)
         process_queue.put(cptv_f)
 
-    reprocess_after = thermal_config.motion.reprocess_after
+    postprocess = thermal_config.motion.postprocess
     pending_exit = False
-    if not reprocess_after:
+    if not postprocess:
         if len(reprocess_files) == 0:
             logging.info(
                 "No files to reprocess and config is not set to reprocess, exiting"

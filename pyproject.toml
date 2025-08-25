@@ -51,7 +51,7 @@ dependencies = [
 [project.scripts]
 pi_classify = "piclassifier:pi_classify"
 serve_model = "piclassifier:serve_model"
-reprocess_watcher = "piclassifier:reprocess_watcher"
+postprocess_watcher = "piclassifier:postprocess_watcher"
 dbus_listener = "piclassifier:dbus_listener"
 
 

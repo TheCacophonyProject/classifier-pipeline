@@ -10,8 +10,8 @@ def serve_model():
     main()
 
 
-def reprocess_watcher():
-    from piclassifier.reprocess import main
+def postprocess_watcher():
+    from piclassifier.postprocess import main
 
     main()
 

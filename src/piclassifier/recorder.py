@@ -37,7 +37,7 @@ class Recorder(ABC):
             thermal_config.motion.run_classifier
             and thermal_config.motion.reprocess_after
         ):
-            self.output_dir = self.output_dir / "reprocess"
+            self.output_dir = self.output_dir / "postprocess"
 
         self.temp_dir = self.output_dir / TEMP_DIR
         self.temp_dir.mkdir(parents=True, exist_ok=True)
