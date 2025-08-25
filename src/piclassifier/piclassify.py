@@ -685,10 +685,10 @@ def handle_connection(connection, config, thermal_config_file, process_queue):
 
 def startup_postprocessor(enable):
     if enable:
-        cmd = "sudo systemctl enable thermal-postprocess && sudo systemctl start thermal-postprocess"
+        cmd = "sudo systemctl enable thermal-postprocess && sudo systemctl restart thermal-postprocess"
     else:
         # disable but start once so that it can finish any stale files that may exist
-        cmd = "sudo systemctl disable thermal-postprocess && sudo systemctl start thermal-postprocess"
+        cmd = "sudo systemctl disable thermal-postprocess && sudo systemctl restart thermal-postprocess"
     try:
         subprocess.run(
             cmd,
@@ -702,7 +702,7 @@ def startup_postprocessor(enable):
 
 def startup_network_classifier(enable):
     if enable:
-        cmd = "sudo systemctl enable thermal-classifier && sudo systemctl start thermal-classifier"
+        cmd = "sudo systemctl enable thermal-classifier && sudo systemctl restart thermal-classifier"
     else:
         cmd = "sudo systemctl disable thermal-classifier && sudo systemctl stop thermal-classifier"
     try:
