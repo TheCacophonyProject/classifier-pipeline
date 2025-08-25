@@ -129,7 +129,7 @@ def main():
     logging.info("running as thermal")
 
     # start relevenet services
-    startup_reprocessor(thermal_config.motion.reprocess_after)
+    startup_postprocessor(thermal_config.motion.postprocess)
     model = None
     for model_config in config.classify.models:
         if model_config.type != "RandomForest":
@@ -564,32 +564,40 @@ def delete_stale_thumbnails(output_dir):
     logging.info("Deleting stale thumnbnails")
     thumbnail_dir = Path(output_dir) / "thumbnails"
     thumbnail_dir.mkdir(exist_ok=True)
-
-    files = list(thumbnail_dir.glob(f"*.npy"))
-    files = sorted(files, key=lambda f: thumb_clip_id(f.name), reverse=True)
-    keep_id = None
-    for f in files:
-        clip_id = thumb_clip_id(f.name)
-        if keep_id is None:
-            if clip_id == -1:
-                keep_id = 0
-                # should delete fiels where clip id coult not be parsed
-            else:
-                keep_id = clip_id
-                logging.info("Keeping %s", keep_id)
-
-        if clip_id != keep_id:
-            logging.info("Deleting %s file %s", clip_id, f)
+    for f in thumbnail_dir.iterdir():
+        if f.is_file:
             f.unlink()
 
+    # if needed can keep the last thumbnail taken, probably not nessesary
+    # Need to make sure that new files are kept before the last thumb kept here
+    # perhaps a metadata file or read file creation date
 
-def thumb_clip_id(filename):
-    try:
-        hyphen = filename.index("-")
-        clip_id = filename[:hyphen]
-        return int(clip_id)
-    except:
-        return -1
+
+#     files = list(thumbnail_dir.glob(f"*.npy"))
+#     files = sorted(files, key=lambda f: thumb_clip_id(f.name), reverse=True)
+#     keep_id = None
+#     for f in files:
+#         clip_id = thumb_clip_id(f.name)
+#         if keep_id is None:
+#             if clip_id == -1:
+#                 keep_id = 0
+#                 # should delete files where clip id coult not be parsed
+#             else:
+#                 keep_id = clip_id
+#                 logging.info("Keeping %s", keep_id)
+
+#         if clip_id != keep_id:
+#             logging.info("Deleting %s file %s", clip_id, f)
+#             f.unlink()
+
+
+# def thumb_clip_id(filename):
+#     try:
+#         hyphen = filename.index("-")
+#         clip_id = filename[:hyphen]
+#         return int(clip_id)
+#     except:
+# return -1
 
 
 def handle_connection(connection, config, thermal_config_file, process_queue):
@@ -675,12 +683,12 @@ def handle_connection(connection, config, thermal_config_file, process_queue):
         processor.terminate()
 
 
-def startup_reprocessor(enable):
+def startup_postprocessor(enable):
     if enable:
-        cmd = "sudo systemctl enable thermal-reprocess && sudo systemctl start thermal-reprocess"
+        cmd = "sudo systemctl enable thermal-postprocess && sudo systemctl start thermal-postprocess"
     else:
         # disable but start once so that it can finish any stale files that may exist
-        cmd = "sudo systemctl disable thermal-reprocess && sudo systemctl start thermal-reprocess"
+        cmd = "sudo systemctl disable thermal-postprocess && sudo systemctl start thermal-postprocess"
     try:
         subprocess.run(
             cmd,

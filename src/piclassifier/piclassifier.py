@@ -183,16 +183,16 @@ class PiClassifier(Processor):
                 on_recording_stopping=recording_stopping_callback,
             )
 
-        # dont want snaps getting reprocessed
-        reprocess_after = thermal_config.motion.reprocess_after
-        thermal_config.motion.reprocess_after = False
+        # dont want snaps getting postprocess
+        postprocess = thermal_config.motion.postprocess
+        thermal_config.motion.postprocess = False
         self.snapshot_recorder = IRRecorder(
             thermal_config,
             self.headers,
             on_recording_stopping=recording_stopping_callback,
             name="IR Snapshot",
         )
-        thermal_config.motion.reprocess_after = reprocess_after
+        thermal_config.motion.postprocess = postprocess
 
         if thermal_config.recorder.constant_recorder:
             self.constant_recorder = IRRecorder(
@@ -288,8 +288,8 @@ class PiClassifier(Processor):
             )
 
         # dont want snaps getting reprocessed
-        reprocess_after = thermal_config.motion.reprocess_after
-        thermal_config.motion.reprocess_after = False
+        postprocess = thermal_config.motion.postprocess
+        thermal_config.motion.postprocess = False
         self.snapshot_recorder = CPTVRecorder(
             thermal_config,
             self.headers,
@@ -298,7 +298,7 @@ class PiClassifier(Processor):
             name="CPTV Snapshot",
             file_suffix="-snap",
         )
-        thermal_config.motion.reprocess_after = reprocess_after
+        thermal_config.motion.postprocess = postprocess
 
         if thermal_config.recorder.constant_recorder:
             self.constant_recorder = CPTVRecorder(

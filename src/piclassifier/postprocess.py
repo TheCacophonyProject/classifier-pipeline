@@ -88,11 +88,11 @@ def main():
     if not postprocess:
         if len(reprocess_files) == 0:
             logging.info(
-                "No files to reprocess and config is not set to reprocess, exiting"
+                "No files to post process and config is not set to post process, exiting"
             )
             return
         logging.info(
-            "Reprocessing stale files then exiting as config is not set to reprocess after"
+            "Postprocessing stale files then exiting as config is not set to postprocess"
         )
         pending_exit = True
     else:

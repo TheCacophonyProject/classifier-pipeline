@@ -33,10 +33,7 @@ class Recorder(ABC):
         if constant_recorder:
             self.output_dir = self.output_dir / "constant-recordings"
             self.output_dir.mkdir(parents=True, exist_ok=True)
-        if (
-            thermal_config.motion.run_classifier
-            and thermal_config.motion.reprocess_after
-        ):
+        if thermal_config.motion.run_classifier and thermal_config.motion.postprocess:
             self.output_dir = self.output_dir / "postprocess"
 
         self.temp_dir = self.output_dir / TEMP_DIR
