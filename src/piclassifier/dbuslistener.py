@@ -38,12 +38,13 @@ def tracking(
     model_id,
 ):
     logging.info(
-        "Received tracking event for clip %s track %s prediction of %s with %s%% confidence still tracking ? %s",
+        "Received tracking event for clip %s track %s prediction of %s with %s%% confidence still tracking ? %s at region %s",
         clip_id,
         track_id,
         what,
         confidence,
         tracking,
+        region,
     )
 
 
@@ -81,12 +82,13 @@ def tracking_reprocessed(
 ):
     rec_end = datetime.fromtimestamp(rec_end)
     logging.info(
-        "Received post processing event for recording ended at %s clip %s track %s prediction of %s with %s%% confidence",
+        "Received post processing event for recording ended at %s clip %s track %s prediction of %s with %s%% confidence at region %s",
         rec_end,
         clip_id,
         track_id,
         what,
         confidence,
+        region,
     )
 
     bus = dbus.SystemBus()
@@ -107,10 +109,8 @@ def tracking_reprocessed(
 
 # helper class to run dbus in background
 class TrackingService:
-    def __init__(self, callback, rec_callback):
+    def __init__(self):
         dbus.mainloop.glib.DBusGMainLoop(set_as_default=True)
-        self.callback = callback
-        self.rec_callback = rec_callback
         self.loop = GLib.MainLoop()
         self.t = threading.Thread(
             target=self.run_server,
@@ -132,12 +132,12 @@ class TrackingService:
         model_labels = dbus_object.ClassificationLabels()
 
         bus.add_signal_receiver(
-            self.callback,
+            tracking,
             dbus_interface=DBUS_NAME,
             signal_name="Tracking",
         )
         bus.add_signal_receiver(
-            self.rec_callback,
+            recording,
             dbus_interface=DBUS_NAME,
             signal_name="Recording",
         )
@@ -159,10 +159,10 @@ def main():
     init_logging()
     thumb_dir = Path("./thumbnails")
     thumb_dir.mkdir(exist_ok=True)
-    tracking = TrackingService(tracking, recording)
+    service = TrackingService()
 
     # just to keep program alive
-    while tracking.t.is_alive():
+    while service.t.is_alive():
         time.sleep(10)
 
 

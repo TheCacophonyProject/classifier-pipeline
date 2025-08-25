@@ -78,7 +78,7 @@ def main():
     process_queue = multiprocessing.Queue()
     dir_watcher = DirWatcher(process_queue)
     observer = Observer()
-    reprocess_files = len(reprocess_dir.glob("*.cptv"))
+    reprocess_files = list(reprocess_dir.glob("*.cptv"))
     for cptv_f in reprocess_files:
         logging.info("Adding existing %s", cptv_f)
         process_queue.put(cptv_f)

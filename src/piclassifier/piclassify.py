@@ -566,11 +566,11 @@ def delete_stale_thumbnails(output_dir):
     thumbnail_dir.mkdir(exist_ok=True)
 
     files = list(thumbnail_dir.glob(f"*.npy"))
-    files = sorted(files, key=lambda f: thumb_clip_id, reverse=True)
+    files = sorted(files, key=lambda f: thumb_clip_id(f.name), reverse=True)
     keep_id = None
     for f in files:
-        clip_id = thumb_clip_id(f)
-        if keep_id is not None:
+        clip_id = thumb_clip_id(f.name)
+        if keep_id is None:
             if clip_id == -1:
                 keep_id = 0
                 # should delete fiels where clip id coult not be parsed
@@ -578,7 +578,7 @@ def delete_stale_thumbnails(output_dir):
                 keep_id = clip_id
                 logging.info("Keeping %s", keep_id)
 
-        if clip_id != keep_id or keep_id:
+        if clip_id != keep_id:
             logging.info("Deleting %s file %s", clip_id, f)
             f.unlink()
 
