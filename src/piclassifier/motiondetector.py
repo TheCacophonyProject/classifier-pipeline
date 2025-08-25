@@ -157,9 +157,27 @@ class MotionDetector(ABC):
         """Tracker type IR or Thermal"""
 
 
+class RunningMean:
+    def __init__(self, data, window_size):
+        self.running_mean = np.sum(data, axis=0, dtype=np.uint32)
+        self.running_mean_frames = len(data)
+        self.window_size = window_size
+
+    def add(self, new_data, oldest_data):
+        if self.running_mean_frames == self.window_size:
+            self.running_mean -= oldest_data
+            self.running_mean += new_data
+        else:
+            self.running_mean = self.running_mean + new_data
+            self.running_mean_frames += 1
+
+    def mean(self):
+        return self.running_mean / self.running_mean_frames
+
+
 class WeightedBackground:
     def __init__(
-        self, edge_pixels, crop_rectangle, res_x, res_y, weight_add, init_average
+        self, edge_pixels, crop_rectangle, res_x, res_y, weight_add, init_average=None
     ):
         self.edge_pixels = edge_pixels
         self.crop_rectangle = crop_rectangle
@@ -168,7 +186,10 @@ class WeightedBackground:
         self.background_weight = np.zeros(
             (res_y - edge_pixels * 2, res_x - edge_pixels * 2)
         )
-        self.average = init_average
+        # there is not much need to this as it gets updated after processing 1 frame
+        # and can just calculate it from the background frame
+        if init_average is not None:
+            self.average = init_average
 
     def get_average(self):
         return self.average

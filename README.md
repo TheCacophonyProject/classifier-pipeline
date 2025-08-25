@@ -4,9 +4,30 @@ These scripts handle the data pre-processing, training, and execution of a Convo
 for thermal vision.
 
 The output is a TensorFlow model that can identify thermal video clips of animals
+## Tracking / Classifications on the PI
 
-# Scripts
+Real time tracking and classifications is handled under piclassify.py
 
+### Classifications
+
+If classifications are enabled, 2 models will be used.
+- FP Model, this will differenatiate False-Positive tracks from Animal tracks
+- Full Model, this will run only if a track is deemed to not be False-positive by the FP Model, this is served over the network at localhost:8123/predict (by default). The model will throughout the track choosing 25 frames out of the last 45 frames.
+
+
+### Events
+
+If tracking events are enabled dbus signals will be sent see  [service.py](src/piclassifier/service.py) and for a client side example [dbuslistener.py](src/piclassifier/dbuslistener.py)
+
+### Post processing
+
+If post processing is enabled new recordings will be placed in /var/spool/cptv/postprocess (default)
+
+Post process service will listen for new files in this directory and then process them fully using samples generated from all of the track frames. Once complete files will be placed in the output dir /var/spool/cptv where thermal-uploader can upload them.
+
+If postprocess-events are enabled then events will generated after processing is complete. This allows listeners to know the final predictions of each track and ge a thumbnail for each track. See [dbuslistener.py](src/piclassifier/dbuslistener.py) for examples.
+
+## Scripts
 
 ### build.py
 Creates training, validation and testing datasets from database of clips & tracks.
@@ -30,6 +51,7 @@ Extract tracking information for a specified CPTV file
 ### classify.py
 Uses a pre-trained model to identifying and classifying any animals in supplied CPTV file, CPTV file must have associated metadata generated from extract.
 Classifier will produce a JSON output either to terminal or txt file.
+
 
 #### thumbnail algorithm
 A single region to be used as the thumbnail will be chosen per recording and saved in the JSON output

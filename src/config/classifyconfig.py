@@ -90,6 +90,8 @@ class ModelConfig:
     thumbnail_model = attr.ib()
     reclassify = attr.ib()
     submodel = attr.ib()
+    run_over_network = attr.ib()
+    port = attr.ib(default=8123)
 
     @classmethod
     def load(cls, raw):
@@ -105,6 +107,8 @@ class ModelConfig:
             thumbnail_model=raw.get("thumbnail_model", False),
             reclassify=raw.get("reclassify", None),
             submodel=raw.get("submodel", False),
+            run_over_network=raw.get("run_over_network", False),
+            port=raw.get("port", 8123),
         )
         return model
 
