@@ -13,8 +13,9 @@ RUN sed "s/tensorflow~=*/#tensorflow~=/" requirements.txt -i
 RUN python3 get-pip.py
 RUN pip3 install --upgrade pip
 RUN pip3 install cmake
-RUN pip3 install numpy
 RUN pip3 install -r requirements.txt
+# tensorflow 2.14 is limited to this and our model is limited to this verison at the moment
+RUN pip3 install numpy~=1.26.0
 
 
 RUN mkdir -p /var/log/supervisor
