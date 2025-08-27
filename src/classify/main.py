@@ -122,6 +122,11 @@ def main(cmd_args=None):
         config,
         model,
     )
+    import time
+
+    start = time.time()
+    # testing stuff
+    # clip_classifier.post_process_file(args.source, None)
     clip_classifier.process(
         args.source,
         cache=args.cache,
@@ -129,6 +134,7 @@ def main(cmd_args=None):
         track=args.track,
         calculate_thumbnails=args.calculate_thumbnails,
     )
+    logging.info("Took %s", time.time() - start)
 
 
 if __name__ == "__main__":

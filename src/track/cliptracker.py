@@ -81,11 +81,12 @@ class ClipTracker(ABC):
         ...
 
     def apply_track_filtering(self, clip):
-        self.filter_tracks(clip)
+        filtered_tracks = self.filter_tracks(clip)
         # apply smoothing if required
         if self.config.track_smoothing and clip.current_frame > 0:
             for track in clip.active_tracks:
                 track.smooth(Rectangle(0, 0, clip.res_x, clip.res_y))
+        return filtered_tracks
 
     def _get_filtered_frame(self, clip, thermal, sub_change=True, denoise=True):
         """
@@ -379,6 +380,7 @@ class ClipTracker(ABC):
                 )
         # filter out tracks that probably are just noise.
         good_tracks = []
+        filtered_tracks = []
         self.print_if_verbose(
             "{} {}".format("Number of tracks before filtering", len(clip.tracks))
         )
@@ -386,7 +388,9 @@ class ClipTracker(ABC):
         for track in clip.tracks:
             # discard any tracks that overlap too often with other tracks.  This normally means we are tracking the
             # tail of an animal.
-            if not self.filter_track(clip, track):
+            if self.filter_track(clip, track):
+                filtered_tracks.append(track)
+            else:
                 good_tracks.append(track)
 
         clip.tracks = good_tracks
@@ -410,6 +414,7 @@ class ClipTracker(ABC):
             self.print_if_verbose(
                 "filtered track {} because {}".format(key[1].get_id(), key[0])
             )
+        return filtered_tracks
 
     def filter_track(self, clip, track):
         stats = track.stats

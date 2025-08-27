@@ -2,7 +2,12 @@ import numpy as np
 from datetime import timedelta
 import logging
 
-from .motiondetector import SlidingWindow, MotionDetector, WeightedBackground
+from .motiondetector import (
+    SlidingWindow,
+    MotionDetector,
+    WeightedBackground,
+    RunningMean,
+)
 from ml_tools.rectangle import Rectangle
 
 
@@ -30,7 +35,6 @@ class CPTVMotionDetector(MotionDetector):
                 np.int32,
             )
         self.running_mean = None
-        self.running_mean_frames = 0
         self.thermal_window = SlidingWindow(self.num_preview_frames + 1, "O")
         self.processed = 0
         self.thermal_thresh = 0
@@ -134,33 +138,22 @@ class CPTVMotionDetector(MotionDetector):
         if self.can_record() or force_process:
             self.thermal_window.add(cptv_frame, self.ffc_affected)
             oldest_thermal = self.thermal_window.oldest
-            # dont think this check is needed... 01/08/25
             if oldest_thermal is not None:
                 oldest_thermal = oldest_thermal.pix
-            cropped_frame = np.int32(self.crop_rectangle.subimage(cptv_frame.pix))
+
             if self.running_mean is None:
                 last_45 = self.thermal_window.get_frames()[: self.MEAN_FRAMES]
                 last_45 = [f.pix for f in last_45]
                 if len(last_45) > 0:
-                    self.running_mean_frames = len(last_45)
-                    self.running_mean = np.sum(last_45, axis=0, dtype=np.uint32)
-            else:
-                if self.running_mean_frames == self.MEAN_FRAMES:
-                    self.running_mean -= oldest_thermal
-                    self.running_mean += cptv_frame.pix
-                else:
-                    self.running_mean = self.running_mean + cptv_frame.pix
+                    self.running_mean = RunningMean(last_45, self.MEAN_FRAMES)
 
-                    self.running_mean_frames += 1
+            else:
+                self.running_mean.add(cptv_frame.pix, oldest_thermal)
             if self.running_mean is not None and not self.ffc_affected:
-                self._background.process_frame(
-                    self.running_mean / self.running_mean_frames
-                )
+                self._background.process_frame(self.running_mean.mean())
 
                 # debug stuff
-                running_mean_mean = np.mean(
-                    self.running_mean / self.running_mean_frames
-                )
+                running_mean_mean = np.mean(self.running_mean.mean())
 
                 current_frame_mean = np.mean(cptv_frame.pix)
                 mean_diff = abs(current_frame_mean - running_mean_mean)
@@ -170,7 +163,7 @@ class CPTVMotionDetector(MotionDetector):
                         "Running mean is %s frame mean is %s frames %s processed %s since ffc %s background mean %s",
                         running_mean_mean,
                         current_frame_mean,
-                        self.running_mean_frames,
+                        self.running_mean.running_mean_frames,
                         self.processed,
                         since_ffc(cptv_frame),
                         np.mean(self._background.background),
@@ -181,7 +174,7 @@ class CPTVMotionDetector(MotionDetector):
                         "Running mean is %s current frame mean %s mean frames %s processed %s since ffc %s background mean %s",
                         running_mean_mean,
                         current_frame_mean,
-                        self.running_mean_frames,
+                        self.running_mean.running_mean_frames,
                         self.processed,
                         since_ffc(cptv_frame),
                         np.mean(self._background.background),
@@ -193,6 +186,7 @@ class CPTVMotionDetector(MotionDetector):
                 if prev_ffc:
                     self.thermal_window.non_ffc_index = self.thermal_window.last_index
             elif self.processed > self.detect_after:
+                cropped_frame = np.int32(self.crop_rectangle.subimage(cptv_frame.pix))
                 movement = self.detect(cropped_frame)
                 if movement:
                     self.triggered += 1

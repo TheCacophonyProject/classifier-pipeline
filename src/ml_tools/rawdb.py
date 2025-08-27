@@ -113,7 +113,6 @@ class RawDatabase:
                 Frame(
                     frame.pix,
                     np.float32(frame.pix) - background_alg.background,
-                    None,
                     frame_i,
                 )
             )

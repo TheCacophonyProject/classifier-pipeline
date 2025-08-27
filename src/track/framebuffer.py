@@ -56,7 +56,9 @@ class FrameBuffer:
 
     def add_frame(self, thermal, filtered, mask, frame_number, ffc_affected=False):
         self.prev_frame = self.current_frame
-        frame = Frame(thermal, filtered, mask, frame_number, ffc_affected=ffc_affected)
+        frame = Frame(
+            thermal, filtered, frame_number, mask=mask, ffc_affected=ffc_affected
+        )
         self.current_frame = frame
 
         if self.opt_flow:

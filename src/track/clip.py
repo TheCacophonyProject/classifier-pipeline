@@ -89,6 +89,7 @@ class Clip:
         self.ffc_frames = []
         self.tags = None
         self.type = type
+        self.thumb_info = None
         # sets defaults
         self.set_model(model)
         if background is not None:
@@ -438,6 +439,7 @@ class Clip:
             meta_data["camera_model"] = self.camera_model
         meta_data["background_thresh"] = self.background_thresh
         start, end = self.start_and_end_time_absolute()
+        meta_data["id"] = self._id
         meta_data["start_time"] = start.isoformat()
         meta_data["end_time"] = end.isoformat()
 

@@ -21,6 +21,8 @@ from .cameras import lepton3
 import multiprocessing
 from .eventreporter import log_event
 from piclassifier.monitorconfig import monitor_file
+from pathlib import Path
+import subprocess
 
 SOCKET_NAME = "/var/run/lepton-frames"
 VOSPI_DATA_SIZE = 160
@@ -97,6 +99,7 @@ def main():
             args=(
                 thermal_config.recorder.rec_window.clone(),
                 process_queue,
+                thermal_config.recorder.output_dir,
             ),
         )
         snapshot_thread.daemon = True
@@ -125,11 +128,20 @@ def main():
             raise
     logging.info("running as thermal")
 
+    # start relevenet services
+    startup_postprocessor(thermal_config.motion.postprocess)
+    model = None
+    for model_config in config.classify.models:
+        if model_config.type != "RandomForest":
+            model = model_config
+            break
+
+    startup_network_classifier(model.run_over_network)
+
     sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     sock.bind(SOCKET_NAME)
     sock.settimeout(3 * 60)  # 3 minutes
     sock.listen(1)
-
     global connected
     while True:
         if restart_pending:
@@ -527,12 +539,13 @@ def next_snapshot(window, prev_window_type=None):
         return (window.next_start(), WindowStatus.before)
 
 
-def take_snapshots(window, process_queue):
+def take_snapshots(window, process_queue, output_dir):
     if window.non_stop:
         window.start.dt = datetime.now()
         window.end.dt = datetime.now()
     next_snap = next_snapshot(window, None)
     while True:
+        delete_stale_thumbnails(output_dir)
         if next_snap is None:
             snap_time = datetime.now()
         else:
@@ -544,6 +557,47 @@ def take_snapshots(window, process_queue):
         logging.info("Sending snapshot signal")
         process_queue.put(SNAPSHOT_SIGNAL)
         next_snap = next_snapshot(window, next_snap[1])
+
+
+def delete_stale_thumbnails(output_dir):
+    # delete all but latest clip thumbnail
+    logging.info("Deleting stale thumnbnails")
+    thumbnail_dir = Path(output_dir) / "thumbnails"
+    thumbnail_dir.mkdir(exist_ok=True)
+    for f in thumbnail_dir.iterdir():
+        if f.is_file:
+            f.unlink()
+
+    # if needed can keep the last thumbnail taken, probably not nessesary
+    # Need to make sure that new files are kept before the last thumb kept here
+    # perhaps a metadata file or read file creation date
+
+
+#     files = list(thumbnail_dir.glob(f"*.npy"))
+#     files = sorted(files, key=lambda f: thumb_clip_id(f.name), reverse=True)
+#     keep_id = None
+#     for f in files:
+#         clip_id = thumb_clip_id(f.name)
+#         if keep_id is None:
+#             if clip_id == -1:
+#                 keep_id = 0
+#                 # should delete files where clip id coult not be parsed
+#             else:
+#                 keep_id = clip_id
+#                 logging.info("Keeping %s", keep_id)
+
+#         if clip_id != keep_id:
+#             logging.info("Deleting %s file %s", clip_id, f)
+#             f.unlink()
+
+
+# def thumb_clip_id(filename):
+#     try:
+#         hyphen = filename.index("-")
+#         clip_id = filename[:hyphen]
+#         return int(clip_id)
+#     except:
+# return -1
 
 
 def handle_connection(connection, config, thermal_config_file, process_queue):
@@ -627,3 +681,36 @@ def handle_connection(connection, config, thermal_config_file, process_queue):
         time.sleep(5)
         # give it a moment to close down properly
         processor.terminate()
+
+
+def startup_postprocessor(enable):
+    if enable:
+        cmd = "sudo systemctl enable thermal-postprocess && sudo systemctl restart thermal-postprocess"
+    else:
+        # disable but start once so that it can finish any stale files that may exist
+        cmd = "sudo systemctl disable thermal-postprocess && sudo systemctl restart thermal-postprocess"
+    try:
+        subprocess.run(
+            cmd,
+            shell=True,
+            encoding="ascii",
+            check=True,
+        )
+    except:
+        logging.error("Could not run command %s", cmd, exc_info=True)
+
+
+def startup_network_classifier(enable):
+    if enable:
+        cmd = "sudo systemctl enable thermal-classifier && sudo systemctl restart thermal-classifier"
+    else:
+        cmd = "sudo systemctl disable thermal-classifier && sudo systemctl stop thermal-classifier"
+    try:
+        subprocess.run(
+            cmd,
+            shell=True,
+            encoding="ascii",
+            check=True,
+        )
+    except:
+        logging.error("Could not run command %s", cmd, exc_info=True)
