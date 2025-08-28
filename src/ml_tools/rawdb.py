@@ -80,7 +80,6 @@ class RawDatabase:
             frame = reader.next_frame()
             if frame is None:
                 break
-
             if background_alg is None:
                 average = np.mean(frame.pix)
                 if average > 10000:
@@ -100,7 +99,6 @@ class RawDatabase:
                 background_alg.process_frame(frame.pix)
                 back_processed = True
                 background = background_alg.background
-
             if frame.background_frame:
                 # background = frame.pix
                 # bug in previous tracker version where background was first frame
@@ -144,7 +142,7 @@ class RawDatabase:
             return None
         edge_pixels = metadata.get("edgePixels", 1)
         resx = metadata.get("resX", 160)
-        resy = metadata.get("resY", 140)
+        resy = metadata.get("resY", 120)
 
         self.crop_rectangle = Rectangle(
             edge_pixels, edge_pixels, resx - edge_pixels * 2, resy - edge_pixels * 2
