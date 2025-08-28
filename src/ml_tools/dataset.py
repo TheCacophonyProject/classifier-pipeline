@@ -105,7 +105,7 @@ class Dataset:
 
         self.country_rectangle = BuildConfig.COUNTRY_LOCATIONS.get(self.country)
         logging.info(
-            "Filtering by country %s have boundying %s",
+            "Filtering by country %s have bounding rect %s",
             self.country,
             self.country_rectangle,
         )

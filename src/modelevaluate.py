@@ -252,7 +252,7 @@ def metadata_confusion(dir, confusion_file, after_date=None, model_metadata=None
             "cat",
             "deer",
             "dog",
-            "falsepositive",
+            "false-positive",
             "hedgehog",
             "human",
             "kiwi",

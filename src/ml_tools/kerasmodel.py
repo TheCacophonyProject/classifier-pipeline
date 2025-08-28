@@ -201,6 +201,15 @@ class KerasModel(Interpreter):
                 ),
                 None,
             )
+        elif pretrained_model == "efficientnetv2b3":
+            return (
+                tf.keras.applications.EfficientNetV2B3(
+                    weights=weights,
+                    include_top=False,
+                    input_tensor=input,
+                ),
+                None,
+            )
         elif pretrained_model == "nasnet":
             return (
                 tf.keras.applications.nasnet.NASNetLarge(
@@ -254,9 +263,8 @@ class KerasModel(Interpreter):
         weights = None if self.params.base_training else "imagenet"
         base_model, preprocess = self.get_base_model(inputs, weights=weights)
         self.preprocess_fn = preprocess
-
         # inputs = base_model.input
-        x = base_model.output
+        x = base_model(inputs)
         # x = base_model(inputs, training=self.params.base_training)
         if self.params.get("model_merge"):
             logging.info(
