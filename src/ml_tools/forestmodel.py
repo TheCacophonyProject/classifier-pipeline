@@ -251,7 +251,6 @@ def process_track(
         if len(indices) > max_frames:
             indices = np.random.choice(indices, max_frames, replace=False)
             indices.sort()
-        
 
     data_bounds = np.empty(len(indices), dtype="O")
 

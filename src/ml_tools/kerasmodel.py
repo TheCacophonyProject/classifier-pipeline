@@ -1089,7 +1089,7 @@ def plot_confusion_matrix(cm, class_names):
     for i, label in enumerate(class_names):
         ylabel = f"{label} ({np.sum(cm[i])})"
         ylabels.append(ylabel)
-    plt.yticks(tick_marks,ylabels)
+    plt.yticks(tick_marks, ylabels)
 
     # Use white text if squares are dark; otherwise black.
     counts = cm.copy()

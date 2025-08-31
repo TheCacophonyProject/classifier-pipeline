@@ -275,6 +275,10 @@ def metadata_confusion(dir, confusion_file, after_date=None, model_metadata=None
         excluded_labels,
         remapped_labels,
     )
+    remapped_labels["rat"] = "rodent"
+    remapped_labels["mouse"] = "rodent"
+    remapped_labels["bird/kiwi"] = "kiwi"
+
     y_true = []
     y_pred = []
     dir = Path(dir)
@@ -288,7 +292,7 @@ def metadata_confusion(dir, confusion_file, after_date=None, model_metadata=None
                 # add in some metadata stats
                 meta_data = json.load(t)
         except:
-            logging.error("Couldnt load %s",cptv_file,exc_info=True)
+            logging.error("Couldnt load %s", cptv_file, exc_info=True)
             continue
         rec_time = parse_date(meta_data["recordingDateTime"])
         if after_date is not None and rec_time <= after_date:
