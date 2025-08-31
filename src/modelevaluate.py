@@ -283,9 +283,13 @@ def metadata_confusion(dir, confusion_file, after_date=None, model_metadata=None
         if not meta_f.exists():
             continue
         meta_data = None
-        with open(meta_f, "r") as t:
-            # add in some metadata stats
-            meta_data = json.load(t)
+        try:
+            with open(meta_f, "r") as t:
+                # add in some metadata stats
+                meta_data = json.load(t)
+        except:
+            logging.error("Couldnt load %s",cptv_file,exc_info=True)
+            continue
         rec_time = parse_date(meta_data["recordingDateTime"])
         if after_date is not None and rec_time <= after_date:
             continue
@@ -296,9 +300,9 @@ def metadata_confusion(dir, confusion_file, after_date=None, model_metadata=None
             ]
             human_tags = set(human_tags)
             if len(human_tags) > 1:
-                print("Conflicting tags for ", track.get("id"), cptv_file)
+                logging.info("Conflicting tags for %s %s", track.get("id"), cptv_file)
             if len(human_tags) == 0:
-                print("No humans in ", meta_f)
+                # print("No humans in ", meta_f)
                 continue
             human_tag = human_tags.pop()
             human_tag = label_mapping.get(human_tag, human_tag)

@@ -1079,13 +1079,17 @@ def plot_confusion_matrix(cm, class_names):
       class_names (array, shape = [n]): String names of the integer classes
     """
 
-    figure = plt.figure(figsize=(8, 8))
+    figure = plt.figure(figsize=(16, 16))
     plt.imshow(cm, interpolation="nearest", cmap=plt.cm.Blues)
     plt.title("Confusion matrix")
     plt.colorbar()
     tick_marks = np.arange(len(class_names))
-    plt.xticks(tick_marks, class_names, rotation=45)
-    plt.yticks(tick_marks, class_names)
+    plt.xticks(tick_marks, class_names, rotation=90)
+    ylabels = []
+    for i, label in enumerate(class_names):
+        ylabel = f"{label} ({np.sum(cm[i])})"
+        ylabels.append(ylabel)
+    plt.yticks(tick_marks,ylabels)
 
     # Use white text if squares are dark; otherwise black.
     counts = cm.copy()
