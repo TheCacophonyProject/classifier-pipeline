@@ -326,13 +326,15 @@ def metadata_confusion(dir, confusion_file, after_date=None, model_metadata=None
             ai_tags = []
             for tag in tags:
                 if tag.get("automatic") is True:
-                    data = tag.get("data", {})
+                    if "model" in tag:
+                        data = tag["model"]
+                    else:
+                        data = tag.get("data", {})
                     if isinstance(data, str):
                         if data == "Master":
                             ai_tags.append(tag["what"])
                     elif data.get("name") == "Master":
                         ai_tags.append(tag["what"])
-
             y_true.append(human_tag)
             if human_tag not in labels:
                 labels.append(human_tag)
