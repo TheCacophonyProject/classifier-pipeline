@@ -552,7 +552,7 @@ def validate_datasets(datasets, test_bins, after_date):
         for other in datasets[(i + 1) :]:
             if dataset.name == other.name:
                 continue
-
+            dont_check = None
             if other.name == "test" and after_date is not None:
                 dont_check_other = set(
                     [
@@ -561,8 +561,10 @@ def validate_datasets(datasets, test_bins, after_date):
                         if sample.rec_time > after_date
                     ]
                 )
-                dont_check = dont_check | dont_check_other
+                dont_check = dont_check_other
             other_bins = set([sample.bin_id for sample in other.samples_by_id.values()])
+            if dont_check is not None:
+                other_bins = other_bins - dont_check
 
             assert (
                 len(bins.intersection(set(other_bins))) == 0
