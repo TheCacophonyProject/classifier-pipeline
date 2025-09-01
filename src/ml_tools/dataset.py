@@ -200,8 +200,7 @@ class Dataset:
         counter = 0
         logging.info("Loading clips")
         clips = list(self.dataset_dir.glob(f"**/*{self.ext}"))
-        logging.info("Clips are %s", clips)
-        # 1/0
+
         load_func = partial(
             load_clip_multi,
             tag_precedence=self.tag_precedence,
@@ -252,8 +251,12 @@ class Dataset:
 
     def merge_filtered(self, filtered_stats):
         for reason, count in filtered_stats.items():
-            self.filtered_stats.setdefault(reason, 0)
-            self.filtered_stats[reason] += count
+            if isinstance(count, set):
+                self.filtered_stats.setdefault(reason, set())
+                self.filtered_stats[reason].update(count)
+            else:
+                self.filtered_stats.setdefault(reason, 0)
+                self.filtered_stats[reason] += count
 
     def load_clip(self, db_clip, dont_filter_segment=False):
         if self.raw:
