@@ -236,6 +236,7 @@ def metadata_confusion(dir, confusion_file, after_date=None, model_metadata=None
         with open(model_metadata, "r") as t:
             # add in some metadata stats
             model_meta = json.load(t)
+        logging.info("Loaded metadata from %s", model_metadata)
         labels = model_meta.get("labels", [])
         excluded_labels = model_meta.get("excluded_labels", {})
         remapped_labels = model_meta.get("remapped_labels", {})
@@ -269,15 +270,16 @@ def metadata_confusion(dir, confusion_file, after_date=None, model_metadata=None
             "unidentified",
         ]
         excluded_labels, remapped_labels = get_excluded("thermal")
+    remapped_labels["rat"] = "rodent"
+    remapped_labels["mouse"] = "rodent"
+    remapped_labels["bird/kiwi"] = "kiwi"
+
     logging.info(
         "Labels are %s excluded %s remapped %s",
         labels,
         excluded_labels,
         remapped_labels,
     )
-    remapped_labels["rat"] = "rodent"
-    remapped_labels["mouse"] = "rodent"
-    remapped_labels["bird/kiwi"] = "kiwi"
 
     y_true = []
     y_pred = []
