@@ -91,9 +91,13 @@ class BaseSample(ABC):
 
 
 class Sample(BaseSample):
+    _sample_id = 1
+
     def __init__(self, label):
         self.original_label = label
         self.remapped_label = label
+        self.id = Sample._sample_id
+        Sample._sample_id += 1
 
     @property
     def label(self):
@@ -665,7 +669,6 @@ class Camera:
 
 
 class FrameSample(Sample):
-    _frame_id = 1
 
     def __init__(
         self,
@@ -683,8 +686,6 @@ class FrameSample(Sample):
     ):
         super().__init__(label)
         self.clip_id = clip_id
-        self.id = FrameSample._frame_id
-        FrameSample._frame_id += 1
 
         self.track_id = track_id
         self.frame_number = frame_num
@@ -767,8 +768,6 @@ class FrameSample(Sample):
 class SegmentHeader(Sample):
     """Header for segment."""
 
-    _segment_id = 1
-
     def __init__(
         self,
         clip_id,
@@ -800,8 +799,6 @@ class SegmentHeader(Sample):
         self.movement_data = movement_data
         self.top_mass = top_mass
         self.best_mass = best_mass
-        self.id = SegmentHeader._segment_id
-        SegmentHeader._segment_id += 1
         # reference to track this segment came from
         self.clip_id = clip_id
         self.track_id = track_id
@@ -1320,8 +1317,7 @@ class TrackingSample(Sample):
         camera,
         filename,
     ):
-        self.id = TrackingSample._s_id
-        TrackingSample._s_id += 1
+        super().__init__(labels)
         self.clip_id = clip_id
         self.filename = filename
         self.track_id = track_id

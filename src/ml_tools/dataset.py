@@ -221,7 +221,7 @@ class Dataset:
             filter_by_lq=self.filter_by_lq,
             is_ir=self.type == "IR",
         )
-
+        sample_id = 1
         with Pool(processes=8) as pool:
             for clip_header, filtered_stats in pool.imap_unordered(
                 load_func, clips, chunksize=8
@@ -234,6 +234,8 @@ class Dataset:
 
                 for track_header in clip_header.tracks:
                     for sample in track_header.samples:
+                        sample.id = sample_id
+                        sample_id += 1
                         self.add_clip_sample_mappings(sample)
                         if track_header.label not in self.labels:
                             self.labels.append(track_header.label)
