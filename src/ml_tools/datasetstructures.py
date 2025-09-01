@@ -819,6 +819,7 @@ class SegmentHeader(Sample):
         self.camera = camera
         self._source_file = source_file
         self._track_median_mass = track_median_mass
+        self._bin_id = self.station_id
 
     @property
     def track_median_mass(self):
@@ -878,7 +879,7 @@ class SegmentHeader(Sample):
     @property
     def bin_id(self):
         """Unique name of this segments track."""
-        return f"{self.station_id}"
+        return f"{self._bin_id}"
 
     def __str__(self):
         return "{0} label {1} offset:{2} weight:{3:.1f}".format(
