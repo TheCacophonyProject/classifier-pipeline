@@ -15,6 +15,7 @@ import pickle
 import sys
 import os
 import time
+import matplotlib.ticker as mtick
 
 # os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 import json
@@ -48,7 +49,7 @@ from config.buildconfig import BuildConfig
 from sklearn.metrics import confusion_matrix
 from multiprocessing import Pool
 from dateutil.parser import parse as parse_date
-
+from track.region import Region
 
 root_logger = logging.getLogger()
 for handler in root_logger.handlers:
@@ -229,6 +230,7 @@ def filter_diffs(track_frames, background):
 
 
 def metadata_confusion(dir, confusion_file, after_date=None, model_metadata=None):
+    confusion_file = Path(confusion_file)
     with open("label_paths.json", "r") as f:
         label_paths = json.load(f)
     label_mapping = get_mappings(label_paths)
@@ -283,6 +285,7 @@ def metadata_confusion(dir, confusion_file, after_date=None, model_metadata=None
 
     y_true = []
     y_pred = []
+    median_areas = []
     dir = Path(dir)
     for cptv_file in dir.glob(f"**/*cptv"):
         meta_f = cptv_file.with_suffix(".txt")
@@ -296,9 +299,10 @@ def metadata_confusion(dir, confusion_file, after_date=None, model_metadata=None
         except:
             logging.error("Couldnt load %s", cptv_file, exc_info=True)
             continue
-        rec_time = parse_date(meta_data["recordingDateTime"])
-        if after_date is not None and rec_time <= after_date:
-            continue
+        if after_date is not None:
+            if rec_time <= after_date:
+                rec_time = parse_date(meta_data["recordingDateTime"])
+                continue
         for track in meta_data.get("Tracks", []):
             tags = track.get("tags", [])
             human_tags = [
@@ -335,15 +339,90 @@ def metadata_confusion(dir, confusion_file, after_date=None, model_metadata=None
                             ai_tags.append(tag["what"])
                     elif data.get("name") == "Master":
                         ai_tags.append(tag["what"])
+
+            positions = [
+                Region.region_from_json(pos).area for pos in track["positions"]
+            ]
+            median_area = np.median(positions)
+            median_areas.append(median_area)
             y_true.append(human_tag)
             if human_tag not in labels:
                 labels.append(human_tag)
             if len(ai_tags) == 0:
                 y_pred.append("None")
             else:
-                y_pred.append(ai_tags[0])
-                if ai_tags[0] not in labels:
-                    labels.append(ai_tags[0])
+                ai_tag = ai_tags[0]
+                if ai_tag in ["rat", "mouse"]:
+                    ai_tag = "rodent"
+                y_pred.append(ai_tag)
+                if ai_tag not in labels:
+                    labels.append(ai_tag)
+    y_true = np.array(y_true)
+    y_pred = np.array(y_pred)
+    median_areas = np.array(median_areas)
+    median = None
+    prev_median = 0
+
+    all_labels = LabelGraph()
+
+    label_graphs = {}
+    for l in labels:
+        label_graphs[l] = LabelGraph()
+    unid_index = labels.index("unidentified")
+    for i in range(4, 40):
+        median = i * i
+        indices = (median_areas > prev_median) & (median_areas <= median)
+
+        med_y_true = y_true[indices]
+        if len(med_y_true) == 0:
+            all_labels.blank(median)
+            prev_median = median
+            for i, l in enumerate(labels):
+                label_graphs[l].blank(median)
+            continue
+
+        med_y_pred = y_pred[indices]
+        cm = confusion_matrix(med_y_true, med_y_pred, labels=labels)
+
+        all_total = 0
+        all_correct = 0
+        all_unid = 0
+        all_incorrect = 0
+        for i, l in enumerate(labels):
+            total = np.sum(cm[i])
+            correct = cm[i][i]
+            unided = cm[i][unid_index]
+            incorrect = total - correct - unided
+            label_graphs[l].add(median, correct, incorrect, unided, total)
+
+            all_total += total
+            all_correct += correct
+            all_unid += unided
+            all_incorrect += incorrect
+        all_labels.add(median, all_correct, all_incorrect, all_unid, all_total)
+        # Log the confusion matrix as an image summary.
+        figure = plot_confusion_matrix(
+            cm, class_names=labels, title=f"{prev_median} - {median} Median Area"
+        )
+
+        med_file = confusion_file.parent / f"{confusion_file.stem}-{median}"
+        plt.savefig(med_file.with_suffix(".png"), format="png")
+        np.save(med_file.with_suffix(".np"), cm)
+        prev_median = median
+        break
+    # plt.clf()
+    # plt.close("all")
+    # fig, ax = plt.subplots()
+    # ax.plot(ticks, correct_percents, label="Correct")
+    # ax.plot(ticks, [1, 0.2], label="InCorrect")
+    # ax.plot(ticks, [1, 0.3], label="Unidentified")
+
+    # ax.set_title("PErcents")
+
+    # ax.yaxis.set_major_formatter(mtick.PercentFormatter(xmax=1))
+    # plt.legend()
+
+    # plt.show()
 
     cm = confusion_matrix(y_true, y_pred, labels=labels)
     # Log the confusion matrix as an image summary.
@@ -559,8 +638,18 @@ def main():
     else:
 
         model = KerasModel(train_config=config.train)
-        model.load_model(model_file, training=False, weights=weights)
+        model.load_model(model_file, training=False)
+        if weights is None:
+            acc = (
+                "val_binary_accuracy"
+                if model.params.multi_label
+                else "val_categorical_accuracy"
+            )
+            weights = ["final", model_file / "val_loss.weights.h5", model_file / acc]
+        else:
+            weights = [weights]
         if args.evaluate_dir:
+            logging.info("Neeed to implement loading of weights for dir")
             evaluate_dir(
                 model,
                 Path(args.evaluate_dir),
@@ -574,9 +663,9 @@ def main():
         elif args.dataset:
             model_labels = model.labels.copy()
             model.load_training_meta(base_dir)
-            # model.labels = model_labels
-            if model.params.multi_label:
-                model.labels.append("land-bird")
+            # # model.labels = model_labels
+            # if model.params.multi_label:
+            #     model.labels.append("land-bird")
             excluded, remapped = get_excluded(model.data_type)
 
             if model.params.excluded_labels is not None:
@@ -614,7 +703,52 @@ def main():
                 args.dataset,
                 model.labels,
             )
-            model.confusion_tracks(dataset, args.confusion, threshold=args.threshold)
+            base_confusion_file = Path(args.confusion)
+            base_confusion_file = base_confusion_file.parent / base_confusion_file.stem
+            for weight in weights:
+                if weight != "final":
+                    logging.info("Loading weights %s", weight)
+                    model.load_weights(weight)
+                    weight_name = weight.stem
+                    suffix_start = weight_name.index(".weights.h5")
+                    weight_name = weight_name[: suffix_start - 1]
+                    confusion_final = (
+                        base_confusion_file.parent
+                        / f"{base_confusion_file.stem}-{weight_name}"
+                    )
+                else:
+                    logging.info("Using final weights")
+                    confusion_final = (
+                        base_confusion_file.parent / f"{base_confusion_file.stem}-final"
+                    )
+
+                model.confusion_tracks(
+                    dataset, confusion_final, threshold=args.threshold
+                )
+
+
+class LabelGraph:
+    def __init__(self):
+        self.correct = []
+        self.inccorect = []
+        self.unid = []
+        self.x_ticks = []
+
+    def blank(self, tick):
+        self.x_ticks.append(tick)
+        self.correct.append(0)
+        self.inccorect.append(0)
+        self.unid.append(0)
+
+    def add(self, tick, c, i, u, total):
+        self.x_ticks.append(tick)
+        # change to percent
+        c = c / total
+        i = i / total
+        u = u / total
+        self.correct.append(c)
+        self.inccorect.append(i)
+        self.unid.append(u)
 
 
 if __name__ == "__main__":

@@ -840,7 +840,9 @@ class KerasModel(Interpreter):
         return self.model.predict(frames)
 
     def confusion_tracks(self, dataset, filename, threshold=0.8):
-        logging.info("Calculating confusion with threshold %s", threshold)
+        logging.info(
+            "Calculating confusion with threshold %s saving to %s", threshold, filename
+        )
         true_categories = []
         track_ids = []
         avg_mass = []
@@ -913,7 +915,9 @@ class KerasModel(Interpreter):
             )
             # Log the confusion matrix as an image summary.
             figure = plot_confusion_matrix(cm, class_names=self.labels)
-            plt.savefig(f"{result[0]}-{filename}", format="png")
+            smoothing_file = filename.parent / f"{filename.stem}-{result[0]}"
+            plt.savefig(smoothing_file.with_suffix(".png"), format="png")
+            np.save(smoothing_file.with_suffix(".np"), cm)
 
     def confusion_tfrecords(self, dataset, filename):
         true_categories = tf.concat([y for x, y in dataset], axis=0)
@@ -1074,7 +1078,7 @@ class KerasModel(Interpreter):
 
 
 # from tensorflow examples
-def plot_confusion_matrix(cm, class_names):
+def plot_confusion_matrix(cm, class_names, title="Confusion Matrix"):
     """
     Returns a matplotlib figure containing the plotted confusion matrix.
 
@@ -1082,10 +1086,10 @@ def plot_confusion_matrix(cm, class_names):
       cm (array, shape = [n, n]): a confusion matrix of integer classes
       class_names (array, shape = [n]): String names of the integer classes
     """
-
+    plt.clf()
     figure = plt.figure(figsize=(16, 16))
     plt.imshow(cm, interpolation="nearest", cmap=plt.cm.Blues)
-    plt.title("Confusion matrix")
+    plt.title(title)
     plt.colorbar()
     tick_marks = np.arange(len(class_names))
     plt.xticks(tick_marks, class_names, rotation=90)
