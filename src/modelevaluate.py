@@ -641,11 +641,15 @@ def main():
         model.load_model(model_file, training=False)
         if weights is None:
             acc = (
-                "val_binary_accuracy"
+                "val_binary_accuracy.weights.h5"
                 if model.params.multi_label
-                else "val_categorical_accuracy"
+                else "val_categorical_accuracy.weights.h5"
             )
-            weights = ["final", model_file / "val_loss.weights.h5", model_file / acc]
+            weights = [
+                "final",
+                model_file.parent / "val_loss.weights.h5",
+                model_file.parent / acc,
+            ]
         else:
             weights = [weights]
         if args.evaluate_dir:
@@ -708,7 +712,7 @@ def main():
             for weight in weights:
                 if weight != "final":
                     logging.info("Loading weights %s", weight)
-                    model.load_weights(weight)
+                    model.model.load_weights(weight)
                     weight_name = weight.stem
                     suffix_start = weight_name.index(".weights.h5")
                     weight_name = weight_name[: suffix_start - 1]
