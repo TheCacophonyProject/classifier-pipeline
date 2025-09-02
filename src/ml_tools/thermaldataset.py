@@ -27,6 +27,7 @@ fp = None
 
 def get_excluded():
     return [
+        "animal",
         "goat",
         "lizard",
         "not identifiable",
@@ -38,20 +39,23 @@ def get_excluded():
         "mammal",
         "frog",
         "cow",
+        "static",
         # added gp forretrain
         "wombat",
-        "gray kangaroo",
-        "echidna",
-        "fox",
-        "deer",
-        "sheep",
+        # "gray kangaroo",
+        # "echidna",
+        # "fox",
+        # "deer",
+        # "sheep",
         # "wombat",
     ]
+
 
 
 def get_remapped(multi_label=False):
     land_bird = "land-bird" if multi_label else "bird"
     return {
+        "fox": "dog",
         "echidna": "hedgehog",
         "grey kangaroo": "wallaby",
         "sambar deer": "deer",
