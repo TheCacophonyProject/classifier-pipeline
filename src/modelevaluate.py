@@ -183,7 +183,7 @@ def load_args():
     )
     parser.add_argument(
         "--threshold",
-        default=0.5,
+        default=0.8,
         type=float,
         help="Prediction threshold default 0.5",
     )

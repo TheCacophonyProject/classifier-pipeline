@@ -865,7 +865,6 @@ class KerasModel(Interpreter):
         pred_per_track = {}
 
         # if self.params.multi_label:
-        self.labels.append("nothing")
         # predicted_categori/es = []
         # for p in y_pred:
         # predicted_categories.append(tf.where(p >= 0.8).numpy().ravel())
@@ -902,19 +901,21 @@ class KerasModel(Interpreter):
                 best_pred = np.argmax(pred_type)
                 confidence = pred_type[best_pred]
                 if confidence < threshold:
-                    best_pred = len(self.labels) - 1  # Nothing
+                    best_pred = len(self.labels)  # Nothing
                 results[i][1].append(best_pred)
             flat_y.append(y)
 
         true_categories = np.int64(flat_y)
         # else:
         #     predicted_categories = np.int64(tf.argmax(y_pred, axis=1))
+        labels = self.labels.copy()
+        labels.append("Nothing")
         for result in results:
             cm = confusion_matrix(
-                true_categories, np.int64(result[1]), labels=np.arange(len(self.labels))
+                true_categories, np.int64(result[1]), labels=np.arange(len(labels))
             )
             # Log the confusion matrix as an image summary.
-            figure = plot_confusion_matrix(cm, class_names=self.labels)
+            figure = plot_confusion_matrix(cm, class_names=labels)
             smoothing_file = filename.parent / f"{filename.stem}-{result[0]}"
             plt.savefig(smoothing_file.with_suffix(".png"), format="png")
             np.save(smoothing_file.with_suffix(".np"), cm)
