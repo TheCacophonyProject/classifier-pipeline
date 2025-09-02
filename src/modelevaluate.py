@@ -364,21 +364,28 @@ def metadata_confusion(dir, confusion_file, after_date=None, model_metadata=None
     prev_median = 0
 
     all_labels = LabelGraph()
+    # indices =y_true == y_pred
+
+    # print("True vs pred",y_true,y_pred, y_true == y_pred, median_areas[indices],y_true[indices])
 
     label_graphs = {}
     for l in labels:
         label_graphs[l] = LabelGraph()
     unid_index = labels.index("unidentified")
-    for i in range(4, 40):
-        median = i * i
+    for width in range(4, 41):
+        if width == 40:
+            median = 160 * 120
+        else:
+            median = width * width
+        print("doing median ", median)
         indices = (median_areas > prev_median) & (median_areas <= median)
 
         med_y_true = y_true[indices]
         if len(med_y_true) == 0:
-            all_labels.blank(median)
+            # all_labels.blank(median)
             prev_median = median
-            for i, l in enumerate(labels):
-                label_graphs[l].blank(median)
+            # for i, l in enumerate(labels):
+            #     label_graphs[l].blank(median)
             continue
 
         med_y_pred = y_pred[indices]
@@ -391,6 +398,9 @@ def metadata_confusion(dir, confusion_file, after_date=None, model_metadata=None
         for i, l in enumerate(labels):
             total = np.sum(cm[i])
             correct = cm[i][i]
+            if total == 0:
+                continue
+            print("Adding correct for ", l, correct, median)
             unided = cm[i][unid_index]
             incorrect = total - correct - unided
             label_graphs[l].add(median, correct, incorrect, unided, total)
@@ -407,27 +417,22 @@ def metadata_confusion(dir, confusion_file, after_date=None, model_metadata=None
 
         med_file = confusion_file.parent / f"{confusion_file.stem}-{median}"
         plt.savefig(med_file.with_suffix(".png"), format="png")
-        np.save(med_file.with_suffix(".np"), cm)
+        np.save(med_file.with_suffix(".npy"), cm)
         prev_median = median
-        break
-    # plt.clf()
-    # plt.close("all")
-    # fig, ax = plt.subplots()
-    # ax.plot(ticks, correct_percents, label="Correct")
-    # ax.plot(ticks, [1, 0.2], label="InCorrect")
-    # ax.plot(ticks, [1, 0.3], label="Unidentified")
 
-    # ax.set_title("PErcents")
+    for lbl, lbl_graph in label_graphs.items():
+        graph_file = confusion_file.parent / f"{confusion_file.stem}-{lbl}"
+        lbl_graph.plot(f"{lbl} Median vs Accuracy", graph_file)
 
-    # ax.yaxis.set_major_formatter(mtick.PercentFormatter(xmax=1))
-    # plt.legend()
-
-    # plt.show()
+    graph_file = confusion_file.parent / f"{confusion_file.stem}-all"
+    all_labels.plot(f"All Median vs Accuracy", graph_file)
 
     cm = confusion_matrix(y_true, y_pred, labels=labels)
     # Log the confusion matrix as an image summary.
     figure = plot_confusion_matrix(cm, class_names=labels)
     plt.savefig(confusion_file, format="png")
+    np.save(confusion_file.with_suffix(".npy"), cm)
+
     # cm = np.around(cm.astype("float") / cm.sum(axis=1)[:, np.newaxis], decimals=2)
     # cm = np.nan_to_num(cm)
     model_score(cm, labels)
@@ -714,7 +719,7 @@ def main():
                     logging.info("Loading weights %s", weight)
                     model.model.load_weights(weight)
                     weight_name = weight.stem
-                    suffix_start = weight_name.index(".weights.h5")
+                    suffix_start = weight_name.index(".weights")
                     weight_name = weight_name[: suffix_start - 1]
                     confusion_final = (
                         base_confusion_file.parent
@@ -753,6 +758,21 @@ class LabelGraph:
         self.correct.append(c)
         self.inccorect.append(i)
         self.unid.append(u)
+
+    def plot(self, title, out_file):
+        # print("Plotting for ", title, self.correct,self.inccorect, self.unid)
+        plt.clf()
+        plt.close("all")
+        fig, ax = plt.subplots()
+        ax.bar(self.x_ticks, self.correct, label="Correct", color="g")
+        ax.bar(self.x_ticks, self.inccorect, label="InCorrect", color="r")
+        ax.bar(self.x_ticks, self.unid, label="Unidentified", color="b")
+
+        ax.set_title(title)
+
+        ax.yaxis.set_major_formatter(mtick.PercentFormatter(xmax=1))
+        plt.legend()
+        plt.savefig(out_file.with_suffix(".png"), format="png")
 
 
 if __name__ == "__main__":
