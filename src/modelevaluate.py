@@ -423,7 +423,7 @@ def metadata_confusion(dir, confusion_file, after_date=None, model_metadata=None
     for lbl, lbl_graph in label_graphs.items():
 
         graph_file = (
-            confusion_file.parent / f"{confusion_file.stem}-{lbl.replace(" / "," - ")}"
+            confusion_file.parent / f"{confusion_file.stem}-{lbl.replace("/","-")}"
         )
         lbl_graph.plot(f"{lbl} Median vs Accuracy", graph_file)
 
@@ -808,6 +808,8 @@ class LabelGraph:
         ax.set_title(title)
         ax.yaxis.set_major_formatter(mtick.PercentFormatter(xmax=1))
         plt.legend()
+        plt.xlabel("Median area of track bounding boxes and ( # records)")
+        plt.ylabel("Percent")
         plt.savefig(out_file.with_suffix(".png"), format="png")
 
 
