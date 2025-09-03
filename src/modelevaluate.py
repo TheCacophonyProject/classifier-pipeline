@@ -300,8 +300,8 @@ def metadata_confusion(dir, confusion_file, after_date=None, model_metadata=None
             logging.error("Couldnt load %s", cptv_file, exc_info=True)
             continue
         if after_date is not None:
+            rec_time = parse_date(meta_data["recordingDateTime"])
             if rec_time <= after_date:
-                rec_time = parse_date(meta_data["recordingDateTime"])
                 continue
         for track in meta_data.get("Tracks", []):
             tags = track.get("tags", [])
@@ -400,7 +400,7 @@ def metadata_confusion(dir, confusion_file, after_date=None, model_metadata=None
             correct = cm[i][i]
             if total == 0:
                 continue
-            print("Adding correct for ", l, correct, median)
+            print("Adding correct for ", l, correct, total, median)
             unided = cm[i][unid_index]
             incorrect = total - correct - unided
             label_graphs[l].add(median, correct, incorrect, unided, total)
@@ -739,14 +739,14 @@ def main():
 class LabelGraph:
     def __init__(self):
         self.correct = []
-        self.inccorect = []
+        self.incorrect = []
         self.unid = []
         self.x_ticks = []
 
     def blank(self, tick):
         self.x_ticks.append(tick)
         self.correct.append(0)
-        self.inccorect.append(0)
+        self.incorrect.append(0)
         self.unid.append(0)
 
     def add(self, tick, c, i, u, total):
@@ -756,20 +756,24 @@ class LabelGraph:
         i = i / total
         u = u / total
         self.correct.append(c)
-        self.inccorect.append(i)
+        self.incorrect.append(i)
         self.unid.append(u)
 
     def plot(self, title, out_file):
-        # print("Plotting for ", title, self.correct,self.inccorect, self.unid)
+
+        self.x_ticks = np.array(self.x_ticks)
+        # print("Plotting for ", title, self.correct,self.incorrect, self.unid)
         plt.clf()
         plt.close("all")
         fig, ax = plt.subplots()
-        ax.bar(self.x_ticks, self.correct, label="Correct", color="g")
-        ax.bar(self.x_ticks, self.inccorect, label="InCorrect", color="r")
-        ax.bar(self.x_ticks, self.unid, label="Unidentified", color="b")
+
+        ax.plot(self.x_ticks, self.correct, label="Correct", color="g", marker="o")
+        ax.plot(self.x_ticks, self.incorrect, label="InCorrect", color="r", marker="o")
+        ax.plot(self.x_ticks, self.unid, label="Unidentified", color="b", marker="o")
+        ax.set_xticks(self.x_ticks)
 
         ax.set_title(title)
-
+        plt.xscale("log")
         ax.yaxis.set_major_formatter(mtick.PercentFormatter(xmax=1))
         plt.legend()
         plt.savefig(out_file.with_suffix(".png"), format="png")
