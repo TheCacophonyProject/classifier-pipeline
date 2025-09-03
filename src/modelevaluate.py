@@ -373,10 +373,10 @@ def metadata_confusion(dir, confusion_file, after_date=None, model_metadata=None
         label_graphs[l] = LabelGraph()
     unid_index = labels.index("unidentified")
     for width in range(4, 41):
-        if width == 40:
-            median = 160 * 120
-        else:
-            median = width * width
+        # if width == 40:
+        #     median = 160 * 120
+        # else:
+        median = width * width
         print("doing median ", median)
         indices = (median_areas > prev_median) & (median_areas <= median)
 
@@ -421,7 +421,10 @@ def metadata_confusion(dir, confusion_file, after_date=None, model_metadata=None
         prev_median = median
 
     for lbl, lbl_graph in label_graphs.items():
-        graph_file = confusion_file.parent / f"{confusion_file.stem}-{lbl}"
+
+        graph_file = (
+            confusion_file.parent / f"{confusion_file.stem}-{lbl.replace(" / "," - ")}"
+        )
         lbl_graph.plot(f"{lbl} Median vs Accuracy", graph_file)
 
     graph_file = confusion_file.parent / f"{confusion_file.stem}-all"
@@ -742,6 +745,7 @@ class LabelGraph:
         self.incorrect = []
         self.unid = []
         self.x_ticks = []
+        self.counts = []
 
     def blank(self, tick):
         self.x_ticks.append(tick)
@@ -750,6 +754,7 @@ class LabelGraph:
         self.unid.append(0)
 
     def add(self, tick, c, i, u, total):
+        self.counts.append(total)
         self.x_ticks.append(tick)
         # change to percent
         c = c / total
@@ -765,15 +770,42 @@ class LabelGraph:
         # print("Plotting for ", title, self.correct,self.incorrect, self.unid)
         plt.clf()
         plt.close("all")
-        fig, ax = plt.subplots()
+        fig, ax = plt.subplots(figsize=(20, 20))
 
         ax.plot(self.x_ticks, self.correct, label="Correct", color="g", marker="o")
-        ax.plot(self.x_ticks, self.incorrect, label="InCorrect", color="r", marker="o")
-        ax.plot(self.x_ticks, self.unid, label="Unidentified", color="b", marker="o")
-        ax.set_xticks(self.x_ticks)
+        ax.plot(
+            self.x_ticks,
+            self.incorrect,
+            label="In correct",
+            color="r",
+            marker="o",
+            alpha=0.5,
+        )
+        ax.plot(
+            self.x_ticks,
+            self.unid,
+            label="Unidentified",
+            color="b",
+            marker="o",
+            alpha=0.5,
+        )
 
+        total = np.sum(self.counts)
+        count_percent = np.array(self.counts) / total
+        ax.plot(
+            self.x_ticks,
+            count_percent,
+            label="Percentage of data",
+            color="black",
+            alpha=0.5,
+        )
+
+        x_labels = []
+        for count, tick in zip(self.counts, self.x_ticks):
+            x_labels.append(f"{tick} ({count})")
+        ax.set_xticks(self.x_ticks, x_labels, rotation=90)
+        plt.subplots_adjust(bottom=0.2)
         ax.set_title(title)
-        plt.xscale("log")
         ax.yaxis.set_major_formatter(mtick.PercentFormatter(xmax=1))
         plt.legend()
         plt.savefig(out_file.with_suffix(".png"), format="png")
