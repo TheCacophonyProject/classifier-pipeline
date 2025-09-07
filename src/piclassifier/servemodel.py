@@ -8,7 +8,7 @@ from config.config import Config
 import logging
 from ml_tools.logs import init_logging
 from config.thermalconfig import ThermalConfig
-
+from waitress import serve
 
 app = Flask(__name__)
 # app.config["MAX_CONTENT_LENGTH"] = 407200
@@ -78,9 +78,9 @@ def main():
         logging.error("Not support multiple input models")
         sys.exit(0)
     input_shape = (-1, *input_shape[1:])
-    # interpreter = LiteInterpreter(network_model.model_file)
     startup_classifier()
-    app.run(port=network_model.port, debug=True)  # Set debug=False for production
+    # make sure only 1 thread at a time as classifier is not thread safe
+    serve(app, port=network_model.port, threads=1)
 
 
 if __name__ == "__main__":
