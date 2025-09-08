@@ -1,4 +1,4 @@
-from piclassifier.reprocess import main
+from piclassifier.postprocess import main
 
 if __name__ == "__main__":
     main()

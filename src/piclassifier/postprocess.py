@@ -16,6 +16,7 @@ from functools import partial
 import threading
 import dbus
 from gi.repository import GLib
+from piclassifier.utils import startup_network_classifier, is_service_running
 
 
 class DirWatcher(FileSystemEventHandler):
@@ -107,14 +108,26 @@ def main():
         tracking_events=thermal_config.motion.postprocess_events,
     )
 
-    dbus.mainloop.glib.DBusGMainLoop(set_as_default=True)
-    bus = dbus.SystemBus()
-    dbus_object = bus.get_object(service.DBUS_NAME, service.DBUS_PATH)
     callback_fn = partial(rec_callback, set_function=clip_classifier.set_is_recording)
-    loop = GLib.MainLoop()
+    bus = None
+    dbus_object = None
+    need_dbus = thermal_config.motion.postprocess_events
 
-    dbus_thread = threading.Thread(target=dbus_events, args=(loop, bus, callback_fn))
-    dbus_thread.start()
+    if need_dbus:
+        max_attempts = 3
+        attempt = 1
+        while bus is None:
+            try:
+                dbus_object, bus, thread = connect_to_dbus(callback_fn)
+            except Exception as ex:
+                logging.info(
+                    "Couldn't connecto dbus waiting 20 seconds and trying again",
+                    exc_info=True,
+                )
+                if attempt >= max_attempts:
+                    raise ex
+                time.sleep(20)
+            attempt += 1
     try:
         while True:
             try:
@@ -129,6 +142,14 @@ def main():
             if not new_file.exists():
                 continue
             # reprocess file
+
+            if not is_service_running("thermal-classifier"):
+                logging.info("Network classifier is not running starting it up")
+                success = startup_network_classifier(True)
+                if not success:
+                    raise Exception("Could not start up netowrk classifier")
+                # give it some time to start up
+                time.sleep(5)
             try:
                 if clip_classifier._is_recording:
                     while clip_classifier._is_recording:
@@ -136,16 +157,19 @@ def main():
                             "Waiting for current recording to finish before processing"
                         )
                         time.sleep(10)
-                # ensures dbus service is always valid
-                try:
-                    dbus_object = bus.get_object(service.DBUS_NAME, service.DBUS_PATH)
-                except:
-                    logging.error(
-                        "Could not connect to dbus service %s",
-                        service.DBUS_NAME,
-                        exc_info=True,
-                    )
-                    break
+                if need_dbus:
+                    # ensures dbus service is always, can be invalidated if thermal-recorder restarts
+                    try:
+                        dbus_object = bus.get_object(
+                            service.DBUS_NAME, service.DBUS_PATH
+                        )
+                    except:
+                        logging.error(
+                            "Could not connect to dbus service %s",
+                            service.DBUS_NAME,
+                            exc_info=True,
+                        )
+                        break
                 clip_classifier.post_process_file(new_file, dbus_object)
 
             except:
@@ -170,6 +194,17 @@ def main():
         observer.stop()
 
 
+def connect_to_dbus(rec_callback):
+    dbus.mainloop.glib.DBusGMainLoop(set_as_default=True)
+    bus = dbus.SystemBus()
+    dbus_object = bus.get_object(service.DBUS_NAME, service.DBUS_PATH)
+    loop = GLib.MainLoop()
+
+    dbus_thread = threading.Thread(target=dbus_events, args=(loop, bus, rec_callback))
+    dbus_thread.start()
+    return dbus_object, bus, dbus_thread
+
+
 def dbus_events(loop, dbus_object, callback_fn):
     dbus_object.add_signal_receiver(
         callback_fn,
@@ -182,7 +217,3 @@ def dbus_events(loop, dbus_object, callback_fn):
         signal_name="ServiceStarted",
     )
     loop.run()
-
-
-if __name__ == "__main__":
-    main()

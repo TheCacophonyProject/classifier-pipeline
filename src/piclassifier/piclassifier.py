@@ -21,6 +21,7 @@ from piclassifier.attiny import set_recording_state
 from pathlib import Path
 from ml_tools.imageprocessing import normalize
 from functools import partial
+from piclassifier import utils
 
 SNAPSHOT_SIGNAL = "snap"
 STOP_SIGNAL = "stop"
@@ -102,6 +103,7 @@ class PiClassifier(Processor):
         self._output_dir = thermal_config.recorder.output_dir
         self.headers = headers
         self.classifier = None
+        self.classifier_initialised = False
         self.fp_model = None
         self.frame_num = 0
         self.clip = None
@@ -361,7 +363,6 @@ class PiClassifier(Processor):
                 self.fp_index = self.classifier.labels.index("false-positive")
             except ValueError:
                 self.fp_index = None
-            self.startup_classifier()
         if fp_config is not None:
             self.fp_model = get_interpreter(fp_config)
             global fp_model
@@ -423,6 +424,10 @@ class PiClassifier(Processor):
 
     def startup_classifier(self):
         if self.classifier.run_over_network:
+            if not utils.is_service_running("thermal-classifier"):
+                success = utils.startup_network_classifier(True)
+                if not success:
+                    raise Exception("COuild not start network classifier")
             return
         # classifies an empty frame to force loading of the model into memory
         num_inputs, in_shape = self.classifier.shape()
@@ -893,6 +898,9 @@ class PiClassifier(Processor):
         if self.snapshot_recorder.recording:
             self.snapshot_recorder.process_frame(False, lepton_frame, received_at)
         if self.constant_recorder is not None and self.motion_detector.can_record():
+            if not self.classifier_initialised and self.classify:
+                self.startup_classifier()
+
             if self.constant_recorder.recording:
                 self.constant_recorder.process_frame(True, lepton_frame, received_at)
             else:
@@ -1211,19 +1219,3 @@ def process_mem():
     # return the memory usage in percentage like top
     process = psutil.Process(os.getppid())
     return process.memory_percent()
-
-
-def startup_network_classifier(enable):
-    if enable:
-        cmd = "sudo systemctl enable thermal-classifier && sudo systemctl start thermal-classifier"
-    else:
-        cmd = "sudo systemctl disable thermal-classifier && sudo systemctl stop thermal-classifier"
-    try:
-        subprocess.run(
-            cmd,
-            shell=True,
-            encoding="ascii",
-            check=True,
-        )
-    except:
-        logging.error("Could not run command %s", cmd, exc_info=True)

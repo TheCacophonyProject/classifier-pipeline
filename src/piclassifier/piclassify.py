@@ -23,6 +23,7 @@ from .eventreporter import log_event
 from piclassifier.monitorconfig import monitor_file
 from pathlib import Path
 import subprocess
+from piclassifier import utils
 
 SOCKET_NAME = "/var/run/lepton-frames"
 VOSPI_DATA_SIZE = 160
@@ -129,15 +130,24 @@ def main():
     logging.info("running as thermal")
 
     # start relevenet services
-    startup_postprocessor(thermal_config.motion.postprocess)
+
     model = None
     for model_config in config.classify.models:
         if model_config.type != "RandomForest":
             model = model_config
             break
 
-    startup_network_classifier(model.run_over_network)
+    # try not run classifier unless we are inside a recording window
+    if thermal_config.recorder.rec_window.inside_window():
+        success = utils.startup_network_classifier(model.run_over_network)
+        if not success:
+            raise Exception("Could not start up network classifier")
+    else:
+        utils.stop_network_classifier()
 
+    success = utils.startup_postprocessor(thermal_config.motion.postprocess)
+    if not success and thermal_config.motion.postprocess:
+        raise Exception("Could not start up postprocessor")
     sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     sock.bind(SOCKET_NAME)
     sock.settimeout(3 * 60)  # 3 minutes
@@ -681,36 +691,3 @@ def handle_connection(connection, config, thermal_config_file, process_queue):
         time.sleep(5)
         # give it a moment to close down properly
         processor.terminate()
-
-
-def startup_postprocessor(enable):
-    if enable:
-        cmd = "sudo systemctl enable thermal-postprocess && sudo systemctl restart thermal-postprocess"
-    else:
-        # disable but start once so that it can finish any stale files that may exist
-        cmd = "sudo systemctl disable thermal-postprocess && sudo systemctl restart thermal-postprocess"
-    try:
-        subprocess.run(
-            cmd,
-            shell=True,
-            encoding="ascii",
-            check=True,
-        )
-    except:
-        logging.error("Could not run command %s", cmd, exc_info=True)
-
-
-def startup_network_classifier(enable):
-    if enable:
-        cmd = "sudo systemctl enable thermal-classifier && sudo systemctl restart thermal-classifier"
-    else:
-        cmd = "sudo systemctl disable thermal-classifier && sudo systemctl stop thermal-classifier"
-    try:
-        subprocess.run(
-            cmd,
-            shell=True,
-            encoding="ascii",
-            check=True,
-        )
-    except:
-        logging.error("Could not run command %s", cmd, exc_info=True)
