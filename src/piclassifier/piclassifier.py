@@ -423,6 +423,7 @@ class PiClassifier(Processor):
         )
 
     def startup_classifier(self):
+        self.classifier_initialised = True
         if self.classifier.run_over_network:
             if not utils.is_service_running("thermal-classifier"):
                 success = utils.startup_network_classifier(True)
@@ -893,14 +894,17 @@ class PiClassifier(Processor):
         import time
 
         start = time.time()
+        if (
+            self.motion_detector.can_record()
+            and not self.classifier_initialised
+            and self.classify
+        ):
+            self.startup_classifier()
         self.motion_detector.process_frame(lepton_frame)
         self.process_time += time.time() - start
         if self.snapshot_recorder.recording:
             self.snapshot_recorder.process_frame(False, lepton_frame, received_at)
         if self.constant_recorder is not None and self.motion_detector.can_record():
-            if not self.classifier_initialised and self.classify:
-                self.startup_classifier()
-
             if self.constant_recorder.recording:
                 self.constant_recorder.process_frame(True, lepton_frame, received_at)
             else:
