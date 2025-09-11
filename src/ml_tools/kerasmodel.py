@@ -918,7 +918,7 @@ class KerasModel(Interpreter):
             figure = plot_confusion_matrix(cm, class_names=labels)
             smoothing_file = filename.parent / f"{filename.stem}-{result[0]}"
             plt.savefig(smoothing_file.with_suffix(".png"), format="png")
-            np.save(smoothing_file.with_suffix(".np"), cm)
+            np.save(smoothing_file.with_suffix(".npy"), cm)
 
     def confusion_tfrecords(self, dataset, filename):
         true_categories = tf.concat([y for x, y in dataset], axis=0)
@@ -934,7 +934,7 @@ class KerasModel(Interpreter):
                 true_categories = np.int64(tf.argmax(true_categories, axis=1))
         y_pred = self.model.predict(dataset)
         if self.params.multi_label:
-            self.labels.append("nothing")
+            self.labels.append("Nothing")
             # predicted_categori/es = []
             # for p in y_pred:
             # predicted_categories.append(tf.where(p >= 0.8).numpy().ravel())

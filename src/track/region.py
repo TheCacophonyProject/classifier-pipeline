@@ -112,13 +112,16 @@ class Region(Rectangle):
                 int(region_json["x"] + region_json["width"] / 2),
                 int(region_json["y"] + region_json["height"] / 2),
             ]
+        mass = region_json.get("mass", 0)
+        if mass is None:
+            mass = 0
         return cls(
             region_json["x"],
             region_json["y"],
             region_json["width"],
             region_json["height"],
             frame_number=frame,
-            mass=region_json.get("mass", 0),
+            mass=mass,
             blank=region_json.get("blank", False),
             pixel_variance=region_json.get("pixel_variance", 0),
             centroid=centroid,

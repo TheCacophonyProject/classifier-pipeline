@@ -179,6 +179,9 @@ class RawDatabase:
             country_code=country_code,
         )
         tracks = metadata.get("Tracks", [])
+        if len(tracks) == 0:
+            tracks = metadata.get("tracks", [])
+
         fp_labels = metadata.get("fp_model_labels")
         fp_index = None
         if fp_labels is not None:

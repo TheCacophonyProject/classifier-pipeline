@@ -165,6 +165,7 @@ def load_dataset(filenames, remap_lookup, labels, args):
 
 rotation_augmentation = tf.keras.Sequential(
     [
+        # maybe 0.5 is good?
         tf.keras.layers.RandomRotation(0.1, fill_mode="nearest", fill_value=0),
     ]
 )

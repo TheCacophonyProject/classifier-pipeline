@@ -180,7 +180,7 @@ def get_data(clip_samples, extra_args):
     if len(clip_samples) == 0:
         return None
     data = []
-    crop_rectangle = tools.Rectangle(2, 2, 160 - 2 * 2, 140 - 2 * 2)
+    crop_rectangle = tools.Rectangle(2, 2, 160 - 2 * 2, 120 - 2 * 2)
 
     if clip_samples[0].source_file.suffix == ".hdf5":
         db = TrackDatabase(clip_samples[0].source_file)

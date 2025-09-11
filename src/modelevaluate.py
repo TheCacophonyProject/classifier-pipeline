@@ -72,6 +72,9 @@ land_birds = [
 
 # basic formula to give a number to compare models
 def model_score(cm, labels):
+    labels = labels.copy()
+    if "None" not in labels:
+        labels.append("None")
     cm = np.around(cm.astype("float") / cm.sum(axis=1)[:, np.newaxis], decimals=2)
     cm = np.nan_to_num(cm)
     fp_index = None
@@ -83,7 +86,7 @@ def model_score(cm, labels):
         none_index = labels.index("None")
     if "unidentified" in labels:
         unid_index = labels.index("unidentified")
-    score = 0
+    total_score = 0
     for l_i, l in enumerate(labels):
         fp_acc = 0
         if fp_index is not None:
@@ -96,15 +99,30 @@ def model_score(cm, labels):
         if unid_index:
             unid_acc = cm[l_i][unid_index]
         if l == "bird":
-            other_animals = 1 - (fp_acc + none_acc + unid_acc)
-            score += accuracy * 1.2 - other_animals
+            other_animals = 1 - (fp_acc + none_acc + unid_acc + accuracy)
+            print(cm[l_i])
+            print(
+                "Bird score is ",
+                accuracy,
+                " fp ",
+                fp_acc,
+                " none",
+                none_acc,
+                " unid ",
+                unid_acc,
+                " other animals",
+                other_animals,
+            )
+            score = accuracy * 1.2 - other_animals
         elif l in ["vehicle", "wallaby"]:
-            score += accuracy * 0.8
+            score = accuracy * 0.8
         elif l in ["mustelid", "human"]:
-            score += accuracy * 0.9
+            score = accuracy * 0.9
         elif l not in ["None", "unidentified"]:
-            score += accuracy * 1
-    logging.info("Model accuracy score is %s", score)
+            score = accuracy * 1
+        print(f"score for {l} is {score}")
+        total_score += score
+    logging.info("Model accuracy score is %s", total_score)
 
 
 def get_mappings(label_paths):
@@ -187,6 +205,12 @@ def load_args():
         type=float,
         help="Prediction threshold default 0.5",
     )
+
+    parser.add_argument(
+        "--model-score",
+        help="Model score calculation for this numpy file",
+    )
+
     args = parser.parse_args()
     if args.date:
         args.date = parse_date(args.date)
@@ -303,7 +327,12 @@ def metadata_confusion(dir, confusion_file, after_date=None, model_metadata=None
             rec_time = parse_date(meta_data["recordingDateTime"])
             if rec_time <= after_date:
                 continue
-        for track in meta_data.get("Tracks", []):
+        tracks_meta = meta_data.get("Tracks")
+        if tracks_meta is None:
+            tracks_meta = meta_data.get("tracks")
+        if tracks_meta is None:
+            continue
+        for track in tracks_meta:
             tags = track.get("tags", [])
             human_tags = [
                 tag.get("what") for tag in tags if tag.get("automatic") == False
@@ -423,7 +452,7 @@ def metadata_confusion(dir, confusion_file, after_date=None, model_metadata=None
     for lbl, lbl_graph in label_graphs.items():
 
         graph_file = (
-            confusion_file.parent / f"{confusion_file.stem}-{lbl.replace("/","-")}"
+            confusion_file.parent / f"{confusion_file.stem}-{lbl.replace(" / "," - ")}"
         )
         lbl_graph.plot(f"{lbl} Median vs Accuracy", graph_file)
 
@@ -599,7 +628,7 @@ def evaluate_dir(
 
     # Log the confusion matrix as an image summary.
     figure = plot_confusion_matrix(cm, class_names=model.labels)
-    plt.savefig(confusion_file, format="png")
+    plt.savefig(confusion_file.with_suffix("png"), format="png")
     logging.info("Saving %s", Path(confusion_file).with_suffix(".png"))
 
     model_score(cm, model.labels)
@@ -633,6 +662,18 @@ def main():
     init_logging()
     config = Config.load_from_file(args.config_file)
     print("Loading config", args.config_file)
+    if args.model_score is not None:
+        logging.info(
+            "Running model score on %s and metadata %s",
+            args.model_score,
+            args.model_metadata,
+        )
+        with open(args.model_metadata, "r") as t:
+            # add in some metadata stats
+            model_meta = json.load(t)
+        cm = np.load(args.model_score)
+        model_score(cm, model_meta["labels"])
+        return
     weights = None
     if args.model_file:
         model_file = Path(args.model_file)
