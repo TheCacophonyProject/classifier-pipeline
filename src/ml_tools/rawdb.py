@@ -68,7 +68,7 @@ class RawDatabase:
         ffc_frames = []
         cptv_frames = []
         background = None
-        tracker_version = self.meta_data.get("tracker_version")
+        tracker_version = self.meta_data.get("tracker_version",11)
         frame_i = 0
         reader = CptvReader(str(self.file))
         header = reader.get_header()
