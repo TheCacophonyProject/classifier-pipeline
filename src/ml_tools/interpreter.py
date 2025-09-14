@@ -22,6 +22,9 @@ class Interpreter(ABC):
         self.version = metadata.get("version", None)
         self.labels = metadata["labels"]
         self.params = HyperParams()
+        self.params["remapped_labels"] = metadata.get("remapped_labels")
+        self.params["excluded_labels"] = metadata.get("excluded_labels")
+
         self.params.update(metadata.get("hyperparams", {}))
         self.data_type = metadata.get("type", "thermal")
 

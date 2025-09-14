@@ -375,6 +375,7 @@ def metadata_confusion(dir, confusion_file, after_date=None, model_metadata=None
             median_area = np.median(positions)
             median_areas.append(median_area)
             y_true.append(human_tag)
+
             if human_tag not in labels:
                 labels.append(human_tag)
             if len(ai_tags) == 0:
@@ -391,7 +392,6 @@ def metadata_confusion(dir, confusion_file, after_date=None, model_metadata=None
     median_areas = np.array(median_areas)
     median = None
     prev_median = 0
-
     all_labels = LabelGraph()
     # indices =y_true == y_pred
 
@@ -490,7 +490,10 @@ def load_clip_data(cptv_file):
         logging.warn("No clip for %s", cptv_file)
         return None
 
-    if filter_clip(clip, None, None, reason, after_date=after_date):
+    if (
+        filter_clip(clip, None, None, reason, after_date=after_date)
+        or len(clip.tracks) == 0
+    ):
         # logging.info("Filtering %s", cptv_file)
         return None
     clip.tracks = [
@@ -541,6 +544,22 @@ def evaluate_dir(
     threshold=0.5,
     after_date=None,
 ):
+    if model.params.excluded_labels is not None:
+        excluded_labels = model.params.excluded_labels
+
+    if model.params.remapped_labels is not None:
+        remapped_labels = model.params.remapped_labels
+    for k, v in remapped_labels.items():
+        if v == "land-bird":
+            remapped_labels[k] = "bird"
+    remapped_labels["rat"] = "rodent"
+    remapped_labels["mouse"] = "rodent"
+    remapped_labels["bird/kiwi"] = "kiwi"
+    print("remapped is ", remapped_labels, " excluded", excluded_labels)
+
+    # with open(model_file.with_suffix(".txt"), "r") as t:
+    #     # add in some metadata stats
+    #     model_meta = json.load(t)
     logging.info("Evaluating cptv files in %s with threshold %s", dir, threshold)
 
     with open("label_paths.json", "r") as f:
@@ -566,7 +585,7 @@ def evaluate_dir(
     start = time.time()
     # quite faster with just one process for loading and using main process for predicting
     with Pool(
-        processes=1,
+        processes=8,
         initializer=init_worker,
         initargs=(
             model,

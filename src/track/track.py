@@ -1039,8 +1039,17 @@ class Track:
         for track_tag in track_tags:
             ranking = cls.tag_ranking(track_tag, tag_precedence, default_prec)
             # if 2 track_tags have same confidence ignore both
-            if tag and ranking == best and track_tag["what"] != tag["what"]:
-                tag = None
+            # need to check specificity
+            if tag and ranking == best:
+                if is_conflicting_tag(tag, track_tag):
+                    tag = None
+                else:
+                    # choose most specific
+                    path_one = tag.get("path")
+                    path_two = track_tag.get("path")
+                    # longer path is more specific..
+                    if len(path_two) > len(path_one):
+                        tag = track_tag
             elif best is None or ranking < best:
                 best = ranking
                 tag = track_tag
@@ -1054,6 +1063,16 @@ class Track:
         confidence = 1 - track_tag.get("confidence", 0)
         prec = precedence.get(what, default_prec)
         return prec + confidence
+
+
+def is_conflicting_tag(tag_one, tag_two):
+    path_one = tag_one.get("path")
+    path_two = tag_two.get("path")
+    # this should cover similar tags i.e. all.mammal.leporidae.rabbit and all.mammal.leporidae
+    same_parents = path_one in path_two or path_two in path_one
+    same_parents and path_one != "all.mammal" and path_two != "all.mammal"
+    # both_are_birds = "bird" in tag_one.get("path") and "bird" in tag_two.get("path")
+    return tag_one["what"] != tag_two["what"] and not same_parents
 
 
 TrackMovementStatistics = namedtuple(
