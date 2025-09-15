@@ -365,8 +365,7 @@ class Interpreter(ABC):
                 filtered_norm_limits = (min_diff, max_diff)
 
             sorted_by_contours = sorted(data, key=lambda d: d[0], reverse=True)
-            for s in sorted_by_contours:
-                print("Contours " , s[0], s[1].frame_number)
+
             sorted_by_contours = sorted_by_contours[:25]
             data = []
             frame_numbers = []
