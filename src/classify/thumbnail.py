@@ -6,6 +6,8 @@ import matplotlib as mpl
 import matplotlib.pyplot as plt
 from collections import namedtuple
 from ml_tools import tools
+from ml_tools.imageprocessing import normalize
+import logging
 
 
 def best_trackless_thumb(clip):
@@ -72,7 +74,20 @@ def get_track_thumb_stats(clip, track):
         frame = clip.frame_buffer.get_frame(region.frame_number)
         if frame is None:
             continue
-        contour_image = frame.filtered if frame.mask is None else frame.mask
+        if frame.mask is None:
+            logging.info("Doing contours by filtered")
+            contour_image = frame.filtered
+
+            contour_image, stats = normalize(contour_image, new_max=255)
+            if stats[1] == stats[2]:
+                mapped_thresh = 50
+            else:
+                mapped_thresh = clip.background_thresh / (stats[1] - stats[2]) * 255
+
+            flags = cv2.THRESH_BINARY
+            _, image = cv2.threshold(contour_image, mapped_thresh, 255, flags)
+        else:
+            contour_image = frame.mask
         contours, _ = cv2.findContours(
             np.uint8(region.subimage(contour_image)),
             cv2.RETR_EXTERNAL,
@@ -84,6 +99,8 @@ def get_track_thumb_stats(clip, track):
             # contour_points.append(0)
             continue
         else:
+            contours = sorted(contours, key=lambda c: len(c), reverse=True)
+
             points = len(contours[0])
             if points > max_contour:
                 max_contour = points

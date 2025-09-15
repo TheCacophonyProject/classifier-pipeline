@@ -6,6 +6,7 @@ import numpy as np
 from ml_tools.hyperparams import HyperParams
 from pathlib import Path
 from classify.trackprediction import TrackPrediction
+from ml_tools.imageprocessing import normalize
 
 
 class Interpreter(ABC):
@@ -123,15 +124,23 @@ class Interpreter(ABC):
                     len(track.bounds_history),
                 )
 
-            frames, preprocessed, masses = self.preprocess_segments(
-                clip,
-                track,
-                num_predictions,
-                predict_from_last,
-                segment_frames=segment_frames,
-                dont_filter=args.get("dont_filter", False),
-                min_segments=args.get("min_segments"),
-            )
+            do_contours = True
+            if do_contours:
+                logging.warn("Implemented for testing")
+                frames, preprocessed, masses = self.preprocess_contours(
+                    clip,
+                    track,
+                )
+            else:
+                frames, preprocessed, masses = self.preprocess_segments(
+                    clip,
+                    track,
+                    num_predictions,
+                    predict_from_last,
+                    segment_frames=segment_frames,
+                    dont_filter=args.get("dont_filter", False),
+                    min_segments=args.get("min_segments"),
+                )
         else:
             frames, preprocessed, masses = self.preprocess_frames(
                 clip, track, num_predictions, segment_frames=segment_frames
@@ -297,6 +306,104 @@ class Interpreter(ABC):
             if max_frames is not None and len(data) >= max_frames:
                 break
         return frames_used, np.array(data), [region.mass]
+
+    def preprocess_contours(self, clip, track):
+
+        # should really be over whole track buts let just do the indices we predict of
+        #  seems to make little different to just doing a min max normalization
+        thermal_norm_limits = None
+        filtered_norm_limits = None
+        data = []
+        if self.params.diff_norm or self.params.thermal_diff_norm:
+            min_diff = None
+            max_diff = 0
+            thermal_max_diff = None
+            thermal_min_diff = None
+            for i, region in enumerate(reversed(track.bounds_history)):
+                if region.blank:
+                    continue
+                if region.width <= 0 or region.height <= 0:
+                    logging.warn(
+                        "No width or height for frame %s regoin %s",
+                        region.frame_number,
+                        region,
+                    )
+                    continue
+                f = clip.get_frame(region.frame_number)
+                if region.blank or region.width <= 0 or region.height <= 0 or f is None:
+                    continue
+
+                f.float_arrays()
+
+                if self.params.thermal_diff_norm:
+                    diff_frame = f.thermal - np.median(f.thermal)
+                    new_max = np.amax(diff_frame)
+                    new_min = np.amin(diff_frame)
+                    if thermal_min_diff is None or new_min < thermal_min_diff:
+                        thermal_min_diff = new_min
+                    if thermal_max_diff is None or new_max > thermal_max_diff:
+                        thermal_max_diff = new_max
+                if self.params.diff_norm:
+                    diff_frame = region.subimage(f.filtered)
+                    # - region.subimage(
+                    #     clip.background
+                    # )
+                    new_max = np.amax(diff_frame)
+                    new_min = np.amin(diff_frame)
+                    if min_diff is None or new_min < min_diff:
+                        min_diff = new_min
+                    if new_max > max_diff:
+                        max_diff = new_max
+                contours = get_contours(region.subimage(f.filtered))
+                f.region = region
+                data.append((contours, f))
+
+            if self.params.thermal_diff_norm:
+                thermal_norm_limits = (thermal_min_diff, thermal_max_diff)
+
+            if self.params.diff_norm:
+                filtered_norm_limits = (min_diff, max_diff)
+
+            sorted_by_contours = sorted(data, key=lambda d: d[0], reverse=True)
+            for s in sorted_by_contours:
+                print("Contours " , s[0], s[1].frame_number)
+            sorted_by_contours = sorted_by_contours[:25]
+            data = []
+            frame_numbers = []
+            mass = 0
+            from ml_tools.preprocess import preprocess_frame, preprocess_movement
+
+            for frame_data in sorted_by_contours:
+                cropped_frame = preprocess_frame(
+                    frame_data[1],
+                    (self.params.frame_size, self.params.frame_size),
+                    frame_data[1].region,
+                    clip.background,
+                    clip.crop_rectangle,
+                    calculate_filtered=False,
+                    filtered_norm_limits=filtered_norm_limits,
+                    thermal_norm_limits=thermal_norm_limits,
+                )
+                mass += frame_data[1].region.mass
+                data.append(cropped_frame)
+                frame_numbers.append(frame_data[1].frame_number)
+            preprocessed = []
+            masses = []
+
+            frames = preprocess_movement(
+                data,
+                self.params.square_width,
+                self.params.frame_size,
+                self.params.channels,
+                self.preprocess_fn,
+                sample=f"{clip.get_id()}-{track.get_id()}",
+            )
+            preprocessed.append(frames)
+            if len(data) < 25:
+                mass = 25 * mass / len(data)
+            masses.append(mass)
+            preprocessed = np.array(preprocessed)
+            return [frame_numbers], preprocessed, masses
 
     def preprocess_segments(
         self,
@@ -549,3 +656,28 @@ def get_interpreter(model):
         classifier.load_model(model.model_file, weights=model.model_weights)
     classifier.id = model.id
     return classifier
+
+
+def get_contours(contour_image):
+    import cv2
+
+    contour_image, stats = normalize(contour_image, new_max=255)
+
+    image = cv2.GaussianBlur(np.uint8(contour_image), (15, 15), 0)
+
+    flags = cv2.THRESH_BINARY + cv2.THRESH_OTSU
+
+    _, image = cv2.threshold(image, 0, 255, flags)
+
+    contours, _ = cv2.findContours(
+        np.uint8(image),
+        cv2.RETR_EXTERNAL,
+        # cv2.CHAIN_APPROX_SIMPLE,
+        cv2.CHAIN_APPROX_TC89_L1,
+    )
+    if len(contours) == 0:
+        return 0
+
+    contours = sorted(contours, key=lambda c: len(c), reverse=True)
+
+    return len(contours[0])

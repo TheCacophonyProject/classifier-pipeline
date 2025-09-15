@@ -642,14 +642,14 @@ def evaluate_dir(
     model.labels.append("None")
     model.labels.append("unidentified")
     cm = confusion_matrix(y_true, y_pred, labels=model.labels)
-    npy_file = Path(confusion_file).with_suffix(".npy")
+    npy_file = confusion_file.with_suffix(".npy")
     logging.info("Saving %s", npy_file)
     np.save(str(npy_file), cm)
 
     # Log the confusion matrix as an image summary.
     figure = plot_confusion_matrix(cm, class_names=model.labels)
-    plt.savefig(confusion_file.with_suffix("png"), format="png")
-    logging.info("Saving %s", Path(confusion_file).with_suffix(".png"))
+    plt.savefig(confusion_file.with_suffix(".png"), format="png")
+    logging.info("Saving %s", confusion_file.with_suffix(".png"))
 
     model_score(cm, model.labels)
 
