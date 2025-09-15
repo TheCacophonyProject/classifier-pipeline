@@ -584,6 +584,7 @@ def evaluate_dir(
     files.sort()
     # files = files[:8]
     start = time.time()
+    processed = 0
     # quite faster with just one process for loading and using main process for predicting
     with Pool(
         processes=8,
@@ -594,6 +595,9 @@ def evaluate_dir(
         ),
     ) as pool:
         for clip_data in pool.imap_unordered(load_clip_data, files):
+            if processed % 100 == 0:
+                logging.info("Procesed %s / %s", processed, len(files))
+            processed += 1
             if clip_data is None:
                 continue
             for data in clip_data:
@@ -708,21 +712,13 @@ def main():
 
         model = KerasModel(train_config=config.train)
         model.load_model(model_file, training=False)
-        if weights is None:
-            acc = (
-                "val_binary_accuracy.weights.h5"
-                if model.params.multi_label
-                else "val_categorical_accuracy.weights.h5"
-            )
-            weights = [
-                "final",
-                model_file.parent / "val_loss.weights.h5",
-                model_file.parent / acc,
-            ]
-        else:
-            weights = [weights]
+
         if args.evaluate_dir:
-            logging.info("Neeed to implement loading of weights for dir")
+
+            logging.info("Loading weights %s", weights)
+            if weights is not None:
+                model.model.load_weights(weights)
+
             evaluate_dir(
                 model,
                 Path(args.evaluate_dir),
@@ -734,6 +730,19 @@ def main():
                 after_date=args.date,
             )
         elif args.dataset:
+            if weights is None:
+                acc = (
+                    "val_acc.weights.h5"
+                    if model.params.multi_label
+                    else "val_acc.weights.h5"
+                )
+                weights = [
+                    "final",
+                    model_file.parent / "val_loss.weights.h5",
+                    model_file.parent / acc,
+                ]
+            else:
+                weights = [weights]
             model_labels = model.labels.copy()
             model.load_training_meta(base_dir)
             # # model.labels = model_labels
