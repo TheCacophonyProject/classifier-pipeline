@@ -48,6 +48,7 @@ class RawDatabase:
         self.background = None
         self.ffc_frames = None
         self.frames = None
+        self.model = None
         self.crop_rectangle = Rectangle(1, 1, 160 - 2, 120 - 2)
 
     def frames_kept(self):
@@ -68,7 +69,7 @@ class RawDatabase:
         ffc_frames = []
         cptv_frames = []
         background = None
-        tracker_version = self.meta_data.get("tracker_version",11)
+        tracker_version = self.meta_data.get("tracker_version", 11)
         frame_i = 0
         reader = CptvReader(str(self.file))
         header = reader.get_header()
@@ -83,10 +84,10 @@ class RawDatabase:
             if background_alg is None:
                 average = np.mean(frame.pix)
                 if average > 10000:
-                    model = "lepton3.5"
+                    self.model = "lepton3.5"
                     weight_add = 1
                 else:
-                    model = "lepton3"
+                    self.model = "lepton3"
                     weight_add = 0.1
                 background_alg = WeightedBackground(
                     self.crop_rectangle.x,

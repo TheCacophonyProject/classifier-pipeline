@@ -544,6 +544,7 @@ def evaluate_dir(
     threshold=0.5,
     after_date=None,
 ):
+    confusion_file = Path(confusion_file)
     if model.params.excluded_labels is not None:
         excluded_labels = model.params.excluded_labels
 
