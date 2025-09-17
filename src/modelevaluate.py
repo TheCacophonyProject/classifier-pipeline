@@ -586,14 +586,16 @@ def evaluate_dir(
     start = time.time()
     processed = 0
     # quite faster with just one process for loading and using main process for predicting
-    with Pool(
+
+    pool = Pool(
         processes=8,
         initializer=init_worker,
         initargs=(
             model,
             after_date,
         ),
-    ) as pool:
+    )
+    try:
         for clip_data in pool.imap_unordered(load_clip_data, files):
             if processed % 100 == 0:
                 logging.info("Procesed %s / %s", processed, len(files))
@@ -643,6 +645,14 @@ def evaluate_dir(
                         label,
                         np.round(100 * prediction.class_best_score),
                     )
+    except KeyboardInterrupt:
+        print("KeyboardInterrupt detected. Terminating pool...")
+        pool.terminate()
+        pool.join()
+        sys.exit(1)
+    finally:
+        pool.close()  # Ensure resources are released
+        pool.join()
     model.labels.append("None")
     model.labels.append("unidentified")
     cm = confusion_matrix(y_true, y_pred, labels=model.labels)
