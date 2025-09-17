@@ -793,7 +793,7 @@ def main():
                     model.model.load_weights(weight)
                     weight_name = weight.stem
                     suffix_start = weight_name.index(".weights")
-                    weight_name = weight_name[: suffix_start - 1]
+                    weight_name = weight_name[:suffix_start]
                     confusion_final = (
                         base_confusion_file.parent
                         / f"{base_confusion_file.stem}-{weight_name}"

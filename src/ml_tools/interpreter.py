@@ -314,6 +314,7 @@ class Interpreter(ABC):
         thermal_norm_limits = None
         filtered_norm_limits = None
         data = []
+        weights = []
         if self.params.diff_norm or self.params.thermal_diff_norm:
             min_diff = None
             max_diff = 0
@@ -356,51 +357,75 @@ class Interpreter(ABC):
                         max_diff = new_max
                 contours = get_contours(region.subimage(f.filtered))
                 f.region = region
-                data.append((contours, f))
+                weights.append(contours)
+                data.append(f)
 
             if self.params.thermal_diff_norm:
                 thermal_norm_limits = (thermal_min_diff, thermal_max_diff)
 
             if self.params.diff_norm:
                 filtered_norm_limits = (min_diff, max_diff)
+            data = np.array(data)
+            # sorted_by_contours = sorted(data, key=lambda d: d[0], reverse=True)
 
-            sorted_by_contours = sorted(data, key=lambda d: d[0], reverse=True)
-
-            sorted_by_contours = sorted_by_contours[:25]
-            data = []
-            frame_numbers = []
-            mass = 0
+            # take about half the frames worth of segments
+            segment_count = max(1, len(data) // 2 / 25)
+            segment_count = round(segment_count)
+            segment_count = int(segment_count)
+            segments = []
+            indices = np.arange(len(data))
+            # do something slightly smarter
+            # sorted_by_contours = sorted_by_contours[:25]
             from ml_tools.preprocess import preprocess_frame, preprocess_movement
 
-            for frame_data in sorted_by_contours:
-                cropped_frame = preprocess_frame(
-                    frame_data[1],
-                    (self.params.frame_size, self.params.frame_size),
-                    frame_data[1].region,
-                    clip.background,
-                    clip.crop_rectangle,
-                    calculate_filtered=False,
-                    filtered_norm_limits=filtered_norm_limits,
-                    thermal_norm_limits=thermal_norm_limits,
-                )
-                mass += frame_data[1].region.mass
-                data.append(cropped_frame)
-                frame_numbers.append(frame_data[1].frame_number)
             preprocessed = []
             masses = []
+            segment_frames = []
+            weights = np.array(weights)
+            logging.info("Choosing %s from %s", segment_count, len(data))
+            logging.info("Contours are %s", weights)
+            for seg in segment_count:
+                frame_numbers = []
+                mass = 0
+                choice = np.random.choice(
+                    indices,
+                    size=min(len(indices), 25),
+                    p=weights,
+                    replace=False,
+                )
+                logging.info("Choice is %s contours are %s", choice, weights[choice])
+                segment_data = data[choice]
+                # segments.append(choice)
 
-            frames = preprocess_movement(
-                data,
-                self.params.square_width,
-                self.params.frame_size,
-                self.params.channels,
-                self.preprocess_fn,
-                sample=f"{clip.get_id()}-{track.get_id()}",
-            )
-            preprocessed.append(frames)
-            if len(data) < 25:
-                mass = 25 * mass / len(data)
-            masses.append(mass)
+                preprocess_data = []
+                for frame_data in segment_data:
+                    cropped_frame = preprocess_frame(
+                        frame_data[1],
+                        (self.params.frame_size, self.params.frame_size),
+                        frame_data[1].region,
+                        clip.background,
+                        clip.crop_rectangle,
+                        calculate_filtered=False,
+                        filtered_norm_limits=filtered_norm_limits,
+                        thermal_norm_limits=thermal_norm_limits,
+                    )
+                    mass += frame_data[1].region.mass
+                    preprocess_data.append(cropped_frame)
+                    frame_numbers.append(frame_data[1].frame_number)
+
+                segment_frames.append(frame_numbers)
+                frames = preprocess_movement(
+                    data,
+                    self.params.square_width,
+                    self.params.frame_size,
+                    self.params.channels,
+                    self.preprocess_fn,
+                    sample=f"{clip.get_id()}-{track.get_id()}",
+                )
+                preprocessed.append(frames)
+                if len(data) < 25:
+                    mass = 25 * mass / len(data)
+                masses.append(mass)
             preprocessed = np.array(preprocessed)
             return [frame_numbers], preprocessed, masses
 
