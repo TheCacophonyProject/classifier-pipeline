@@ -75,6 +75,9 @@ def model_score(cm, labels):
     labels = labels.copy()
     if "None" not in labels:
         labels.append("None")
+
+    if "unidentified" not in labels:
+        labels.append("unidentified")
     cm = np.around(cm.astype("float") / cm.sum(axis=1)[:, np.newaxis], decimals=2)
     cm = np.nan_to_num(cm)
     fp_index = None

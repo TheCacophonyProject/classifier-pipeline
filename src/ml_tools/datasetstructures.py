@@ -979,7 +979,7 @@ def get_segments(
     lower_mass=0,
     repeats=1,
     min_frames=None,
-    segment_types=[SegmentType.ALL_RANDOM],
+    segment_types=[SegmentType.ALL_RANDOM_MASKED],
     max_segments=None,
     location=None,
     station_id=None,
@@ -1071,6 +1071,8 @@ def get_segments(
             continue
 
         frame_indices = np.array(frame_indices)
+
+        # gp seems much to high 18/09/2025
         segment_count = max(1, len(frame_indices) // segment_frame_spacing)
         segment_count = int(segment_count)
         mask_length = 25
@@ -1123,8 +1125,9 @@ def get_segments(
                     or min_segments is None
                     or len(segments) >= min_segments
                 ):
+                    # gp changes from > 1 segments to > 0 18/09/2025
                     if (
-                        len(frame_indices) < segment_width / 2.0 and len(segments) > 1
+                        len(frame_indices) < segment_width / 2.0 and len(segments) > 0
                     ) or len(frame_indices) < segment_width / 4:
                         break
 

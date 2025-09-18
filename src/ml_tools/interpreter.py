@@ -124,7 +124,7 @@ class Interpreter(ABC):
                     len(track.bounds_history),
                 )
 
-            do_contours = True
+            do_contours = False
             if do_contours:
                 logging.warn("Implemented for testing")
                 frames, preprocessed, masses = self.preprocess_contours(
@@ -315,6 +315,7 @@ class Interpreter(ABC):
         filtered_norm_limits = None
         data = []
         weights = []
+        indices = []
         if self.params.diff_norm or self.params.thermal_diff_norm:
             min_diff = None
             max_diff = 0
@@ -373,7 +374,23 @@ class Interpreter(ABC):
             segment_count = round(segment_count)
             segment_count = int(segment_count)
             segments = []
-            indices = np.arange(len(data))
+
+            start = 0
+            weights = np.array(weights)
+            max_start = None
+            max_score = None
+            while True:
+                contour_score = np.sum(weights[start : start + 50])
+                if max_start is None or contour_score > max_score:
+                    max_start = start
+                    max_score = contour_score
+                start += 1
+                if start + 50 > len(weights):
+                    break
+
+            indices = np.arange(min(50, len(data)))
+            indices = indices + max_start
+            segment_count = 1
             # do something slightly smarter
             # sorted_by_contours = sorted_by_contours[:25]
             from ml_tools.preprocess import preprocess_frame, preprocess_movement
@@ -381,10 +398,10 @@ class Interpreter(ABC):
             preprocessed = []
             masses = []
             segment_frames = []
-            weights = np.array(weights)
-            logging.info("Choosing %s from %s", segment_count, len(data))
-            logging.info("Contours are %s", weights)
-            for seg in segment_count:
+            contours = weights.copy()
+            weights = weights[indices]
+            weights = np.float32(weights) / np.sum(weights)
+            for seg in range(segment_count):
                 frame_numbers = []
                 mass = 0
                 choice = np.random.choice(
@@ -393,29 +410,28 @@ class Interpreter(ABC):
                     p=weights,
                     replace=False,
                 )
-                logging.info("Choice is %s contours are %s", choice, weights[choice])
                 segment_data = data[choice]
                 # segments.append(choice)
 
                 preprocess_data = []
                 for frame_data in segment_data:
                     cropped_frame = preprocess_frame(
-                        frame_data[1],
+                        frame_data,
                         (self.params.frame_size, self.params.frame_size),
-                        frame_data[1].region,
+                        frame_data.region,
                         clip.background,
                         clip.crop_rectangle,
                         calculate_filtered=False,
                         filtered_norm_limits=filtered_norm_limits,
                         thermal_norm_limits=thermal_norm_limits,
                     )
-                    mass += frame_data[1].region.mass
+                    mass += frame_data.region.mass
                     preprocess_data.append(cropped_frame)
-                    frame_numbers.append(frame_data[1].frame_number)
+                    frame_numbers.append(frame_data.frame_number)
 
                 segment_frames.append(frame_numbers)
                 frames = preprocess_movement(
-                    data,
+                    preprocess_data,
                     self.params.square_width,
                     self.params.frame_size,
                     self.params.channels,
