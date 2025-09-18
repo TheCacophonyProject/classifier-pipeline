@@ -97,13 +97,15 @@ def model_score(cm, labels):
         none_acc = 0
         unid_acc = 0
         accuracy = cm[l_i][l_i]
+
         if none_index:
             none_acc = cm[l_i][none_index]
         if unid_index:
             unid_acc = cm[l_i][unid_index]
+        other_animals = 1 - (fp_acc + none_acc + unid_acc + accuracy)
+
         if l == "bird":
-            other_animals = 1 - (fp_acc + none_acc + unid_acc + accuracy)
-            print(cm[l_i])
+            # other_animals = 1 - (fp_acc + none_acc + unid_acc + accuracy)
             print(
                 "Bird score is ",
                 accuracy,
@@ -123,7 +125,10 @@ def model_score(cm, labels):
             score = accuracy * 0.9
         elif l not in ["None", "unidentified"]:
             score = accuracy * 1
-        print(f"score for {l} is {score}")
+
+        print(
+            f"score for {l} is {score} unid {unid_acc} other animasl {round(other_animals,2)}"
+        )
         total_score += score
     logging.info("Model accuracy score is %s", total_score)
 
@@ -455,7 +460,7 @@ def metadata_confusion(dir, confusion_file, after_date=None, model_metadata=None
     for lbl, lbl_graph in label_graphs.items():
 
         graph_file = (
-            confusion_file.parent / f"{confusion_file.stem}-{lbl.replace(" / "," - ")}"
+            confusion_file.parent / f"{confusion_file.stem}-{lbl.replace('/','-')}"
         )
         lbl_graph.plot(f"{lbl} Median vs Accuracy", graph_file)
 
