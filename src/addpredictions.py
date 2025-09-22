@@ -1,3 +1,12 @@
+"""
+Author: Giampaolo Ferraro
+Date: December 2025
+
+Script used to false-positive or not prediction data into the metadata of cptv files
+
+This metadata can then be used when building a dataset to filter out frames which are tagged as an animal but predicted as false-positive (by this model)
+"""
+
 import argparse
 from ml_tools.logs import init_logging
 from config.config import Config
