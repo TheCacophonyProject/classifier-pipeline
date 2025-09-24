@@ -1,4 +1,4 @@
-tensorflow~=2.19.0
+tensorflow~=2.20.0
 matplotlib~=3.10.1
 pytz
 opencv-contrib-python-headless~=4.12.0.88
