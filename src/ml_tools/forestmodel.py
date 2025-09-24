@@ -142,7 +142,7 @@ class ForestModel(Interpreter):
     def shape(self):
         return 1, (1, len(self.features))
 
-    def preprocess(self, clip, track, samples, **args):
+    def preprocess(self, clip, track, **args):
         predict_from_last = args.get(
             "predict_from_last",
         )
@@ -181,8 +181,7 @@ class ForestModel(Interpreter):
         result = self.preprocess(clip, track, **args)
         if result is None:
             return None
-        x, frames, masses = result
-
+        frames, x, masses = result
         # x = x[np.newaxis, :]
         predictions = self.model.predict_proba(x)
         # print("predictions", predictions.shape)
