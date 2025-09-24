@@ -3,7 +3,6 @@ import os
 import numpy as np
 
 import shutil
-import tensorflow_decision_forests as tfdf
 
 import tensorflow as tf
 from config.config import Config
@@ -40,7 +39,7 @@ def convert_model(args):
         # for some reason refuses to work with absolute path
         model = tf.keras.models.load_model(args.model.parent, compile=False)
     else:
-        model = tf.keras.models.load_model(args.model, compile=False)
+        model = tf.keras.models.load_model(args.model)
     print(time.time() - a, " to load model")
     # return
     model.trainable = False
@@ -48,7 +47,7 @@ def convert_model(args):
 
     if args.weights:
         print("using weights ", args.weights)
-        model.load_weights(args.weights).expect_partial()
+        model.load_weights(args.weights)
     if args.convert:
         converter = tf.lite.TFLiteConverter.from_keras_model(model)
         # converter.target_spec.supported_ops = [
@@ -79,7 +78,7 @@ def convert_model(args):
             )
             export_archive.write_out(out_dir)
 
-            print("saving model to", out_dir / "saved_model.pb")
+            print("saving model to", out_dir / "saved_model")
             frozen_meta = out_dir / "saved_model.json"
 
         else:

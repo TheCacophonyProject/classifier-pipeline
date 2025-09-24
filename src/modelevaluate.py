@@ -91,13 +91,14 @@ def model_score(cm, labels):
         unid_index = labels.index("unidentified")
     total_score = 0
     for l_i, l in enumerate(labels):
+        if l in ["static", "animal", "deer", "sheep"]:
+            continue
         fp_acc = 0
         if fp_index is not None:
             fp_acc = cm[l_i][fp_index]
         none_acc = 0
         unid_acc = 0
         accuracy = cm[l_i][l_i]
-
         if none_index:
             none_acc = cm[l_i][none_index]
         if unid_index:

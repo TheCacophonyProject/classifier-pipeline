@@ -71,7 +71,8 @@ class Prediction:
 
     def get_metadata(self):
         meta = attr.asdict(self)
-        meta["smoothed_prediction"] = np.uint32(np.round(self.smoothed_prediction))
+        if self.smoothed_prediction is not None:
+            meta["smoothed_prediction"] = np.uint32(np.round(self.smoothed_prediction))
         meta["prediction"] = np.uint8(np.round(100 * self.prediction))
         return meta
 
@@ -126,20 +127,28 @@ class TrackPrediction:
         top_score=None,
     ):
         self.num_frames_classified = len(predictions)
-        for prediction, smoothed_prediction, frames, mass in zip(
-            predictions, smoothed_predictions, prediction_frames, masses
-        ):
+        index = 0
+        for prediction, frames, mass in zip(predictions, prediction_frames, masses):
+
             prediction = Prediction(
                 prediction,
-                smoothed_prediction,
+                (
+                    smoothed_predictions[index]
+                    if smoothed_predictions is not None
+                    else None
+                ),
                 frames,
                 np.amax(frames),
                 mass,
             )
+            index += 1
             self.predictions.append(prediction)
 
         if self.num_frames_classified > 0:
-            self.class_best_score = np.sum(smoothed_predictions, axis=0)
+            if smoothed_predictions is None:
+                self.class_best_score = np.sum(predictions, axis=0)
+            else:
+                self.class_best_score = np.sum(smoothed_predictions, axis=0)
             # normalize so it sums to 1
             if top_score is None:
                 self.class_best_score = self.class_best_score / np.sum(
