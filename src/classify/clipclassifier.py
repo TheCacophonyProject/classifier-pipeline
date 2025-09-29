@@ -33,6 +33,10 @@ class ClipClassifier:
         self.config = config
         # super(ClipClassifier, self).__init__(config, tracking_config)
         self.model = model
+        if self.keep_original_predictions:
+            self.model.id = f"post-{self.model.id}"
+            self.model.name = f"post-{self.model.name}"
+
         # prediction record for each track
 
         self.previewer = Previewer.create_if_required(config, config.classify.preview)

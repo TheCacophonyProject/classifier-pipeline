@@ -129,14 +129,16 @@ class ForestModel(Interpreter):
         self, clip, track, last_x_frames=None, segment_frames=None, min_segments=None
     ):
 
-        track_prediction = TrackPrediction(track.get_id(), self.labels)
+        track_prediction = TrackPrediction(
+            track.get_id(), self.labels, smooth_preds=self.params.smooth_predictions
+        )
         result = self.predict_track(
             clip, track, last_x_frames=last_x_frames, normalize=True
         )
         if result is None:
             return None
         frames, predictions, masses = result
-        track_prediction.classified_clip(predictions, predictions, frames, masses)
+        track_prediction.classified_track(predictions, frames, masses)
         return track_prediction
 
     def shape(self):

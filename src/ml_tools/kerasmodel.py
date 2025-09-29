@@ -829,7 +829,7 @@ class KerasModel(Interpreter):
         track_prediction = TrackPrediction(track.get_id(), self.labels)
 
         output = self.model.predict(data)
-        track_prediction.classified_clip(output, output, np.array(frames_used))
+        track_prediction.classified_track(output, np.array(frames_used))
         track_prediction.normalize_score()
         return track_prediction
 

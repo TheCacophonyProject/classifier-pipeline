@@ -454,14 +454,6 @@ class PiClassifier(Processor):
         One prediction will be made for every active_track of the last frame.
         :return: TrackPrediction object
         """
-
-        prediction_smooth = 0.1
-
-        smooth_prediction = None
-        smooth_novelty = None
-
-        prediction = 0.0
-        novelty = 0.0
         if (
             self.next_fp_classification_frame >= self.clip.current_frame
             and self.next_classify_frame >= self.clip.current_frame
@@ -490,7 +482,11 @@ class PiClassifier(Processor):
                         continue
                 track_prediction = self.predictions[
                     self.fp_model.id
-                ].get_or_create_prediction(track, keep_all=True)
+                ].get_or_create_prediction(
+                    track,
+                    keep_all=True,
+                    smooth_preds=self.fp_model.params.smooth_predictions,
+                )
                 if (
                     track_prediction.last_frame_classified is not None
                     and self.clip.current_frame - track_prediction.last_frame_classified
@@ -518,8 +514,7 @@ class PiClassifier(Processor):
                 if prediction is None:
                     track_prediction.last_frame_classified = self.clip.current_frame
                     continue
-                for p, m, frame in zip(prediction, mass, frames):
-                    track_prediction.classified_frame(frame, p, m)
+                track_prediction.classified_frames(frames, prediction, mass)
 
                 logging.debug(
                     "Track %s is predicted as %s took %s track frames %s",
@@ -564,8 +559,7 @@ class PiClassifier(Processor):
                 if prediction is None:
                     track_prediction.last_frame_classified = self.clip.current_frame
                     continue
-                for p, m in zip(prediction, mass):
-                    track_prediction.classified_frames(frames, p, m)
+                track_prediction.classified_frames(frames, prediction, mass)
 
                 logging.info(
                     "Track %s is predicted as %s took %s track frames %s",

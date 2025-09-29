@@ -59,7 +59,7 @@ class Interpreter(ABC):
             # no need to use tf module, if train other model types may have to add
             #  preprocess definitions
             return inc3_preprocess
-        elif model_name == "wr-resnet":
+        elif model_name in ["wr-resnet", "efficientnetv2b3"]:
             return None
         else:
             import tensorflow as tf
@@ -141,23 +141,14 @@ class Interpreter(ABC):
         return track_pred
 
     def track_prediction_from_raw(self, track_id, prediction_frames, output, masses):
-        track_prediction = TrackPrediction(track_id, self.labels)
-        # self.model.predict(preprocessed)
-        top_score = None
-        smoothed_predictions = None
+        track_prediction = TrackPrediction(
+            track_id, self.labels, smooth_preds=self.params.smooth_predictions
+        )
 
-        if self.params.smooth_predictions:
-            masses = np.array(masses)
-            top_score = np.sum(masses)
-            masses = masses[:, None]
-            smoothed_predictions = output * masses
-
-        track_prediction.classified_clip(
+        track_prediction.classified_track(
             output,
-            smoothed_predictions,
             prediction_frames,
             masses,
-            top_score=top_score,
         )
         if (
             len(prediction_frames) == 1
@@ -507,9 +498,11 @@ class LiteInterpreter(Interpreter):
         self.output = self.interpreter.get_output_details()[
             0
         ]  # Model has single output.
+
         self.input = self.interpreter.get_input_details()[0]  # Model has single input.
         self.preprocess_fn = self.get_preprocess_fn()
         # inc3_preprocess
+        print(self.input)
 
     def predict(self, input_x):
         if self.run_over_network:
