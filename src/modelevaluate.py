@@ -8,48 +8,40 @@ Some tools to evaluate a model
 
 """
 
-import cv2
 import argparse
 import logging
-import pickle
 import sys
-import os
 import time
 import matplotlib.ticker as mtick
+from config.config import Config
 
 # os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 import json
-import pickle
-from config.config import Config
-from ml_tools.kerasmodel import (
-    KerasModel,
-    plot_confusion_matrix,
-    get_dataset,
-    get_excluded,
-)
+
+# from config.config import Config
+# from ml_tools.kerasmodel import (
+#     KerasModel,
+#     plot_confusion_matrix,
+#     get_dataset,
+#     get_excluded,
+# )
 from classify.trackprediction import TrackPrediction
 
 from ml_tools import tools
-from ml_tools.trackdatabase import TrackDatabase
 from ml_tools.rawdb import RawDatabase
-import tensorflow as tf
-from ml_tools.dataset import Dataset, filter_clip, filter_track
+from ml_tools.dataset import filter_clip, filter_track
 import pytz
-from ml_tools.datasetstructures import SegmentType
 from dateutil.parser import parse as parse_date
 from sklearn.metrics import confusion_matrix
 import matplotlib.pyplot as plt
 import numpy as np
 from pathlib import Path
-from ml_tools.preprocess import preprocess_frame
-from ml_tools.frame import Frame
-from ml_tools import imageprocessing
 import cv2
 from config.buildconfig import BuildConfig
 from sklearn.metrics import confusion_matrix
 from multiprocessing import Pool
 from dateutil.parser import parse as parse_date
-from track.region import Region
+from ml_tools.interpreter import get_interpreter_from_path
 
 root_logger = logging.getLogger()
 for handler in root_logger.handlers:
@@ -91,8 +83,8 @@ def model_score(cm, labels):
         unid_index = labels.index("unidentified")
     total_score = 0
     for l_i, l in enumerate(labels):
-        if l in ["static", "animal", "deer", "sheep"]:
-            continue
+        # if l in ["static", "animal", "deer", "sheep"]:
+        # continue
         fp_acc = 0
         if fp_index is not None:
             fp_acc = cm[l_i][fp_index]
@@ -104,7 +96,8 @@ def model_score(cm, labels):
         if unid_index:
             unid_acc = cm[l_i][unid_index]
         other_animals = 1 - (fp_acc + none_acc + unid_acc + accuracy)
-
+        if np.sum(cm[l_i]) == 0:
+            other_animals = 0
         if l == "bird":
             # other_animals = 1 - (fp_acc + none_acc + unid_acc + accuracy)
             print(
@@ -263,6 +256,10 @@ def filter_diffs(track_frames, background):
 
 
 def metadata_confusion(dir, confusion_file, after_date=None, model_metadata=None):
+    from ml_tools.kerasmodel import (
+        plot_confusion_matrix,
+    )
+
     confusion_file = Path(confusion_file)
     with open("label_paths.json", "r") as f:
         label_paths = json.load(f)
@@ -553,6 +550,8 @@ def evaluate_dir(
     threshold=0.5,
     after_date=None,
 ):
+    from ml_tools.kerasmodel import plot_confusion_matrix
+
     confusion_file = Path(confusion_file)
     if model.params.excluded_labels is not None:
         excluded_labels = model.params.excluded_labels
@@ -681,23 +680,23 @@ min_tag_clarity = 0.2
 min_tag_confidence = 0.8
 
 
-# was used to save model architecture differently so that the predictions were the same
-def re_save(model_file, weights, config):
-    tf.random.set_seed(1)
-    model = KerasModel(train_config=config.train)
-    model.load_model(model_file.parent)
-    model.model.load_weights(weights).expect_partial()
-    model = model.model
+# # was used to save model architecture differently so that the predictions were the same
+# def re_save(model_file, weights, config):
+#     tf.random.set_seed(1)
+#     model = KerasModel(train_config=config.train)
+#     model.load_model(model_file.parent)
+#     model.model.load_weights(weights).expect_partial()
+#     model = model.model
 
-    output = model.layers[1].output
-    for new_l in model.layers[2:]:
-        print(new_l.name)
-        output = new_l(output)
-    new_model = tf.keras.models.Model(model.layers[1].input, outputs=output)
+#     output = model.layers[1].output
+#     for new_l in model.layers[2:]:
+#         print(new_l.name)
+#         output = new_l(output)
+#     new_model = tf.keras.models.Model(model.layers[1].input, outputs=output)
 
-    print("Saving", model_file.parent / "re_save")
-    new_model.summary()
-    new_model.save(model_file.parent / "re_save")
+#     print("Saving", model_file.parent / "re_save")
+#     new_model.summary()
+#     new_model.save(model_file.parent / "re_save")
 
 
 def main():
@@ -728,10 +727,7 @@ def main():
             Path(args.evaluate_dir), args.confusion, args.date, args.model_metadata
         )
     else:
-
-        model = KerasModel(train_config=config.train)
-        model.load_model(model_file, training=False)
-
+        model = get_interpreter_from_path(model_file)
         if args.evaluate_dir:
 
             logging.info("Loading weights %s", weights)
@@ -767,6 +763,13 @@ def main():
             # # model.labels = model_labels
             # if model.params.multi_label:
             #     model.labels.append("land-bird")
+
+            # tf complains if you import tf before tflite
+            from ml_tools.kerasmodel import (
+                get_dataset,
+                get_excluded,
+            )
+
             excluded, remapped = get_excluded(model.data_type)
 
             if model.params.excluded_labels is not None:

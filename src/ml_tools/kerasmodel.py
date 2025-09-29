@@ -1,5 +1,3 @@
-import psutil
-import joblib
 import itertools
 import io
 import time
@@ -19,14 +17,8 @@ import logging
 from pathlib import Path
 
 from sklearn.metrics import confusion_matrix
-import cv2
-from ml_tools import tools
 from ml_tools.datasetstructures import SegmentType
 
-from ml_tools.preprocess import (
-    preprocess_movement,
-    preprocess_frame,
-)
 from ml_tools.interpreter import Interpreter
 from classify.trackprediction import TrackPrediction
 from ml_tools.hyperparams import HyperParams
@@ -34,8 +26,7 @@ from ml_tools import thermaldataset
 from ml_tools.resnet.wr_resnet import WRResNet
 
 from ml_tools import irdataset
-from ml_tools.tfdataset import get_weighting, get_distribution, get_dataset as get_tf
-from ml_tools import forestmodel
+from ml_tools.tfdataset import get_weighting, get_dataset as get_tf
 from ml_tools.preprocess import FrameTypes
 
 classify_i = 0

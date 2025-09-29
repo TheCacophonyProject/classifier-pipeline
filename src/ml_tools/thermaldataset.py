@@ -314,7 +314,8 @@ from collections import Counter
 # test stuff
 def main():
     init_logging()
-    config = Config.load_from_file("classifier-thermal.yaml")
+    logging.info("Loading %s", "classifier.yaml")
+    config = Config.load_from_file("classifier.yaml")
     from .tfdataset import get_dataset, get_distribution
 
     # file = "/home/gp/cacophony/classifier-data/thermal-training/cp-training/training-meta.json"

@@ -634,13 +634,14 @@ class LiteInterpreter(Interpreter):
     TYPE = "TFLite"
 
     def __init__(self, model_name):
-        super().__init__(model_name)
+        print("Loading lite")
+        from ai_edge_litert.interpreter import Interpreter
 
-        import tflite_runtime.interpreter as tflite
+        super().__init__(model_name)
 
         model_name = Path(model_name)
         model_name = model_name.with_suffix(".tflite")
-        self.interpreter = tflite.Interpreter(str(model_name))
+        self.interpreter = Interpreter(str(model_name))
 
         self.interpreter.allocate_tensors()  # Needed before execution!
 
@@ -670,6 +671,23 @@ def inc3_preprocess(x):
     x /= 127.5
     x -= 1.0
     return x
+
+
+def get_interpreter_from_path(model_file):
+    logging.info("Loading %s", model_file)
+
+    if model_file.suffix in [".keras", ".pb"]:
+        from ml_tools.kerasmodel import KerasModel
+
+        classifier = KerasModel()
+        classifier.load_model(model_file)
+    elif model_file.suffix == ".tflite":
+        classifier = LiteInterpreter(model_file)
+    elif model_file.suffix == ".pkl":
+        from ml_tools.forestmodel import ForestModel
+
+        classifier = ForestModel(model_file)
+    return classifier
 
 
 def get_interpreter(model):
