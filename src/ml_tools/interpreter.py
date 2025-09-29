@@ -169,9 +169,8 @@ class Interpreter(ABC):
 
     def frames_for_prediction(self, clip, track, **args):
         frames_per_classify = args.get("frames_per_classify", 25)
-
+        max_predictions = args.get("num_predictions")
         if frames_per_classify > 1:
-            max_segments = args.get("max_segments", None)
             predict_from_last = args.get("predict_from_last", None)
             segment_frames = args.get("segment_frames", None)
             dont_filter = args.get("dont_filter", False)
@@ -227,14 +226,14 @@ class Interpreter(ABC):
                 segment_frames=segment_frames,
                 segment_types=self.params.segment_types,
                 from_last=predict_from_last,
-                max_segments=max_segments,
+                max_segments=max_predictions,
                 dont_filter=dont_filter,
                 filter_by_fp=False,
                 min_segments=args.get("min_segments"),
             )
             return segments
         else:
-            max_frames = args.get("max_segments", None)
+            max_frames = max_predictions
             frames = [
                 region
                 for region in track.bounds_history
