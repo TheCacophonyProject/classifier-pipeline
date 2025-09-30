@@ -530,7 +530,7 @@ def get_interpreter(model, run_over_network=False):
     # model_name, type = os.path.splitext(model.model_file)
 
     logging.info(
-        "Loading %s of type %s over netowrk?? %s",
+        "Loading %s of type %s over network: %s",
         model.model_file,
         model.type,
         model.run_over_network,
