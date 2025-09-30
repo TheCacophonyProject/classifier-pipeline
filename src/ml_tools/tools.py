@@ -207,7 +207,7 @@ def saveclassify_image(data, filename):
         b = Image.fromarray(np.uint8(data[:, :, 2]))
     concat = np.concatenate((r, g, b), axis=1)  # horizontally
     img = Image.fromarray(np.uint8(concat))
-    img.save(filename + ".png")
+    img.save(filename.with_suffix(".png"))
 
 
 def get_timezone_str(lat, lng):

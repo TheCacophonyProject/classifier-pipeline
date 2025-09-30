@@ -13,6 +13,7 @@ import logging
 from ml_tools.featurenorms import mean_v, std_v
 from ml_tools.frame import TrackChannels
 from pathlib import Path
+from ml_tools.tools import saveclassify_image
 
 # seed = 1341
 # tf.random.set_seed(seed)
@@ -325,6 +326,10 @@ def main():
         meta = json.load(f)
     labels = meta.get("labels", [])
     datasets = []
+    excluded_labels = get_excluded()
+    for l in labels:
+        if l not in ["mustelid", "deer", "sheep"]:
+            excluded_labels.append(l)
 
     resampled_ds, remapped, labels, epoch_size = get_dataset(
         # dir,
@@ -338,9 +343,9 @@ def main():
         resample=False,
         include_features=False,
         remapped_labels=get_remapped(),
-        excluded_labels=get_excluded(),
+        excluded_labels=excluded_labels,
         include_track=True,
-        num_frames=1,
+        num_frames=25,
     )
     print("Ecpoh size is", epoch_size)
     # print(get_distribution(resampled_ds, len(labels), extra_meta=False))
@@ -352,13 +357,50 @@ def main():
         batch_i = 0
         print("epoch", e)
         for x, y in resampled_ds:
-            show_batch(x, y, labels, save=save_dir / f"{batch_i}.jpg", tracks=True)
+            save_batch(x, y, labels, save_dir, tracks=True)
+            # show_batch(x, y, labels, save=save_dir / f"{batch_i}.jpg", tracks=True)
             batch_i += 1
     # return
 
 
+save_index = 0
+
+
+def save_batch(image_batch, label_batch, labels, save_dir, tracks=False):
+    global save_index
+    print("images in batch", len(image_batch), len(label_batch))
+    if tracks:
+        track_batch = label_batch[1]
+        label_batch = label_batch[0]
+    for n, img in enumerate(image_batch):
+        img = np.uint8(img)
+        file_title = (
+            f"{labels[np.argmax(label_batch[n])]}-{track_batch[n]}-{save_index}.png"
+        )
+        save_index += 1
+        file_name = save_dir / file_title
+        saveclassify_image(img, file_name)
+    #     [:,:,1]
+    #     channels = img.shape[-1]
+    #     repeat = 3 - channels
+    #     while repeat > 0:
+    #         img = np.concatenate((img, img[:, :, :1]), axis=2)
+    #         repeat -= 1
+    #     plt.imshow(img)
+    #     if tracks:
+    #         plt.title(f"{labels[np.argmax(label_batch[n])]}-{track_batch[n]}")
+    #     else:
+    #         plt.title(labels[np.argmax(label_batch[n])])
+
+    #     plt.axis("off")
+    # # return
+    # if save:
+    #     plt.savefig(save)
+    # plt.show()
+
+
 def show_batch(image_batch, label_batch, labels, save=None, tracks=False):
-    plt.figure(figsize=(10, 10))
+    plt.figure(figsize=(20, 20))
     print("images in batch", len(image_batch), len(label_batch))
     num_images = min(len(image_batch), 25)
     if tracks:
@@ -366,14 +408,12 @@ def show_batch(image_batch, label_batch, labels, save=None, tracks=False):
         label_batch = label_batch[0]
     for n in range(num_images):
         ax = plt.subplot(5, 5, n + 1)
-        img = np.uint8(image_batch[n])
+        img = np.uint8(image_batch[n])[:, :, 1]
         channels = img.shape[-1]
         repeat = 3 - channels
         while repeat > 0:
             img = np.concatenate((img, img[:, :, :1]), axis=2)
             repeat -= 1
-        # if repeat > 0:
-        # print(img.shape, " repeating", repeat)
         plt.imshow(img)
         if tracks:
             plt.title(f"{labels[np.argmax(label_batch[n])]}-{track_batch[n]}")
