@@ -2,7 +2,7 @@ import logging
 import numpy as np
 from pathlib import Path
 import joblib
-
+import pickle
 from ml_tools.interpreter import Interpreter
 from classify.trackprediction import TrackPrediction
 import cv2
@@ -118,7 +118,8 @@ class ForestModel(Interpreter):
     def __init__(self, model_file, data_type=None):
         super().__init__(model_file)
         model_file = Path(model_file)
-        self.model = joblib.load(model_file)
+        with model_file.open("rb") as f:
+            self.model = pickle.load(f)
         self.buffer_length = self.params.get("buffer_length", 1)
         self.features_used = self.params.get("features_used")
         self.features = self.params.get("features")

@@ -144,7 +144,7 @@ class Service(dbus.service.Object):
         logging.info("Getting labels %s", self.labels)
         return self.labels
 
-    @dbus.service.signal(DBUS_NAME, signature="iiaisiaiiibbii")
+    @dbus.service.signal(DBUS_NAME, signature="iiaisiaiiibbis")
     def Tracking(
         self,
         clip_id,
@@ -170,7 +170,7 @@ class Service(dbus.service.Object):
     def Recording(self, timestamp, is_recording):
         pass
 
-    @dbus.service.method(DBUS_NAME, in_signature="iiaisiaiiibbiid")
+    @dbus.service.method(DBUS_NAME, in_signature="iiaisiaiiibbisd")
     def TrackReprocessed(
         self,
         clip_id,
@@ -200,12 +200,12 @@ class Service(dbus.service.Object):
             blank,
             tracking,
             last_prediction_frame,
-            model_id,
+            str(model_id),
             clip_end_time,
         )
-        pass
+        # pass
 
-    @dbus.service.signal(DBUS_NAME, signature="iiaisiaiiibbiid")
+    @dbus.service.signal(DBUS_NAME, signature="iiaisiaiiibbisd")
     def TrackingReprocessed(
         self,
         clip_id,
@@ -306,7 +306,7 @@ class SnapshotService:
                 region.blank,
                 tracking,
                 last_prediction_frame,
-                model_id,
+                str(model_id),
             )
         else:
             self.service.Tracking(
@@ -321,7 +321,7 @@ class SnapshotService:
                 region.blank,
                 tracking,
                 last_prediction_frame,
-                0,
+                "0",
             )
 
     def track_filtered(self, clip_id, track_id):
