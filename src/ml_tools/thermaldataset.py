@@ -341,11 +341,13 @@ def main():
         # augment=True,
         # preprocess_fn=tf.keras.applications.inception_v3.preprocess_input,
         resample=False,
+        shuffle=False,
         include_features=False,
         remapped_labels=get_remapped(),
         excluded_labels=excluded_labels,
         include_track=True,
         num_frames=25,
+        deterministic=True,
     )
     print("Ecpoh size is", epoch_size)
     # print(get_distribution(resampled_ds, len(labels), extra_meta=False))
@@ -368,7 +370,6 @@ save_index = 0
 
 def save_batch(image_batch, label_batch, labels, save_dir, tracks=False):
     global save_index
-    print("images in batch", len(image_batch), len(label_batch))
     if tracks:
         track_batch = label_batch[1]
         label_batch = label_batch[0]

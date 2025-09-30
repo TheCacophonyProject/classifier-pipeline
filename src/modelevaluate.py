@@ -604,6 +604,7 @@ def evaluate_dir(
         ),
     )
     try:
+        stats = {"correct": [], "incorrect": [], "low-confidence": []}
         for clip_data in pool.imap_unordered(load_clip_data, files):
             if processed % 100 == 0:
                 logging.info("Procesed %s / %s", processed, len(files))
@@ -646,6 +647,10 @@ def evaluate_dir(
                     predicted_tag = ",".join(predicted_labels)
                     y_pred.append(predicted_tag)
                 if y_pred[-1] != y_true[-1]:
+                    if predicted_labels[0] == y_true[-1]:
+                        stats["low-confidence"].append(data[0])
+                    else:
+                        stats["incorrect"].append(data[0])
                     logging.info(
                         "%s predicted %s but should be %s with confidence %s",
                         data[0],
@@ -653,6 +658,9 @@ def evaluate_dir(
                         label,
                         np.round(100 * prediction.class_best_score),
                     )
+                else:
+                    stats["correct"].append(data[0])
+
     except KeyboardInterrupt:
         print("KeyboardInterrupt detected. Terminating pool...")
         pool.terminate()
@@ -661,6 +669,12 @@ def evaluate_dir(
     finally:
         pool.close()  # Ensure resources are released
         pool.join()
+
+    stats_f = confusion_file.parent / "stats.json"
+    logging.info("Stats saved in %s", stats_f)
+
+    with stats_f.open("w") as f:
+        json.dump(stats, f)
     model.labels.append("None")
     model.labels.append("unidentified")
     cm = confusion_matrix(y_true, y_pred, labels=model.labels)

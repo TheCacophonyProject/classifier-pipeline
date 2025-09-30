@@ -124,7 +124,7 @@ class Interpreter(ABC):
                     len(track.bounds_history),
                 )
 
-            do_contours = False
+            do_contours = True
             if do_contours:
                 logging.warn("Implemented for testing")
                 frames, preprocessed, masses = self.preprocess_contours(
@@ -321,7 +321,7 @@ class Interpreter(ABC):
             max_diff = 0
             thermal_max_diff = None
             thermal_min_diff = None
-            for i, region in enumerate(reversed(track.bounds_history)):
+            for i, region in enumerate(track.bounds_history):
                 if region.blank:
                     continue
                 if region.width <= 0 or region.height <= 0:
@@ -356,9 +356,12 @@ class Interpreter(ABC):
                         min_diff = new_min
                     if new_max > max_diff:
                         max_diff = new_max
-                contours = get_contours(region.subimage(f.filtered))
+                copy = region.copy()
+                copy.enlarge(5, max=clip.crop_rectangle)
+                contours = get_contours(copy.subimage(f.filtered), f.frame_number)
                 f.region = region
                 weights.append(contours)
+                # logging.info("Frame %s contour %s", f.frame_number,contours)
                 data.append(f)
 
             if self.params.thermal_diff_norm:
@@ -379,40 +382,56 @@ class Interpreter(ABC):
             weights = np.array(weights)
             max_start = None
             max_score = None
-            while True:
-                contour_score = np.sum(weights[start : start + 50])
-                if max_start is None or contour_score > max_score:
-                    max_start = start
-                    max_score = contour_score
-                start += 1
-                if start + 50 > len(weights):
-                    break
+            # while True:
+            #     contour_score = np.sum(weights[start : start + 50])
+            #     if max_start is None or contour_score > max_score:
+            #         max_start = start
+            #         max_score = contour_score
+            #     start += 1
+            #     if start + 50 > len(weights):
+            #         break
 
-            indices = np.arange(min(50, len(data)))
-            indices = indices + max_start
-            segment_count = 1
+            indices = np.arange(len(data))
+            # indices = indices + max_start
+            segment_count = len(data) // 2 // 25
+            segment_count = max(segment_count, 1)
+            segment_count = min(segment_count, 4)
+            # segment_count = 1
+            print("Segments ", segment_count, len(weights))
+            logging.info(
+                "Contours are %s median %s mean %s upper q %s",
+                weights,
+                np.median(weights),
+                np.mean(weights),
+                np.percentile(weights, 75),
+            )
             # do something slightly smarter
             # sorted_by_contours = sorted_by_contours[:25]
             from ml_tools.preprocess import preprocess_frame, preprocess_movement
 
+            sorted_contours = np.argsort(weights)
             preprocessed = []
             masses = []
             segment_frames = []
             contours = weights.copy()
-            weights = weights[indices]
-            weights = np.float32(weights) / np.sum(weights)
+
+            # weights = weights[indices] ** 2
+            # weights = np.float32(weights) / np.sum(weights)
             for seg in range(segment_count):
                 frame_numbers = []
                 mass = 0
-                choice = np.random.choice(
-                    indices,
-                    size=min(len(indices), 25),
-                    p=weights,
-                    replace=False,
-                )
+                # choice = np.random.choice(
+                #     indices,
+                #     size=min(len(indices), 25),
+                #     p=weights,
+                #     replace=False,
+                # )
+                choice = sorted_contours[-25:]
                 segment_data = data[choice]
+                seg_weights = weights[choice]
+                print("COntour mean is ", np.mean(seg_weights))
                 # segments.append(choice)
-
+                sorted_contours = sorted_contours[:-25]
                 preprocess_data = []
                 for frame_data in segment_data:
                     cropped_frame = preprocess_frame(
@@ -428,7 +447,8 @@ class Interpreter(ABC):
                     mass += frame_data.region.mass
                     preprocess_data.append(cropped_frame)
                     frame_numbers.append(frame_data.frame_number)
-
+                frame_numbers.sort()
+                logging.info("Using frame %s", frame_numbers)
                 segment_frames.append(frame_numbers)
                 frames = preprocess_movement(
                     preprocess_data,
@@ -716,16 +736,23 @@ def get_interpreter(model):
     return classifier
 
 
-def get_contours(contour_image):
+c_i = 0
+
+
+def get_contours(contour_image, frame_number):
     import cv2
 
+    global c_i
+    c_i += 1
     contour_image, stats = normalize(contour_image, new_max=255)
+    cv2.imwrite(f"contours/og-{frame_number}.png", contour_image)
 
     image = cv2.GaussianBlur(np.uint8(contour_image), (15, 15), 0)
 
     flags = cv2.THRESH_BINARY + cv2.THRESH_OTSU
 
     _, image = cv2.threshold(image, 0, 255, flags)
+    cv2.imwrite(f"contours/contours-{frame_number}.png", image)
 
     contours, _ = cv2.findContours(
         np.uint8(image),
