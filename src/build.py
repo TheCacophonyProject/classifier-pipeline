@@ -305,11 +305,12 @@ def split_label(
     logging.info(
         f"{label} - looking for val {num_validate_tracks} tracks out of {total_tracks} tracks and {num_validate_samples} samples from a total of {sample_count} samples  with {num_test_tracks} test tracks and {num_test_samples} test samples"
     )
-    cameras = [validate_c, test_c]
-    limits = [
-        [num_validate_tracks, num_validate_samples],
-        [num_test_tracks, num_test_samples],
-    ]
+    cameras = [validate_c]
+
+    limits = [[num_validate_tracks, num_validate_samples]]
+    if use_test:
+        cameras.append(test_c)
+        limits.append([num_test_tracks, num_test_samples])
 
     for camera, limit in zip(cameras, limits):
         track_limit = limit[0]
