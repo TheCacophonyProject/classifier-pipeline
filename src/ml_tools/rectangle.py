@@ -111,6 +111,9 @@ class Rectangle:
         return self.left <= x and self.right >= x and self.top >= y and self.bottom <= y
 
     @property
+    def elongation(self):
+        return max(self.width,self.height) / min(self.width,self.height)
+    @property
     def area(self):
         return int(self.width) * self.height
 

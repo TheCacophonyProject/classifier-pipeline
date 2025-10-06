@@ -126,6 +126,8 @@ class TrackPrediction:
         masses,
         top_score=None,
     ):
+        print("Pred frames are ",prediction_frames)
+
         self.num_frames_classified = len(predictions)
         index = 0
         for prediction, frames, mass in zip(predictions, prediction_frames, masses):

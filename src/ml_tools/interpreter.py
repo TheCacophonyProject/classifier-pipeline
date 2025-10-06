@@ -124,10 +124,12 @@ class Interpreter(ABC):
                     len(track.bounds_history),
                 )
 
+
+
             do_contours = True
             if do_contours:
                 logging.warn("Implemented for testing")
-                frames, preprocessed, masses = self.preprocess_contours(
+                frames_c, preprocessed_c, masses_c = self.preprocess_contours(
                     clip,
                     track,
                 )
@@ -156,6 +158,18 @@ class Interpreter(ABC):
             frames_per_classify=self.params.square_width**2,
             min_segments=min_segments,
         )
+        if prediction_frames is None:
+            return None
+        mustelid_i  = self.labels.index("mustelid")
+        for i,pred in enumerate(output):
+            a_sort = np.argsort(pred)
+            for arg in a_sort[-2:]:
+                label = self.labels[arg]
+                conf = pred[arg]
+                logging.info("%s label %s Got %s confidence",i+1,label,round(conf*100))
+            label = self.labels[mustelid_i]
+            conf = pred[mustelid_i]
+            logging.info("%s label %s Got %s confidence",i+1,label,round(conf*100))
         if output is None:
             logging.info("Skipping track %s", track.get_id())
             return None
@@ -316,13 +330,20 @@ class Interpreter(ABC):
         data = []
         weights = []
         indices = []
+        prev_elongation = None
+        valid_regions = False
+        for region in track.bounds_history:
+            region.set_is_along_border(clip.crop_rectangle,edge=1)
+            if not region.is_along_border:
+                valid_regions = True
+
         if self.params.diff_norm or self.params.thermal_diff_norm:
             min_diff = None
             max_diff = 0
             thermal_max_diff = None
             thermal_min_diff = None
             for i, region in enumerate(track.bounds_history):
-                if region.blank:
+                if region.blank:    
                     continue
                 if region.width <= 0 or region.height <= 0:
                     logging.warn(
@@ -332,9 +353,19 @@ class Interpreter(ABC):
                     )
                     continue
                 f = clip.get_frame(region.frame_number)
+                region.set_is_along_border(clip.crop_rectangle,edge=1)
+                # logging.info("%s is along border %s %s elong %s prev %s",region.frame_number,region.is_along_border,region,region.elongation,prev_elongation)
                 if region.blank or region.width <= 0 or region.height <= 0 or f is None:
+                    # or region.is_along_border:
                     continue
-
+                
+                if region.is_along_border and valid_regions:
+                    if prev_elongation is  None or  abs(prev_elongation - region.elongation) > 0.15:
+                        # logging.info("ALong border skip %s",region.frame_number)
+                        continue
+                        # break
+                else:
+                    prev_elongation = region.elongation
                 f.float_arrays()
 
                 if self.params.thermal_diff_norm:
@@ -370,16 +401,40 @@ class Interpreter(ABC):
             if self.params.diff_norm:
                 filtered_norm_limits = (min_diff, max_diff)
             data = np.array(data)
-            # sorted_by_contours = sorted(data, key=lambda d: d[0], reverse=True)
 
             # take about half the frames worth of segments
-            segment_count = max(1, len(data) // 2 / 25)
+            segment_count = max(1, len(data) //  25)
             segment_count = round(segment_count)
             segment_count = int(segment_count)
+
+            segment_count = len(data) // 25
+            segment_count = max(segment_count, 1)
+            segment_count = min(segment_count, 4)
             segments = []
 
             start = 0
+            if valid_regions:
+                areas = [f.region.elongation for f in data]
+            else:
+                # all regions are touching edge
+                areas = [f.region.area for f in data]
+            areas = np.array(areas)
             weights = np.array(weights)
+            area_sorted = np.argsort(areas)
+            if len(weights)==0:
+                logging.error("NO weights for %s",track)
+                return None, None, None
+            # for area_i in area_sorted[-25:]:
+
+                # print("Top area is : ",area_i + track.start_frame, data[area_i].region,areas[area_i])
+           
+            # logging.info(
+            #     "Areas are %s median %s mean %s upper q %s",
+            #     areas,
+            #     np.median(areas),
+            #     np.mean(areas),
+            #     np.percentile(areas, 75),
+            # )
             max_start = None
             max_score = None
             # while True:
@@ -393,29 +448,48 @@ class Interpreter(ABC):
 
             indices = np.arange(len(data))
             # indices = indices + max_start
-            segment_count = len(data) // 2 // 25
+            segment_count = len(data) // 25
             segment_count = max(segment_count, 1)
             segment_count = min(segment_count, 4)
-            # segment_count = 1
-            print("Segments ", segment_count, len(weights))
-            logging.info(
-                "Contours are %s median %s mean %s upper q %s",
-                weights,
-                np.median(weights),
-                np.mean(weights),
-                np.percentile(weights, 75),
-            )
-            # do something slightly smarter
-            # sorted_by_contours = sorted_by_contours[:25]
-            from ml_tools.preprocess import preprocess_frame, preprocess_movement
+            segment_count = 1
+            # print("Segments ", segment_count, len(weights))
+            # logging.info(
+            #     "Contours are %s median %s mean %s upper q %s",
+            #     weights,
+            #     np.median(weights),
+            #     np.mean(weights),
+            #     np.percentile(weights, 75),
+            # )
+ 
+            max_contour = np.amax(weights)
+            max_areas = np.amax(areas)
+            min_areas = np.amin(areas)
 
+            scale = max_contour / max_areas
+            areas = areas * scale
+            # weights = weights + areas
+            # logging.info(
+            #     "Contours are %s median %s mean %s upper q %s",
+            #     weights,
+            #     np.median(weights),
+            #     np.mean(weights),
+            #     np.percentile(weights, 75),
+            # )
+            # do something slightly smarter
+
+            from ml_tools.preprocess import preprocess_frame, preprocess_movement
+        
             sorted_contours = np.argsort(weights)
+            print("By contours ",sorted_contours[:25])
+
             preprocessed = []
             masses = []
             segment_frames = []
-            contours = weights.copy()
+            # contours = weights.copy()
 
             # weights = weights[indices] ** 2
+            print("FIlter norm limits are", filtered_norm_limits, thermal_norm_limits)
+
             # weights = np.float32(weights) / np.sum(weights)
             for seg in range(segment_count):
                 frame_numbers = []
@@ -426,14 +500,21 @@ class Interpreter(ABC):
                 #     p=weights,
                 #     replace=False,
                 # )
-                choice = sorted_contours[-25:]
-                segment_data = data[choice]
-                seg_weights = weights[choice]
-                print("COntour mean is ", np.mean(seg_weights))
+                # choice = sorted_contours[-10:]
+                # choice.sort()
+                # segment_data = data[choice]
+                # seg_weights = weights[choice]
+                # print("COntour mean is ", np.mean(seg_weights))
                 # segments.append(choice)
-                sorted_contours = sorted_contours[:-25]
+                choice = area_sorted[-25:]
+                print(choice)
+                choice.sort()
+                # choice = area_sorted[-25:]
+                # segment_data= data[-25:]
+                segment_data = data[choice]
+                # sorted_contours = sorted_contours[:-25]
                 preprocess_data = []
-                for frame_data in segment_data:
+                for z,frame_data in enumerate(segment_data):
                     cropped_frame = preprocess_frame(
                         frame_data,
                         (self.params.frame_size, self.params.frame_size),
@@ -444,11 +525,11 @@ class Interpreter(ABC):
                         filtered_norm_limits=filtered_norm_limits,
                         thermal_norm_limits=thermal_norm_limits,
                     )
+                    # logging.info("adding %s contours %s",frame_data.frame_number,areas[z])
                     mass += frame_data.region.mass
                     preprocess_data.append(cropped_frame)
                     frame_numbers.append(frame_data.frame_number)
                 frame_numbers.sort()
-                logging.info("Using frame %s", frame_numbers)
                 segment_frames.append(frame_numbers)
                 frames = preprocess_movement(
                     preprocess_data,

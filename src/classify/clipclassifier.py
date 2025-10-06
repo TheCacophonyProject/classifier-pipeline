@@ -250,12 +250,13 @@ class ClipClassifier:
             prediction = classifier.classify_track(
                 clip, track, segment_frames=segment_frames, min_segments=1
             )
+            print(np.round(prediction.class_best_score*100))
             if prediction is not None:
                 predictions.prediction_per_track[track.get_id()] = prediction
                 description = prediction.description()
                 logging.info(
-                    "{} - [{}/{}] prediction: {}".format(
-                        track.get_id(), i + 1, len(clip.tracks), description
+                    "{} at {} - [{}/{}] prediction: {}".format(
+                        track.get_id(),track.start_s, i + 1, len(clip.tracks), description
                     )
                 )
         if self.config.verbose:

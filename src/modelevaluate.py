@@ -121,7 +121,7 @@ def model_score(cm, labels):
             score = accuracy * 1
 
         print(
-            f"score for {l} is {score} unid {unid_acc} other animasl {round(other_animals,2)}"
+            f"score for {l} is {score} acc {accuracy} unid {unid_acc} other animasl {round(other_animals,2)}"
         )
         total_score += score
     logging.info("Model accuracy score is %s", total_score)
@@ -530,7 +530,7 @@ def load_clip_data(cptv_file):
                 )
             )
         except:
-            logging.error("Could not load %s", clip.clip_id, exc_info=True)
+            logging.error("Could not load %s - %s", clip.clip_id,track, exc_info=True)
     return data
 
 
@@ -594,7 +594,7 @@ def evaluate_dir(
     start = time.time()
     processed = 0
     # quite faster with just one process for loading and using main process for predicting
-
+    # files = [f for f in files if "2362093" in f.name]
     pool = Pool(
         processes=8,
         initializer=init_worker,
@@ -604,6 +604,7 @@ def evaluate_dir(
         ),
     )
     try:
+        logging.info("Lbales are %s",model.labels)
         stats = {"correct": [], "incorrect": [], "low-confidence": []}
         for clip_data in pool.imap_unordered(load_clip_data, files):
             if processed % 100 == 0:
@@ -614,11 +615,12 @@ def evaluate_dir(
             for data in clip_data:
                 label = data[1]
                 preprocessed = data[3]
-                if len(preprocessed) == 0:
+                if  preprocessed is None or len(preprocessed) == 0:
                     logging.info("No data found for %s", data[0])
                     y_true.append(label_mapping.get(label, label))
                     y_pred.append("None")
                     continue
+                print("Preprocess is ",np.amax(preprocessed), np.amin(preprocessed))
                 output = model.predict(preprocessed)
 
                 prediction = TrackPrediction(data[0], model.labels)
@@ -628,11 +630,13 @@ def evaluate_dir(
                 if model.params.multi_label is True:
                     #     # every label could be 1 for each prediction
                     top_score = np.sum(masses)
+                    1/0
                 #     smoothed = output
                 # else:
                 smoothed = output * masses
+                print(np.round(output*100))
                 prediction.classified_clip(
-                    output, smoothed, data[2], masses, top_score=top_score
+                    output, None, data[2], masses, top_score=top_score
                 )
                 y_true.append(label_mapping.get(label, label))
                 predicted_labels = [prediction.predicted_tag()]
@@ -646,6 +650,7 @@ def evaluate_dir(
                     logging.info("Predicted  %s", predicted_labels)
                     predicted_tag = ",".join(predicted_labels)
                     y_pred.append(predicted_tag)
+                print("Y true is ",y_true[-1], " y_pred is ",predicted_labels[0])
                 if y_pred[-1] != y_true[-1]:
                     if predicted_labels[0] == y_true[-1]:
                         stats["low-confidence"].append(data[0])
@@ -658,6 +663,7 @@ def evaluate_dir(
                         label,
                         np.round(100 * prediction.class_best_score),
                     )
+                    print(np.argmax(prediction.class_best_score))
                 else:
                     stats["correct"].append(data[0])
 

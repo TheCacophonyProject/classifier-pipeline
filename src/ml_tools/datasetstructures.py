@@ -993,6 +993,7 @@ def get_segments(
     repeat_frame_indices=True,
     min_segments=None,
 ):
+    # segment_types = [SegmentType.ALL_SEQUENTIAL]
     if min_frames is None:
         min_frames = segment_width / 4.0
     segments = []
@@ -1153,7 +1154,7 @@ def get_segments(
                     frame_indices = frame_indices[segment_width:]
                 else:
                     segment_start = i * segment_frame_spacing
-                    segment_end = segment_start + segment_width
+                    segment_end = segment_start + segment_width//2
                     segment_end = min(len(frame_indices), segment_end)
                     frames = frame_indices[segment_start:segment_end]
 
@@ -1202,7 +1203,7 @@ def get_segments(
                         frames = list(frames)
                         frames.extend(extra_samples)
                         frames.sort()
-
+                print("Frame indices",frames)
                 segment = SegmentHeader(
                     clip_id,
                     track_id,
