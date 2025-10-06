@@ -124,7 +124,7 @@ class Interpreter(ABC):
                     len(track.bounds_history),
                 )
 
-            do_contours = True
+            do_contours = False
             if do_contours:
                 logging.warn("Implemented for testing")
                 frames, preprocessed, masses = self.preprocess_contours(

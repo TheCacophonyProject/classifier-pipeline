@@ -75,9 +75,10 @@ class RawDatabase:
         header = reader.get_header()
 
         background_alg = None
-        back_processed = False
         self.frames = []
         while True:
+            back_processed = False
+
             frame = reader.next_frame()
             if frame is None:
                 break
@@ -118,7 +119,8 @@ class RawDatabase:
             )
 
             if not back_processed:
-                background_alg.process_frame(frame.pix)
+                last_avg = np.mean([f.thermal for f in self.frames[-45:]], axis=0)
+                background_alg.process_frame(last_avg)
 
             frame_i += 1
 
