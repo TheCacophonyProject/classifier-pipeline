@@ -520,6 +520,15 @@ def load_clip_data(cptv_file):
             frames, preprocessed, masses = worker_model.preprocess(
                 clip_db, track, frames_per_classify=25, dont_filter=True, min_segments=1
             )
+            frames_c, preprocessed_c, masses_c = worker_model.preprocess(
+                clip_db,
+                track,
+                frames_per_classify=25,
+                dont_filter=True,
+                min_segments=1,
+                do_contours=True,
+            )
+
             data.append(
                 (
                     f"{track.clip_id}-{track.get_id()}",
@@ -527,10 +536,13 @@ def load_clip_data(cptv_file):
                     frames,
                     preprocessed,
                     masses,
+                    frames_c,
+                    preprocessed_c,
+                    masses_c,
                 )
             )
         except:
-            logging.error("Could not load %s - %s", clip.clip_id,track, exc_info=True)
+            logging.error("Could not load %s - %s", clip.clip_id, track, exc_info=True)
     return data
 
 
@@ -604,7 +616,9 @@ def evaluate_dir(
         ),
     )
     try:
-        logging.info("Lbales are %s",model.labels)
+        mustelid_i = model.labels.index("mustelid")
+
+        logging.info("Lbales are %s", model.labels)
         stats = {"correct": [], "incorrect": [], "low-confidence": []}
         for clip_data in pool.imap_unordered(load_clip_data, files):
             if processed % 100 == 0:
@@ -613,44 +627,70 @@ def evaluate_dir(
             if clip_data is None:
                 continue
             for data in clip_data:
+                contour_arg = None
+                contour_conf = None
+                preprocessed_c = None
+                if len(data) > 5:
+                    # contour test stuff
+                    preprocessed_c = data[6]
+                    if preprocessed_c is not None:
+                        output = model.predict(preprocessed_c)[0]
+                        contour_arg = np.argmax(output)
+                        contour_conf = output[contour_arg]
+                        # logging.info(
+                        #     "Contour mustelid is %s %s",
+                        #     np.round(100 * output),
+                        #     model.labels[contour_arg],
+                        # )
+                        if contour_conf < threshold:
+                            contour_arg = None
+
                 label = data[1]
                 preprocessed = data[3]
-                if  preprocessed is None or len(preprocessed) == 0:
+                if (
+                    preprocessed is None
+                    or len(preprocessed) == 0
+                    and (preprocessed_c is None or len(preprocessed_c) == 0)
+                ):
                     logging.info("No data found for %s", data[0])
                     y_true.append(label_mapping.get(label, label))
                     y_pred.append("None")
                     continue
-                print("Preprocess is ",np.amax(preprocessed), np.amin(preprocessed))
-                output = model.predict(preprocessed)
-
-                prediction = TrackPrediction(data[0], model.labels)
-                masses = np.array(data[4])
-                masses = masses[:, None]
-                top_score = None
-                if model.params.multi_label is True:
-                    #     # every label could be 1 for each prediction
-                    top_score = np.sum(masses)
-                    1/0
-                #     smoothed = output
-                # else:
-                smoothed = output * masses
-                print(np.round(output*100))
-                prediction.classified_clip(
-                    output, None, data[2], masses, top_score=top_score
-                )
                 y_true.append(label_mapping.get(label, label))
-                predicted_labels = [prediction.predicted_tag()]
-                confidence = prediction.max_score
-                predicted_tag = "None"
+
+                if contour_arg == mustelid_i:
+                    predicted_labels = ["mustelid"]
+                    confidence = contour_arg
+                    predicted_tag = "mustelid"
+                    logging.info("Predicted label for contours is mustelid")
+                else:
+
+                    output = model.predict(preprocessed)
+
+                    prediction = TrackPrediction(data[0], model.labels)
+                    masses = np.array(data[4])
+                    masses = masses[:, None]
+                    top_score = None
+                    if model.params.multi_label is True:
+                        #     # every label could be 1 for each prediction
+                        top_score = np.sum(masses)
+                    #     smoothed = output
+                    # else:
+                    prediction.classified_clip(
+                        output, None, data[2], masses, top_score=top_score
+                    )
+                    predicted_labels = [prediction.predicted_tag()]
+                    confidence = prediction.max_score
+                    predicted_tag = "None"
                 if confidence < threshold:
                     y_pred.append("unidentified")
                 elif len(predicted_labels) == 0:
                     y_pred.append("None")
                 else:
-                    logging.info("Predicted  %s", predicted_labels)
+                    # logging.info("Predicted  %s", predicted_labels)
                     predicted_tag = ",".join(predicted_labels)
                     y_pred.append(predicted_tag)
-                print("Y true is ",y_true[-1], " y_pred is ",predicted_labels[0])
+                print("Y true is ", y_true[-1], " y_pred is ", predicted_labels[0])
                 if y_pred[-1] != y_true[-1]:
                     if predicted_labels[0] == y_true[-1]:
                         stats["low-confidence"].append(data[0])

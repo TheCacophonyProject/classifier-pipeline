@@ -613,7 +613,6 @@ class Dataset:
 def filter_track(track_header, excluded_tags, filtered_stats={}):
     # some clips are banned for various reasons4
     if track_header.label is None:
-        print("Label is ",track_header.label)
         filtered_stats.setdefault("notags", 0)
         filtered_stats["notags"] += 1
         return True

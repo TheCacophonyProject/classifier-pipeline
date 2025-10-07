@@ -119,9 +119,7 @@ class RawDatabase:
             )
 
             if not back_processed:
-                last_avg = np.mean(
-                    [f.thermal for f in self.frames[-45:]], axis=0
-                )
+                last_avg = np.mean([f.thermal for f in self.frames[-45:]], axis=0)
                 background_alg.process_frame(last_avg)
 
             frame_i += 1
