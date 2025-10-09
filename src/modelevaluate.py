@@ -15,7 +15,10 @@ import time
 import matplotlib.ticker as mtick
 from config.config import Config
 
-# os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+# not using gpu is probably fastest for all these tasks
+import os
+
+os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
 import json
 
 # from config.config import Config
@@ -70,6 +73,7 @@ def model_score(cm, labels):
 
     if "unidentified" not in labels:
         labels.append("unidentified")
+    og = cm.copy()
     cm = np.around(cm.astype("float") / cm.sum(axis=1)[:, np.newaxis], decimals=2)
     cm = np.nan_to_num(cm)
     fp_index = None
@@ -82,6 +86,7 @@ def model_score(cm, labels):
     if "unidentified" in labels:
         unid_index = labels.index("unidentified")
     total_score = 0
+    mustelid_index = labels.index("mustelid")
     for l_i, l in enumerate(labels):
         # if l in ["static", "animal", "deer", "sheep"]:
         # continue
@@ -121,7 +126,7 @@ def model_score(cm, labels):
             score = accuracy * 1
 
         print(
-            f"score for {l} is {score} acc {accuracy} unid {unid_acc} other animasl {round(other_animals,2)}"
+            f"score for {l} is {score} acc {accuracy} unid {unid_acc} other animasl {round(other_animals,2)}, samples as mustelid {og[l_i][mustelid_index]}"
         )
         total_score += score
     logging.info("Model accuracy score is %s", total_score)
@@ -517,9 +522,9 @@ def load_clip_data(cptv_file):
     data = []
     for track in clip.tracks:
         try:
-            frames, preprocessed, masses = worker_model.preprocess(
-                clip_db, track, frames_per_classify=25, dont_filter=True, min_segments=1
-            )
+            # frames, preprocessed, masses = worker_model.preprocess(
+            #     clip_db, track, frames_per_classify=25, dont_filter=True, min_segments=1
+            # )
             frames_c, preprocessed_c, masses_c = worker_model.preprocess(
                 clip_db,
                 track,
@@ -533,9 +538,12 @@ def load_clip_data(cptv_file):
                 (
                     f"{track.clip_id}-{track.get_id()}",
                     track.label,
-                    frames,
-                    preprocessed,
-                    masses,
+                    # frames,
+                    # preprocessed,
+                    # masses,
+                    None,
+                    None,
+                    None,
                     frames_c,
                     preprocessed_c,
                     masses_c,
@@ -614,13 +622,20 @@ def evaluate_dir(
             model,
             after_date,
         ),
+        maxtasksperchild=100,
     )
     try:
         mustelid_i = model.labels.index("mustelid")
 
         logging.info("Lbales are %s", model.labels)
-        stats = {"correct": [], "incorrect": [], "low-confidence": []}
-        for clip_data in pool.imap_unordered(load_clip_data, files):
+        stats_per_label = {}
+        for lbl in model.labels:
+            stats_per_label[lbl] = {
+                "correct": [],
+                "incorrect": {},
+                "low-confidence": [],
+            }
+        for clip_data in pool.imap_unordered(load_clip_data, files, chunksize=20):
             if processed % 100 == 0:
                 logging.info("Procesed %s / %s", processed, len(files))
             processed += 1
@@ -631,6 +646,7 @@ def evaluate_dir(
                 contour_conf = None
                 preprocessed_c = None
                 if len(data) > 5:
+                    print("DOING CONTOURS")
                     # contour test stuff
                     preprocessed_c = data[6]
                     if preprocessed_c is not None:
@@ -647,24 +663,22 @@ def evaluate_dir(
 
                 label = data[1]
                 preprocessed = data[3]
-                if (
-                    preprocessed is None
-                    or len(preprocessed) == 0
-                    and (preprocessed_c is None or len(preprocessed_c) == 0)
+                if (preprocessed is None or len(preprocessed) == 0) and (
+                    preprocessed_c is None or len(preprocessed_c) == 0
                 ):
                     logging.info("No data found for %s", data[0])
                     y_true.append(label_mapping.get(label, label))
                     y_pred.append("None")
                     continue
-                y_true.append(label_mapping.get(label, label))
 
                 if contour_arg == mustelid_i:
+
                     predicted_labels = ["mustelid"]
                     confidence = contour_arg
                     predicted_tag = "mustelid"
                     logging.info("Predicted label for contours is mustelid")
                 else:
-
+                    continue
                     output = model.predict(preprocessed)
 
                     prediction = TrackPrediction(data[0], model.labels)
@@ -682,6 +696,8 @@ def evaluate_dir(
                     predicted_labels = [prediction.predicted_tag()]
                     confidence = prediction.max_score
                     predicted_tag = "None"
+                y_true.append(label_mapping.get(label, label))
+                stats = stats_per_label[y_true[-1]]
                 if confidence < threshold:
                     y_pred.append("unidentified")
                 elif len(predicted_labels) == 0:
@@ -695,15 +711,19 @@ def evaluate_dir(
                     if predicted_labels[0] == y_true[-1]:
                         stats["low-confidence"].append(data[0])
                     else:
-                        stats["incorrect"].append(data[0])
-                    logging.info(
-                        "%s predicted %s but should be %s with confidence %s",
-                        data[0],
-                        y_pred[-1],
-                        label,
-                        np.round(100 * prediction.class_best_score),
-                    )
-                    print(np.argmax(prediction.class_best_score))
+                        if y_true[-1] in stats["incorrect"]:
+                            stats["incorrect"][y_true[-1]].append(data[0])
+                        else:
+                            stats["incorrect"][y_true[-1]] = [data[0]]
+
+                    # logging.info(
+                    #     "%s predicted %s but should be %s with confidence %s",
+                    #     data[0],
+                    #     y_pred[-1],
+                    #     label,
+                    #     np.round(100 * prediction.class_best_score),
+                    # )
+                    # print(np.argmax(prediction.class_best_score))
                 else:
                     stats["correct"].append(data[0])
 
@@ -716,11 +736,11 @@ def evaluate_dir(
         pool.close()  # Ensure resources are released
         pool.join()
 
-    stats_f = confusion_file.parent / "stats.json"
+    stats_f = confusion_file.with_suffix(".json")
     logging.info("Stats saved in %s", stats_f)
 
     with stats_f.open("w") as f:
-        json.dump(stats, f)
+        json.dump(stats_per_label, f)
     model.labels.append("None")
     model.labels.append("unidentified")
     cm = confusion_matrix(y_true, y_pred, labels=model.labels)

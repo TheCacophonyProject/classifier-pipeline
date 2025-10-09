@@ -458,7 +458,6 @@ class Interpreter(ABC):
 
             from ml_tools.preprocess import preprocess_frame, preprocess_movement
 
-
             preprocessed = []
             masses = []
             segment_frames = []

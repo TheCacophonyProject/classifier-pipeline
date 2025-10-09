@@ -70,6 +70,7 @@ def rotate(image, degrees, mode="nearest", order=1):
     return ndimage.rotate(image, degrees, reshape=False, mode=mode, order=order)
 
 
+# not this makes a new array
 def resize_cv(image, dim, interpolation=cv2.INTER_LINEAR, extra_h=0, extra_v=0):
     return cv2.resize(
         np.float32(image),
