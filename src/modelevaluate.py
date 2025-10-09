@@ -646,7 +646,6 @@ def evaluate_dir(
                 contour_conf = None
                 preprocessed_c = None
                 if len(data) > 5:
-                    print("DOING CONTOURS")
                     # contour test stuff
                     preprocessed_c = data[6]
                     if preprocessed_c is not None:
