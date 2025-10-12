@@ -696,6 +696,13 @@ def evaluate_dir(
                     confidence = prediction.max_score
                     predicted_tag = "None"
                 y_true.append(label_mapping.get(label, label))
+                last_lbl = y_true[-1]
+                if last_lbl not in stats_per_label:
+                    stats_per_label[last_lbl] = {
+                        "correct": [],
+                        "incorrect": {},
+                        "low-confidence": [],
+                    }
                 stats = stats_per_label[y_true[-1]]
                 if confidence < threshold:
                     y_pred.append("unidentified")
