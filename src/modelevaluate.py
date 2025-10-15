@@ -215,10 +215,9 @@ def load_args():
 
     parser.add_argument(
         "--best-threshold",
-        action = "count",
+        action="count",
         help="calculate best threshold for model",
     )
-
 
     args = parser.parse_args()
     if args.date:
@@ -628,7 +627,7 @@ def evaluate_dir(
                     continue
                 output = model.predict(preprocessed)
 
-                prediction = TrackPrediction(data[0], model.labels)
+                prediction = TrackPrediction(data[0], model.labels, smooth_preds=False)
                 masses = np.array(data[4])
                 masses = masses[:, None]
                 top_score = None
@@ -637,10 +636,7 @@ def evaluate_dir(
                     top_score = np.sum(masses)
                 #     smoothed = output
                 # else:
-                smoothed = output * masses
-                prediction.classified_clip(
-                    output, smoothed, data[2], masses, top_score=top_score
-                )
+                prediction.classified_track(output, data[2], masses)
                 y_true.append(label_mapping.get(label, label))
                 predicted_labels = [prediction.predicted_tag()]
                 confidence = prediction.max_score
@@ -847,7 +843,7 @@ def main():
                         base_confusion_file.parent / f"{base_confusion_file.stem}-final"
                     )
                 if args.best_threshold:
-                    best_threshold(model.model,model.labels,dataset,confusion_final)
+                    best_threshold(model.model, model.labels, dataset, confusion_final)
                 else:
                     model.confusion_tracks(
                         dataset, confusion_final, threshold=args.threshold
@@ -928,11 +924,10 @@ class LabelGraph:
         plt.savefig(out_file.with_suffix(".png"), format="png")
 
 
-
-
 def best_threshold(model, labels, dataset, filename):
     from sklearn.metrics import roc_curve, auc, precision_recall_curve
     import tensorflow as tf
+
     # sklearn.metrics.auc(
     y_pred = model.predict(dataset)
     from sklearn.preprocessing import LabelBinarizer
@@ -965,7 +960,6 @@ def best_threshold(model, labels, dataset, filename):
         )
         track_pred[1].classified_frame(None, p, mass)
 
-
     y_pred = []
     for y, pred in pred_per_track.values():
         pred.normalize_score()
@@ -980,14 +974,14 @@ def best_threshold(model, labels, dataset, filename):
     for i, class_of_interest in enumerate(labels):
         # class_of_interest = "virginica"
         class_id = np.flatnonzero(label_binarizer.classes_ == i)
-        if len(class_id)==0:
+        if len(class_id) == 0:
             continue
         class_id = class_id[0]
         # if len(class_id) ==0:
         #     continue
         print("plt show for", class_of_interest)
-        print("One hot test ",  y_onehot_test[:, class_id])
-        print("One hot test ",  y_pred[:, class_id].shape,y_pred[:, class_id])
+        print("One hot test ", y_onehot_test[:, class_id])
+        print("One hot test ", y_pred[:, class_id].shape, y_pred[:, class_id])
 
         precision, recall, thresholds = precision_recall_curve(
             y_onehot_test[:, class_id], y_pred[:, class_id]
@@ -1020,7 +1014,7 @@ def best_threshold(model, labels, dataset, filename):
         plt.clf()
         print("Best Threshold=%f, F-Score=%.3f" % (thresholds[ix], fscore[ix]))
         thresholds_best.append(thresholds[ix])
-     
+
     thresholds = np.array(thresholds_best)
     logging.info(
         "ALl thresholds are %s mean %s median %s",
