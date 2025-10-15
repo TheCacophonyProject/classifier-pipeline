@@ -218,6 +218,13 @@ def load_args():
         help="Model score calculation for this numpy file",
     )
 
+    parser.add_argument(
+        "--best-threshold",
+        action = "count",
+        help="calculate best threshold for model",
+    )
+
+
     args = parser.parse_args()
     if args.date:
         args.date = parse_date(args.date)
@@ -522,9 +529,9 @@ def load_clip_data(cptv_file):
     data = []
     for track in clip.tracks:
         try:
-            # frames, preprocessed, masses = worker_model.preprocess(
-            #     clip_db, track, frames_per_classify=25, dont_filter=True, min_segments=1
-            # )
+            frames, preprocessed, masses = worker_model.preprocess(
+                clip_db, track, frames_per_classify=25, dont_filter=True, min_segments=1
+            )
             frames_c, preprocessed_c, masses_c = worker_model.preprocess(
                 clip_db,
                 track,
@@ -538,12 +545,12 @@ def load_clip_data(cptv_file):
                 (
                     f"{track.clip_id}-{track.get_id()}",
                     track.label,
-                    # frames,
-                    # preprocessed,
-                    # masses,
-                    None,
-                    None,
-                    None,
+                    frames,
+                    preprocessed,
+                    masses,
+                    # None,
+                    # None,
+                    # None,
                     frames_c,
                     preprocessed_c,
                     masses_c,
@@ -652,11 +659,9 @@ def evaluate_dir(
                         output = model.predict(preprocessed_c)[0]
                         contour_arg = np.argmax(output)
                         contour_conf = output[contour_arg]
-                        # logging.info(
-                        #     "Contour mustelid is %s %s",
-                        #     np.round(100 * output),
-                        #     model.labels[contour_arg],
-                        # )
+                        logging.info(
+                            "Contour  mustelidconf is %s",round(output[mustelid_i]*100)
+                        )
                         if contour_conf < threshold:
                             contour_arg = None
 
@@ -677,7 +682,6 @@ def evaluate_dir(
                     predicted_tag = "mustelid"
                     logging.info("Predicted label for contours is mustelid")
                 else:
-                    continue
                     output = model.predict(preprocessed)
 
                     prediction = TrackPrediction(data[0], model.labels)
@@ -712,15 +716,15 @@ def evaluate_dir(
                     # logging.info("Predicted  %s", predicted_labels)
                     predicted_tag = ",".join(predicted_labels)
                     y_pred.append(predicted_tag)
-                print("Y true is ", y_true[-1], " y_pred is ", predicted_labels[0])
+                # print("Y true is ", y_true[-1], " y_pred is ", predicted_labels[0])
                 if y_pred[-1] != y_true[-1]:
                     if predicted_labels[0] == y_true[-1]:
                         stats["low-confidence"].append(data[0])
                     else:
-                        if y_true[-1] in stats["incorrect"]:
-                            stats["incorrect"][y_true[-1]].append(data[0])
+                        if y_pred[-1] in stats["incorrect"]:
+                            stats["incorrect"][y_pred[-1]].append(data[0])
                         else:
-                            stats["incorrect"][y_true[-1]] = [data[0]]
+                            stats["incorrect"][y_pred[-1]] = [data[0]]
 
                     # logging.info(
                     #     "%s predicted %s but should be %s with confidence %s",
@@ -911,10 +915,12 @@ def main():
                     confusion_final = (
                         base_confusion_file.parent / f"{base_confusion_file.stem}-final"
                     )
-
-                model.confusion_tracks(
-                    dataset, confusion_final, threshold=args.threshold
-                )
+                if args.best_threshold:
+                    best_threshold(model.model,model.labels,dataset,confusion_final)
+                else:
+                    model.confusion_tracks(
+                        dataset, confusion_final, threshold=args.threshold
+                    )
 
 
 class LabelGraph:
@@ -990,6 +996,106 @@ class LabelGraph:
         plt.ylabel("Percent")
         plt.savefig(out_file.with_suffix(".png"), format="png")
 
+
+
+def best_threshold(model, labels, dataset, filename):
+    from sklearn.metrics import roc_curve, auc, precision_recall_curve
+    import tensorflow as tf
+    # sklearn.metrics.auc(
+    y_pred = model.predict(dataset)
+    from sklearn.preprocessing import LabelBinarizer
+    from sklearn.metrics import RocCurveDisplay
+
+    # true_categories = [y[0] for x, y in dataset]
+    # logging.info("Shape is %s", true_categories.shape)
+    # true_categories = tf.concat(true_categories, axis=0)
+    # logging.info("Shape is %s", true_categories.shape)
+
+    true_categories = []
+    track_ids = []
+    avg_mass = []
+    for x, y in dataset:
+        true_categories.extend(y[0].numpy())
+        # dataset_y[0]
+        track_ids.extend(y[1].numpy())
+        avg_mass.extend(y[2].numpy())
+    true_categories = np.array(true_categories)
+    true_categories = np.int64(tf.argmax(true_categories, axis=1))
+
+    # make per track
+    pred_per_track = {}
+
+    flat_y = []
+    for y, track_id, mass, p in zip(true_categories, track_ids, avg_mass, y_pred):
+        y_max = y
+        track_pred = pred_per_track.setdefault(
+            track_id, (y_max, TrackPrediction(track_id, labels))
+        )
+        track_pred[1].classified_frame(None, p, mass)
+
+
+    y_pred = []
+    for y, pred in pred_per_track.values():
+        pred.normalize_score()
+        y_pred.append(pred.class_best_score)
+        flat_y.append(y)
+    flat_y = np.array(flat_y)
+    y_pred = np.array(y_pred)
+    true_categories = np.array(flat_y)
+    label_binarizer = LabelBinarizer().fit(true_categories)
+    y_onehot_test = label_binarizer.transform(true_categories)
+    thresholds_best = []
+    for i, class_of_interest in enumerate(labels):
+        # class_of_interest = "virginica"
+        class_id = np.flatnonzero(label_binarizer.classes_ == i)
+        if len(class_id)==0:
+            continue
+        class_id = class_id[0]
+        # if len(class_id) ==0:
+        #     continue
+        print("plt show for", class_of_interest)
+        print("One hot test ",  y_onehot_test[:, class_id])
+        print("One hot test ",  y_pred[:, class_id].shape,y_pred[:, class_id])
+
+        precision, recall, thresholds = precision_recall_curve(
+            y_onehot_test[:, class_id], y_pred[:, class_id]
+        )
+        fscore = (2 * precision * recall) / (precision + recall)
+        ix = np.argmax(fscore)
+
+        # fpr, tpr, thresholds = roc_curve(
+        #     y_onehot_test[:, class_id], y_pred[:, class_id]
+        # )
+        # RocCurveDisplay.from_predictions(
+        #     y_onehot_test[:, class_id],
+        #     y_pred[:, class_id],
+        #     name=f"{class_of_interest} vs the rest",
+        #     color="darkorange",
+        # )
+        testy = y_onehot_test[:, class_id]
+        no_skill = len(testy[testy == 1]) / len(testy)
+
+        plt.plot(recall, precision, marker=".", label="Logistic")
+        plt.plot([0, 1], [no_skill, no_skill], linestyle="--", label="No Skill")
+        plt.axis("square")
+        plt.xlabel("Recall")
+        plt.ylabel("Precision")
+        plt.title(f"Recall vs Precision - {labels[i]}")
+        plt.legend()
+        plt.scatter(recall[ix], precision[ix], marker="o", color="black", label="Best")
+        label_f = filename.parent / f"{filename.stem}-{labels[i]}.png"
+        plt.savefig(label_f, format="png")
+        plt.clf()
+        print("Best Threshold=%f, F-Score=%.3f" % (thresholds[ix], fscore[ix]))
+        thresholds_best.append(thresholds[ix])
+     
+    thresholds = np.array(thresholds_best)
+    logging.info(
+        "ALl thresholds are %s mean %s median %s",
+        thresholds,
+        np.mean(thresholds),
+        np.median(thresholds),
+    )
 
 if __name__ == "__main__":
     main()

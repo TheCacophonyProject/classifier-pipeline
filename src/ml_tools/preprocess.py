@@ -152,10 +152,12 @@ def preprocess_movement(
     data = []
     frame_samples = list(np.arange(len(preprocess_frames)))
     if len(preprocess_frames) < frames_per_row * 5:
-        extra_samples = np.random.choice(
-            frame_samples, frames_per_row * 5 - len(preprocess_frames)
-        )
-        frame_samples.extend(extra_samples)
+        while len(frame_samples)< frames_per_row * 5 :
+            extra_samples = np.random.choice(
+                frame_samples, frames_per_row * 5 - len(preprocess_frames),
+                replace=False
+            )
+            frame_samples.extend(extra_samples)
         frame_samples.sort()
     for channel in channels:
         if isinstance(channel, str):
@@ -190,4 +192,4 @@ def preprocess_movement(
 
     if preprocess_fn:
         data = preprocess_fn(data)
-    return np.float32(data)
+    return np.float32(data),np.array(frame_samples)

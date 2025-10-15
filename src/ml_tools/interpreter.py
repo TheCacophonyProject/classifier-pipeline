@@ -124,7 +124,8 @@ class Interpreter(ABC):
                     len(track.bounds_history),
                 )
 
-            if args.get("do_contours", False):
+            if args.get("do_contours", True):
+                logging.info("DOING CONTOURS")
                 # logging.warn("Implemented for testing")
                 frames, preprocessed, masses = self.preprocess_contours(
                     clip,
@@ -333,7 +334,16 @@ class Interpreter(ABC):
         indices = []
         prev_elongation = None
         valid_regions = False
+        prev_region = None
         for region in track.bounds_history:
+            if prev_region is not None:
+                velo = np.array(region.mid) - np.array(prev_region.mid)
+                print("Velo is ",velo, sum(abs(velo)))
+                region.velocity = sum(abs(velo))
+            else:
+                region.velocity = 0
+            # pred_vel_y = self.predicted_mid[1] - self.last_bound.centroid[1]
+            prev_region = region
             region.set_is_along_border(clip.crop_rectangle, edge=1)
             if not region.is_along_border:
                 valid_regions = True
@@ -365,7 +375,7 @@ class Interpreter(ABC):
                         prev_elongation is None
                         or abs(prev_elongation - region.elongation) > 0.15
                     ):
-                        # logging.info("ALong border skip %s",region.frame_number)
+                        logging.info("ALong border skip %s",region.frame_number)
                         continue
                         # break
                 else:
@@ -418,7 +428,8 @@ class Interpreter(ABC):
 
             start = 0
             if valid_regions:
-                areas = [f.region.elongation for f in data]
+                areas = [f.region.velocity for f in data]
+                print("Using valid regions")
             else:
                 # all regions are touching edge
                 areas = [f.region.area for f in data]
@@ -481,7 +492,10 @@ class Interpreter(ABC):
                 # seg_weights = weights[choice]
                 # print("COntour mean is ", np.mean(seg_weights))
                 # segments.append(choice)
-                choice = area_sorted[-25:]
+                choice = list(area_sorted[-25:])
+                while len(choice) < 25:
+                    missing = 25- len(choice)
+                    choice.extend(area_sorted[-missing:])
                 choice.sort()
                 # choice = area_sorted[-25:]
                 # segment_data= data[-25:]
@@ -505,7 +519,7 @@ class Interpreter(ABC):
                     frame_numbers.append(frame_data.frame_number)
                 frame_numbers.sort()
                 segment_frames.append(frame_numbers)
-                frames = preprocess_movement(
+                frames,samples = preprocess_movement(
                     preprocess_data,
                     self.params.square_width,
                     self.params.frame_size,
@@ -513,11 +527,16 @@ class Interpreter(ABC):
                     self.preprocess_fn,
                     sample=f"{clip.get_id()}-{track.get_id()}",
                 )
+                full_frames = []
+                for sample in samples:
+                    full_frames.append(frame_numbers[sample])
+                logging.info("Used frame numbers %s ",full_frames)
                 preprocessed.append(frames)
                 if len(data) < 25:
                     mass = 25 * mass / len(data)
                 masses.append(mass)
             preprocessed = np.array(preprocessed)
+            logging.info("Using %s",frame_numbers)
             return [frame_numbers], preprocessed, masses
 
     def preprocess_segments(
