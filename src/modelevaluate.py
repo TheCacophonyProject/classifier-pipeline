@@ -980,8 +980,8 @@ def best_threshold(model, labels, dataset, filename):
         # if len(class_id) ==0:
         #     continue
         print("plt show for", class_of_interest)
-        print("One hot test ", y_onehot_test[:, class_id])
-        print("One hot test ", y_pred[:, class_id].shape, y_pred[:, class_id])
+        # print("One hot test ", y_onehot_test[:, class_id])
+        # print("One hot test ", y_pred[:, class_id], 100 * y_pred[:, class_id])
 
         precision, recall, thresholds = precision_recall_curve(
             y_onehot_test[:, class_id], y_pred[:, class_id]
@@ -989,6 +989,15 @@ def best_threshold(model, labels, dataset, filename):
         fscore = (2 * precision * recall) / (precision + recall)
         ix = np.argmax(fscore)
 
+        scatters = []
+        for i, th in enumerate(thresholds):
+            if th >= 0.6:
+                scatters.append((i, th))
+            if th >= 0.7:
+                scatters.append((i, th))
+            if th >= 0.8:
+                scatters.append((i, th))
+                break
         # fpr, tpr, thresholds = roc_curve(
         #     y_onehot_test[:, class_id], y_pred[:, class_id]
         # )
@@ -1009,6 +1018,17 @@ def best_threshold(model, labels, dataset, filename):
         plt.title(f"Recall vs Precision - {labels[i]}")
         plt.legend()
         plt.scatter(recall[ix], precision[ix], marker="o", color="black", label="Best")
+
+        colours = ["red", "yellow", "green"]
+        for point, colour in zip(scatters, colours):
+            plt.scatter(
+                recall[point[0]],
+                precision[point[0]],
+                marker="o",
+                color=colour,
+                label=f"TX {point[1]}",
+            )
+            print("plotted ", point, " with colour ", colour)
         label_f = filename.parent / f"{filename.stem}-{labels[i]}.png"
         plt.savefig(label_f, format="png")
         plt.clf()
