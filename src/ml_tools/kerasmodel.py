@@ -3,7 +3,7 @@ import io
 import time
 import os
 
-os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+# os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 import tensorflow as tf
 from tensorboard.plugins.hparams import api as hp
 
