@@ -991,11 +991,11 @@ def best_threshold(model, labels, dataset, filename):
 
         scatters = []
         for t_i, th in enumerate(thresholds):
-            if th >= 0.6 and len(scatters)==0:
+            if th >= 0.6 and len(scatters) == 0:
                 scatters.append((t_i, th))
-            if th >= 0.7 and len(scatters)==1:
+            if th >= 0.7 and len(scatters) == 1:
                 scatters.append((t_i, th))
-            if th >= 0.8  and len(scatters)==2:
+            if th >= 0.8 and len(scatters) == 2:
                 scatters.append((t_i, th))
                 break
         # fpr, tpr, thresholds = roc_curve(
