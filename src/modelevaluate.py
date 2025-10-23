@@ -609,6 +609,8 @@ def evaluate_dir(
             after_date,
         ),
     )
+    raw_preds = []
+    raw_confs = []
     try:
         stats = {"correct": [], "incorrect": [], "low-confidence": []}
         for clip_data in pool.imap_unordered(load_clip_data, files):
@@ -622,6 +624,8 @@ def evaluate_dir(
                 preprocessed = data[3]
                 if len(preprocessed) == 0:
                     logging.info("No data found for %s", data[0])
+                    raw_preds.append("None")
+                    raw_confs.append(0)
                     y_true.append(label_mapping.get(label, label))
                     y_pred.append("None")
                     continue
@@ -640,6 +644,8 @@ def evaluate_dir(
                 y_true.append(label_mapping.get(label, label))
                 predicted_labels = [prediction.predicted_tag()]
                 confidence = prediction.max_score
+                raw_preds.append(prediction.predicted_tag())
+                raw_confs.append(confidence)
                 predicted_tag = "None"
                 if confidence < threshold:
                     y_pred.append("unidentified")
@@ -678,7 +684,63 @@ def evaluate_dir(
 
     with stats_f.open("w") as f:
         json.dump(stats, f)
+
     model.labels.append("None")
+
+    results = np.array(raw_preds)
+    confidences = np.array(raw_confs)
+    # thresholds found from best_score
+    thresholds_per_label = [
+        0.46797615,
+        0.70631117,
+        0.2496017,
+        0.96398157,
+        0.33895272,
+        0.9697655,
+        0.35740834,
+        0.60906386,
+        0.88741493,
+        0.02124451,
+        0.9998618,
+        0.6102594,
+        0.5604206,
+        0.9881419,
+        0.98753905,
+        0.987157,
+    ]
+    thresholds_per_label = np.array(thresholds_per_label)
+    thresholds_per_label[thresholds_per_label < 0.5] = 0.5
+
+    preds = results.copy()
+    for i, threshold in enumerate(thresholds_per_label):
+        pred_mask = preds == i
+        conf_mask = confidences < threshold
+        preds[pred_mask & conf_mask] = "None"
+
+    print("Y true is", y_true, preds)
+    cm = confusion_matrix(y_true, preds, labels=model.labels)
+
+    filename = confusion_file
+    # Log the confusion matrix as an image summary.
+    figure = plot_confusion_matrix(cm, class_names=model.labels)
+    smoothing_file = filename.parent / f"{filename.stem}-fscore"
+    plt.savefig(smoothing_file.with_suffix(".png"), format="png")
+    np.save(smoothing_file.with_suffix(".npy"), cm)
+
+    thresholds = [0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8, 0.85]
+    for threshold in thresholds:
+        preds = results.copy()
+
+        # set these to None
+        preds[confidences < threshold] = "None"
+        cm = confusion_matrix(y_true, preds, labels=model.labels)
+        # Log the confusion matrix as an image summary.
+        figure = plot_confusion_matrix(cm, class_names=model.labels)
+        smoothing_file = filename.parent / f"{filename.stem}-{round(100*threshold)}%"
+        plt.savefig(smoothing_file.with_suffix(".png"), format="png")
+        np.save(smoothing_file.with_suffix(".npy"), cm)
+
+    # model.labels.append("None")
     model.labels.append("unidentified")
     cm = confusion_matrix(y_true, y_pred, labels=model.labels)
     npy_file = confusion_file.with_suffix(".npy")

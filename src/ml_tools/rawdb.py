@@ -164,7 +164,7 @@ class RawDatabase:
                             country_code = country
                             break
             except:
-                logging.error("Could not parse lat lng", exc_info=True)
+                # logging.error("Could not parse lat lng", exc_info=True)
                 pass
 
         clip_header = ClipHeader(

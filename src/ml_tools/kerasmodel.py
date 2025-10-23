@@ -893,40 +893,51 @@ class KerasModel(Interpreter):
         confidences = np.array(confidences)
 
         # thresholds found from best_score
-        thresholds_per_label =[0.46797615,0.70631117,0.2496017,,0.96398157,0.33895272,0.9697655
-,0.35740834,0.60906386,0.88741493,0.02124451,0.9998618,,0.6102594
-,0.5604206,,0.9881419,,0.98753905,0.987157]
+        thresholds_per_label = [
+            0.46797615,
+            0.70631117,
+            0.2496017,
+            0.96398157,
+            0.33895272,
+            0.9697655,
+            0.35740834,
+            0.60906386,
+            0.88741493,
+            0.02124451,
+            0.9998618,
+            0.6102594,
+            0.5604206,
+            0.9881419,
+            0.98753905,
+            0.987157,
+        ]
         thresholds_per_label = np.array(thresholds_per_label)
-        thresholds_per_label[thresholds_per_label<0.5]= 0.5
+        thresholds_per_label[thresholds_per_label < 0.5] = 0.5
 
         preds = results.copy()
-        for i,threshold in enumerate(thresholds_per_label):  
-            pred_mask = preds = i 
+        for i, threshold in enumerate(thresholds_per_label):
+            pred_mask = preds = i
             # set these to None
-            preds[pred_mask & confidences<threshold] = len(labels) -1
-        cm = confusion_matrix(
-            true_categories, preds, labels=np.arange(len(labels))
-        )
+            preds[pred_mask & confidences < threshold] = len(labels) - 1
+        cm = confusion_matrix(true_categories, preds, labels=np.arange(len(labels)))
         # Log the confusion matrix as an image summary.
         figure = plot_confusion_matrix(cm, class_names=labels)
         smoothing_file = filename.parent / f"{filename.stem}-fscore"
         plt.savefig(smoothing_file.with_suffix(".png"), format="png")
         np.save(smoothing_file.with_suffix(".npy"), cm)
 
-
-
-        thresholds = [0.5,0.55,0.6,0.65,0.7,0.75,0.8,0.85]
+        thresholds = [0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8, 0.85]
         for threshold in thresholds:
             preds = results.copy()
 
             # set these to None
-            preds[confidences<threshold] = len(labels) -1
-            cm = confusion_matrix(
-                true_categories, preds, labels=np.arange(len(labels))
-            )
+            preds[confidences < threshold] = len(labels) - 1
+            cm = confusion_matrix(true_categories, preds, labels=np.arange(len(labels)))
             # Log the confusion matrix as an image summary.
             figure = plot_confusion_matrix(cm, class_names=labels)
-            smoothing_file = filename.parent / f"{filename.stem}-{round(100*threshold)}%"
+            smoothing_file = (
+                filename.parent / f"{filename.stem}-{round(100*threshold)}%"
+            )
             plt.savefig(smoothing_file.with_suffix(".png"), format="png")
             np.save(smoothing_file.with_suffix(".npy"), cm)
 
