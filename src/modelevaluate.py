@@ -609,6 +609,8 @@ def evaluate_dir(
             after_date,
         ),
     )
+    raw_preds_i = []
+
     raw_preds = []
     raw_confs = []
     try:
@@ -646,6 +648,7 @@ def evaluate_dir(
                 confidence = prediction.max_score
                 raw_preds.append(prediction.predicted_tag())
                 raw_confs.append(confidence)
+                raw_preds_i.append(prediction.best_label_index)
                 predicted_tag = "None"
                 if confidence < threshold:
                     y_pred.append("unidentified")
@@ -686,9 +689,17 @@ def evaluate_dir(
         json.dump(stats, f)
 
     model.labels.append("None")
+    filename = confusion_file
 
     results = np.array(raw_preds)
     confidences = np.array(raw_confs)
+    raw_preds_i = np.uint8(raw_preds_i)
+    npy_file = filename.parent / f"{filename.stem}-raw.npy"
+    logging.info("Saving %s", npy_file)
+    with npy_file.open("wb") as f:
+        np.save(f, raw_preds_i)
+        np.save(f, confidences)
+
     # thresholds found from best_score
     thresholds_per_label = [
         0.46797615,
@@ -719,7 +730,6 @@ def evaluate_dir(
     print("Y true is", y_true, preds)
     cm = confusion_matrix(y_true, preds, labels=model.labels)
 
-    filename = confusion_file
     # Log the confusion matrix as an image summary.
     figure = plot_confusion_matrix(cm, class_names=model.labels)
     smoothing_file = filename.parent / f"{filename.stem}-fscore"
