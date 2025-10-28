@@ -68,8 +68,8 @@ def model_score(cm, labels):
     if "None" not in labels:
         labels.append("None")
 
-    if "unidentified" not in labels:
-        labels.append("unidentified")
+    # if "unidentified" not in labels:
+    #     labels.append("unidentified")
     cm = np.around(cm.astype("float") / cm.sum(axis=1)[:, np.newaxis], decimals=2)
     cm = np.nan_to_num(cm)
     fp_index = None
@@ -596,7 +596,7 @@ def evaluate_dir(
     else:
         files = list(dir.glob(f"**/*cptv"))
     files.sort()
-    # files = files[:8]
+    # files = files[:1]
     start = time.time()
     processed = 0
     # quite faster with just one process for loading and using main process for predicting
@@ -710,10 +710,9 @@ def evaluate_dir(
     ]
     thresholds_per_label = np.array(thresholds_per_label)
     thresholds_per_label[thresholds_per_label < 0.5] = 0.5
-
     preds = results.copy()
     for i, threshold in enumerate(thresholds_per_label):
-        pred_mask = preds == i
+        pred_mask = preds == model.labels[i]
         conf_mask = confidences < threshold
         preds[pred_mask & conf_mask] = "None"
 
@@ -730,7 +729,6 @@ def evaluate_dir(
     thresholds = [0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8, 0.85]
     for threshold in thresholds:
         preds = results.copy()
-
         # set these to None
         preds[confidences < threshold] = "None"
         cm = confusion_matrix(y_true, preds, labels=model.labels)
