@@ -15,6 +15,7 @@ import time
 import matplotlib.ticker as mtick
 from config.config import Config
 import os
+
 os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
 import json
 
@@ -194,7 +195,7 @@ def load_args():
     parser.add_argument("--split-file", help="Use split for evaluation")
     parser.add_argument(
         "--confusion-from-meta",
-        action="count",
+        action="store_true",
         help="Use metadata to produce a confusion matrix",
     )
 
@@ -216,7 +217,7 @@ def load_args():
 
     parser.add_argument(
         "--best-threshold",
-        action="count",
+        action="store_true",
         help="calculate best threshold for model",
     )
 
