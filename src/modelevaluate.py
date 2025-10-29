@@ -15,7 +15,7 @@ import time
 import matplotlib.ticker as mtick
 from config.config import Config
 
-# os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
 import json
 
 # from config.config import Config
@@ -40,8 +40,9 @@ import cv2
 from config.buildconfig import BuildConfig
 from sklearn.metrics import confusion_matrix
 from multiprocessing import Pool
+import multiprocessing
 from dateutil.parser import parse as parse_date
-from ml_tools.interpreter import get_interpreter_from_path
+from ml_tools.interpreter import get_interpreter_from_path, ModelMeta
 
 root_logger = logging.getLogger()
 for handler in root_logger.handlers:
@@ -487,10 +488,17 @@ worker_model = None
 after_date = None
 
 
-def init_worker(model, date):
+def init_worker(model_file, weights, date):
     global worker_model, after_date
-    worker_model = model
-    after_date = date
+    import tensorflow as tf
+
+    try:
+        worker_model = get_interpreter_from_path(model_file)
+        if weights is not None:
+            worker_model.model.load_weights(weights)
+        after_date = date
+    except:
+        logging.error("init_worker error", exc_info=True)
 
 
 def load_clip_data(cptv_file):
@@ -521,22 +529,41 @@ def load_clip_data(cptv_file):
         thermal_medians.append(np.median(f.thermal))
     thermal_medians = np.uint16(thermal_medians)
     data = []
+    preprocess_data = []
     for track in clip.tracks:
         try:
             frames, preprocessed, masses = worker_model.preprocess(
                 clip_db, track, frames_per_classify=25, dont_filter=True, min_segments=1
             )
+            output = None
+            if len(preprocessed) > 0:
+                preprocess_data.extend(preprocessed)
+
             data.append(
-                (
+                [
                     f"{track.clip_id}-{track.get_id()}",
                     track.label,
                     frames,
-                    preprocessed,
+                    len(preprocessed),
                     masses,
-                )
+                ]
             )
         except:
             logging.error("Could not load %s", clip.clip_id, exc_info=True)
+    if len(preprocess_data) > 0:
+        preprocess_data = np.array(preprocess_data)
+        output = worker_model.predict(preprocess_data)
+        pred_pos = 0
+        for i in range(len(data)):
+            num_preds = data[i][3]
+            if num_preds == 0:
+                continue
+            preds = output[pred_pos : pred_pos + num_preds]
+            assert len(preds) == num_preds
+            data[i][3] = preds
+            # print(len(preds),"Setting data preds ",pred_pos,"-", num_preds+pred_pos, " total preds are ", len(output))
+            pred_pos += num_preds
+
     return data
 
 
@@ -547,7 +574,8 @@ def load_split_file(split_file):
 
 
 def evaluate_dir(
-    model,
+    model_file,
+    model_weights,
     dir,
     config,
     confusion_file,
@@ -558,6 +586,7 @@ def evaluate_dir(
 ):
     from ml_tools.kerasmodel import plot_confusion_matrix
 
+    model = ModelMeta(model_file)
     confusion_file = Path(confusion_file)
     if model.params.excluded_labels is not None:
         excluded_labels = model.params.excluded_labels
@@ -605,15 +634,17 @@ def evaluate_dir(
         processes=8,
         initializer=init_worker,
         initargs=(
-            model,
+            model_file,
+            model_weights,
             after_date,
         ),
-        maxtasksperchild=200,
+        maxtasksperchild=500,
     )
     raw_preds = []
     raw_confs = []
     raw_class_confidences = []
     try:
+
         stats = {"correct": [], "incorrect": [], "low-confidence": []}
         for clip_data in pool.imap_unordered(load_clip_data, files, chunksize=20):
             if processed % 100 == 0:
@@ -623,8 +654,8 @@ def evaluate_dir(
                 continue
             for data in clip_data:
                 label = data[1]
-                preprocessed = data[3]
-                if len(preprocessed) == 0:
+                output = data[3]
+                if output is None:
                     logging.info("No data found for %s", data[0])
                     raw_preds.append("None")
                     raw_confs.append(0)
@@ -632,7 +663,6 @@ def evaluate_dir(
                     y_true.append(label_mapping.get(label, label))
                     y_pred.append("None")
                     continue
-                output = model.predict(preprocessed)
 
                 prediction = TrackPrediction(data[0], model.labels, smooth_preds=False)
                 masses = np.array(data[4])
@@ -838,15 +868,15 @@ def main():
             Path(args.evaluate_dir), args.confusion, args.date, args.model_metadata
         )
     else:
-        model = get_interpreter_from_path(model_file)
         if args.evaluate_dir:
 
-            logging.info("Loading weights %s", weights)
-            if weights is not None:
-                model.model.load_weights(weights)
+            # logging.info("Loading weights %s", weights)
+            # if weights is not None:
+            #     model.model.load_weights(weights)
 
             evaluate_dir(
-                model,
+                model_file,
+                weights,
                 Path(args.evaluate_dir),
                 config,
                 args.confusion,
@@ -856,6 +886,8 @@ def main():
                 after_date=args.date,
             )
         elif args.dataset:
+            model = get_interpreter_from_path(model_file)
+
             if weights is None:
                 acc = (
                     "val_acc.weights.h5"
@@ -1146,4 +1178,7 @@ def best_threshold(labels, y_true, y_pred, confidences, filename):
 
 
 if __name__ == "__main__":
+    # this makes tensorflow work under processes
+    multiprocessing.set_start_method("spawn")
+
     main()

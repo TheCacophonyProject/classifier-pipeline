@@ -429,7 +429,6 @@ class KerasModel(Interpreter):
             self.model = tf.keras.models.load_model(model_file.parent)
         else:
             self.model = tf.keras.models.load_model(model_file)
-
         self.model.trainable = training
 
         if weights is not None:

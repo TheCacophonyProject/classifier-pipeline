@@ -766,3 +766,14 @@ def get_contours(contour_image, frame_number):
     contours = sorted(contours, key=lambda c: len(c), reverse=True)
 
     return len(contours[0])
+
+
+class ModelMeta(Interpreter):
+    def __init__(self, model_name):
+        super().__init__(model_name)
+
+    def predict(self):
+        raise "No predict for model meta"
+
+    def shape(self):
+        raise "No shape for model meta"
