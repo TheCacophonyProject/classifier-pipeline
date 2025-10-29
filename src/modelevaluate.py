@@ -14,7 +14,7 @@ import sys
 import time
 import matplotlib.ticker as mtick
 from config.config import Config
-
+import os
 os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
 import json
 
