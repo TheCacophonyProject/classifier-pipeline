@@ -608,14 +608,14 @@ def evaluate_dir(
             model,
             after_date,
         ),
+        maxtasksperchild=200,
     )
-    raw_preds_i = []
-
     raw_preds = []
     raw_confs = []
+    raw_class_confidences = []
     try:
         stats = {"correct": [], "incorrect": [], "low-confidence": []}
-        for clip_data in pool.imap_unordered(load_clip_data, files):
+        for clip_data in pool.imap_unordered(load_clip_data, files, chunksize=20):
             if processed % 100 == 0:
                 logging.info("Procesed %s / %s", processed, len(files))
             processed += 1
@@ -628,6 +628,7 @@ def evaluate_dir(
                     logging.info("No data found for %s", data[0])
                     raw_preds.append("None")
                     raw_confs.append(0)
+                    raw_class_confidences.append(np.zeros(len(model.labels)))
                     y_true.append(label_mapping.get(label, label))
                     y_pred.append("None")
                     continue
@@ -648,7 +649,8 @@ def evaluate_dir(
                 confidence = prediction.max_score
                 raw_preds.append(prediction.predicted_tag())
                 raw_confs.append(confidence)
-                raw_preds_i.append(prediction.best_label_index)
+                raw_class_confidences.append(prediction.class_best_score)
+
                 predicted_tag = "None"
                 if confidence < threshold:
                     y_pred.append("unidentified")
@@ -690,16 +692,24 @@ def evaluate_dir(
 
     model.labels.append("None")
     filename = confusion_file
+    raw_preds_i = [model.labels.index(pred) for pred in raw_preds]
+    y_true_i = [
+        model.labels.index(y_t) if y_t in model.labels else -1 for y_t in y_true
+    ]
 
     results = np.array(raw_preds)
     confidences = np.array(raw_confs)
     raw_preds_i = np.uint8(raw_preds_i)
+    raw_class_confidences = np.array(raw_class_confidences)
+    y_true_i = np.array(y_true_i)
     npy_file = filename.parent / f"{filename.stem}-raw.npy"
     logging.info("Saving %s", npy_file)
     with npy_file.open("wb") as f:
+        np.save(f, y_true_i)
         np.save(f, raw_preds_i)
-        np.save(f, confidences)
-
+        np.save(f, raw_class_confidences)
+    print("Y true ", y_true_i)
+    print(raw_preds_i)
     # thresholds found from best_score
     thresholds_per_label = [
         0.46797615,
@@ -809,6 +819,20 @@ def main():
     if args.weights:
         weights = model_file / args.weights
     base_dir = Path(config.base_folder) / "training-data"
+    # shredhold from res
+    threshold_from_res = False
+    # add command line params
+    if threshold_from_res:
+        test_f = Path("./threshold-test/fscoreTest-raw.npy")
+        with test_f.open("rb") as f:
+            y_true_i = np.load(f)
+            raw_preds_i = np.load(f)
+            confidences = np.load(f)
+        best_threshold(
+            model.labels, y_true_i, raw_preds_i, confidences, Path(args.confusion)
+        )
+        # return
+
     if args.evaluate_dir and args.confusion_from_meta:
         metadata_confusion(
             Path(args.evaluate_dir), args.confusion, args.date, args.model_metadata
@@ -913,7 +937,9 @@ def main():
                         base_confusion_file.parent / f"{base_confusion_file.stem}-final"
                     )
                 if args.best_threshold:
-                    best_threshold(model.model, model.labels, dataset, confusion_final)
+                    best_threshold_for_ds(
+                        model.model, model.labels, dataset, confusion_final
+                    )
                 else:
                     model.confusion_tracks(
                         dataset, confusion_final, threshold=args.threshold
@@ -994,14 +1020,11 @@ class LabelGraph:
         plt.savefig(out_file.with_suffix(".png"), format="png")
 
 
-def best_threshold(model, labels, dataset, filename):
-    from sklearn.metrics import roc_curve, auc, precision_recall_curve
+def best_threshold_for_ds(model, labels, dataset, filename):
     import tensorflow as tf
 
     # sklearn.metrics.auc(
     y_pred = model.predict(dataset)
-    from sklearn.preprocessing import LabelBinarizer
-    from sklearn.metrics import RocCurveDisplay
 
     # true_categories = [y[0] for x, y in dataset]
     # logging.info("Shape is %s", true_categories.shape)
@@ -1030,32 +1053,50 @@ def best_threshold(model, labels, dataset, filename):
         )
         track_pred[1].classified_frame(None, p, mass)
 
+    confidences = []
     y_pred = []
     for y, pred in pred_per_track.values():
         pred.normalize_score()
         y_pred.append(pred.class_best_score)
         flat_y.append(y)
+        y_pred.append(pred.best_label_index)
     flat_y = np.array(flat_y)
     y_pred = np.array(y_pred)
+
+    confidences = np.array(confidences)
     true_categories = np.array(flat_y)
-    label_binarizer = LabelBinarizer().fit(true_categories)
-    y_onehot_test = label_binarizer.transform(true_categories)
+    best_threshold(labels, true_categories, y_pred, confidences, filename)
+
+
+def best_threshold(labels, y_true, y_pred, confidences, filename):
+    from sklearn.metrics import precision_recall_curve, RocCurveDisplay
+
+    from sklearn.preprocessing import LabelBinarizer
+
+    print("Y_true is ", y_true.shape)
+    print("Y_pred is ", y_pred.shape)
+    print("Confidences ", confidences.shape)
+
+    label_binarizer = LabelBinarizer().fit(y_true)
+    y_onehot_test = label_binarizer.transform(y_true)
     thresholds_best = []
     for i, class_of_interest in enumerate(labels):
-        # class_of_interest = "virginica"
-        class_id = np.flatnonzero(label_binarizer.classes_ == i)
-        if len(class_id) == 0:
+        print("Class ", class_of_interest)
+        lbl_mask = y_true == i
+        if len(y_true[lbl_mask]) == 0:
             continue
-        class_id = class_id[0]
-        # if len(class_id) ==0:
-        #     continue
-        print("plt show for", class_of_interest)
-        # print("One hot test ", y_onehot_test[:, class_id])
-        # print("One hot test ", y_pred[:, class_id], 100 * y_pred[:, class_id])
+        binary_true = np.uint8(lbl_mask)
 
-        precision, recall, thresholds = precision_recall_curve(
-            y_onehot_test[:, class_id], y_pred[:, class_id]
-        )
+        if len(confidences.shape) == 1:
+            # just best lbl confidence
+            lbl_pred = confidences.copy()
+            lbl_pred[~lbl_mask] = 0
+        else:
+            lbl_pred = confidences[:, i]
+            print("CHooisng all of this labl", lbl_pred)
+        print("plt show for", class_of_interest)
+
+        precision, recall, thresholds = precision_recall_curve(binary_true, lbl_pred)
         fscore = (2 * precision * recall) / (precision + recall)
         ix = np.argmax(fscore)
 
@@ -1068,17 +1109,7 @@ def best_threshold(model, labels, dataset, filename):
             if th >= 0.8 and len(scatters) == 2:
                 scatters.append((t_i, th))
                 break
-        # fpr, tpr, thresholds = roc_curve(
-        #     y_onehot_test[:, class_id], y_pred[:, class_id]
-        # )
-        # RocCurveDisplay.from_predictions(
-        #     y_onehot_test[:, class_id],
-        #     y_pred[:, class_id],
-        #     name=f"{class_of_interest} vs the rest",
-        #     color="darkorange",
-        # )
-        testy = y_onehot_test[:, class_id]
-        no_skill = len(testy[testy == 1]) / len(testy)
+        no_skill = len(binary_true[lbl_mask]) / len(binary_true)
 
         plt.plot(recall, precision, marker=".", label="Logistic")
         plt.plot([0, 1], [no_skill, no_skill], linestyle="--", label="No Skill")
