@@ -429,7 +429,9 @@ class KerasModel(Interpreter):
 
     def load_model(self, model_file, training=False, weights=None):
         model_file = Path(model_file)
-        super().__init__(model_file)
+        super().__init__(model_file, self.run_over_network)
+        if self.run_over_network:
+            return
         logging.info("Loading %s with model weights %s", model_file, weights)
         if model_file.suffix == ".pb":
             self.model = tf.keras.models.load_model(model_file.parent)

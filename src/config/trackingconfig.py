@@ -41,7 +41,6 @@ class TrackingConfig(DefaultConfig):
     denoise = attr.ib()
 
     high_quality_optical_flow = attr.ib()
-    flow_threshold = attr.ib()
     max_tracks = attr.ib()
     track_overlap_ratio = attr.ib()
     min_duration_secs = attr.ib()
@@ -93,7 +92,6 @@ class TrackingConfig(DefaultConfig):
             track_smoothing=tracking["track_smoothing"],
             denoise=tracking["denoise"],
             high_quality_optical_flow=tracking["high_quality_optical_flow"],
-            flow_threshold=tracking["flow_threshold"],
             max_tracks=tracking["max_tracks"],
             moving_vel_thresh=tracking["filters"]["moving_vel_thresh"],
             track_overlap_ratio=tracking["filters"]["track_overlap_ratio"],
@@ -135,7 +133,6 @@ class TrackingConfig(DefaultConfig):
             track_smoothing=False,
             denoise=True,
             high_quality_optical_flow=False,
-            flow_threshold=40,
             max_tracks=None,
             filters={
                 "track_overlap_ratio": 0.5,
