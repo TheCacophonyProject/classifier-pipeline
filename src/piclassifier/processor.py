@@ -25,6 +25,7 @@ from .service import SnapshotService
 class Processor(ABC):
     def __init__(
         self,
+        thumbnail_dir,
     ):
         model_labels = {}
         if self.classifier is not None:
@@ -37,7 +38,8 @@ class Processor(ABC):
             self.headers,
             self.take_snapshot,
             model_labels,
-            self.get_thumbnail,
+            self.get_and_update_thumbnail,
+            thumbnail_dir,
         )
 
     @abstractmethod

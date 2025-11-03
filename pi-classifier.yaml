@@ -8,6 +8,7 @@ classify:
     name: pi-tflite
     thumbnail_model: true
     wallaby: false
+    run_over_network: true
     type: TFLite
   - id: 1004
     model_file: /home/pi/rf-fp-model/model.pkl

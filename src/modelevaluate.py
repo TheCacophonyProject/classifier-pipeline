@@ -316,13 +316,14 @@ def metadata_confusion(dir, confusion_file, after_date=None, model_metadata=None
             ai_tags = []
             for tag in tags:
                 if tag.get("automatic") is True:
-                    data = tag.get("data", {})
-                    if isinstance(data, str):
-                        if data == "Master":
+                    model = tag.get("model")
+                    if model is None:
+                        model = tag.get("data", {})
+                    if isinstance(model, str):
+                        if model == "Master":
                             ai_tags.append(tag["what"])
-                    elif data.get("name") == "Master":
+                    elif model.get("name") == "Master":
                         ai_tags.append(tag["what"])
-
             y_true.append(human_tag)
             if human_tag not in labels:
                 labels.append(human_tag)
@@ -332,11 +333,11 @@ def metadata_confusion(dir, confusion_file, after_date=None, model_metadata=None
                 y_pred.append(ai_tags[0])
                 if ai_tags[0] not in labels:
                     labels.append(ai_tags[0])
-
     cm = confusion_matrix(y_true, y_pred, labels=labels)
     # Log the confusion matrix as an image summary.
     figure = plot_confusion_matrix(cm, class_names=labels)
-    plt.savefig(confusion_file, format="png")
+    plt.savefig(confusion_file.with_suffix(".png"), format="png")
+    np.save(confusion_file.with_suffix(".npy"), cm)
     # cm = np.around(cm.astype("float") / cm.sum(axis=1)[:, np.newaxis], decimals=2)
     # cm = np.nan_to_num(cm)
     model_score(cm, labels)
@@ -468,7 +469,7 @@ def evaluate_dir(
                 #     smoothed = output
                 # else:
                 smoothed = output * masses
-                prediction.classified_clip(
+                prediction.classified_track(
                     output, smoothed, data[2], masses, top_score=top_score
                 )
                 y_true.append(label_mapping.get(label, label))
@@ -542,7 +543,10 @@ def main():
     base_dir = Path(config.base_folder) / "training-data"
     if args.evaluate_dir and args.confusion_from_meta:
         metadata_confusion(
-            Path(args.evaluate_dir), args.confusion, args.date, args.model_metadata
+            Path(args.evaluate_dir),
+            Path(args.confusion),
+            args.date,
+            args.model_metadata,
         )
     else:
 

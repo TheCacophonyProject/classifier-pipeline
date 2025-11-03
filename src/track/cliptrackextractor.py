@@ -114,13 +114,6 @@ class ClipTrackExtractor(ClipTracker):
             camera_model = header.model
         clip.set_model(camera_model)
 
-        # if we have the triggered motion threshold should use that
-        # maybe even override dynamic threshold with this value
-        if header.motion_config:
-            motion = yaml.safe_load(header.motion_config)
-            temp_thresh = motion.get("triggeredthresh")
-            if temp_thresh:
-                clip.temp_thresh = temp_thresh
         video_start_time = datetime.fromtimestamp(header.timestamp / 1000000)
         video_start_time = video_start_time.astimezone(Clip.local_tz)
 
@@ -139,7 +132,6 @@ class ClipTrackExtractor(ClipTracker):
             clip.res_x,
             clip.res_y,
             weight_add,
-            clip.temp_thresh,
         )
         self.background_alg.process_frame(frame.pix)
 
@@ -220,23 +212,23 @@ class ClipTrackExtractor(ClipTracker):
             _, mask, component_details, centroids = detect_objects(
                 obj_filtered, otsus=False, threshold=threshold, kernel=(5, 5)
             )
-        cur_frame = clip.add_frame(thermal, filtered, mask, ffc_affected)
+        _ = clip.add_frame(thermal, filtered, mask, ffc_affected)
         if not self.do_tracking:
             return
 
-        if clip.from_metadata:
-            for track in clip.tracks:
-                if clip.current_frame in track.frame_list:
-                    track.add_frame_for_existing_region(
-                        cur_frame,
-                        threshold,
-                        (
-                            clip.frame_buffer.prev_frame.filtered
-                            if clip.frame_buffer.prev_frame is not None
-                            else None
-                        ),
-                    )
-        else:
+        # if clip.from_metadata:
+        #     for track in clip.tracks:
+        #         if clip.current_frame in track.frame_list:
+        #             track.add_frame_for_existing_region(
+        #                 cur_frame,
+        #                 threshold,
+        #                 (
+        #                     clip.frame_buffer.prev_frame.filtered
+        #                     if clip.frame_buffer.prev_frame is not None
+        #                     else None
+        #                 ),
+        #             )
+        if not clip.from_metadata:
             regions = []
             if ffc_affected:
                 clip.active_tracks = set()

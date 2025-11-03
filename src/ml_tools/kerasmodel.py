@@ -43,10 +43,13 @@ class KerasModel(Interpreter):
     VERSION = 1
     TYPE = "Keras"
 
-    def __init__(self, train_config=None, labels=None, data_dir=None):
+    def __init__(
+        self, train_config=None, labels=None, data_dir=None, run_over_network=False
+    ):
         self.model = None
         self.datasets = None
         self.remapped = None
+        self.run_over_network = run_over_network
         # dictionary containing current hyper parameters
         self.params = HyperParams()
         self.data_type = None
@@ -82,7 +85,7 @@ class KerasModel(Interpreter):
         self.excluded_labels = meta.get("excluded_labels")
         self.remapped_labels = meta.get("remapped_labels")
         self.params.set_use_segments(
-            meta.get("config").get("build", {}).get("use_segments", True)
+            meta.get("config", {}).get("build", {}).get("use_segments", True)
         )
 
     def shape(self):
@@ -91,7 +94,13 @@ class KerasModel(Interpreter):
         inputs = self.model.inputs
         shape = []
         for input in inputs:
-            shape.append(tuple(input.shape.as_list()))
+            in_shape = input.shape
+            if isinstance(in_shape, tuple):
+                shape.append(in_shape)
+            else:
+                shape.append(tuple(in_shape.as_list()))
+        if len(shape) == 1:
+            return len(shape), shape[0]
         return len(shape), shape
 
     def get_base_model(self, input, weights="imagenet"):
@@ -820,11 +829,13 @@ class KerasModel(Interpreter):
         track_prediction = TrackPrediction(track.get_id(), self.labels)
 
         output = self.model.predict(data)
-        track_prediction.classified_clip(output, output, np.array(frames_used))
+        track_prediction.classified_track(output, np.array(frames_used))
         track_prediction.normalize_score()
         return track_prediction
 
     def predict(self, frames):
+        if self.run_over_network:
+            return self.predict_over_network(frames)
         return self.model.predict(frames)
 
     def confusion_tracks(self, dataset, filename, threshold=0.8):

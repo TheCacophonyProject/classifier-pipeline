@@ -1,8 +1,7 @@
 import logging
 import numpy as np
 from pathlib import Path
-import joblib
-
+import pickle
 from ml_tools.interpreter import Interpreter
 from classify.trackprediction import TrackPrediction
 import cv2
@@ -118,7 +117,8 @@ class ForestModel(Interpreter):
     def __init__(self, model_file, data_type=None):
         super().__init__(model_file)
         model_file = Path(model_file)
-        self.model = joblib.load(model_file)
+        with model_file.open("rb") as f:
+            self.model = pickle.load(f)
         self.buffer_length = self.params.get("buffer_length", 1)
         self.features_used = self.params.get("features_used")
         self.features = self.params.get("features")
@@ -129,14 +129,16 @@ class ForestModel(Interpreter):
         self, clip, track, last_x_frames=None, segment_frames=None, min_segments=None
     ):
 
-        track_prediction = TrackPrediction(track.get_id(), self.labels)
+        track_prediction = TrackPrediction(
+            track.get_id(), self.labels, smooth_preds=self.params.smooth_predictions
+        )
         result = self.predict_track(
             clip, track, last_x_frames=last_x_frames, normalize=True
         )
         if result is None:
             return None
         frames, predictions, masses = result
-        track_prediction.classified_clip(predictions, predictions, frames, masses)
+        track_prediction.classified_track(predictions, frames, masses)
         return track_prediction
 
     def shape(self):

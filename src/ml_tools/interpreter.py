@@ -6,11 +6,14 @@ import numpy as np
 from ml_tools.hyperparams import HyperParams
 from pathlib import Path
 from classify.trackprediction import TrackPrediction
+import requests
 
 
 class Interpreter(ABC):
-    def __init__(self, model_file):
+    def __init__(self, model_file, run_over_network=False):
         self.load_json(model_file)
+        self.run_over_network = run_over_network
+        self.port = 8123
         self.id = None
 
     def load_json(self, filename):
@@ -39,13 +42,24 @@ class Interpreter(ABC):
         """predict"""
         ...
 
+    def predict_over_network(self, data):
+        headers = {"content-type": "application/octet-stream"}
+        response = requests.post(
+            f"http://127.0.0.1:{self.port}/predict",
+            data=data.tostring(),
+            headers=headers,
+        )
+        predictions = np.frombuffer(response.content, dtype=np.float32)
+        predictions = predictions.reshape(len(data), -1)
+        return predictions
+
     def get_preprocess_fn(self):
         model_name = self.params.model_name
         if model_name == "inceptionv3":
             # no need to use tf module, if train other model types may have to add
             #  preprocess definitions
             return inc3_preprocess
-        elif model_name == "wr-resnet":
+        elif model_name in ["wr-resnet", "efficientnetv2b3"]:
             return None
         else:
             import tensorflow as tf
@@ -77,61 +91,33 @@ class Interpreter(ABC):
         logging.warn("pretrained model %s has no preprocessing function", model_name)
         return None
 
-    def preprocess(self, clip, track, **args):
-        scale = args.get("scale", None)
-        num_predictions = args.get("num_predictions", None)
-        predict_from_last = args.get("predict_from_last", None)
-        segment_frames = args.get("segment_frames")
+    # use when predictin as tracks are being tracked i.e not finished yet
+    def predict_recent_frames(self, clip, track, **args):
+        samples = self.frames_for_prediction(clip, track, **args)
+        frames, preprocessed, mass = self.preprocess(clip, track, samples, **args)
+        if preprocessed is None or len(preprocessed) == 0:
+            return None
+        prediction = self.predict(preprocessed)
+        return prediction, frames, mass
+
+    def preprocess(self, clip, track, samples, **args):
         frames_per_classify = args.get("frames_per_classify", 25)
-        available_frames = (
-            min(len(track.bounds_history), clip.frames_kept())
-            if clip.frames_kept() is not None
-            else len(track.bounds_history)
-        )
-        if predict_from_last is not None:
-            predict_from_last = min(predict_from_last, available_frames)
+
         # this might be a little slower as it checks some massess etc
         # but keeps it the same for all ways of classifying
         if frames_per_classify > 1:
-            if predict_from_last is not None and segment_frames is None:
-                logging.debug(
-                    "Prediction from last available frames %s track is of length %s",
-                    available_frames,
-                    len(track.bounds_history),
-                )
-                regions = track.bounds_history[-available_frames:]
-                valid_regions = 0
-                if available_frames > predict_from_last:
-                    # want to get rid of any blank frames
-                    predict_from_last = 0
-                    for i, r in enumerate(
-                        reversed(track.bounds_history[-available_frames:])
-                    ):
-                        if r.blank:
-                            continue
-                        valid_regions += 1
-                        predict_from_last = i + 1
-                        if valid_regions >= predict_from_last:
-                            break
-                logging.debug(
-                    "After checking blanks have predict from last %s from last available frames %s track is of length %s",
-                    predict_from_last,
-                    available_frames,
-                    len(track.bounds_history),
-                )
-
             frames, preprocessed, masses = self.preprocess_segments(
                 clip,
                 track,
-                num_predictions,
-                predict_from_last,
-                segment_frames=segment_frames,
-                dont_filter=args.get("dont_filter", False),
-                min_segments=args.get("min_segments"),
+                samples,
+                predict_from_last=args.get(
+                    "predict_from_last"
+                ),  # only used fo mvm model, needs to be changed to use samples
             )
         else:
             frames, preprocessed, masses = self.preprocess_frames(
-                clip, track, num_predictions, segment_frames=segment_frames
+                clip,
+                track,
             )
         return frames, preprocessed, masses
 
@@ -147,22 +133,22 @@ class Interpreter(ABC):
         if output is None:
             logging.info("Skipping track %s", track.get_id())
             return None
-        track_prediction = TrackPrediction(track.get_id(), self.labels)
-        # self.model.predict(preprocessed)
-        top_score = None
-        smoothed_predictions = None
+        track_pred = self.track_prediction_from_raw(
+            track.get_id(), prediction_frames, output, masses
+        )
+        track_pred.classify_time = time.time() - start
 
-        if self.params.smooth_predictions:
-            masses = np.array(masses)
-            top_score = np.sum(masses)
-            masses = masses[:, None]
-            smoothed_predictions = output * masses
-        track_prediction.classified_clip(
+        return track_pred
+
+    def track_prediction_from_raw(self, track_id, prediction_frames, output, masses):
+        track_prediction = TrackPrediction(
+            track_id, self.labels, smooth_preds=self.params.smooth_predictions
+        )
+
+        track_prediction.classified_track(
             output,
-            smoothed_predictions,
             prediction_frames,
             masses,
-            top_score=top_score,
         )
         if (
             len(prediction_frames) == 1
@@ -171,22 +157,98 @@ class Interpreter(ABC):
             # if we don't have many frames to get a good prediction, lets assume only false-positive is a good prediction and filter the rest to a maximum of 0.5
             if track_prediction.predicted_tag() != "false-positive":
                 track_prediction.cap_confidences(0.5)
-        track_prediction.classify_time = time.time() - start
         return track_prediction
 
     def predict_track(self, clip, track, **args):
-        frames, preprocessed, masses = self.preprocess(clip, track, **args)
+        samples = self.frames_for_prediction(clip, track, **args)
+        frames, preprocessed, masses = self.preprocess(clip, track, samples, **args)
         if preprocessed is None or len(preprocessed) == 0:
             return None, None, None
         pred = self.predict(preprocessed)
         return frames, pred, masses
 
+    def frames_for_prediction(self, clip, track, **args):
+        frames_per_classify = args.get("frames_per_classify", 25)
+        max_predictions = args.get("num_predictions")
+        if frames_per_classify > 1:
+            predict_from_last = args.get("predict_from_last", None)
+            segment_frames = args.get("segment_frames", None)
+            dont_filter = args.get("dont_filter", False)
+
+            # this might be a little slower as it checks some massess etc
+            # but keeps it the same for all ways of classifying
+            if predict_from_last is not None and segment_frames is None:
+                available_frames = (
+                    min(len(track.bounds_history), clip.frames_kept())
+                    if clip.frames_kept() is not None
+                    else len(track.bounds_history)
+                )
+                predict_from_last = min(predict_from_last, available_frames)
+
+                logging.debug(
+                    "Prediction from last available frames %s track is of length %s",
+                    available_frames,
+                    len(track.bounds_history),
+                )
+                valid_regions = 0
+                if available_frames > predict_from_last:
+                    # want to get rid of any blank frames
+
+                    target_frames = predict_from_last
+                    predict_from_last = 0
+                    for i, r in enumerate(
+                        reversed(track.bounds_history[-available_frames:])
+                    ):
+                        logging.info(
+                            "Checking regoins in reverse %s", predict_from_last
+                        )
+                        if r.blank:
+                            continue
+                        valid_regions += 1
+                        predict_from_last = i + 1
+                        if valid_regions >= target_frames:
+                            logging.info(
+                                "Valid regions %s bigger than predict from last %s",
+                                valid_regions,
+                                predict_from_last,
+                            )
+                            break
+                logging.debug(
+                    "After checking blanks have predict from last %s from last available frames %s track is of length %s",
+                    predict_from_last,
+                    available_frames,
+                    len(track.bounds_history),
+                )
+            segments = track.get_segments(
+                self.params.square_width**2,
+                ffc_frames=[] if dont_filter else clip.ffc_frames,
+                repeats=1,
+                segment_frames=segment_frames,
+                segment_types=self.params.segment_types,
+                from_last=predict_from_last,
+                max_segments=max_predictions,
+                dont_filter=dont_filter,
+                filter_by_fp=False,
+                min_segments=args.get("min_segments"),
+            )
+            return segments
+        else:
+            max_frames = max_predictions
+            frames = [
+                region
+                for region in track.bounds_history
+                if not region.blank and region.width > 0 and region.height > 0
+            ]
+            if max_frames is not None and len(frames) >= max_frames:
+                frames = frames[-max_frames:]
+            return frames
+        # to do should really return some kind of common class
+
     def preprocess_frames(
         self,
         clip,
         track,
-        max_frames=None,
-        segment_frames=None,
+        samples,
     ):
         from ml_tools.preprocess import preprocess_single_frame, preprocess_frame
 
@@ -195,62 +257,9 @@ class Interpreter(ABC):
         filtered_norm_limits = None
         thermal_norm_limits = None
         if self.params.diff_norm or self.params.thermal_diff_norm:
-            min_diff = None
-            max_diff = 0
-            thermal_max_diff = None
-            thermal_min_diff = None
-            for i, region in enumerate(reversed(track.bounds_history)):
-                if region.blank:
-                    continue
-                if region.width == 0 or region.height == 0:
-                    logging.warn(
-                        "No width or height for frame %s regoin %s",
-                        region.frame_number,
-                        region,
-                    )
-                    continue
-                f = clip.get_frame(region.frame_number)
-                if region.blank or region.width <= 0 or region.height <= 0:
-                    continue
+            thermal_norm_limits, filtered_norm_limits = self.get_limits(clip, track)
 
-                f.float_arrays()
-
-                if self.params.thermal_diff_norm:
-                    diff_frame = f.thermal - np.median(f.thermal)
-                    new_max = np.amax(diff_frame)
-                    new_min = np.amin(diff_frame)
-                    if thermal_min_diff is None or new_min < thermal_min_diff:
-                        thermal_min_diff = new_min
-                    if thermal_max_diff is None or new_max > thermal_max_diff:
-                        thermal_max_diff = new_max
-                if self.params.diff_norm:
-                    diff_frame = region.subimage(f.filtered)
-                    # region.subimage(f.thermal) - region.subimage(
-                    # clip.background
-                    # )
-
-                    new_max = np.amax(diff_frame)
-                    new_min = np.amin(diff_frame)
-                    if min_diff is None or new_min < min_diff:
-                        min_diff = new_min
-                    if new_max > max_diff:
-                        max_diff = new_max
-            if self.params.thermal_diff_norm:
-                thermal_norm_limits = (thermal_min_diff, thermal_max_diff)
-
-            if self.params.diff_norm:
-                filtered_norm_limits = (min_diff, max_diff)
-
-        for i, region in enumerate(reversed(track.bounds_history)):
-            if region.blank:
-                continue
-            if region.width == 0 or region.height == 0:
-                logging.warn(
-                    "No width or height for frame %s regoin %s",
-                    region.frame_number,
-                    region,
-                )
-                continue
+        for region in samples:
             frame = clip.get_frame(region.frame_number)
             if frame is None:
                 logging.error(
@@ -291,92 +300,79 @@ class Interpreter(ABC):
 
             frames_used.append(region.frame_number)
             data.append(preprocessed)
-            if max_frames is not None and len(data) >= max_frames:
-                break
+
         return frames_used, np.array(data), [region.mass]
 
-    def preprocess_segments(
-        self,
-        clip,
-        track,
-        max_segments=None,
-        predict_from_last=None,
-        segment_frames=None,
-        dont_filter=False,
-        min_segments=None,
-    ):
+    def get_limits(self, clip, track):
+        min_diff = None
+        max_diff = 0
+        thermal_max_diff = None
+        thermal_min_diff = None
+        thermal_norm_limits = None
+        filtered_norm_limits = None
+        for i, region in enumerate(reversed(track.bounds_history)):
+            if region.blank:
+                continue
+            if region.width == 0 or region.height == 0:
+                logging.warn(
+                    "No width or height for frame %s regoin %s",
+                    region.frame_number,
+                    region,
+                )
+                continue
+            f = clip.get_frame(region.frame_number)
+            if region.blank or region.width <= 0 or region.height <= 0 or f is None:
+                continue
+
+            f.float_arrays()
+
+            if self.params.thermal_diff_norm:
+                diff_frame = f.thermal - np.median(f.thermal)
+                new_max = np.amax(diff_frame)
+                new_min = np.amin(diff_frame)
+                if thermal_min_diff is None or new_min < thermal_min_diff:
+                    thermal_min_diff = new_min
+                if thermal_max_diff is None or new_max > thermal_max_diff:
+                    thermal_max_diff = new_max
+            if self.params.diff_norm:
+                diff_frame = region.subimage(f.filtered)
+                # - region.subimage(
+                #     clip.background
+                # )
+                new_max = np.amax(diff_frame)
+                new_min = np.amin(diff_frame)
+                if min_diff is None or new_min < min_diff:
+                    min_diff = new_min
+                if new_max > max_diff:
+                    max_diff = new_max
+        if self.params.thermal_diff_norm:
+            thermal_norm_limits = (thermal_min_diff, thermal_max_diff)
+
+        if self.params.diff_norm:
+            filtered_norm_limits = (min_diff, max_diff)
+        return thermal_norm_limits, filtered_norm_limits
+
+    def preprocess_segments(self, clip, track, segments, predict_from_last=None):
         from ml_tools.preprocess import preprocess_frame, preprocess_movement
 
         track_data = {}
-        segments = track.get_segments(
-            self.params.square_width**2,
-            ffc_frames=[] if dont_filter else clip.ffc_frames,
-            repeats=1,
-            segment_frames=segment_frames,
-            segment_types=self.params.segment_types,
-            from_last=predict_from_last,
-            max_segments=max_segments,
-            dont_filter=dont_filter,
-            filter_by_fp=False,
-            min_segments=min_segments,
-        )
-        frame_indices = set()
+        unique_regions = {}
         for segment in segments:
-            frame_indices.update(set(segment.frame_indices))
-        frame_indices = list(frame_indices)
-        frame_indices.sort()
+            for region in segment.regions:
+                if region.frame_number not in unique_regions:
+                    unique_regions[region.frame_number] = region
 
         # should really be over whole track buts let just do the indices we predict of
         #  seems to make little different to just doing a min max normalization
+
         thermal_norm_limits = None
         filtered_norm_limits = None
         if self.params.diff_norm or self.params.thermal_diff_norm:
-            min_diff = None
-            max_diff = 0
-            thermal_max_diff = None
-            thermal_min_diff = None
-            for i, region in enumerate(reversed(track.bounds_history)):
-                if region.blank:
-                    continue
-                if region.width == 0 or region.height == 0:
-                    logging.warn(
-                        "No width or height for frame %s regoin %s",
-                        region.frame_number,
-                        region,
-                    )
-                    continue
-                f = clip.get_frame(region.frame_number)
-                if region.blank or region.width <= 0 or region.height <= 0 or f is None:
-                    continue
+            thermal_norm_limits, filtered_norm_limits = self.get_limits(clip, track)
 
-                f.float_arrays()
-
-                if self.params.thermal_diff_norm:
-                    diff_frame = f.thermal - np.median(f.thermal)
-                    new_max = np.amax(diff_frame)
-                    new_min = np.amin(diff_frame)
-                    if thermal_min_diff is None or new_min < thermal_min_diff:
-                        thermal_min_diff = new_min
-                    if thermal_max_diff is None or new_max > thermal_max_diff:
-                        thermal_max_diff = new_max
-                if self.params.diff_norm:
-                    diff_frame = region.subimage(f.filtered)
-                    # - region.subimage(
-                    #     clip.background
-                    # )
-                    new_max = np.amax(diff_frame)
-                    new_min = np.amin(diff_frame)
-                    if min_diff is None or new_min < min_diff:
-                        min_diff = new_min
-                    if new_max > max_diff:
-                        max_diff = new_max
-            if self.params.thermal_diff_norm:
-                thermal_norm_limits = (thermal_min_diff, thermal_max_diff)
-
-            if self.params.diff_norm:
-                filtered_norm_limits = (min_diff, max_diff)
-        for frame_index in frame_indices:
-            region = track.bounds_history[frame_index - track.start_frame]
+        for region in unique_regions.values():
+            # for frame_index in frame_indices:
+            # region = track.bounds_history[frame_index - track.start_frame]
 
             frame = clip.get_frame(region.frame_number)
             # filtered is calculated slightly different for tracking, set to null so preprocess can recalc it
@@ -483,25 +479,33 @@ class NeuralInterpreter(Interpreter):
 class LiteInterpreter(Interpreter):
     TYPE = "TFLite"
 
-    def __init__(self, model_name):
-        super().__init__(model_name)
+    def __init__(self, model_name, run_over_network=False):
+        super().__init__(model_name, run_over_network)
 
-        import tflite_runtime.interpreter as tflite
+        if run_over_network:
+            return
+        from ai_edge_litert.interpreter import Interpreter
+
+        # import tflite_runtime.interpreter as tflite
 
         model_name = Path(model_name)
         model_name = model_name.with_suffix(".tflite")
-        self.interpreter = tflite.Interpreter(str(model_name))
+        self.interpreter = Interpreter(str(model_name))
 
         self.interpreter.allocate_tensors()  # Needed before execution!
 
         self.output = self.interpreter.get_output_details()[
             0
         ]  # Model has single output.
+
         self.input = self.interpreter.get_input_details()[0]  # Model has single input.
         self.preprocess_fn = self.get_preprocess_fn()
         # inc3_preprocess
+        print(self.input)
 
     def predict(self, input_x):
+        if self.run_over_network:
+            return self.predict_over_network(np.float32(input_x))
         input_x = np.float32(input_x)
         preds = []
         # only works on input of 1
@@ -509,8 +513,8 @@ class LiteInterpreter(Interpreter):
             self.interpreter.set_tensor(self.input["index"], data[np.newaxis, :])
             self.interpreter.invoke()
             pred = self.interpreter.get_tensor(self.output["index"])
-            preds.append(pred)
-        return pred
+            preds.append(pred[0])
+        return preds
 
     def shape(self):
         return 1, self.input["shape"]
@@ -522,19 +526,20 @@ def inc3_preprocess(x):
     return x
 
 
-def get_interpreter(model):
+def get_interpreter(model, run_over_network=False):
     # model_name, type = os.path.splitext(model.model_file)
 
     logging.info(
-        "Loading %s of type %s",
+        "Loading %s of type %s over network: %s",
         model.model_file,
         model.type,
+        model.run_over_network,
     )
 
     if model.type == LiteInterpreter.TYPE:
-        classifier = LiteInterpreter(model.model_file)
+        classifier = LiteInterpreter(model.model_file, run_over_network)
     elif model.type == NeuralInterpreter.TYPE:
-        classifier = NeuralInterpreter(model.model_file)
+        classifier = NeuralInterpreter(model.model_file, run_over_network)
     elif model.type == "RandomForest":
         from ml_tools.forestmodel import ForestModel
 
@@ -542,7 +547,9 @@ def get_interpreter(model):
     else:
         from ml_tools.kerasmodel import KerasModel
 
-        classifier = KerasModel()
-        classifier.load_model(model.model_file, weights=model.model_weights)
+        classifier = KerasModel(run_over_network=run_over_network)
+        if not run_over_network:
+            classifier.load_model(model.model_file, weights=model.model_weights)
     classifier.id = model.id
+    classifier.port = model.port
     return classifier
