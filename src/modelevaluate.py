@@ -851,18 +851,25 @@ def main():
         weights = model_file / args.weights
     base_dir = Path(config.base_folder) / "training-data"
     # shredhold from res
-    threshold_from_res = False
+    threshold_from_res = True
     # add command line params
     if threshold_from_res:
-        test_f = Path("./threshold-test/fscoreTest-raw.npy")
+        model = ModelMeta(model_file)
+
+        test_f = Path(
+            "/home/gp/cacophony/classifier-data/thermal-training28082025/confusions/effnetv2b3-reBack/threshold-prod-confusions/reBacl-thresholdv2-raw.npy"
+        )
         with test_f.open("rb") as f:
             y_true_i = np.load(f)
             raw_preds_i = np.load(f)
             confidences = np.load(f)
-        best_threshold(
+        confusion_for_thresholds(
             model.labels, y_true_i, raw_preds_i, confidences, Path(args.confusion)
         )
-        # return
+        # best_threshold(
+        #     model.labels, y_true_i, raw_preds_i, confidences, Path(args.confusion)
+        # )
+        return
 
     if args.evaluate_dir and args.confusion_from_meta:
         metadata_confusion(
@@ -1101,6 +1108,62 @@ def best_threshold_for_ds(model, labels, dataset, filename):
     best_threshold(labels, true_categories, y_pred, confidences, filename)
 
 
+def confusion_for_thresholds(model_labels, y_true, y_pred, confidences, filename):
+    from ml_tools.kerasmodel import plot_confusion_matrix
+
+    thresholds_per_label = [
+        0.368553,
+        0.5519001,
+        0.23438373,
+        0.8941028,
+        0.6526757,
+        0.76336944,
+        0.5997098,
+        0.5744436,
+        0.80526495,
+        0.993748,
+        0.6751729,
+        0.714326,
+        0.39252216,
+        0.61344594,
+        0.687882,
+        0.9993953,
+    ]
+
+    max_conf = []
+    if len(confidences.shape) > 1:
+        # multi class confidence
+        max_conf = np.max(confidences, axis=1)
+        assert len(max_conf) == len(y_pred)
+    else:
+        max_conf = confidences
+    thresholds_per_label = np.array(thresholds_per_label)
+    thresholds_per_label[thresholds_per_label < 0.5] = 0.5
+
+    thresholds_per_label[thresholds_per_label > 0.9] = 0.9
+    thresholds_per_label = np.round(thresholds_per_label, 3)
+    # thresholds_per_label[:]=0.5
+    print(thresholds_per_label)
+    labels = model_labels.copy()
+    preds = y_pred.copy()
+    if "None" not in labels:
+        labels.append("None")
+    none_index = labels.index("None")
+    for i, threshold in enumerate(thresholds_per_label):
+        pred_mask = preds == i
+        conf_mask = max_conf < threshold
+        preds[pred_mask & conf_mask] = none_index
+
+    print("Y true is", y_true, preds)
+    cm = confusion_matrix(y_true, preds, labels=np.arange(len(labels)))
+
+    # Log the confusion matrix as an image summary.
+    figure = plot_confusion_matrix(cm, class_names=labels)
+    smoothing_file = filename.parent / f"{filename.stem}-fscorev3"
+    plt.savefig(smoothing_file.with_suffix(".png"), format="png")
+    np.save(smoothing_file.with_suffix(".npy"), cm)
+
+
 def best_threshold(labels, y_true, y_pred, confidences, filename):
     from sklearn.metrics import precision_recall_curve, RocCurveDisplay
 
@@ -1117,6 +1180,7 @@ def best_threshold(labels, y_true, y_pred, confidences, filename):
         print("Class ", class_of_interest)
         lbl_mask = y_true == i
         if len(y_true[lbl_mask]) == 0:
+            thresholds_best.append(0)
             continue
         binary_true = np.uint8(lbl_mask)
 
@@ -1126,7 +1190,7 @@ def best_threshold(labels, y_true, y_pred, confidences, filename):
             lbl_pred[~lbl_mask] = 0
         else:
             lbl_pred = confidences[:, i]
-            print("CHooisng all of this labl", lbl_pred)
+            # print("CHooisng all of this labl", lbl_pred)
         print("plt show for", class_of_interest)
 
         precision, recall, thresholds = precision_recall_curve(binary_true, lbl_pred)
