@@ -470,7 +470,7 @@ class TrackPrediction:
             threshold = DEFAULT_THRESHOLD
 
         prediction_meta["threshold_used"] = threshold
-        if confidence > threshold:
+        if confidence >= threshold:
             prediction_meta["confident_tag"] = self.predicted_tag()
         else:
             # check api can handle None
