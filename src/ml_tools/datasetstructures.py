@@ -32,6 +32,7 @@ class SegmentType(Enum):
     TOP_RANDOM = 6
     ALL_RANDOM_NOMIN = 7
     ALL_RANDOM_MASKED = 8
+    ELONGATION = 9
 
 
 class BaseSample(ABC):
@@ -888,7 +889,7 @@ class SegmentHeader(Sample):
         return self.id
 
     def get_data(self, db):
-        crop_rectangle = tools.Rectangle(2, 2, 160 - 2 * 2, 140 - 2 * 2)
+        crop_rectangle = tools.Rectangle(2, 2, 160 - 2 * 2, 120 - 2 * 2)
 
         try:
             background = db.get_clip_background(self.clip_id)
@@ -993,6 +994,7 @@ def get_segments(
     repeat_frame_indices=True,
     min_segments=None,
 ):
+    segment_types = [SegmentType.ELONGATION]
     if min_frames is None:
         min_frames = segment_width / 4.0
     segments = []
@@ -1035,7 +1037,56 @@ def get_segments(
         else:
             s_min_mass = 1
             # remove blank frames
+        frame_indices = np.array(frame_indices)
 
+        if segment_type == SegmentType.ELONGATION:
+            crop_rectangle = tools.Rectangle(2, 2, 160 - 2 * 2, 120 - 2 * 2)
+
+            for r in regions:
+                r.set_is_along_border(crop_rectangle)
+            relative_frames = frame_indices - start_frame
+            e_regions = regions[relative_frames]
+            for r, f in zip(e_regions, frame_indices):
+                assert r.frame_number == f
+            elong_sorted = sorted(e_regions, key=lambda r: r.elongation, reverse=True)
+            elong_regions = elong_sorted[:25]
+            frames = [r.frame_number for r in elong_regions]
+            print([r.elongation for r in elong_regions])
+            remaining = segment_width - len(frames)
+            # sample another same frames again if need be
+            if remaining > 0:
+                extra_frames = np.random.choice(
+                    frames,
+                    min(remaining, len(frames)),
+                    replace=False,
+                )
+                frames = np.concatenate([frames, extra_frames])
+            frames.sort()
+            frames = np.array(frames)
+            relative_frames = frames - start_frame
+            mass_slice = mass_history[relative_frames]
+            segment_mass = np.sum(mass_slice)
+            segment_avg_mass = segment_mass / len(mass_slice)
+            segment = SegmentHeader(
+                clip_id,
+                track_id,
+                start_frame=start_frame,
+                frames=segment_width,
+                weight=1,
+                mass=segment_mass,
+                label=label,
+                regions=elong_regions,
+                frame_indices=frames,
+                movement_data=None,
+                camera=camera,
+                location=location,
+                station_id=station_id,
+                rec_time=rec_time,
+                source_file=source_file,
+                filtered=False,
+            )
+            segments.append(segment)
+            continue
         if segment_type == SegmentType.TOP_RANDOM:
             # take top 50 mass frames
             frame_indices = sorted(
@@ -1045,7 +1096,7 @@ def get_segments(
             )
             frame_indices = frame_indices[:50]
             frame_indices.sort()
-        if segment_type == SegmentType.TOP_SEQUENTIAL:
+        if segment_type in [SegmentType.TOP_SEQUENTIAL]:
             new_segments, filtered = get_top_mass_segments(
                 clip_id,
                 track_id,
@@ -1069,8 +1120,6 @@ def get_segments(
         ):
             filtered_stats["too short"] += 1
             continue
-
-        frame_indices = np.array(frame_indices)
 
         # gp seems much to high 18/09/2025
         segment_count = max(1, len(frame_indices) // segment_frame_spacing)
