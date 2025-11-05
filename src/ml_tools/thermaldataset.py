@@ -172,7 +172,6 @@ rotation_augmentation = tf.keras.Sequential(
 )
 data_augmentation = tf.keras.Sequential(
     [
-        tf.keras.layers.RandomFlip("horizontal"),
         tf.keras.layers.RandomBrightness(0.2),  # better per frame or per sequence??
         tf.keras.layers.RandomContrast(0.5),
     ]
@@ -250,6 +249,12 @@ def read_tfrecord(
         if augment:
             logging.info("Augmenting")
             rgb_image = rotation_augmentation(rgb_image)
+            random_value = tf.random.uniform(
+                shape=[], minval=0.0, maxval=1.0, dtype=tf.float32
+            )
+            if tf.greater(random_value, 0.5):
+                rgb_image = tf.image.flip_left_right(rgb_image)
+
         rgb_image = tf.ensure_shape(rgb_image, (num_frames, 32, 32, len(channels)))
         if num_frames > 1:
             rgb_image = tile_images(rgb_image)
