@@ -412,7 +412,7 @@ class ClipClassifier:
         start = time.time()
         model = self.config.classify.models[0]
         classifier = self.get_classifier(model)
-        predictions = Predictions(classifier.labels, model)
+        predictions = Predictions(classifier.labels, model, classifier.thresholds)
         predictions.model_load_time = time.time() - start
 
         track_samples = {}
