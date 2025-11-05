@@ -994,7 +994,6 @@ def get_segments(
     repeat_frame_indices=True,
     min_segments=None,
 ):
-    segment_types = [SegmentType.ELONGATION]
     if min_frames is None:
         min_frames = segment_width / 4.0
     segments = []
@@ -1041,17 +1040,38 @@ def get_segments(
 
         if segment_type == SegmentType.ELONGATION:
             crop_rectangle = tools.Rectangle(2, 2, 160 - 2 * 2, 120 - 2 * 2)
+            border_regions = []
+            non_border_regions = []
 
-            for r in regions:
-                r.set_is_along_border(crop_rectangle)
             relative_frames = frame_indices - start_frame
             e_regions = regions[relative_frames]
+            for r in e_regions:
+                r.set_is_along_border(crop_rectangle)
+
+                if r.is_along_border:
+                    border_regions.append(r)
+                else:
+                    non_border_regions.append(r)
+
             for r, f in zip(e_regions, frame_indices):
                 assert r.frame_number == f
-            elong_sorted = sorted(e_regions, key=lambda r: r.elongation, reverse=True)
+
+            elong_sorted = sorted(
+                non_border_regions, key=lambda r: r.elongation, reverse=True
+            )
             elong_regions = elong_sorted[:25]
+
+            if len(non_border_regions) < 4:
+                # want to sort these by area
+                border_sorted = sorted(
+                    border_regions, key=lambda r: r.area, reverse=True
+                )
+                remaining = segment_width // 2 - len(elong_regions)
+                if remaining > 0:
+                    # print("ADding ",remaining, " from border regions as only have ", len(non_border_regions), " non border vs ", len(border_regions),clip_id,track_id)
+                    elong_regions.extend(border_sorted[:remaining])
+
             frames = [r.frame_number for r in elong_regions]
-            print([r.elongation for r in elong_regions])
             remaining = segment_width - len(frames)
             # sample another same frames again if need be
             if remaining > 0:

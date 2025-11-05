@@ -50,6 +50,7 @@ from ml_tools.frame import TrackChannels
 from ml_tools.trackdatabase import TrackDatabase
 from ml_tools.rawdb import RawDatabase
 from ml_tools.rectangle import Rectangle
+from ml_tools.datasetstructures import SegmentType
 
 crop_rectangle = Rectangle(0, 0, 640, 480)
 from functools import lru_cache
@@ -222,12 +223,25 @@ def get_data(clip_samples, extra_args):
                     continue
                 # GP All assumes we dont have a track over multiple bins (Whcih we probably never want)
                 if extra_args.get("use_segments", True):
+                    mustelid_track = track.label in [
+                        "mustelid",
+                        "weasel",
+                        "ferret",
+                        "stoat",
+                    ]
+                    segment_types = (
+                        [SegmentType.ELONGATION]
+                        if mustelid_track
+                        else extra_args.get("segment_types")
+                    )
+                    # if mustelid_track:
+                    # print("Mustleid track ", track.label, clip_id, track_id)
                     track.get_segments(
                         segment_width=extra_args.get("segment_width", 25),
                         segment_frame_spacing=extra_args.get(
                             "segment_frame_spacing", 9
                         ),
-                        segment_types=extra_args.get("segment_types"),
+                        segment_types=segment_types,
                         segment_min_mass=extra_args.get("segment_min_avg_mass"),
                         dont_filter=extra_args.get("dont_filter_segment", False),
                         skip_ffc=extra_args.get("skip_ffc", True),
