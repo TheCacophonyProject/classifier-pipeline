@@ -207,14 +207,13 @@ def get_data(clip_samples, extra_args):
 
         for track_id in samples_by_track.keys():
             samples = samples_by_track[track_id]
-
+            thermal_min = 0
             by_frame_number = {}
             thermal_max_diff = None
             thermal_min_diff = None
             max_diff = None
             min_diff = None
             thermal_diff_norm = extra_args.get("thermal_diff_norm", False)
-
             if clip_samples[0].source_file.suffix != ".hdf5":
                 track = next(
                     (track for track in clip_meta.tracks if track.track_id == track_id),
@@ -307,6 +306,13 @@ def get_data(clip_samples, extra_args):
                         if thermal_max_diff is None or new_max > thermal_max_diff:
                             thermal_max_diff = new_max
 
+                    if thermal_min == 0:
+                        # check that we have nice values other wise allow negatives when normalizing
+                        sub_thermal = region.subimage(f.thermal)
+                        sub_thermal = np.float32(sub_thermal) - median_temp
+                        if np.median(sub_thermal) <= 0:
+                            thermal_min = None
+
                     enlarged_region = region.copy()
                     enlarged_region.enlarge_for_rotation(crop_rectangle)
                     cropped = f.crop_by_region(enlarged_region)
@@ -371,12 +377,12 @@ def get_data(clip_samples, extra_args):
                             raise Exception(
                                 f"Strange values for {clip_id} - {track_id} #{frame_number}"
                             )
-
                         frame.thermal -= temp_median
-                        if not thermal_diff_norm:
+                        if not thermal_diff_norm and thermal_min == 0:
                             np.clip(
                                 frame.thermal, a_min=0, a_max=None, out=frame.thermal
                             )
+
                         frame.thermal, stats = imageprocessing.normalize(
                             frame.thermal,
                             min=thermal_min_diff,
@@ -389,6 +395,7 @@ def get_data(clip_samples, extra_args):
                         frame.filtered, stats = imageprocessing.normalize(
                             frame.filtered, min=min_diff, max=max_diff, new_max=255
                         )
+
                         np.clip(frame.filtered, a_min=0, a_max=255, out=frame.filtered)
 
                         if not stats[0]:

@@ -256,10 +256,11 @@ def read_tfrecord(
             )
             if tf.greater(random_value, 0.5):
                 rgb_image = tf.image.flip_left_right(rgb_image)
-
         rgb_image = tf.ensure_shape(
             rgb_image, (num_frames, IMG_SIZE, IMG_SIZE, len(channels))
         )
+        rgb_image = tf.image.crop_to_bounding_box(rgb_image, 7, 7, 32, 32)
+
         if num_frames > 1:
             rgb_image = tile_images(rgb_image)
 
@@ -343,11 +344,11 @@ def main():
     resampled_ds, remapped, labels, epoch_size = get_dataset(
         # dir,
         load_dataset,
-        training_folder / "test",
+        training_folder / "validation",
         labels,
         batch_size=32,
         image_size=(160, 160),
-        # augment=True,
+        augment=True,
         # preprocess_fn=tf.keras.applications.inception_v3.preprocess_input,
         resample=False,
         shuffle=False,
