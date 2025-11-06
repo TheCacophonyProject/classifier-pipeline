@@ -260,7 +260,7 @@ class TrackHeader:
         skip_last=None,
         max_frames=None,
     ):
-        crop_rectangle = Rectangle(2, 2, 160 - 2 * 2, 140 - 2 * 2)
+        crop_rectangle = Rectangle(1, 1, 160 - 2, 120 - 2)
 
         logging.debug(
             "Calculating sample with min %s and max %s ffc %s and skip %s",
@@ -1039,7 +1039,7 @@ def get_segments(
         frame_indices = np.array(frame_indices)
 
         if segment_type == SegmentType.ELONGATION:
-            crop_rectangle = tools.Rectangle(2, 2, 160 - 2 * 2, 120 - 2 * 2)
+            crop_rectangle = tools.Rectangle(1, 1, 160 - 2, 120 - 2)
             border_regions = []
             non_border_regions = []
 

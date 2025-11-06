@@ -18,6 +18,8 @@ def resize_and_pad(
     interpolation=cv2.INTER_LINEAR,
     extra_h=0,
     extra_v=0,
+    edge_offset=(0, 0, 0, 0),
+    original_region=None,
 ):
     scale_percent = (new_dim[:2] / np.array(frame.shape[:2])).min()
     width = round(frame.shape[1] * scale_percent)
@@ -34,35 +36,51 @@ def resize_and_pad(
         resize_dim = (width, height)
     if pad is None:
         pad = np.min(frame)
-
+    if original_region is None:
+        original_region = region
     resized = np.full(new_dim, pad, dtype=frame.dtype)
     offset_x = 0
     offset_y = 0
     frame_resized = resize_cv(frame, resize_dim, interpolation=interpolation)
     frame_height, frame_width = frame_resized.shape[:2]
+    # print("Frame resized is ", frame_resized.shape, "for ", frame.shape, region,original_region)
     offset_x = (new_dim[1] - frame_width) // 2
     offset_y = (new_dim[0] - frame_height) // 2
     if keep_edge and crop_region is not None:
-        if region.left <= crop_region.left:
-            offset_x = 0
-        elif region.right >= crop_region.right:
-            offset_x = new_dim[1] - frame_width
+        if original_region.left <= crop_region.left:
+            # print("KEEP EDGE",new_dim[1],frame_width)
 
-        if region.top <= crop_region.top:
-            offset_y = 0
+            # offset_x =edge_offset[0]
+            offset_x = min(edge_offset[0], new_dim[1] - frame_width)
+        elif original_region.right >= crop_region.right:
+            # print("KEEP EDGE")
 
-        elif region.bottom >= crop_region.bottom:
-            offset_y = new_dim[0] - frame_height
+            offset_x = (new_dim[1] - edge_offset[2]) - frame_width
+            offset_x = max(offset_x, 0)
+            # - edge_offset[0]
+            # - edge_offset[0]
+            # if edge_offset[0] > 0 :
+            #     offset_x = 14
+        if original_region.top <= crop_region.top:
+            # print("KEEP TOP")
+            offset_y = min(edge_offset[1], new_dim[0] - frame_height)
+
+        elif original_region.bottom >= crop_region.bottom:
+            offset_y = new_dim[0] - frame_height - edge_offset[3]
+            offset_y = max(offset_y, 0)
+
     if len(resized.shape) == 3:
         resized[
             offset_y : offset_y + frame_height, offset_x : offset_x + frame_width, :
         ] = frame_resized
     else:
+        # print("Using offset ", offset_x, offset_y, " width", frame_width, " height ", frame_height)
+
         resized[
             offset_y : offset_y + frame_height,
             offset_x : offset_x + frame_width,
         ] = frame_resized
-
+    # print("Using offset ", offset_x, offset_y)
     return resized
 
 

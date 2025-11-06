@@ -221,6 +221,11 @@ def load_args():
         help="calculate best threshold for model",
     )
 
+    parser.add_argument(
+        "--prediction-results",
+        help="Results npy file to calculate from",
+    )
+
     args = parser.parse_args()
     if args.date:
         args.date = parse_date(args.date)
@@ -853,22 +858,26 @@ def main():
     # shredhold from res
     threshold_from_res = True
     # add command line params
-    if threshold_from_res:
+    if args.prediction_results:
         model = ModelMeta(model_file)
-
-        test_f = Path(
-            "/home/gp/cacophony/classifier-data/thermal-training28082025/confusions/effnetv2b3-reBack/threshold-prod-confusions/reBacl-thresholdv2-raw.npy"
-        )
-        with test_f.open("rb") as f:
+        results_f = Path(args.prediction_results)
+        print("Loading results from ", results_f)
+        with results_f.open("rb") as f:
             y_true_i = np.load(f)
             raw_preds_i = np.load(f)
             confidences = np.load(f)
-        confusion_for_thresholds(
+
+        thresholds = best_threshold(
             model.labels, y_true_i, raw_preds_i, confidences, Path(args.confusion)
         )
-        # best_threshold(
-        #     model.labels, y_true_i, raw_preds_i, confidences, Path(args.confusion)
-        # )
+        confusion_for_thresholds(
+            thresholds,
+            model.labels,
+            y_true_i,
+            raw_preds_i,
+            confidences,
+            Path(args.confusion),
+        )
         return
 
     if args.evaluate_dir and args.confusion_from_meta:
@@ -1108,29 +1117,14 @@ def best_threshold_for_ds(model, labels, dataset, filename):
     best_threshold(labels, true_categories, y_pred, confidences, filename)
 
 
-def confusion_for_thresholds(model_labels, y_true, y_pred, confidences, filename):
+def confusion_for_thresholds(
+    thresholds_per_label, model_labels, y_true, y_pred, confidences, filename
+):
     from ml_tools.kerasmodel import plot_confusion_matrix
 
-    thresholds_per_label = [
-        0.368553,
-        0.5519001,
-        0.23438373,
-        0.8941028,
-        0.6526757,
-        0.76336944,
-        0.5997098,
-        0.5744436,
-        0.80526495,
-        0.993748,
-        0.6751729,
-        0.714326,
-        0.39252216,
-        0.61344594,
-        0.687882,
-        0.9993953,
-    ]
-
+    logging.info("Running confusion for thresholds %s", thresholds_per_label)
     max_conf = []
+
     if len(confidences.shape) > 1:
         # multi class confidence
         max_conf = np.max(confidences, axis=1)
@@ -1240,6 +1234,7 @@ def best_threshold(labels, y_true, y_pred, confidences, filename):
         np.mean(thresholds),
         np.median(thresholds),
     )
+    return thresholds
 
 
 if __name__ == "__main__":
