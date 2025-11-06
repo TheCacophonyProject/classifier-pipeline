@@ -25,6 +25,8 @@ AUTOTUNE = tf.data.AUTOTUNE
 insect = None
 fp = None
 
+IMG_SIZE = 45
+
 
 def get_excluded():
     return [
@@ -213,11 +215,11 @@ def read_tfrecord(
     if load_images:
         if TrackChannels.filtered.name in channels:
             tfrecord_format["image/filteredencoded"] = tf.io.FixedLenSequenceFeature(
-                [num_frames * 32 * 32], dtype=tf.float32, allow_missing=True
+                [num_frames * IMG_SIZE * IMG_SIZE], dtype=tf.float32, allow_missing=True
             )
         if TrackChannels.thermal.name in channels:
             tfrecord_format["image/thermalencoded"] = tf.io.FixedLenSequenceFeature(
-                [num_frames * 32 * 32], dtype=tf.float32, allow_missing=True
+                [num_frames * IMG_SIZE * IMG_SIZE], dtype=tf.float32, allow_missing=True
             )
 
     if include_track:
@@ -231,10 +233,10 @@ def read_tfrecord(
     if load_images:
         if TrackChannels.thermal.name in channels:
             thermalencoded = example["image/thermalencoded"]
-            thermals = tf.reshape(thermalencoded, [num_frames, 32, 32, 1])
+            thermals = tf.reshape(thermalencoded, [num_frames, IMG_SIZE, IMG_SIZE, 1])
         if TrackChannels.filtered.name in channels:
             filteredencoded = example["image/filteredencoded"]
-            filtered = tf.reshape(filteredencoded, [num_frames, 32, 32, 1])
+            filtered = tf.reshape(filteredencoded, [num_frames, IMG_SIZE, IMG_SIZE, 1])
         rgb_image = None
         for type in channels:
             if type == TrackChannels.thermal.name:
@@ -255,7 +257,9 @@ def read_tfrecord(
             if tf.greater(random_value, 0.5):
                 rgb_image = tf.image.flip_left_right(rgb_image)
 
-        rgb_image = tf.ensure_shape(rgb_image, (num_frames, 32, 32, len(channels)))
+        rgb_image = tf.ensure_shape(
+            rgb_image, (num_frames, IMG_SIZE, IMG_SIZE, len(channels))
+        )
         if num_frames > 1:
             rgb_image = tile_images(rgb_image)
 
@@ -332,9 +336,9 @@ def main():
     labels = meta.get("labels", [])
     datasets = []
     excluded_labels = get_excluded()
-    for l in labels:
-        if l not in ["mustelid", "deer", "sheep"]:
-            excluded_labels.append(l)
+    # for l in labels:
+    #     if l not in ["mustelid", "deer", "sheep"]:
+    #         excluded_labels.append(l)
 
     resampled_ds, remapped, labels, epoch_size = get_dataset(
         # dir,
