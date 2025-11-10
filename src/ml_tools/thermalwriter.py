@@ -230,17 +230,18 @@ def get_data(clip_samples, extra_args):
                     continue
                 # GP All assumes we dont have a track over multiple bins (Whcih we probably never want)
                 if extra_args.get("use_segments", True):
-                    mustelid_track = track.label in [
-                        "mustelid",
-                        "weasel",
-                        "ferret",
-                        "stoat",
-                    ]
-                    segment_types = (
-                        [SegmentType.ELONGATION]
-                        if mustelid_track
-                        else extra_args.get("segment_types")
-                    )
+                    # mustelid_track = track.label in [
+                    #     "mustelid",
+                    #     "weasel",
+                    #     "ferret",
+                    #     "stoat",
+                    # ]
+                    segment_types = extra_args.get("segment_types")
+                    # segment_types = (
+                    #     [SegmentType.ELONGATION]
+                    #     if mustelid_track
+                    #     else extra_args.get("segment_types")
+                    # )
                     # if mustelid_track:
                     # print("Mustleid track ", track.label, clip_id, track_id)
                     track.get_segments(
