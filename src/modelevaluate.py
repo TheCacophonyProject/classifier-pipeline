@@ -642,6 +642,15 @@ def evaluate_dir(
                 "incorrect": {},
                 "low-confidence": [],
             }
+        for lbl in model.labels:
+            if lbl not in ["mustelid","rodent"]:
+                for k , v in remapped_labels.items():
+                    if v== lbl:
+                        EXCLUDED_TAGS.append(k)
+                EXCLUDED_TAGS.append(lbl)
+        
+        
+        logging.info("Excluded labels are %s",EXCLUDED_TAGS)
         for clip_data in pool.imap_unordered(load_clip_data, files, chunksize=20):
             if processed % 100 == 0:
                 logging.info("Procesed %s / %s", processed, len(files))
@@ -659,10 +668,10 @@ def evaluate_dir(
                         output = model.predict(preprocessed_c)[0]
                         contour_arg = np.argmax(output)
                         contour_conf = output[contour_arg]
-                        # logging.info(
-                        #     "Contour  mustelidconf is %s",
-                        #     round(output[mustelid_i] * 100),
-                        # )
+                        logging.info(
+                            "Contour  mustelidconf is %s",
+                            round(output[mustelid_i] * 100),
+                        )
                         if contour_conf < threshold:
                             contour_arg = None
 
