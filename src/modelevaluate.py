@@ -528,7 +528,6 @@ def load_clip_data(cptv_file):
     thermal_medians = np.uint16(thermal_medians)
     data = []
     for track in clip.tracks:
-        print("Including ", track.label)
         try:
             frames, preprocessed, masses = worker_model.preprocess(
                 clip_db, track, frames_per_classify=25, dont_filter=True, min_segments=1
@@ -703,8 +702,10 @@ def evaluate_dir(
                 predicted_labels = [prediction.predicted_tag()]
                 confidence = prediction.max_score
                 predicted_tag = "None"
+                y_true.append(label_mapping.get(label, label))
                 logging.info(
-                    "Pred labels %s contour %s with conf %s",
+                    "%s Pred labels %s contour %s with conf %s",
+                    y_true[-1],
                     predicted_labels[0],
                     "" if contour_arg is None else model.labels[contour_arg],
                     contour_conf,
@@ -718,7 +719,6 @@ def evaluate_dir(
                     )
                     # Predicted label for contours is mustelid")
 
-                y_true.append(label_mapping.get(label, label))
                 last_lbl = y_true[-1]
                 if last_lbl not in stats_per_label:
                     stats_per_label[last_lbl] = {

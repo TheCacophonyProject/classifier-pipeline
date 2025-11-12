@@ -1023,7 +1023,7 @@ class Track:
             tag
             for tag in track_tags
             if not tag.get("automatic", False)
-            and tag.get("confidence") >= min_confidence
+            and tag.get("confidence", 0) >= min_confidence
         ]
 
         if not track_tags:
