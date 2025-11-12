@@ -517,6 +517,12 @@ def load_clip_data(cptv_file):
     clip.tracks = [
         track for track in clip.tracks if not filter_track(track, EXCLUDED_TAGS, reason)
     ]
+    clip.tracks = [
+        track
+        for track in clip.tracks
+        if track.label
+        in ["mustelid", "rat", "rodent", "stoat", "weasel", "ferret", "mouse"]
+    ]
     if len(clip.tracks) == 0:
         logging.info("No tracks after filtering %s", cptv_file)
         return None
@@ -672,7 +678,7 @@ def evaluate_dir(
                             "Contour  mustelidconf is %s",
                             round(output[mustelid_i] * 100),
                         )
-                        if contour_conf < threshold:
+                        if contour_conf < 0.50:
                             contour_arg = None
 
                 label = data[1]
@@ -712,7 +718,7 @@ def evaluate_dir(
                 )
                 if contour_arg == mustelid_i and predicted_labels[0] == "rodent":
                     predicted_labels = ["mustelid"]
-                    confidence = contour_conf
+                    confidence = 0.99
                     predicted_tag = "mustelid"
                     logging.info(
                         "Using contour prediction as was rodent but contours thinks mustelid"
