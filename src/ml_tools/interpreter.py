@@ -663,7 +663,7 @@ class Interpreter(ABC):
                 f = track_data[frame_i]
                 # probably no need to copy
                 segment_frames.append(f.copy())
-            frames,samples = preprocess_movement(
+            frames, samples = preprocess_movement(
                 segment_frames,
                 self.params.square_width,
                 self.params.frame_size,

@@ -513,7 +513,7 @@ def load_clip_data(cptv_file):
         or len(clip.tracks) == 0
     ):
         # logging.info("Filtering %s", cptv_file)
-        return None
+        return
     clip.tracks = [
         track for track in clip.tracks if not filter_track(track, EXCLUDED_TAGS, reason)
     ]
@@ -528,6 +528,7 @@ def load_clip_data(cptv_file):
     thermal_medians = np.uint16(thermal_medians)
     data = []
     for track in clip.tracks:
+        print("Including ", track.label)
         try:
             frames, preprocessed, masses = worker_model.preprocess(
                 clip_db, track, frames_per_classify=25, dont_filter=True, min_segments=1
@@ -622,6 +623,13 @@ def evaluate_dir(
     processed = 0
     # quite faster with just one process for loading and using main process for predicting
     # files = [f for f in files if "2362093" in f.name]
+    global EXCLUDED_TAGS
+    for lbl in model.labels:
+        if lbl not in ["mustelid", "rodent"]:
+            for k, v in remapped_labels.items():
+                if v == lbl:
+                    EXCLUDED_TAGS.append(k)
+            EXCLUDED_TAGS.append(lbl)
     pool = Pool(
         processes=8,
         initializer=init_worker,
@@ -642,15 +650,8 @@ def evaluate_dir(
                 "incorrect": {},
                 "low-confidence": [],
             }
-        for lbl in model.labels:
-            if lbl not in ["mustelid","rodent"]:
-                for k , v in remapped_labels.items():
-                    if v== lbl:
-                        EXCLUDED_TAGS.append(k)
-                EXCLUDED_TAGS.append(lbl)
-        
-        
-        logging.info("Excluded labels are %s",EXCLUDED_TAGS)
+
+        logging.info("Excluded labels are %s", EXCLUDED_TAGS)
         for clip_data in pool.imap_unordered(load_clip_data, files, chunksize=20):
             if processed % 100 == 0:
                 logging.info("Procesed %s / %s", processed, len(files))
@@ -702,7 +703,12 @@ def evaluate_dir(
                 predicted_labels = [prediction.predicted_tag()]
                 confidence = prediction.max_score
                 predicted_tag = "None"
-                logging.info("Pred labels %s contour %s with conf %s",predicted_labels[0], "" if contour_arg is None else model.labels[contour_arg], contour_conf)
+                logging.info(
+                    "Pred labels %s contour %s with conf %s",
+                    predicted_labels[0],
+                    "" if contour_arg is None else model.labels[contour_arg],
+                    contour_conf,
+                )
                 if contour_arg == mustelid_i and predicted_labels[0] == "rodent":
                     predicted_labels = ["mustelid"]
                     confidence = contour_conf
