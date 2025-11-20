@@ -549,7 +549,7 @@ def get_interpreter(model, run_over_network=False, load_model=True):
     elif model.type == "RandomForest":
         from ml_tools.forestmodel import ForestModel
 
-        classifier = ForestModel(model.model_file)
+        classifier = ForestModel(model.model_file, load_model=load_model)
     else:
         from ml_tools.kerasmodel import KerasModel
 
