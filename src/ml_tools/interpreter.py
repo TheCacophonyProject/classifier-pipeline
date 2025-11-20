@@ -30,6 +30,7 @@ class Interpreter(ABC):
 
         self.mapped_labels = metadata.get("mapped_labels")
         self.label_probabilities = metadata.get("label_probabilities")
+        self.thresholds = metadata.get("thresholds")
         self.preprocess_fn = self.get_preprocess_fn()
 
     @abstractmethod
@@ -547,9 +548,9 @@ def get_interpreter(model, run_over_network=False):
     else:
         from ml_tools.kerasmodel import KerasModel
 
+        print("Run over netowrk", run_over_network)
         classifier = KerasModel(run_over_network=run_over_network)
-        if not run_over_network:
-            classifier.load_model(model.model_file, weights=model.model_weights)
+        classifier.load_model(model.model_file, weights=model.model_weights)
     classifier.id = model.id
     classifier.port = model.port
     return classifier

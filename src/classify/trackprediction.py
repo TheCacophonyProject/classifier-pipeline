@@ -8,14 +8,16 @@ from attrs import define, field
 # it takes a while to make predictions.  When off the first prediction is used instead causing
 # faster, but potentially more unstable predictions.
 UNIFORM_PRIOR = False
+DEFAULT_THRESHOLD = 0.8
 
 
 class Predictions:
-    def __init__(self, labels, model):
+    def __init__(self, labels, model, thresholds):
         self.labels = labels
         self.prediction_per_track = {}
         self.model = model
         self.model_load_time = None
+        self.thresholds = thresholds
 
     def get_or_create_prediction(self, track, keep_all=True, smooth_preds=False):
         prediction = self.prediction_per_track.setdefault(
@@ -453,18 +455,27 @@ class TrackPrediction:
         ]
         return guesses
 
-    def get_metadata(self):
+    def get_metadata(self, thresholds):
         prediction_meta = {}
         if self.classify_time is not None:
             prediction_meta["classify_time"] = round(self.classify_time, 1)
 
         prediction_meta["label"] = self.predicted_tag()
         # GP makes api pick up the label this will change when logic is moved to API
-        prediction_meta["confident_tag"] = self.predicted_tag()
+        confidence = self.max_score if self.max_score else 0
+        print("Getting metdata")
+        if thresholds is not None:
+            threshold = thresholds[self.best_label_index]
+        else:
+            threshold = DEFAULT_THRESHOLD
 
-        prediction_meta["confidence"] = (
-            round(self.max_score, 2) if self.max_score else 0
-        )
+        prediction_meta["threshold_used"] = threshold
+        if confidence >= threshold:
+            prediction_meta["confident_tag"] = self.predicted_tag()
+        else:
+            # check api can handle None
+            prediction_meta["confident_tag"] = None
+        prediction_meta["confidence"] = round(confidence, 2)
         prediction_meta["clarity"] = round(self.clarity, 3) if self.clarity else 0
         prediction_meta["all_class_confidences"] = {}
         preds = []

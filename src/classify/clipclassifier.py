@@ -234,7 +234,7 @@ class ClipClassifier:
     def classify_clip(self, clip, model, meta_data, reuse_frames=None):
         start = time.time()
         classifier = self.get_classifier(model)
-        predictions = Predictions(classifier.labels, model)
+        predictions = Predictions(classifier.labels, model, classifier.thresholds)
         predictions.model_load_time = time.time() - start
 
         for i, track in enumerate(clip.tracks):
@@ -304,7 +304,7 @@ class ClipClassifier:
                 prediction = predictions.prediction_for(track.get_id())
                 if prediction is None:
                     continue
-                prediction_meta = prediction.get_metadata()
+                prediction_meta = prediction.get_metadata(predictions.thresholds)
                 prediction_meta["model_id"] = model_id
                 if self.keep_original_predictions:
                     prediction_meta["reprocessed"] = True
@@ -412,7 +412,7 @@ class ClipClassifier:
         start = time.time()
         model = self.config.classify.models[0]
         classifier = self.get_classifier(model)
-        predictions = Predictions(classifier.labels, model)
+        predictions = Predictions(classifier.labels, model, classifier.thresholds)
         predictions.model_load_time = time.time() - start
 
         track_samples = {}
