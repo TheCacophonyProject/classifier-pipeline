@@ -370,7 +370,7 @@ class PiClassifier(Processor):
             global fp_model
             fp_model = self.fp_model
             self.predictions[self.fp_model.id] = Predictions(
-                self.fp_model.labels, fp_config, self.classifier.thresholds
+                self.fp_model.labels, fp_config, self.fp_model.thresholds
             )
 
     def new_clip(self, preview_frames):

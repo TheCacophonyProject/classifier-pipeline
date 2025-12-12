@@ -463,7 +463,6 @@ class TrackPrediction:
         prediction_meta["label"] = self.predicted_tag()
         # GP makes api pick up the label this will change when logic is moved to API
         confidence = self.max_score if self.max_score else 0
-        print("Getting metdata")
         if thresholds is not None:
             threshold = thresholds[self.best_label_index]
         else:
