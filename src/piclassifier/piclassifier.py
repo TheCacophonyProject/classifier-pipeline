@@ -148,6 +148,11 @@ class PiClassifier(Processor):
         # call after model is setup
         super().__init__(thumbnail_dir)
 
+        if self.fp_model is not None:
+            self.fp_model.load_model()
+        if self.classifier is not None:
+            self.classifier.load_model()
+
         if self.headers.model == "IR":
             self.init_ir(thermal_config)
         else:
@@ -243,6 +248,8 @@ class PiClassifier(Processor):
         from .cptvmotiondetector import CPTVMotionDetector
 
         logging.info("Running on Thermal")
+        self.tracking_config = self.config.tracking.get("thermal")
+
         if self.do_tracking:
             self.init_tracking(thermal_config)
         self.init_recorders(thermal_config)
@@ -323,9 +330,8 @@ class PiClassifier(Processor):
             update_background=False,
             from_pi=True,
         )
-        self.tracking_config = self.config.tracking.get("thermal")
 
-    def init_classifiers(self, models_config, preview_type):
+    def init_classifiers(self, models_config, preview_type, load_model=False):
 
         from ml_tools.interpreter import get_interpreter
         from classify.trackprediction import Predictions
@@ -340,7 +346,7 @@ class PiClassifier(Processor):
 
         if model is not None:
             self.classifier = get_interpreter(
-                model, run_over_network=model.run_over_network
+                model, run_over_network=model.run_over_network, load_model=load_model
             )
             global classifier
             classifier = self.classifier
@@ -366,7 +372,7 @@ class PiClassifier(Processor):
             except ValueError:
                 self.fp_index = None
         if fp_config is not None:
-            self.fp_model = get_interpreter(fp_config)
+            self.fp_model = get_interpreter(fp_config, load_model=load_model)
             global fp_model
             fp_model = self.fp_model
             self.predictions[self.fp_model.id] = Predictions(

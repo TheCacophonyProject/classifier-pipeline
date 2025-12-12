@@ -114,16 +114,20 @@ def normalize(features):
 class ForestModel(Interpreter):
     TYPE = "RandomForest"
 
-    def __init__(self, model_file, data_type=None):
+    def __init__(self, model_file, data_type=None, load_model=True):
         super().__init__(model_file)
-        model_file = Path(model_file)
-        with model_file.open("rb") as f:
-            self.model = pickle.load(f)
         self.buffer_length = self.params.get("buffer_length", 1)
         self.features_used = self.params.get("features_used")
         self.features = self.params.get("features")
-        self.mgrid = np.mgrid[:120, :160]
         # sligtly faster to reuse this mgrd
+        self.mgrid = np.mgrid[:120, :160]
+        if load_model:
+            self.load_model()
+
+    def load_model(self):
+
+        with self.model_file.open("rb") as f:
+            self.model = pickle.load(f)
 
     def classify_track(
         self, clip, track, last_x_frames=None, segment_frames=None, min_segments=None
