@@ -11,6 +11,8 @@ import requests
 
 class Interpreter(ABC):
     def __init__(self, model_file, run_over_network=False):
+        self.model_file = Path(model_file)
+
         self.load_json(model_file)
         self.run_over_network = run_over_network
         self.port = 8123
@@ -441,16 +443,20 @@ class Interpreter(ABC):
 class NeuralInterpreter(Interpreter):
     TYPE = "Neural"
 
-    def __init__(self, model_name):
-        from openvino.inference_engine import IENetwork, IECore
+    def __init__(self, model_name, load_model=True):
 
         super().__init__(model_name)
-        model_name = Path(model_name)
+        if load_model:
+            self.load_model()
+
+    def load_model(self):
+        from openvino.inference_engine import IENetwork, IECore
+
         # can use to test on PC
         # device = "CPU"
         device = "MYRIAD"
-        model_xml = model_name.with_suffix(".xml")
-        model_bin = model_name.with_suffix(".bin")
+        model_xml = self.model_file.with_suffix(".xml")
+        model_bin = self.model_file.with_suffix(".bin")
         ie = IECore()
         ie.set_config({}, device)
         net = ie.read_network(model=model_xml, weights=model_bin)
@@ -480,17 +486,17 @@ class NeuralInterpreter(Interpreter):
 class LiteInterpreter(Interpreter):
     TYPE = "TFLite"
 
-    def __init__(self, model_name, run_over_network=False):
+    def __init__(self, model_name, run_over_network=False, load_model=True):
         super().__init__(model_name, run_over_network)
 
-        if run_over_network:
+        if run_over_network or not load_model:
             return
+        self.load_model()
+
+    def load_model(self):
         from ai_edge_litert.interpreter import Interpreter
 
-        # import tflite_runtime.interpreter as tflite
-
-        model_name = Path(model_name)
-        model_name = model_name.with_suffix(".tflite")
+        model_name = self.model_file.with_suffix(".tflite")
         self.interpreter = Interpreter(str(model_name))
 
         self.interpreter.allocate_tensors()  # Needed before execution!
@@ -502,7 +508,6 @@ class LiteInterpreter(Interpreter):
         self.input = self.interpreter.get_input_details()[0]  # Model has single input.
         self.preprocess_fn = self.get_preprocess_fn()
         # inc3_preprocess
-        print(self.input)
 
     def predict(self, input_x):
         if self.run_over_network:
@@ -527,7 +532,7 @@ def inc3_preprocess(x):
     return x
 
 
-def get_interpreter(model, run_over_network=False):
+def get_interpreter(model, run_over_network=False, load_model=True):
     # model_name, type = os.path.splitext(model.model_file)
 
     logging.info(
@@ -538,19 +543,21 @@ def get_interpreter(model, run_over_network=False):
     )
 
     if model.type == LiteInterpreter.TYPE:
-        classifier = LiteInterpreter(model.model_file, run_over_network)
+        classifier = LiteInterpreter(model.model_file, run_over_network, load_model)
     elif model.type == NeuralInterpreter.TYPE:
-        classifier = NeuralInterpreter(model.model_file, run_over_network)
+        classifier = NeuralInterpreter(model.model_file, run_over_network, load_model)
     elif model.type == "RandomForest":
         from ml_tools.forestmodel import ForestModel
 
-        classifier = ForestModel(model.model_file)
+        classifier = ForestModel(model.model_file, load_model=load_model)
     else:
         from ml_tools.kerasmodel import KerasModel
 
         print("Run over netowrk", run_over_network)
         classifier = KerasModel(run_over_network=run_over_network)
-        classifier.load_model(model.model_file, weights=model.model_weights)
+        classifier.init_model(
+            model.model_file, weights=model.model_weights, load_model=load_model
+        )
     classifier.id = model.id
     classifier.port = model.port
     return classifier

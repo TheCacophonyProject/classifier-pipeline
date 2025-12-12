@@ -427,23 +427,28 @@ class KerasModel(Interpreter):
             ],
         )
 
-    def load_model(self, model_file, training=False, weights=None):
-        model_file = Path(model_file)
+    def init_model(self, model_file, weights=None, load_model=True):
         super().__init__(model_file, self.run_over_network)
+        self.weights = weights
         if self.run_over_network:
             return
-        logging.info("Loading %s with model weights %s", model_file, weights)
-        if model_file.suffix == ".pb":
-            self.model = tf.keras.models.load_model(model_file.parent)
+        if load_model:
+            self.load_model()
+
+    def load_model(self):
+        if self.run_over_network:
+            return
+        logging.info("Loading %s with model weights %s", self.model_file, self.weights)
+        if self.model_file.suffix == ".pb":
+            self.model = tf.keras.models.load_model(self.model_file.parent)
         else:
-            self.model = tf.keras.models.load_model(model_file)
+            self.model = tf.keras.models.load_model(self.model_file)
 
-        self.model.trainable = training
+        self.model.trainable = False
 
-        if weights is not None:
-            self.model.load_weights(weights)
-            logging.info("Loaded weight %s", weights)
-        # print(self.model.summary())
+        if self.weights is not None:
+            self.model.load_weights(self.weights)
+            logging.info("Loaded weight %s", self.weights)
 
     def save(self, run_name=None, history=None, test_results=None):
         # create a save point
@@ -574,7 +579,7 @@ class KerasModel(Interpreter):
         self.log_dir = self.log_base / run_name
         self.log_dir.mkdir(parents=True, exist_ok=True)
         if fine_tune is not None:
-            self.load_model(fine_tune, weights=weights, training=True)
+            self.init_model(fine_tune, weights=weights, training=True)
             # load model loads old labels
             self.labels = new_labels
 
