@@ -50,7 +50,7 @@ class HyperParams(dict):
 
     @property
     def smooth_predictions(self):
-        return self.get("smooth_predictions", True)
+        return self.get("smooth_predictions", False)
 
     @property
     def excluded_labels(self):

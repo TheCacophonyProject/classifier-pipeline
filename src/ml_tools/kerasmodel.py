@@ -38,10 +38,13 @@ class KerasModel(Interpreter):
     VERSION = 1
     TYPE = "Keras"
 
-    def __init__(self, train_config=None, labels=None, data_dir=None):
+    def __init__(
+        self, train_config=None, labels=None, data_dir=None, run_over_network=False
+    ):
         self.model = None
         self.datasets = None
         self.remapped = None
+        self.run_over_network = run_over_network
         # dictionary containing current hyper parameters
         self.params = HyperParams()
         self.data_type = None
@@ -77,7 +80,7 @@ class KerasModel(Interpreter):
         self.excluded_labels = meta.get("excluded_labels")
         self.remapped_labels = meta.get("remapped_labels")
         self.params.set_use_segments(
-            meta.get("config").get("build", {}).get("use_segments", True)
+            meta.get("config", {}).get("build", {}).get("use_segments", True)
         )
 
     def shape(self):
@@ -86,7 +89,13 @@ class KerasModel(Interpreter):
         inputs = self.model.inputs
         shape = []
         for input in inputs:
-            shape.append(tuple(input.shape.as_list()))
+            in_shape = input.shape
+            if isinstance(in_shape, tuple):
+                shape.append(in_shape)
+            else:
+                shape.append(tuple(in_shape.as_list()))
+        if len(shape) == 1:
+            return len(shape), shape[0]
         return len(shape), shape
 
     def get_base_model(self, input, weights="imagenet"):
@@ -421,20 +430,28 @@ class KerasModel(Interpreter):
             ],
         )
 
-    def load_model(self, model_file, training=False, weights=None):
-        model_file = Path(model_file)
-        super().__init__(model_file)
-        logging.info("Loading %s with model weights %s", model_file, weights)
-        if model_file.suffix == ".pb":
-            self.model = tf.keras.models.load_model(model_file.parent)
-        else:
-            self.model = tf.keras.models.load_model(model_file)
-        self.model.trainable = training
+    def init_model(self, model_file, weights=None, load_model=True):
+        super().__init__(model_file, self.run_over_network)
+        self.weights = weights
+        if self.run_over_network:
+            return
+        if load_model:
+            self.load_model()
 
-        if weights is not None:
-            self.model.load_weights(weights)
-            logging.info("Loaded weight %s", weights)
-        # print(self.model.summary())
+    def load_model(self):
+        if self.run_over_network:
+            return
+        logging.info("Loading %s with model weights %s", self.model_file, self.weights)
+        if self.model_file.suffix == ".pb":
+            self.model = tf.keras.models.load_model(self.model_file.parent)
+        else:
+            self.model = tf.keras.models.load_model(self.model_file)
+
+        self.model.trainable = False
+
+        if self.weights is not None:
+            self.model.load_weights(self.weights)
+            logging.info("Loaded weight %s", self.weights)
 
     def save(self, run_name=None, history=None, test_results=None):
         # create a save point
@@ -565,7 +582,7 @@ class KerasModel(Interpreter):
         self.log_dir = self.log_base / run_name
         self.log_dir.mkdir(parents=True, exist_ok=True)
         if fine_tune is not None:
-            self.load_model(fine_tune, weights=weights, training=True)
+            self.init_model(fine_tune, weights=weights, training=True)
             # load model loads old labels
             self.labels = new_labels
 
@@ -822,11 +839,13 @@ class KerasModel(Interpreter):
         track_prediction = TrackPrediction(track.get_id(), self.labels)
 
         output = self.model.predict(data)
-        track_prediction.classified_clip(output, output, np.array(frames_used))
+        track_prediction.classified_track(output, np.array(frames_used))
         track_prediction.normalize_score()
         return track_prediction
 
     def predict(self, frames):
+        if self.run_over_network:
+            return self.predict_over_network(frames)
         return self.model.predict(frames)
 
     def confusion_tracks(self, dataset, filename, threshold=0.8):

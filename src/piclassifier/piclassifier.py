@@ -18,6 +18,10 @@ from . import beacon
 
 from piclassifier.trapcontroller import trigger_trap
 from piclassifier.attiny import set_recording_state
+from pathlib import Path
+from ml_tools.imageprocessing import normalize
+from functools import partial
+from piclassifier import utils
 
 SNAPSHOT_SIGNAL = "snap"
 STOP_SIGNAL = "stop"
@@ -90,9 +94,16 @@ class PiClassifier(Processor):
         preview_type=None,
     ):
         self.constant_recorder = None
+        global output_dir
+        output_dir = thermal_config.recorder.output_dir
+        # ensure thumb dir is made
+        thumbnail_dir = Path(output_dir) / "thumbnails"
+        thumbnail_dir.mkdir(exist_ok=True)
+
         self._output_dir = thermal_config.recorder.output_dir
         self.headers = headers
         self.classifier = None
+        self.classifier_initialised = False
         self.fp_model = None
         self.frame_num = 0
         self.clip = None
@@ -128,183 +139,245 @@ class PiClassifier(Processor):
         if not use_low_power_mode:
             # clear state
             set_recording_state(False)
-        if thermal_config.recorder.disable_recordings:
-            from .dummyrecorder import DummyRecorder
 
-            self.recorder = DummyRecorder(
-                thermal_config, headers, on_recording_stopping=on_recording_stopping
-            )
+        self.max_keep_frames = 25
+        self.max_pred_frames = None
 
-        if headers.model == "IR":
-            from track.irtrackextractor import IRTrackExtractor
-            from .irmotiondetector import IRMotionDetector
+        if self.classify and self.do_tracking:
+            self.init_classifiers(config.classify.models, preview_type)
+        # call after model is setup
+        super().__init__(thumbnail_dir)
 
-            logging.info("Running on IR")
-            PiClassifier.SKIP_FRAMES = 3
+        if self.fp_model is not None:
+            self.fp_model.load_model()
+        if self.classifier is not None:
+            self.classifier.load_model()
 
-            if self.do_tracking:
-
-                self.track_extractor = IRTrackExtractor(
-                    self.config.tracking,
-                    cache_to_disk=self.config.classify.cache_to_disk,
-                    keep_frames=False,
-                    verbose=config.verbose,
-                    calc_stats=False,
-                    scale=0.25,
-                    on_trapped=on_track_trapped,
-                    update_background=False,
-                    trap_size=thermal_config.device_setup.trap_size,
-                    from_pi=True,
-                )
-            self.tracking_config = self.config.tracking.get(IRTrackExtractor.TYPE)
-
-            self.type = IRTrackExtractor.TYPE
-            from .irrecorder import IRRecorder
-
-            if not thermal_config.recorder.disable_recordings:
-                self.recorder = IRRecorder(
-                    thermal_config, headers, on_recording_stopping=on_recording_stopping
-                )
-            self.snapshot_recorder = IRRecorder(
-                thermal_config,
-                headers,
-                on_recording_stopping=on_recording_stopping,
-                name="IR Snapshot",
-            )
-            self.motion_detector = IRMotionDetector(
-                thermal_config,
-                headers,
-            )
-            if thermal_config.recorder.constant_recorder:
-                self.constant_recorder = IRRecorder(
-                    thermal_config,
-                    headers,
-                    on_recording_stopping=on_recording_stopping,
-                    name="IR Constant",
-                    constant_recorder=True,
-                )
+        if self.headers.model == "IR":
+            self.init_ir(thermal_config)
         else:
-            logging.info("Running on Thermal")
-            from .cptvmotiondetector import CPTVMotionDetector
+            self.init_thermal(thermal_config, detect_after)
 
-            if self.do_tracking:
-                from track.cliptrackextractor import ClipTrackExtractor
-
-                self.track_extractor = ClipTrackExtractor(
-                    self.config.tracking,
-                    self.config.use_opt_flow,
-                    self.config.classify.cache_to_disk,
-                    keep_frames=False,
-                    calc_stats=False,
-                    update_background=False,
-                    from_pi=True,
-                )
-            self.tracking_config = self.config.tracking.get("thermal")
-
-            self.type = "thermal"
-            if not thermal_config.recorder.disable_recordings:
-                from .cptvrecorder import CPTVRecorder
-
-                self.recorder = CPTVRecorder(
-                    thermal_config, headers, on_recording_stopping=on_recording_stopping
-                )
-            self.snapshot_recorder = CPTVRecorder(
-                thermal_config,
-                headers,
-                on_recording_stopping=on_recording_stopping,
-                constant_recorder=False,
-                name="CPTV Snapshot",
-                file_suffix="-snap",
-            )
-            self.motion_detector = CPTVMotionDetector(
-                thermal_config,
-                self.tracking_config.motion.dynamic_thresh,
-                headers,
-                detect_after=detect_after,
-            )
-            if thermal_config.recorder.constant_recorder:
-                self.constant_recorder = CPTVRecorder(
-                    thermal_config,
-                    headers,
-                    on_recording_stopping=on_recording_stopping,
-                    name="CPTV Constant",
-                    constant_recorder=True,
-                )
         edge = self.tracking_config.edge_pixels
         self.crop_rectangle = Rectangle(
             edge, edge, headers.res_x - 2 * edge, headers.res_y - 2 * edge
         )
         global track_extractor
         track_extractor = self.track_extractor
+
         self.motion = thermal_config.motion
         self.min_frames = thermal_config.recorder.min_secs * headers.fps
         self.max_frames = thermal_config.recorder.max_secs * headers.fps
+
+        self.meta_dir = os.path.join(thermal_config.recorder.output_dir)
+        if not os.path.exists(self.meta_dir):
+            os.makedirs(self.meta_dir)
+
+    def init_ir_recorders(self, thermal_config):
+        recording_stopping_callback = partial(
+            on_recording_stopping,
+            output_dir=self._output_dir,
+            service=self.service,
+            tracking_events=self.tracking_events,
+        )
+
+        from .irrecorder import IRRecorder
+
+        if not thermal_config.recorder.disable_recordings:
+            self.recorder = IRRecorder(
+                thermal_config,
+                self.headers,
+                on_recording_stopping=recording_stopping_callback,
+            )
+
+        # dont want snaps getting postprocess
+        postprocess = thermal_config.motion.postprocess
+        thermal_config.motion.postprocess = False
+        self.snapshot_recorder = IRRecorder(
+            thermal_config,
+            self.headers,
+            on_recording_stopping=recording_stopping_callback,
+            name="IR Snapshot",
+        )
+        thermal_config.motion.postprocess = postprocess
+
+        if thermal_config.recorder.constant_recorder:
+            self.constant_recorder = IRRecorder(
+                thermal_config,
+                self.headers,
+                on_recording_stopping=recording_stopping_callback,
+                name="IR Constant",
+                constant_recorder=True,
+            )
+
+    def init_ir_tracking(self, thermal_config):
+        from track.irtrackextractor import IRTrackExtractor
+
+        logging.info("Running on IR")
+        PiClassifier.SKIP_FRAMES = 3
+        self.track_extractor = IRTrackExtractor(
+            self.config.tracking,
+            cache_to_disk=self.config.classify.cache_to_disk,
+            keep_frames=False,
+            verbose=self.config.verbose,
+            calc_stats=False,
+            scale=0.25,
+            on_trapped=on_track_trapped,
+            update_background=False,
+            trap_size=thermal_config.device_setup.trap_size,
+            from_pi=True,
+        )
+        self.tracking_config = self.config.tracking.get(IRTrackExtractor.TYPE)
+
+        self.type = IRTrackExtractor.TYPE
+
+    def init_ir(self, thermal_config):
+        from .irmotiondetector import IRMotionDetector
+
+        logging.info("Running on IR")
+        if self.do_tracking:
+            self.init_ir_tracking(thermal_config)
+        self.init_ir_recorders(thermal_config)
+        self.type = "IR"
+        self.motion_detector = IRMotionDetector(
+            thermal_config,
+            self.headers,
+        )
+
+    def init_thermal(self, thermal_config, detect_after):
+        from .cptvmotiondetector import CPTVMotionDetector
+
+        logging.info("Running on Thermal")
+        self.tracking_config = self.config.tracking.get("thermal")
+
+        if self.do_tracking:
+            self.init_tracking(thermal_config)
+        self.init_recorders(thermal_config)
+        self.type = "thermal"
+        self.motion_detector = CPTVMotionDetector(
+            thermal_config,
+            self.tracking_config.motion.dynamic_thresh,
+            self.headers,
+            detect_after=detect_after,
+        )
+
+    def init_recorders(self, thermal_config):
+        recording_stopping_callback = partial(
+            on_recording_stopping,
+            output_dir=self._output_dir,
+            service=self.service,
+            tracking_events=self.tracking_events,
+        )
+
         if thermal_config.recorder.disable_recordings:
             from .dummyrecorder import DummyRecorder
 
             self.recorder = DummyRecorder(
-                thermal_config, headers, on_recording_stopping=on_recording_stopping
+                thermal_config,
+                self.headers,
+                on_recording_stopping=recording_stopping_callback,
             )
+        else:
+            from .cptvrecorder import CPTVRecorder
+
+            self.recorder = CPTVRecorder(
+                thermal_config,
+                self.headers,
+                on_recording_stopping=recording_stopping_callback,
+            )
+
         if thermal_config.throttler.activate:
             from .throttledrecorder import ThrottledRecorder
 
             self.recorder = ThrottledRecorder(
                 self.recorder,
                 thermal_config,
-                headers,
-                on_recording_stopping=on_recording_stopping,
+                self.headers,
+                on_recording_stopping=recording_stopping_callback,
             )
-        self.meta_dir = os.path.join(thermal_config.recorder.output_dir)
-        if not os.path.exists(self.meta_dir):
-            os.makedirs(self.meta_dir)
 
-        self.max_keep_frames = 25
-        self.max_pred_frames = None
-        if self.classify and self.do_tracking:
-            from ml_tools.interpreter import get_interpreter
-            from classify.trackprediction import Predictions
+        # dont want snaps getting reprocessed
+        postprocess = thermal_config.motion.postprocess
+        thermal_config.motion.postprocess = False
+        self.snapshot_recorder = CPTVRecorder(
+            thermal_config,
+            self.headers,
+            on_recording_stopping=recording_stopping_callback,
+            constant_recorder=False,
+            name="CPTV Snapshot",
+            file_suffix="-snap",
+        )
+        thermal_config.motion.postprocess = postprocess
 
-            model = None
-            fp_config = None
-            for model_config in config.classify.models:
-                if model_config.type != "RandomForest":
-                    model = model_config
-                else:
-                    fp_config = model_config
+        if thermal_config.recorder.constant_recorder:
+            self.constant_recorder = CPTVRecorder(
+                thermal_config,
+                self.headers,
+                on_recording_stopping=recording_stopping_callback,
+                name="CPTV Constant",
+                constant_recorder=True,
+            )
 
-            if model is not None:
-                self.classifier = get_interpreter(model)
-                global classifier
-                classifier = self.classifier
-                self.frames_per_classify = (
-                    self.classifier.params.square_width
-                    * self.classifier.params.square_width
-                )
-                if self.frames_per_classify > 1:
-                    self.predict_from_last = self.frames_per_classify * 2
+    def init_tracking(self, thermal_config, detect_after=None):
+        from track.cliptrackextractor import ClipTrackExtractor
 
-                self.max_keep_frames = (
-                    self.frames_per_classify * 2 if not preview_type else None
-                )
-                self.predictions[model.id] = Predictions(self.classifier.labels, model)
-                self.num_labels = len(self.classifier.labels)
-                logging.info("Labels are %s ", self.classifier.labels)
-                global predictions
-                predictions = self.predictions
-                try:
-                    self.fp_index = self.classifier.labels.index("false-positive")
-                except ValueError:
-                    self.fp_index = None
-                self.startup_classifier()
-            if fp_config is not None:
-                self.fp_model = get_interpreter(fp_config)
-                global fp_model
-                fp_model = self.fp_model
-                self.predictions[self.fp_model.id] = Predictions(
-                    self.fp_model.labels, fp_config
-                )
+        self.track_extractor = ClipTrackExtractor(
+            self.config.tracking,
+            self.config.use_opt_flow,
+            self.config.classify.cache_to_disk,
+            keep_frames=False,
+            calc_stats=False,
+            update_background=False,
+            from_pi=True,
+        )
 
-        super().__init__()
+    def init_classifiers(self, models_config, preview_type, load_model=False):
+
+        from ml_tools.interpreter import get_interpreter
+        from classify.trackprediction import Predictions
+
+        model = None
+        fp_config = None
+        for model_config in models_config:
+            if model_config.type != "RandomForest":
+                model = model_config
+            else:
+                fp_config = model_config
+
+        if model is not None:
+            self.classifier = get_interpreter(
+                model, run_over_network=model.run_over_network, load_model=load_model
+            )
+            global classifier
+            classifier = self.classifier
+            self.frames_per_classify = (
+                self.classifier.params.square_width
+                * self.classifier.params.square_width
+            )
+            if self.frames_per_classify > 1:
+                self.predict_from_last = self.frames_per_classify * 2
+
+            self.max_keep_frames = (
+                self.frames_per_classify * 2 if not preview_type else None
+            )
+            self.predictions[model.id] = Predictions(
+                self.classifier.labels, model, self.classifier.thresholds
+            )
+            self.num_labels = len(self.classifier.labels)
+            logging.info("Labels are %s ", self.classifier.labels)
+            global predictions
+            predictions = self.predictions
+            try:
+                self.fp_index = self.classifier.labels.index("false-positive")
+            except ValueError:
+                self.fp_index = None
+        if fp_config is not None:
+            self.fp_model = get_interpreter(fp_config, load_model=load_model)
+            global fp_model
+            fp_model = self.fp_model
+            self.predictions[self.fp_model.id] = Predictions(
+                self.fp_model.labels, fp_config, self.classifier.thresholds
+            )
 
     def new_clip(self, preview_frames):
         self.clip = Clip(
@@ -358,6 +431,13 @@ class PiClassifier(Processor):
         )
 
     def startup_classifier(self):
+        self.classifier_initialised = True
+        if self.classifier.run_over_network:
+            if not utils.is_service_running("thermal-classifier"):
+                success = utils.startup_network_classifier(True)
+                if not success:
+                    raise Exception("COuild not start network classifier")
+            return
         # classifies an empty frame to force loading of the model into memory
         num_inputs, in_shape = self.classifier.shape()
         if num_inputs > 1:
@@ -375,51 +455,6 @@ class PiClassifier(Processor):
         active_tracks = self.clip.active_tracks
         active_tracks = [track for track in active_tracks if len(track) >= 8]
         return active_tracks
-        filtered = []
-        for track in active_tracks:
-            pred = None
-            if self.predictions is not None:
-                pred = self.predictions.prediction_for(track.get_id())
-            if pred is not None:
-                if (
-                    pred.last_frame_classified is not None
-                    and self.clip.current_frame - pred.last_frame_classified
-                    < PiClassifier.PREDICT_EVERY
-                ):
-                    logging.debug(
-                        "Skipping %s as predicted %s and now at %s",
-                        track,
-                        pred.last_frame_classified,
-                        self.clip.current_frame,
-                    )
-                    continue
-
-            filtered.append(track)
-        active_tracks = filtered
-        if (
-            len(active_tracks) <= PiClassifier.NUM_CONCURRENT_TRACKS
-            or not self.classify
-        ):
-            return active_tracks
-        active_predictions = []
-        for track in active_tracks:
-            prediction = self.predictions.get_or_create_prediction(track, keep_all=True)
-            active_predictions.append(prediction)
-
-        top_priority = sorted(
-            active_predictions,
-            key=lambda i: i.get_priority(self.clip.current_frame),
-            reverse=True,
-        )
-
-        top_priority = [
-            track.track_id
-            for track in top_priority[: PiClassifier.NUM_CONCURRENT_TRACKS]
-        ]
-        classify_tracks = [
-            track for track in active_tracks if track.get_id() in top_priority
-        ]
-        return classify_tracks
 
     def identify_last_frame(self):
         """
@@ -427,14 +462,6 @@ class PiClassifier(Processor):
         One prediction will be made for every active_track of the last frame.
         :return: TrackPrediction object
         """
-
-        prediction_smooth = 0.1
-
-        smooth_prediction = None
-        smooth_novelty = None
-
-        prediction = 0.0
-        novelty = 0.0
         if (
             self.next_fp_classification_frame >= self.clip.current_frame
             and self.next_classify_frame >= self.clip.current_frame
@@ -463,7 +490,11 @@ class PiClassifier(Processor):
                         continue
                 track_prediction = self.predictions[
                     self.fp_model.id
-                ].get_or_create_prediction(track, keep_all=True)
+                ].get_or_create_prediction(
+                    track,
+                    keep_all=True,
+                    smooth_preds=self.fp_model.params.smooth_predictions,
+                )
                 if (
                     track_prediction.last_frame_classified is not None
                     and self.clip.current_frame - track_prediction.last_frame_classified
@@ -491,8 +522,7 @@ class PiClassifier(Processor):
                 if prediction is None:
                     track_prediction.last_frame_classified = self.clip.current_frame
                     continue
-                for p, m, frame in zip(prediction, mass, frames):
-                    track_prediction.classified_frame(frame, p, m)
+                track_prediction.classified_frames(frames, prediction, mass)
 
                 logging.debug(
                     "Track %s is predicted as %s took %s track frames %s",
@@ -518,7 +548,7 @@ class PiClassifier(Processor):
                     self.classifier.id
                 ].get_or_create_prediction(track, keep_all=True)
                 start = time.time()
-                frames, prediction, mass = self.classifier.predict_track(
+                pred_result = self.classifier.predict_recent_frames(
                     clip,
                     track,
                     predict_from_last=self.predict_from_last,
@@ -529,12 +559,15 @@ class PiClassifier(Processor):
                     calculate_filtered=True,
                     last_frame_predicted=track_prediction.last_frame_classified,
                 )
+                if pred_result is None:
+                    track_prediction.last_frame_classified = self.clip.current_frame
+                    continue
+                prediction, frames, mass = pred_result
 
                 if prediction is None:
                     track_prediction.last_frame_classified = self.clip.current_frame
                     continue
-                for p, m in zip(prediction, mass):
-                    track_prediction.classified_frames(frames, p, m)
+                track_prediction.classified_frames(frames, prediction, mass)
 
                 logging.info(
                     "Track %s is predicted as %s took %s track frames %s",
@@ -591,14 +624,13 @@ class PiClassifier(Processor):
         for track in active_tracks:
             if self.fp_model is not None:
                 pred, model_id = self.get_best_prediction(track.get_id())
-
+                logging.debug(
+                    "track %s -%s - %s",
+                    track.get_id(),
+                    pred.predicted_tag(),
+                    pred.normalized_best_score(),
+                )
                 if pred is not None:
-                    logging.debug(
-                        "track %s -%s - %s",
-                        track.get_id(),
-                        pred.predicted_tag(),
-                        pred.normalized_best_score(),
-                    )
                     if pred.predicted_tag() == "false-positive":
                         confidence = pred.normalized_best_score()
 
@@ -664,150 +696,140 @@ class PiClassifier(Processor):
         )
         return 1 - fp_confidence
 
-    def get_thumbnail(self, clip_id=None, track_id=None):
-        import cv2
+    def update_thumbnail(self, clip, tracks):
+        best_contour = None
         from ml_tools.imageprocessing import resize_and_pad
+        import cv2
 
-        start = time.time()
+        for track in tracks:
+            confidence = None
+            tag = None
+            if predictions is not None:
+                pred, model_id = self.get_best_prediction(track.get_id())
+                if pred is not None and pred.max_score is not None:
+                    confidence = round(100 * pred.max_score)
+                    tag = pred.predicted_tag()
+            regions = track.bounds_history
+            if track.thumb_info is None:
+                track.thumb_info = ThumbInfo(track.get_id())
+            track.thumb_info.predicted_confidence = confidence
+            track.thumb_info.predicted_tag = tag
+
+            i = len(regions) - 1
+            first_loop = True
+            # go reverse and break when reach already checked frame
+            while i >= 0:
+                region = regions[i]
+                if (
+                    track.thumb_info.last_frame_check is not None
+                    and track.thumb_info.last_frame_check >= region.frame_number
+                ):
+                    break
+                frame = clip.frame_buffer.get_frame(region.frame_number)
+
+                if frame is None:
+                    break
+
+                if first_loop:
+                    track.thumb_info.last_frame_check = region.frame_number
+                first_loop = False
+                assert frame.frame_number == region.frame_number
+                contour_image = frame.filtered if frame.mask is None else frame.mask
+                contours, _ = cv2.findContours(
+                    np.uint8(region.subimage(contour_image)),
+                    cv2.RETR_EXTERNAL,
+                    # cv2.CHAIN_APPROX_SIMPLE,
+                    cv2.CHAIN_APPROX_TC89_L1,
+                )
+
+                contour_points = 0
+                if len(contours) > 0:
+                    contour_points = len(contours[0])
+                if track.thumb_info.points < contour_points:
+                    track.thumb_info.points = contour_points
+                    track.thumb_info.region = region
+                    track.thumb_info.thumb = None
+                i -= 1
+            if (
+                best_contour is None
+                or track.thumb_info.score() > best_contour.score()
+                or (
+                    track.thumb_info.predicted_tag != "false-positive"
+                    and best_contour.predicted_tag == "false-positive"
+                )
+            ):
+                best_contour = track.thumb_info
+
+        for track in tracks:
+            if track.thumb_info.region is None:
+                continue
+            thumb_frame = track.thumb_info.region.frame_number
+            if (
+                track.thumb_info.thumb is None
+                or thumb_frame > track.thumb_info.thumb_frame
+            ):
+                frame = clip.frame_buffer.get_frame(thumb_frame)
+                thumb_thermal = track.thumb_info.region.subimage(frame.thermal)
+                if thumb_thermal.shape[0] > 32 or thumb_thermal.shape[1] > 32:
+                    thumb_thermal = resize_and_pad(thumb_thermal, (32, 32), None, None)
+                track.thumb_info.thumb = np.uint16(thumb_thermal)
+                track.thumb_info.thumb_frame = thumb_frame
+        return best_contour
+
+    def get_and_update_thumbnail(self, clip_id=None, track_id=None):
+        # gets best thumbnail for prevodied clip and track id
+        # if no track id is provided it will choose the best over all thumbnail
+        # if the thumbnail info for tracks is old it will calculate thumbnail data for missing frames
+        # and update the tracks thumb info to be the up to date best thumbnail frame
         if clip_id is not None:
             if self.prev_clip is not None and self.prev_clip._id == clip_id:
+                logging.info("Finding thumbnail in previous clip %s", clip_id)
                 if track_id is not None:
                     best_track = next(
-                        [
+                        iter(
                             track
                             for track in self.prev_clip.tracks
                             if track.get_id() == track_id
-                        ],
-                        default=None,
+                        ),
+                        None,
                     )
                     if best_track is None:
                         logging.info("Couldn't find track %s", track_id)
                         return None
                 else:
-                    best_track = None
-                    for track in tracks:
-                        if track.thumb_info is not None:
-                            if (
-                                best_track is None
-                                or track.thumb_info.score()
-                                > best_track.thumb_info.score()
-                            ):
-                                best_track = track
-                return (
-                    best_track.thumb_info.thumb,
-                    best_track.thumb_info.track_id,
-                    best_track.thumb_info.region,
-                )
-
-            elif self.clip is not None and self.clip._id != clip_id:
+                    return self.prev_clip.thumb_info
+                return best_track.thumb_info
+            elif self.clip is None or self.clip._id != clip_id:
                 logging.info("Cant find requested clip id %s", clip_id)
                 return None
         elif self.clip is None:
             logging.info("Have no clip")
             return None
-        if clip.frame_buffer.frames is None or len(clip.frame_buffer.frames) == 0:
+        if (
+            self.clip.frame_buffer is None
+            or self.clip.frame_buffer.frames is None
+            or len(self.clip.frame_buffer.frames) == 0
+        ):
             logging.info("Have no frames")
             return None
-        with clip.frame_buffer.frame_lock:
-            tracks = clip.active_tracks
-            oldest_frame_num = clip.frame_buffer.frames[0].frame_number
-            best_contour = None
+
+        # calculate on current clip
+        with self.clip.frame_buffer.frame_lock:
             if track_id is not None:
+                tracks = clip.tracks
                 tracks = [track for track in tracks if track.get_id() == track_id]
                 if len(tracks) == 0:
-                    logging.info("Couldn't find track %s", track.get_id())
+                    logging.info("Couldn't find track %s", track_id)
                     return None
-
-            for track in tracks:
-                confidence = None
-                tag = None
-                if predictions is not None:
-                    pred, model_id = self.get_best_prediction(track.get_id())
-                    if pred is not None and pred.max_score is not None:
-                        confidence = round(100 * pred.max_score)
-                        tag = pred.predicted_tag()
-                regions = track.bounds_history
-                if track.thumb_info is None:
-                    track.thumb_info = ThumbInfo(track.get_id())
-                track.thumb_info.predicted_confidence = confidence
-                track.thumb_info.predicted_tag = tag
-                # if (
-                #     track.thumb_info.region is not None
-                #     and track.thumb_info.region.frame_number >= regions[-1].frame_number
-                # ):
-                #     # logging.info("Already up to date for track %s", track.get_id())
-                #     continue
-                i = len(regions) - 1
-                first_loop = True
-                while i >= 0:
-                    region = regions[i]
-                    if (
-                        track.thumb_info.last_frame_check is not None
-                        and track.thumb_info.last_frame_check >= region.frame_number
-                    ):
-                        break
-                    if region.frame_number >= oldest_frame_num:
-                        frame = clip.frame_buffer.frames[
-                            region.frame_number - oldest_frame_num
-                        ]
-
-                        if first_loop:
-                            track.thumb_info.last_frame_check = region.frame_number
-                        first_loop = False
-                        assert frame.frame_number == region.frame_number
-                        contour_image = (
-                            frame.filtered if frame.mask is None else frame.mask
-                        )
-                        contours, _ = cv2.findContours(
-                            np.uint8(region.subimage(contour_image)),
-                            cv2.RETR_EXTERNAL,
-                            # cv2.CHAIN_APPROX_SIMPLE,
-                            cv2.CHAIN_APPROX_TC89_L1,
-                        )
-
-                        contour_points = 0
-                        if len(contours) > 0:
-                            contour_points = len(contours[0])
-                        if track.thumb_info.points < contour_points:
-                            track.thumb_info.points = contour_points
-                            track.thumb_info.region = region
-                            track.thumb_info.thumb = None
-                    else:
-                        break
-                    i -= 1
-                if (
-                    best_contour is None
-                    or track.thumb_info.score() > best_contour.score()
-                    or (
-                        track.thumb_info.predicted_tag != "false-positive"
-                        and best_contour.predicted_tag == "false-positive"
-                    )
-                ):
-                    best_contour = track.thumb_info
-
+            else:
+                tracks = self.clip.active_tracks
+            best_contour = self.update_thumbnail(self.clip, tracks)
             if track_id is not None:
                 track = tracks[0]
-                best_contour = track.thumb_info
+
             if best_contour is None:
                 return None
-            for track in tracks:
-                if track.thumb_info.region is None:
-                    continue
-                thumb_frame = track.thumb_info.region.frame_number
-                if (
-                    track.thumb_info.thumb is None
-                    or thumb_frame > track.thumb_info.thumb_frame
-                ):
-                    frame = clip.frame_buffer.frames[thumb_frame - oldest_frame_num]
-                    thumb_thermal = track.thumb_info.region.subimage(frame.thermal)
-                    if thumb_thermal.shape[0] > 32 or thumb_thermal.shape[1] > 32:
-                        thumb_thermal = resize_and_pad(
-                            thumb_thermal, (32, 32), None, None
-                        )
-                    track.thumb_info.thumb = np.uint16(thumb_thermal)
-                    track.thumb_info.thumb_frame = thumb_frame
-            # logging.info("Took %s to get thumbnail", time.time() - start)
-            return best_contour.thumb, best_contour.track_id, best_contour.region
+            return best_contour
 
     def get_recent_frame(self, last_frame=None):
         # save us having to lock if we dont have a different frame
@@ -874,6 +896,12 @@ class PiClassifier(Processor):
         import time
 
         start = time.time()
+        if (
+            self.motion_detector.can_record()
+            and not self.classifier_initialised
+            and self.classify
+        ):
+            self.startup_classifier()
         self.motion_detector.process_frame(lepton_frame)
         self.process_time += time.time() - start
         if self.snapshot_recorder.recording:
@@ -923,7 +951,12 @@ class PiClassifier(Processor):
             t_start = time.time()
             if self.do_tracking:
                 self.track_extractor.process_frame(self.clip, lepton_frame)
-                self.get_thumbnail()
+                active_best = self.get_and_update_thumbnail()
+                if self.clip.thumb_info is None or (
+                    active_best is not None
+                    and active_best.score() > self.clip.thumb_info.score()
+                ):
+                    self.clip.thumb_info = active_best
             self.tracking_time += time.time() - t_start
             s_r = time.time()
 
@@ -1117,18 +1150,29 @@ def on_track_trapped(track):
     trigger_trap(tag)
 
 
-def on_recording_stopping(filename):
+def on_recording_stopping(
+    filename, output_dir=None, service=None, tracking_events=False
+):
     from ml_tools.tools import CustomJSONEncoder
 
     global use_low_power_mode
     if not use_low_power_mode:
         set_recording_state(False)
-
     if "-snap" in filename.stem:
         return
     global clip, track_extractor, predictions
     if clip and track_extractor:
-        track_extractor.apply_track_filtering(clip)
+        # save thumbs
+        filtered_tracks = track_extractor.apply_track_filtering(clip)
+        if tracking_events:
+            for track in filtered_tracks:
+                service.track_filtered(clip._id, track.get_id())
+        for track in clip.tracks:
+            if track.thumb_info is not None:
+                np.save(
+                    f"{str(output_dir)}/thumbnails/{clip.get_id()}-{track.get_id()}.npy",
+                    track.thumb_info.thumb,
+                )
         if predictions is not None:
             valid_preds = {}
 
@@ -1150,7 +1194,7 @@ def on_recording_stopping(filename):
         #             # bring back to orignal size
         #             r.rescale(1 / track_extractor.scale)
 
-        meta_name = os.path.splitext(filename)[0] + ".txt"
+        meta_name = filename.with_suffix(".txt")
         logging.debug("saving meta to %s", meta_name)
         predictions_per_model = None
 
@@ -1160,6 +1204,8 @@ def on_recording_stopping(filename):
         meta_data["algorithm"] = {}
         meta_data["algorithm"]["tracker_version"] = f"PI-{track_extractor.VERSION}"
         meta_data["metadata_source"] = "PI"
+        if clip.thumb_info is not None:
+            meta_data["thumbnail"] = clip.thumb_info.to_metadata()
         if predictions is not None:
             models = []
             model_name = ""

@@ -62,9 +62,15 @@ def preprocess_frame(
     calculate_filtered=True,
     filtered_norm_limits=None,
     thermal_norm_limits=None,
+    cropped=False,
+    sub_median=True,
 ):
-    median = np.median(frame.thermal)
-    cropped_frame = frame.crop_by_region(region, only_thermal=calculate_filtered)
+    if sub_median:
+        median = np.median(frame.thermal)
+    if not cropped:
+        cropped_frame = frame.crop_by_region(region, only_thermal=calculate_filtered)
+    else:
+        cropped_frame = frame
     cropped_frame.thermal = np.float32(cropped_frame.thermal)
     if calculate_filtered:
         if background is None:
@@ -79,7 +85,8 @@ def preprocess_frame(
         crop_rectangle,
         True,
     )
-    cropped_frame.thermal -= median
+    if sub_median:
+        cropped_frame.thermal -= median
     if thermal_norm_limits is None:
         np.clip(cropped_frame.thermal, 0, None, out=cropped_frame.thermal)
     if filtered_norm_limits is not None:
@@ -99,6 +106,7 @@ def preprocess_frame(
             )
     else:
         cropped_frame.normalize()
+    cropped_frame.preprocessed = True
     return cropped_frame
 
 

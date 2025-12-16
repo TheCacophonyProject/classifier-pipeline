@@ -1,4 +1,4 @@
-FROM tensorflow/tensorflow:2.14.0
+FROM tensorflow/tensorflow:2.20.0
 COPY ./src/ .
 COPY ./requirements.txt .
 COPY docker/classifier-docker.yaml .
@@ -13,7 +13,6 @@ RUN sed "s/tensorflow~=*/#tensorflow~=/" requirements.txt -i
 RUN python3 get-pip.py
 RUN pip3 install --upgrade pip
 RUN pip3 install cmake
-RUN pip3 install numpy
 RUN pip3 install -r requirements.txt
 
 

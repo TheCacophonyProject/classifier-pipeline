@@ -49,6 +49,8 @@ def convert_model(args):
         print("using weights ", args.weights)
         model.load_weights(args.weights)
     if args.convert:
+        out_dir = Path(args.convert)
+        out_dir.mkdir(parents=True, exist_ok=True)
         converter = tf.lite.TFLiteConverter.from_keras_model(model)
         # converter.target_spec.supported_ops = [
         #     tf.lite.OpsSet.TFLITE_BUILTINS,  # enable TensorFlow Lite ops.
@@ -128,9 +130,7 @@ def parse_args():
     )
     parser.add_argument("-w", "--weights", help="Weights to use")
 
-    parser.add_argument(
-        "-c", "--convert", action="store_true", help="Convert frozen model to tflite"
-    )
+    parser.add_argument("-c", "--convert", help="Convert frozen model to tflite")
     parser.add_argument(
         "-r",
         "--run",

@@ -385,7 +385,7 @@ def metadata_confusion(dir, confusion_file, after_date=None, model_metadata=None
                     if isinstance(data, str):
                         if data == "Master":
                             ai_tags.append(tag["what"])
-                    elif data.get("name") == "Master":
+                    elif model.get("name") == "Master":
                         ai_tags.append(tag["what"])
 
             positions = [
@@ -882,7 +882,10 @@ def main():
 
     if args.evaluate_dir and args.confusion_from_meta:
         metadata_confusion(
-            Path(args.evaluate_dir), args.confusion, args.date, args.model_metadata
+            Path(args.evaluate_dir),
+            Path(args.confusion),
+            args.date,
+            args.model_metadata,
         )
     else:
         if args.evaluate_dir:
