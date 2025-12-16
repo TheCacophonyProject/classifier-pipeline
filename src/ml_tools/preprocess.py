@@ -186,12 +186,12 @@ def preprocess_movement(
 
     #
     # # # # # # for testing
-    global index
-    index += 1
-    tools.saveclassify_image(
-        data,
-        f"samples/{sample}-{index}",
-    )
+    # global index
+    # index += 1
+    # tools.saveclassify_image(
+    #     data,
+    #     f"samples/{sample}-{index}",
+    # )
 
     if preprocess_fn:
         data = preprocess_fn(data)

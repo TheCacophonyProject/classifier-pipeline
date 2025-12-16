@@ -586,6 +586,7 @@ def get_interpreter(model, run_over_network=False, load_model=True):
 
 def get_contours(contour_image, frame_number):
     import cv2
+
     contour_image, stats = normalize(contour_image, new_max=255)
 
     image = cv2.GaussianBlur(np.uint8(contour_image), (15, 15), 0)

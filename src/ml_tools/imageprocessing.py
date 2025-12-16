@@ -43,26 +43,15 @@ def resize_and_pad(
     offset_y = 0
     frame_resized = resize_cv(frame, resize_dim, interpolation=interpolation)
     frame_height, frame_width = frame_resized.shape[:2]
-    # print("Frame resized is ", frame_resized.shape, "for ", frame.shape, region,original_region)
     offset_x = (new_dim[1] - frame_width) // 2
     offset_y = (new_dim[0] - frame_height) // 2
     if keep_edge and crop_region is not None:
         if original_region.left <= crop_region.left:
-            # print("KEEP EDGE",new_dim[1],frame_width)
-
-            # offset_x =edge_offset[0]
             offset_x = min(edge_offset[0], new_dim[1] - frame_width)
         elif original_region.right >= crop_region.right:
-            # print("KEEP EDGE")
-
             offset_x = (new_dim[1] - edge_offset[2]) - frame_width
             offset_x = max(offset_x, 0)
-            # - edge_offset[0]
-            # - edge_offset[0]
-            # if edge_offset[0] > 0 :
-            #     offset_x = 14
         if original_region.top <= crop_region.top:
-            # print("KEEP TOP")
             offset_y = min(edge_offset[1], new_dim[0] - frame_height)
 
         elif original_region.bottom >= crop_region.bottom:
@@ -74,13 +63,10 @@ def resize_and_pad(
             offset_y : offset_y + frame_height, offset_x : offset_x + frame_width, :
         ] = frame_resized
     else:
-        # print("Using offset ", offset_x, offset_y, " width", frame_width, " height ", frame_height)
-
         resized[
             offset_y : offset_y + frame_height,
             offset_x : offset_x + frame_width,
         ] = frame_resized
-    # print("Using offset ", offset_x, offset_y)
     return resized
 
 

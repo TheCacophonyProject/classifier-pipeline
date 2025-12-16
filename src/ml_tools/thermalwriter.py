@@ -178,11 +178,15 @@ def save_data(samples, writer, labels, extra_args):
 
 def get_data(clip_samples, extra_args):
     # prepare the sample data for saving
+    ENLARGE_FOR_AUGMENT = True
     if len(clip_samples) == 0:
         return None
     data = []
     crop_rectangle = tools.Rectangle(1, 1, 160 - 2, 120 - 2)
-    resize_dim = 45
+    resize_dim = 32
+    if ENLARGE_FOR_AUGMENT:
+        # allow extra pixels for augmentation
+        resize_dim = 45
     if clip_samples[0].source_file.suffix == ".hdf5":
         db = TrackDatabase(clip_samples[0].source_file)
     else:
@@ -315,7 +319,8 @@ def get_data(clip_samples, extra_args):
                             thermal_min = None
 
                     enlarged_region = region.copy()
-                    enlarged_region.enlarge_for_rotation(crop_rectangle)
+                    if ENLARGE_FOR_AUGMENT:
+                        enlarged_region.enlarge_for_rotation(crop_rectangle)
                     cropped = f.crop_by_region(enlarged_region)
                     cropped.float_arrays()
                     track_frames.append(cropped)

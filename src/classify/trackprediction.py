@@ -98,7 +98,7 @@ class TrackPrediction:
         self, track_id, labels, keep_all=True, start_frame=None, smooth_preds=False
     ):
         try:
-            fp_index = labels.index("false-posiclassiftive")
+            fp_index = labels.index("false-positive")
         except ValueError:
             fp_index = None
 
