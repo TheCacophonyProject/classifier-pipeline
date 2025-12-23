@@ -720,6 +720,9 @@ class PiClassifier(Processor):
             # go reverse and break when reach already checked frame
             while i >= 0:
                 region = regions[i]
+                if region.area == 0 or region.blank:
+                    i -= 1
+                    continue
                 if (
                     track.thumb_info.last_frame_check is not None
                     and track.thumb_info.last_frame_check >= region.frame_number
