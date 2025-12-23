@@ -187,7 +187,7 @@ def file_changed(event):
     global restart_pending
     restart_pending = True
     if not connected:
-        logging.info("Not conencted so closing")
+        logging.info("Not connected so closing")
         os._exit(0)
 
 
@@ -377,13 +377,14 @@ def parse_cptv(file, config, thermal_config_file, preview_type, fps):
             pi_classifier.process_frame(frame, time.time())
             if fps is not None:
                 time.sleep(1.0 / fps)
+
         pi_classifier.disconnected()
         frame_queue.put(STOP_SIGNAL)
         preview_process.join(7)
         if preview_process.is_alive():
             logging.info("Killing preview process")
             try:
-                preview_process.kill()
+                kill_process(preview_process)
             except:
                 pass
     except Exception as ex:
@@ -394,7 +395,7 @@ def parse_cptv(file, config, thermal_config_file, preview_type, fps):
         if preview_process.is_alive():
             logging.info("Killing preview process")
             try:
-                preview_process.kill()
+                kill_process(preview_process)
             except:
                 pass
         raise ex
@@ -467,14 +468,16 @@ def ir_camera(config, thermal_config, process_queue):
 
         while True:
             if restart_pending:
-                logging.info("Restarting as config changed")
+                logging.info(
+                    "Restarting as config changed QSize is %s", process_queue.qsize()
+                )
                 process_queue.put(STOP_SIGNAL)
                 # give it time to clean up
                 processor.join(5)
                 if processor.is_alive():
                     logging.info("Killing process")
                     try:
-                        processor.kill()
+                        kill_process(processor)
                     except:
                         pass
                 break
@@ -515,7 +518,8 @@ def ir_camera(config, thermal_config, process_queue):
     finally:
         if processor is not None:
             time.sleep(5)
-            processor.kill()
+            kill_process(processor)
+
     return frames
 
 
@@ -610,6 +614,17 @@ def delete_stale_thumbnails(output_dir):
 # return -1
 
 
+def kill_process(process):
+    logging.info("Killing process %s", process.pid)
+    parent = psutil.Process(process.pid)
+    children = parent.children(recursive=True)
+    for child in children:
+        child.kill()
+    psutil.wait_procs(children, timeout=5)
+    parent.kill()
+    parent.wait(5)
+
+
 def handle_connection(connection, config, thermal_config_file, process_queue):
     headers, extra_b = handle_headers(connection)
     thermal_config = ThermalConfig.load_from_file(thermal_config_file, headers.model)
@@ -636,7 +651,7 @@ def handle_connection(connection, config, thermal_config_file, process_queue):
                 if processor.is_alive():
                     logging.info("Killing process")
                     try:
-                        processor.kill()
+                        kill_process(processor)
                     except:
                         pass
                 break
