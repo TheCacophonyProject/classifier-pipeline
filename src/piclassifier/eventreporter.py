@@ -18,8 +18,6 @@ def throttled_event():
 
 
 def log_event(event_type, details=None):
-    print("TODO Fix event logging")
-    return
     bus = dbus.SystemBus(mainloop=DBusGMainLoop())
     data = None
     if details is not None:

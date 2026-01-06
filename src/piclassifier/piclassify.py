@@ -138,7 +138,11 @@ def main():
             break
 
     # try not run classifier unless we are inside a recording window
-    if thermal_config.recorder.rec_window.inside_window():
+    enable_network_classifier = thermal_config.motion.postprocess or (
+        model is not None and thermal_config.motion.run_classifier
+    )
+
+    if thermal_config.recorder.rec_window.inside_window() and enable_network_classifier:
         success = utils.startup_network_classifier(model.run_over_network)
         if not success:
             raise Exception("Could not start up network classifier")
@@ -187,7 +191,7 @@ def file_changed(event):
     global restart_pending
     restart_pending = True
     if not connected:
-        logging.info("Not conencted so closing")
+        logging.info("Not connected so closing")
         os._exit(0)
 
 
@@ -377,13 +381,14 @@ def parse_cptv(file, config, thermal_config_file, preview_type, fps):
             pi_classifier.process_frame(frame, time.time())
             if fps is not None:
                 time.sleep(1.0 / fps)
+
         pi_classifier.disconnected()
         frame_queue.put(STOP_SIGNAL)
         preview_process.join(7)
         if preview_process.is_alive():
             logging.info("Killing preview process")
             try:
-                preview_process.kill()
+                kill_process_with_timeout(preview_process)
             except:
                 pass
     except Exception as ex:
@@ -394,7 +399,7 @@ def parse_cptv(file, config, thermal_config_file, preview_type, fps):
         if preview_process.is_alive():
             logging.info("Killing preview process")
             try:
-                preview_process.kill()
+                kill_process_with_timeout(preview_process)
             except:
                 pass
         raise ex
@@ -467,14 +472,16 @@ def ir_camera(config, thermal_config, process_queue):
 
         while True:
             if restart_pending:
-                logging.info("Restarting as config changed")
+                logging.info(
+                    "Restarting as config changed QSize is %s", process_queue.qsize()
+                )
                 process_queue.put(STOP_SIGNAL)
                 # give it time to clean up
                 processor.join(5)
                 if processor.is_alive():
                     logging.info("Killing process")
                     try:
-                        processor.kill()
+                        kill_process_with_timeout(processor)
                     except:
                         pass
                 break
@@ -515,7 +522,8 @@ def ir_camera(config, thermal_config, process_queue):
     finally:
         if processor is not None:
             time.sleep(5)
-            processor.kill()
+            kill_process_with_timeout(processor)
+
     return frames
 
 
@@ -610,6 +618,36 @@ def delete_stale_thumbnails(output_dir):
 # return -1
 
 
+def kill_process_with_timeout(process, timeout=30):
+    # for some reason process.kill hangs sometimes
+    kill_thread = Thread(target=kill_process, args=(process,))
+    kill_thread.start()
+    try:
+        kill_thread.join(timeout)
+    except:
+        logging.error("Kill thread didnt terminate", exc_info=True)
+
+
+def kill_process(process):
+    logging.info("Killing process %s", process.pid)
+    try:
+        parent = psutil.Process(process.pid)
+        children = parent.children()
+        for child in children:
+            if child.is_running:
+                kill_process(child)
+        psutil.wait_procs(children, timeout=5)
+        if parent.is_running:
+            try:
+                parent.kill()
+            except:
+                logging.error("Could not kill process %s ", parent.pid, exc_info=True)
+            parent.wait(5)
+
+    except:
+        logging.error("Could not kill process", exc_info=True)
+
+
 def handle_connection(connection, config, thermal_config_file, process_queue):
     headers, extra_b = handle_headers(connection)
     thermal_config = ThermalConfig.load_from_file(thermal_config_file, headers.model)
@@ -630,15 +668,6 @@ def handle_connection(connection, config, thermal_config_file, process_queue):
         while True:
             if restart_pending:
                 logging.info("Restarting as config changed")
-                process_queue.put(STOP_SIGNAL)
-                # give it time to clean up
-                processor.join(5)
-                if processor.is_alive():
-                    logging.info("Killing process")
-                    try:
-                        processor.kill()
-                    except:
-                        pass
                 break
             if not processor.is_alive():
                 # this potentially loops on indefinately on an error if the error is to do with the headers
@@ -657,7 +686,6 @@ def handle_connection(connection, config, thermal_config_file, process_queue):
 
             if not data:
                 logging.info("disconnected from camera")
-                process_queue.put(STOP_SIGNAL)
                 break
             try:
                 message = data[:5]
@@ -665,7 +693,6 @@ def handle_connection(connection, config, thermal_config_file, process_queue):
                     logging.info(
                         "processing error from camera"
                     )  # TODO Check if this is handled properly.
-                    process_queue.put(STOP_SIGNAL)
                     break
             except:
                 pass
@@ -688,6 +715,13 @@ def handle_connection(connection, config, thermal_config_file, process_queue):
                 process_queue.put((frame, time.time()))
 
     finally:
-        time.sleep(5)
-        # give it a moment to close down properly
-        processor.terminate()
+        if processor.is_alive:
+            process_queue.put(STOP_SIGNAL)
+            # give it time to clean up, seems to take a while if classifier is running
+            processor.join(50)
+            if processor.is_alive():
+                logging.info("Killing process")
+                try:
+                    kill_process_with_timeout(processor)
+                except:
+                    pass
