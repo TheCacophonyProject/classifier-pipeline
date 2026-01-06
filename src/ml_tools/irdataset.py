@@ -13,8 +13,12 @@ import sys
 from ml_tools.logs import init_logging
 
 AUTOTUNE = tf.data.AUTOTUNE
+
+
 # IMAGE_SIZE = [256, 256]
 # BATCH_SIZE = 64
+def get_acceptable_labels():
+    return None
 
 
 def get_excluded():

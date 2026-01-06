@@ -236,8 +236,9 @@ class TrackPrediction:
         self.last_frame_classified = frame_number
         self.num_frames_classified += 1
         self.masses.append(mass)
-        smoothed_prediction = predictions**2 * mass
-
+        smoothed_prediction = None
+        if self.smooth_preds:
+            smoothed_prediction = predictions**2 * mass
         prediction = Prediction(
             predictions,
             smoothed_prediction,
@@ -253,9 +254,15 @@ class TrackPrediction:
         if self.normalized:
             logging.warning("Already normalized and still adding predicitions")
         if self.class_best_score is None:
-            self.class_best_score = smoothed_prediction
+            if self.smooth_preds:
+                self.class_best_score = smoothed_prediction
+            else:
+                self.class_best_score = predictions
         else:
-            self.class_best_score += smoothed_prediction
+            if self.smooth_preds:
+                self.class_best_score += smoothed_prediction
+            else:
+                self.class_best_score = predictions
 
     def get_priority(self, frame_number):
         if self.tracking:

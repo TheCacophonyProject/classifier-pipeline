@@ -6,6 +6,7 @@ import numpy as np
 from ml_tools.hyperparams import HyperParams
 from pathlib import Path
 from classify.trackprediction import TrackPrediction
+from ml_tools.imageprocessing import normalize
 import requests
 
 
@@ -27,6 +28,9 @@ class Interpreter(ABC):
         self.version = metadata.get("version", None)
         self.labels = metadata["labels"]
         self.params = HyperParams()
+        self.params["remapped_labels"] = metadata.get("remapped_labels")
+        self.params["excluded_labels"] = metadata.get("excluded_labels")
+
         self.params.update(metadata.get("hyperparams", {}))
         self.data_type = metadata.get("type", "thermal")
 
@@ -532,6 +536,23 @@ def inc3_preprocess(x):
     return x
 
 
+def get_interpreter_from_path(model_file):
+    logging.info("Loading %s", model_file)
+
+    if model_file.suffix in [".keras", ".pb"]:
+        from ml_tools.kerasmodel import KerasModel
+
+        classifier = KerasModel()
+        classifier.load_model(model_file)
+    elif model_file.suffix == ".tflite":
+        classifier = LiteInterpreter(model_file)
+    elif model_file.suffix == ".pkl":
+        from ml_tools.forestmodel import ForestModel
+
+        classifier = ForestModel(model_file)
+    return classifier
+
+
 def get_interpreter(model, run_over_network=False, load_model=True):
     # model_name, type = os.path.splitext(model.model_file)
 
@@ -561,3 +582,40 @@ def get_interpreter(model, run_over_network=False, load_model=True):
     classifier.id = model.id
     classifier.port = model.port
     return classifier
+
+
+def get_contours(contour_image, frame_number):
+    import cv2
+
+    contour_image, stats = normalize(contour_image, new_max=255)
+
+    image = cv2.GaussianBlur(np.uint8(contour_image), (15, 15), 0)
+
+    flags = cv2.THRESH_BINARY + cv2.THRESH_OTSU
+
+    _, image = cv2.threshold(image, 0, 255, flags)
+    cv2.imwrite(f"contours/contours-{frame_number}.png", image)
+
+    contours, _ = cv2.findContours(
+        np.uint8(image),
+        cv2.RETR_EXTERNAL,
+        # cv2.CHAIN_APPROX_SIMPLE,
+        cv2.CHAIN_APPROX_TC89_L1,
+    )
+    if len(contours) == 0:
+        return 0
+
+    contours = sorted(contours, key=lambda c: len(c), reverse=True)
+
+    return len(contours[0])
+
+
+class ModelMeta(Interpreter):
+    def __init__(self, model_name):
+        super().__init__(model_name)
+
+    def predict(self):
+        raise "No predict for model meta"
+
+    def shape(self):
+        raise "No shape for model meta"
