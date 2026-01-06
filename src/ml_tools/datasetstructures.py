@@ -374,7 +374,7 @@ class TrackHeader:
         self,
         segment_width,
         segment_frame_spacing=9,
-        segment_types=[SegmentType.ALL_RANDOM],
+        segment_types=[SegmentType.ALL_RANDOM_MASKED],
         segment_min_mass=None,
         repeats=1,
         max_segments=None,

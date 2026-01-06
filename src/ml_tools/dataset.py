@@ -103,9 +103,8 @@ class Dataset:
             self.segment_spacing = 1
             self.segment_min_avg_mass = 10
             self.min_frame_mass = 16
-            self.segment_types = [SegmentType.ALL_RANDOM]
+            self.segment_types = [SegmentType.ALL_RANDOM_MASKED]
             self.max_frames = 75
-
         self.country_rectangle = BuildConfig.COUNTRY_LOCATIONS.get(self.country)
         logging.info(
             "Filtering by country %s have bounding rect %s",
