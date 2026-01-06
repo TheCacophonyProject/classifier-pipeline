@@ -45,6 +45,7 @@ def get_excluded():
         "static",
         # added gp forretrain
         "wombat",
+        "bandicoot",
         # "gray kangaroo",
         # "echidna",
         # "fox",
@@ -57,6 +58,7 @@ def get_excluded():
 def get_remapped(multi_label=False):
     land_bird = "land-bird" if multi_label else "bird"
     return {
+        "brushtail possum": "possum",
         "fox": "dog",
         "echidna": "hedgehog",
         "grey kangaroo": "wallaby",
