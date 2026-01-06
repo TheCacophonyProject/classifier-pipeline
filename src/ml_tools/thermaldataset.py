@@ -28,6 +28,28 @@ fp = None
 IMG_SIZE = 45
 
 
+# labels can be any subset of this, prevents new labels being trained on until we explicitly add them to here
+def get_acceptable_labels():
+    return [
+        "bird",
+        "cat",
+        "deer",
+        "dog",
+        "false-positive",
+        "hedgehog",
+        "human",
+        "kiwi",
+        "leporidae",
+        "mustelid",
+        "penguin",
+        "possum",
+        "rodent",
+        "sheep",
+        "vehicle",
+        "wallaby",
+    ]
+
+
 def get_excluded():
     return [
         "animal",
@@ -46,6 +68,8 @@ def get_excluded():
         # added gp forretrain
         "wombat",
         "bandicoot",
+        "horse",
+        "otter",
         # "gray kangaroo",
         # "echidna",
         # "fox",
@@ -61,6 +85,7 @@ def get_remapped(multi_label=False):
         "brushtail possum": "possum",
         "fox": "dog",
         "echidna": "hedgehog",
+        "kangaroo": "wallaby",
         "grey kangaroo": "wallaby",
         "sambar deer": "deer",
         "mouse": "rodent",

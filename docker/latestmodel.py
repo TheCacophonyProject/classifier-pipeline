@@ -3,6 +3,7 @@
 # with prefix server-
 # place this in /etc/cacophony/classifier.yaml
 """
+
 import os
 import sys
 import requests
@@ -90,9 +91,11 @@ def main():
     with open(config_file, "w") as stream:
         raw = yaml.dump(config, stream)
 
+
 import subprocess
 
 # Using 'capture_output=True' and 'text=True' for Python 3.7+
+
 
 def add_to_config(release, config, model_id, model_type):
     print("Using release ", release["tag_name"])
@@ -118,8 +121,8 @@ def add_to_config(release, config, model_id, model_type):
     # Download and extract new model
     print("Downloading model", asset["name"])
     model_dir = existing_models / release["tag_name"] / "default"
-    model_dir.mkdir(exist_ok=True,parents=True)
-    print("Made dir",model_dir)
+    model_dir.mkdir(exist_ok=True, parents=True)
+    print("Made dir", model_dir)
     download_file(asset["browser_download_url"], asset["name"], model_dir)
 
     # Get model metadata to extract model name

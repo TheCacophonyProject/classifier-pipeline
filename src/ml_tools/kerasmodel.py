@@ -542,6 +542,16 @@ class KerasModel(Interpreter):
             self.excluded_labels, self.remapped_labels = get_excluded(
                 self.data_type, self.params.multi_label
             )
+            acceptable_types = get_acceptable_labels(self.data_type)
+            if acceptable_types is not None:
+                for lbl in self.labels:
+                    if lbl not in acceptable_types and lbl not in self.excluded_labels:
+                        logging.info(
+                            "Adding %s to excluded list as it is not in our acceptable label list",
+                            lbl,
+                        )
+                        self.excluded_labels.append(lbl)
+
         if self.params.remapped_labels is not None:
             self.remapped_labels = self.params.remapped_labels
         else:
@@ -1435,6 +1445,12 @@ class ClearMemory(Callback):
         print("epoch edned", epoch)
         gc.collect()
         tf.keras.backend.clear_session()
+
+
+def get_acceptable_labels(type):
+    if type == "thermal":
+        return thermaldataset.get_acceptable_labels()
+    return irdataset.get_acceptable_labels()
 
 
 def get_excluded(type, multi_label=False):
