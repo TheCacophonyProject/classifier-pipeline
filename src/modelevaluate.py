@@ -271,7 +271,9 @@ def filter_diffs(track_frames, background):
 def metadata_confusion(dir, confusion_file, after_date=None, model_metadata=None):
     from ml_tools.kerasmodel import (
         plot_confusion_matrix,
+        get_excluded,
     )
+    from track.region import Region
 
     confusion_file = Path(confusion_file)
     with open("label_paths.json", "r") as f:
