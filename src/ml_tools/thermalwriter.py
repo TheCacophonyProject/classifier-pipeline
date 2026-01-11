@@ -234,20 +234,7 @@ def get_data(clip_samples, extra_args):
                     continue
                 # GP All assumes we dont have a track over multiple bins (Whcih we probably never want)
                 if extra_args.get("use_segments", True):
-                    # mustelid_track = track.label in [
-                    #     "mustelid",
-                    #     "weasel",
-                    #     "ferret",
-                    #     "stoat",
-                    # ]
                     segment_types = extra_args.get("segment_types")
-                    # segment_types = (
-                    #     [SegmentType.ELONGATION]
-                    #     if mustelid_track
-                    #     else extra_args.get("segment_types")
-                    # )
-                    # if mustelid_track:
-                    # print("Mustleid track ", track.label, clip_id, track_id)
                     track.get_segments(
                         segment_width=extra_args.get("segment_width", 25),
                         segment_frame_spacing=extra_args.get(
@@ -327,12 +314,13 @@ def get_data(clip_samples, extra_args):
                     by_frame_number[f.frame_number] = (cropped, median_temp)
 
             else:
-                track_frames = db.get_track(
-                    clip_id, track_id, channels=[TrackChannels.thermal], crop=True
-                )
                 raise Exception(
                     "Need to implement min max filtered values for hdf5 track"
                 )
+                track_frames = db.get_track(
+                    clip_id, track_id, channels=[TrackChannels.thermal], crop=True
+                )
+
             logging.debug("Saving %s samples %s", track_id, len(samples))
             used_frames = []
 

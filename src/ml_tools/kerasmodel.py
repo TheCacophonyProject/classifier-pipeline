@@ -902,6 +902,7 @@ class KerasModel(Interpreter):
 
         results = []
         confidences = []
+        raw_class_confidences = []
         for y, pred in pred_per_track.values():
             pred.normalize_score()
             preds = np.array([p.prediction for p in pred.predictions])
@@ -911,6 +912,7 @@ class KerasModel(Interpreter):
             results.append(best_pred)
             confidences.append(no_smoothing[best_pred])
             flat_y.append(y)
+            raw_class_confidences.append(no_smoothing)
 
         true_categories = np.int64(flat_y)
         # else:
@@ -919,6 +921,15 @@ class KerasModel(Interpreter):
         labels.append("Nothing")
         results = np.int64(results)
         confidences = np.array(confidences)
+
+        # raw_preds_i = np.uint8(raw_preds_i)
+        raw_class_confidences = np.array(raw_class_confidences)
+        npy_file = filename.parent / f"{filename.stem}-raw.npy"
+        logging.info("Saving %s", npy_file)
+        with npy_file.open("wb") as f:
+            np.save(f, true_categories)
+            np.save(f, results)
+            np.save(f, raw_class_confidences)
 
         # thresholds found from best_score
         thresholds_per_label = [
@@ -954,7 +965,7 @@ class KerasModel(Interpreter):
         plt.savefig(smoothing_file.with_suffix(".png"), format="png")
         np.save(smoothing_file.with_suffix(".npy"), cm)
 
-        thresholds = [0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8, 0.85]
+        thresholds = [0.8]
         for threshold in thresholds:
             preds = results.copy()
 
