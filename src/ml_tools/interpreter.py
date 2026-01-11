@@ -317,8 +317,7 @@ class Interpreter(ABC):
         thermal_min_diff = None
         thermal_norm_limits = None
         filtered_norm_limits = None
-
-        for i, region in enumerate(reversed(track.bounds_history)):
+        for region in reversed(track.bounds_history):
             if region.blank:
                 continue
             if region.width == 0 or region.height == 0:
@@ -333,7 +332,6 @@ class Interpreter(ABC):
                 continue
 
             f.float_arrays()
-            median_temp = np.median(f.thermal)
 
             if self.params.thermal_diff_norm:
                 diff_frame = f.thermal - np.median(f.thermal)
@@ -397,7 +395,6 @@ class Interpreter(ABC):
                         )
                         if np.median(sub_thermal) <= 0:
                             clip_thermals_at_zero = False
-                        clip_thermals_at_zero = False
         # should really be over whole track buts let just do the indices we predict of
         #  seems to make little different to just doing a min max normalization
 

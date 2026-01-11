@@ -116,17 +116,14 @@ class Rectangle:
 
         right_adjust = 0
         right_adjust = self.right - crop.right
-        # print(crop.right,self.right)
         right_adjust = max(0, right_adjust)
         right_adjust = min(right_adjust, crop.width)
-        # print("Right adjust ",right_adjust, "L", left_adjust)
         width_adjust = max(left_adjust, right_adjust)
 
         self.left += width_adjust
         self.right -= width_adjust
 
         bottom_adjust = self.bottom - crop.bottom
-        # print("Bottom diff is ",crop.bottom, self.bottom)
         bottom_adjust = max(0, bottom_adjust)
         bottom_adjust = min(bottom_adjust, crop.height)
 
@@ -135,7 +132,6 @@ class Rectangle:
         top_adjust = min(top_adjust, crop.height)
 
         height_adjust = max(bottom_adjust, top_adjust)
-        # print("height is ",bottom_adjust, "vs ", top_adjust)
         self.top += height_adjust
         self.bottom -= height_adjust
 

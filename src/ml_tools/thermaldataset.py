@@ -30,6 +30,8 @@ IMG_SIZE = 45
 
 # labels can be any subset of this, prevents new labels being trained on until we explicitly add them to here
 def get_acceptable_labels():
+    logging.warning("Need to add remapped labels into acceptable labels")
+    return None
     return [
         "bird",
         "cat",
@@ -195,7 +197,7 @@ def load_dataset(filenames, remap_lookup, labels, args):
 
 rotation_augmentation = tf.keras.Sequential(
     [
-        # maybe 0.5 is good?
+        # Tested at 0.5 and 0.1 seems to work best
         tf.keras.layers.RandomRotation(0.1, fill_mode="nearest", fill_value=0),
     ]
 )
@@ -371,7 +373,7 @@ def main():
     resampled_ds, remapped, labels, epoch_size = get_dataset(
         # dir,
         load_dataset,
-        training_folder / "validation",
+        training_folder / "test",
         labels,
         batch_size=32,
         image_size=(160, 160),

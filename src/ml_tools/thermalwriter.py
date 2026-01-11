@@ -53,7 +53,6 @@ from ml_tools.rectangle import Rectangle
 from ml_tools.datasetstructures import SegmentType
 
 crop_rectangle = Rectangle(0, 0, 640, 480)
-from functools import lru_cache
 
 
 def create_tf_example(sample, data, features, labels, num_frames, country_code):
@@ -136,23 +135,6 @@ def create_tf_example(sample, data, features, labels, num_frames, country_code):
 
     example = tf.train.Example(features=tf.train.Features(feature=feature_dict))
     return example
-
-
-# # @lru_cache(maxsize=1000)
-# # only going to get called once now per track
-# def get_track_data(clip_id, track_id, db):
-#     background = db.get_clip_background(clip_id)
-
-#     track_frames = db.get_track(
-#         clip_id, track_id, channels=[TrackChannels.thermal], crop=True
-#     )
-#     clip_meta = db.get_clip_meta(clip_id)
-#     frame_temp_median = clip_meta["frame_temp_median"]
-#     regions = [f.region for f in track_frames]
-#     features = forest_features(
-#         track_frames, background, frame_temp_median, regions, normalize=True
-#     )
-#     return background, track_frames, features, frame_temp_median
 
 
 def save_data(samples, writer, labels, extra_args):

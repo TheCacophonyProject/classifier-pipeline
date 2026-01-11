@@ -931,7 +931,8 @@ class KerasModel(Interpreter):
             np.save(f, results)
             np.save(f, raw_class_confidences)
 
-        # thresholds found from best_score
+        # thresholds found from best_score for the year of 2025
+        # new models may require different thresholds
         thresholds_per_label = [
             0.46797615,
             0.70631117,
