@@ -317,6 +317,8 @@ class Interpreter(ABC):
         thermal_min_diff = None
         thermal_norm_limits = None
         filtered_norm_limits = None
+
+        clip_thermal_min = True
         for i, region in enumerate(reversed(track.bounds_history)):
             if region.blank:
                 continue
@@ -332,6 +334,7 @@ class Interpreter(ABC):
                 continue
 
             f.float_arrays()
+            median_temp = np.median(f.thermal)
 
             if self.params.thermal_diff_norm:
                 diff_frame = f.thermal - np.median(f.thermal)
@@ -352,6 +355,13 @@ class Interpreter(ABC):
                     min_diff = new_min
                 if new_max > max_diff:
                     max_diff = new_max
+
+            if clip_thermal_min:
+                # check that we have nice values other wise allow negatives when normalizing
+                sub_thermal = region.subimage(f.thermal)
+                sub_thermal = np.float32(sub_thermal) - median_temp
+                if np.median(sub_thermal) <= 0:
+                    thermal_min = None
         if self.params.thermal_diff_norm:
             thermal_norm_limits = (thermal_min_diff, thermal_max_diff)
 
@@ -364,11 +374,37 @@ class Interpreter(ABC):
 
         track_data = {}
         unique_regions = {}
+        frame_temp_medians = {}
+        clip_thermals_at_zero = True
         for segment in segments:
             for region in segment.regions:
                 if region.frame_number not in unique_regions:
                     unique_regions[region.frame_number] = region
+                    frame = clip.get_frame(region.frame_number)
+                    if frame is None:
+                        logging.error(
+                            "Clasifying clip %s track %s can't get frame %s",
+                            clip.get_id(),
+                            track.get_id(),
+                            region.frame_number,
+                        )
+                        raise Exception(
+                            "Clasifying clip {} track {} can't get frame {}".format(
+                                clip.get_id(), track.get_id(), region.frame_number
+                            )
+                        )
+                    frame_temp_medians[region.frame_number] = np.median(frame.thermal)
 
+                    if clip_thermals_at_zero:
+                        # check that we have nice values other wise allow negatives when normalizing
+                        sub_thermal = region.subimage(frame.thermal)
+                        sub_thermal = (
+                            np.float32(sub_thermal)
+                            - frame_temp_medians[region.frame_number]
+                        )
+                        if np.median(sub_thermal) <= 0:
+                            clip_thermals_at_zero = False
+                        clip_thermals_at_zero = False
         # should really be over whole track buts let just do the indices we predict of
         #  seems to make little different to just doing a min max normalization
 
@@ -404,6 +440,8 @@ class Interpreter(ABC):
                 calculate_filtered=False,
                 filtered_norm_limits=filtered_norm_limits,
                 thermal_norm_limits=thermal_norm_limits,
+                median=frame_temp_medians[region.frame_number],
+                clip_thermals_at_zero=clip_thermals_at_zero,
             )
             track_data[frame.frame_number] = cropped_frame
         features = None

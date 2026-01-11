@@ -958,7 +958,7 @@ class KerasModel(Interpreter):
             pred_mask = preds == i
             # set these to None
             conf_mask = confidences < threshold
-            preds[pred_mask & conf_mask]= len(labels) - 1
+            preds[pred_mask & conf_mask] = len(labels) - 1
         cm = confusion_matrix(true_categories, preds, labels=np.arange(len(labels)))
         # Log the confusion matrix as an image summary.
         figure = plot_confusion_matrix(cm, class_names=labels)
