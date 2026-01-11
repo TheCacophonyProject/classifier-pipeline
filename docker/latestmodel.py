@@ -92,11 +92,6 @@ def main():
         raw = yaml.dump(config, stream)
 
 
-import subprocess
-
-# Using 'capture_output=True' and 'text=True' for Python 3.7+
-
-
 def add_to_config(release, config, model_id, model_type):
     print("Using release ", release["tag_name"])
     if len(release["assets"]) == 0:
@@ -116,7 +111,7 @@ def add_to_config(release, config, model_id, model_type):
     print("Have existing", model_versions)
     if release["tag_name"] in model_versions:
         print("Already have latest model")
-        # return None
+        return None
 
     # Download and extract new model
     print("Downloading model", asset["name"])

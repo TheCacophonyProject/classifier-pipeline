@@ -318,7 +318,6 @@ class Interpreter(ABC):
         thermal_norm_limits = None
         filtered_norm_limits = None
 
-        clip_thermal_min = True
         for i, region in enumerate(reversed(track.bounds_history)):
             if region.blank:
                 continue
@@ -356,12 +355,6 @@ class Interpreter(ABC):
                 if new_max > max_diff:
                     max_diff = new_max
 
-            if clip_thermal_min:
-                # check that we have nice values other wise allow negatives when normalizing
-                sub_thermal = region.subimage(f.thermal)
-                sub_thermal = np.float32(sub_thermal) - median_temp
-                if np.median(sub_thermal) <= 0:
-                    thermal_min = None
         if self.params.thermal_diff_norm:
             thermal_norm_limits = (thermal_min_diff, thermal_max_diff)
 

@@ -889,7 +889,7 @@ class SegmentHeader(Sample):
         return self.id
 
     def get_data(self, db):
-        crop_rectangle = tools.Rectangle(2, 2, 160 - 2 * 2, 120 - 2 * 2)
+        crop_rectangle = tools.Rectangle(1, 1, 160 - 2, 120 - 2)
 
         try:
             background = db.get_clip_background(self.clip_id)

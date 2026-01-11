@@ -450,15 +450,6 @@ def split_randomly(dataset, config, date, test_clips=[], use_test=True):
         )
         add_samples(dataset.labels, test, test_c, test_counts)
 
-    # validate_cameras = []
-    # train_cameras = []
-    # min_label = None
-    # for label in dataset.labels:
-    #     label_count = len(dataset.samples_by_label.get(label, []))
-    #     if label not in ["insect", "false-positive"]:
-    #         continue
-    #     if min_label is None or label_count < min_label[1]:
-    #         min_label = (label, label_count)
     lbl_order = sorted(
         dataset.labels,
         key=lambda lbl: len(dataset.samples_by_label.get(lbl, [])),
@@ -737,16 +728,10 @@ def main():
         for dataset in datasets:
             dataset.labels = labels
     else:
-        tracks_loaded, total_tracks = master_dataset.load_clips(
-            dont_filter_segment=True
-        )
+        master_dataset.load_clips(dont_filter_segment=True)
 
         master_dataset.labels.sort()
-        print(
-            "Loaded {}/{} tracks, found {:.1f}k samples".format(
-                tracks_loaded, total_tracks, len(master_dataset.clips) / 1000
-            )
-        )
+        print("Loaded  found {:.1f}k samples".format(len(master_dataset.clips) / 1000))
         for key, value in master_dataset.filtered_stats.items():
             if value != 0:
                 print("  {} filtered {}".format(key, value))

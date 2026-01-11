@@ -185,9 +185,8 @@ class Frame:
         return None, None
 
     def normalize(self):
-        stats = None
         if self.thermal is not None:
-            self.thermal, stats = normalize(self.thermal, new_max=255)
+            self.thermal, _ = normalize(self.thermal, new_max=255)
         if self.filtered is not None:
             self.filtered, _ = normalize(self.filtered, new_max=255)
 

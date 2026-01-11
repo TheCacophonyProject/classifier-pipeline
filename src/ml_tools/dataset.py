@@ -238,17 +238,6 @@ class Dataset:
                         self.add_clip_sample_mappings(sample)
                         if track_header.label not in self.labels:
                             self.labels.append(track_header.label)
-        # for sample in track_header.samples:
-        #     self.add_clip_sample_mappings(sample)
-        return [0, 0]
-        # for db_clip in self.dataset_dir.glob(f"**/*{self.ext}"):
-        #     tracks_added = self.load_clip(db_clip, dont_filter_segment)
-        #     if tracks_added == 0:
-        #         logging.info("No tracks added for %s", db_clip)
-        #     counter += 1
-        #     if counter % 50 == 0:
-        #         logging.debug("Dataset loaded %s", counter)
-        # return [counter, counter]
 
     def merge_filtered(self, filtered_stats):
         for reason, count in filtered_stats.items():

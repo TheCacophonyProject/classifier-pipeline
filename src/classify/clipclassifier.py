@@ -54,11 +54,6 @@ class ClipClassifier:
     def set_is_recording(self, is_recording):
         self._is_recording = is_recording
 
-    # def load_models(self):
-    #     for model in self.config.classify.models:
-    #         logging.info("Loading %s", model)
-    #         classifier = self.get_classifier(model)
-
     def get_classifier(self, model, location=None):
         """
         Returns a classifier object, which is created on demand.
