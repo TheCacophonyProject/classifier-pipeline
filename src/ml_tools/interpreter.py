@@ -543,7 +543,9 @@ def get_interpreter_from_path(model_file):
         from ml_tools.kerasmodel import KerasModel
 
         classifier = KerasModel()
-        classifier.load_model(model_file)
+        classifier.init_model(model_file)
+        classifier.load_model()
+
     elif model_file.suffix == ".tflite":
         classifier = LiteInterpreter(model_file)
     elif model_file.suffix == ".pkl":

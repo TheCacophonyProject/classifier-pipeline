@@ -16,7 +16,6 @@ import matplotlib.ticker as mtick
 from config.config import Config
 import os
 
-os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
 import json
 
 # from config.config import Config
@@ -540,8 +539,17 @@ def load_clip_data(cptv_file):
     preprocess_data = []
     for track in clip.tracks:
         try:
+            samples = worker_model.frames_for_prediction(
+                clip, track, frames_per_classify=25, dont_filter=True, min_segments=1
+            )
+
             frames, preprocessed, masses = worker_model.preprocess(
-                clip_db, track, frames_per_classify=25, dont_filter=True, min_segments=1
+                clip_db,
+                track,
+                samples,
+                frames_per_classify=25,
+                dont_filter=True,
+                min_segments=1,
             )
             output = None
             if len(preprocessed) > 0:
@@ -592,6 +600,9 @@ def evaluate_dir(
     threshold=0.5,
     after_date=None,
 ):
+    # is faster to run multiple models on CPU
+    os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
+
     from ml_tools.kerasmodel import plot_confusion_matrix
 
     model = ModelMeta(model_file)
