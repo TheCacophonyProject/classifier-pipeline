@@ -4,6 +4,7 @@
 # place this in /etc/cacophony/classifier.yaml
 """
 
+import os
 import sys
 import requests
 from pathlib import Path
@@ -49,7 +50,7 @@ def download_file(url, name, extract_to):
     out_dir = Path("latest-model")
     out_dir.mkdir(exist_ok=True)
     print(f"Extracting {name} to {extract_to}")
-    extract_to.mkdir()
+    extract_to.mkdir(exist_ok=True)
     run_command(f"tar -xzf {name} -C {extract_to} --strip-components=1")
     Path(name).unlink()
 
@@ -81,7 +82,10 @@ def main():
     if config is None:
         config = {"classify": {"models": []}}
 
-    add_to_config(server_releases[0], config, 1, "Keras")
+    output_dir = add_to_config(server_releases[0], config, 1, "Keras")
+    if output_dir:
+        os.symlink(output_dir, output_dir.parent / "NZ")
+
     add_to_config(rf_releases[0], config, 2, "RandomForest")
 
     with open(config_file, "w") as stream:
@@ -92,7 +96,7 @@ def add_to_config(release, config, model_id, model_type):
     print("Using release ", release["tag_name"])
     if len(release["assets"]) == 0:
         print("Release has no files", release)
-        return False
+        return None
     asset = release["assets"][0]
 
     # check existing models
@@ -107,11 +111,13 @@ def add_to_config(release, config, model_id, model_type):
     print("Have existing", model_versions)
     if release["tag_name"] in model_versions:
         print("Already have latest model")
-        return False
+        return None
 
     # Download and extract new model
     print("Downloading model", asset["name"])
-    model_dir = existing_models / release["tag_name"]
+    model_dir = existing_models / release["tag_name"] / "default"
+    model_dir.mkdir(exist_ok=True, parents=True)
+    print("Made dir", model_dir)
     download_file(asset["browser_download_url"], asset["name"], model_dir)
 
     # Get model metadata to extract model name
@@ -143,7 +149,7 @@ def add_to_config(release, config, model_id, model_type):
     config_model["id"] = config_model["id"] + 1
     config_model["type"] = model_type
 
-    return True
+    return model_dir
 
 
 if __name__ == "__main__":

@@ -3,11 +3,11 @@ classify:
   models:
     - id: 2
       name : "WR"
-      model_file: "/etc/cacophony/models/wr/saved_model.pb"
+      model_file: "/etc/cacophony/models/server-x/default/saved_model.pb"
       thumbnail_model: True
     - id: 1000 #allow for 1000 updates of model before id overlaps
       name : "FP Filter"
-      model_file: "/etc/cacophony/models/rf/model.pkl"
+      model_file: "/etc/cacophony/models/rf/default/model.pkl"
       type: "RandomForest"
       ignored_tags: ["animal","vehicle"]
 tracking:

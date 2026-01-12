@@ -48,6 +48,7 @@ class RawDatabase:
         self.background = None
         self.ffc_frames = None
         self.frames = None
+        self.model = None
         self.crop_rectangle = Rectangle(1, 1, 160 - 2, 120 - 2)
 
     def frames_kept(self):
@@ -68,26 +69,26 @@ class RawDatabase:
         ffc_frames = []
         cptv_frames = []
         background = None
-        tracker_version = self.meta_data.get("tracker_version")
+        tracker_version = self.meta_data.get("tracker_version", 11)
         frame_i = 0
         reader = CptvReader(str(self.file))
         header = reader.get_header()
 
         background_alg = None
-        back_processed = False
         self.frames = []
         while True:
+            back_processed = False
+
             frame = reader.next_frame()
             if frame is None:
                 break
-
             if background_alg is None:
                 average = np.mean(frame.pix)
                 if average > 10000:
-                    model = "lepton3.5"
+                    self.model = "lepton3.5"
                     weight_add = 1
                 else:
-                    model = "lepton3"
+                    self.model = "lepton3"
                     weight_add = 0.1
                 background_alg = WeightedBackground(
                     self.crop_rectangle.x,
@@ -100,7 +101,6 @@ class RawDatabase:
                 background_alg.process_frame(frame.pix)
                 back_processed = True
                 background = background_alg.background
-
             if frame.background_frame:
                 # background = frame.pix
                 # bug in previous tracker version where background was first frame
@@ -118,7 +118,8 @@ class RawDatabase:
             )
 
             if not back_processed:
-                background_alg.process_frame(frame.pix)
+                last_avg = np.mean([f.thermal for f in self.frames[-45:]], axis=0)
+                background_alg.process_frame(last_avg)
 
             frame_i += 1
 
@@ -143,7 +144,7 @@ class RawDatabase:
             return None
         edge_pixels = metadata.get("edgePixels", 1)
         resx = metadata.get("resX", 160)
-        resy = metadata.get("resY", 140)
+        resy = metadata.get("resY", 120)
 
         self.crop_rectangle = Rectangle(
             edge_pixels, edge_pixels, resx - edge_pixels * 2, resy - edge_pixels * 2
@@ -162,7 +163,7 @@ class RawDatabase:
                             country_code = country
                             break
             except:
-                logging.error("Could not parse lat lng", exc_info=True)
+                # logging.error("Could not parse lat lng", exc_info=True)
                 pass
 
         clip_header = ClipHeader(
@@ -180,98 +181,109 @@ class RawDatabase:
             country_code=country_code,
         )
         tracks = metadata.get("Tracks", [])
+        if len(tracks) == 0:
+            tracks = metadata.get("tracks", [])
+
         fp_labels = metadata.get("fp_model_labels")
         fp_index = None
         if fp_labels is not None:
             fp_index = fp_labels.index("false-positive")
         meta = []
         for track_meta in tracks:
-            tags = track_meta.get("tags", [])
-            tag = Track.get_best_human_tag(tags, tag_precedence, 0)
-            human_tag = None
-            human_tag_confidence = None
-            master_tag = [
-                t
-                for t in tags
-                if t.get("automatic")
-                and not isinstance(t.get("data", ""), str)
-                and t.get("data", {}).get("name") == "Master"
-            ]
-            if len(master_tag) > 0:
-                master_tag = master_tag[0]
-                track_meta["ai_tag"] = master_tag["what"]
-                track_meta["ai_tag_confidence"] = master_tag["confidence"]
+            try:
+                tags = track_meta.get("tags", [])
+                tag = Track.get_best_human_tag(tags, tag_precedence, 0)
+                human_tag = None
+                human_tag_confidence = None
+                master_tag = [
+                    t
+                    for t in tags
+                    if t.get("automatic")
+                    and not isinstance(t.get("data", ""), str)
+                    and t.get("data", {}).get("name") == "Master"
+                ]
+                if len(master_tag) > 0:
+                    master_tag = master_tag[0]
+                    track_meta["ai_tag"] = master_tag["what"]
+                    track_meta["ai_tag_confidence"] = master_tag["confidence"]
 
-            if tag is not None:
-                human_tag = tag["what"]
-                human_tag_confidence = tag["confidence"]
-            human_tags = [
-                (t.get("what"), t["confidence"])
-                for t in tags
-                if t.get("automatic", False) != True
-            ]
+                if tag is not None:
+                    human_tag = tag["what"]
+                    human_tag_confidence = tag["confidence"]
+                human_tags = [
+                    (t.get("what"), t["confidence"])
+                    for t in tags
+                    if t.get("automatic", False) != True
+                ]
 
-            start = None
-            end = None
+                start = None
+                end = None
 
-            prev_frame = None
-            regions = {}
-            for i, r in enumerate(track_meta.get("positions")):
-                if isinstance(r, list):
-                    region = Region.region_from_array(r[1])
+                prev_frame = None
+                regions = {}
+                for i, r in enumerate(track_meta.get("positions")):
+                    if isinstance(r, list):
+                        region = Region.region_from_array(r[1])
+                        if region.frame_number is None:
+                            if i == 0:
+                                frame_number = round(r[0] * FPS)
+                                region.frame_number = frame_number
+                            else:
+                                region.frame_number = prev_frame + 1
+                    else:
+                        region = Region.region_from_json(r)
                     if region.frame_number is None:
-                        if i == 0:
-                            frame_number = round(r[0] * FPS)
-                            region.frame_number = frame_number
-                        else:
-                            region.frame_number = prev_frame + 1
-                else:
-                    region = Region.region_from_json(r)
-                if region.frame_number is None:
-                    if "frameTime" in r:
-                        if i == 0:
-                            region.frame_number = round(r["frameTime"] * 9)
-                        else:
-                            region.frame_number = prev_frame + 1
-                prev_frame = region.frame_number
-                region.frame_number = region.frame_number
-                assert region.frame_number >= 0
-                regions[region.frame_number] = region
-                if start is None:
-                    start = region.frame_number
-                end = region.frame_number
+                        if "frameTime" in r:
+                            if i == 0:
+                                region.frame_number = round(r["frameTime"] * 9)
+                            else:
+                                region.frame_number = prev_frame + 1
+                    prev_frame = region.frame_number
+                    region.frame_number = region.frame_number
+                    assert region.frame_number >= 0
+                    regions[region.frame_number] = region
+                    if start is None:
+                        start = region.frame_number
+                    end = region.frame_number
 
-            fp_meta = track_meta.get("fp_model_predictions")
-            fp_frames = None
-            if fp_meta is not None:
-                fp_frames = []
-                for pred in fp_meta.get("predictions", []):
-                    scores = pred["prediction"]
-                    best_arg = np.argmax(scores)
-                    confidence = scores[best_arg]
-                    if best_arg == fp_index and confidence > 75:
-                        frame_i = pred["frames"]
-                        if isinstance(frame_i, int):
-                            fp_frames.append(frame_i)
-                        else:
-                            fp_frames.append(frame_i[0])
-            header = TrackHeader(
-                clip_id=clip_header.clip_id,
-                track_id=int(track_meta["id"]),
-                label=human_tag,
-                num_frames=len(regions),
-                regions=regions,
-                start_frame=start,
-                confidence=human_tag_confidence,
-                human_tags=human_tags,
-                source_file=self.file,
-                mega_missed_regions=track_meta.get("mega_missed_regions"),
-                station_id=clip_header.station_id,
-                fp_frames=fp_frames,
-                start_time=clip_header.rec_time + timedelta(seconds=start / FPS),
-                # frame_temp_median=frame_temp_median,
-            )
-            clip_header.tracks.append(header)
+                fp_meta = track_meta.get("fp_model_predictions")
+                fp_frames = None
+                if fp_meta is not None:
+                    fp_frames = []
+                    for pred in fp_meta.get("predictions", []):
+                        scores = pred["prediction"]
+                        best_arg = np.argmax(scores)
+                        confidence = scores[best_arg]
+                        if best_arg == fp_index and confidence > 75:
+                            frame_i = pred["frames"]
+                            if isinstance(frame_i, int):
+                                fp_frames.append(frame_i)
+                            else:
+                                fp_frames.append(frame_i[0])
+                header = TrackHeader(
+                    clip_id=clip_header.clip_id,
+                    track_id=int(track_meta["id"]),
+                    label=human_tag,
+                    num_frames=len(regions),
+                    regions=regions,
+                    start_frame=start,
+                    confidence=human_tag_confidence,
+                    human_tags=human_tags,
+                    source_file=self.file,
+                    mega_missed_regions=track_meta.get("mega_missed_regions"),
+                    station_id=clip_header.station_id,
+                    fp_frames=fp_frames,
+                    start_time=clip_header.rec_time + timedelta(seconds=start / FPS),
+                    # frame_temp_median=frame_temp_median,
+                )
+                clip_header.tracks.append(header)
+            except:
+                logging.error(
+                    "Could not load %s track %s",
+                    clip_header.clip_id,
+                    track_meta.get("id"),
+                    exc_info=True,
+                )
         return clip_header
 
     def get_id(self):

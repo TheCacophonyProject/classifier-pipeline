@@ -1,11 +1,13 @@
-import psutil
-import joblib
 import itertools
 import io
 import time
+import os
+
+# os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 import tensorflow as tf
 from tensorboard.plugins.hparams import api as hp
-import os
+
+
 import numpy as np
 import gc
 import time
@@ -15,14 +17,8 @@ import logging
 from pathlib import Path
 
 from sklearn.metrics import confusion_matrix
-import cv2
-from ml_tools import tools
 from ml_tools.datasetstructures import SegmentType
 
-from ml_tools.preprocess import (
-    preprocess_movement,
-    preprocess_frame,
-)
 from ml_tools.interpreter import Interpreter
 from classify.trackprediction import TrackPrediction
 from ml_tools.hyperparams import HyperParams
@@ -30,8 +26,7 @@ from ml_tools import thermaldataset
 from ml_tools.resnet.wr_resnet import WRResNet
 
 from ml_tools import irdataset
-from ml_tools.tfdataset import get_weighting, get_distribution, get_dataset as get_tf
-from ml_tools import forestmodel
+from ml_tools.tfdataset import get_weighting, get_dataset as get_tf
 from ml_tools.preprocess import FrameTypes
 
 classify_i = 0
@@ -210,6 +205,15 @@ class KerasModel(Interpreter):
                 ),
                 None,
             )
+        elif pretrained_model == "efficientnetv2b3":
+            return (
+                tf.keras.applications.EfficientNetV2B3(
+                    weights=weights,
+                    include_top=False,
+                    input_tensor=input,
+                ),
+                None,
+            )
         elif pretrained_model == "nasnet":
             return (
                 tf.keras.applications.nasnet.NASNetLarge(
@@ -263,9 +267,8 @@ class KerasModel(Interpreter):
         weights = None if self.params.base_training else "imagenet"
         base_model, preprocess = self.get_base_model(inputs, weights=weights)
         self.preprocess_fn = preprocess
-
         # inputs = base_model.input
-        x = base_model.output
+        x = base_model(inputs)
         # x = base_model(inputs, training=self.params.base_training)
         if self.params.get("model_merge"):
             logging.info(
@@ -539,6 +542,16 @@ class KerasModel(Interpreter):
             self.excluded_labels, self.remapped_labels = get_excluded(
                 self.data_type, self.params.multi_label
             )
+            acceptable_types = get_acceptable_labels(self.data_type)
+            if acceptable_types is not None:
+                for lbl in self.labels:
+                    if lbl not in acceptable_types and lbl not in self.excluded_labels:
+                        logging.info(
+                            "Adding %s to excluded list as it is not in our acceptable label list",
+                            lbl,
+                        )
+                        self.excluded_labels.append(lbl)
+
         if self.params.remapped_labels is not None:
             self.remapped_labels = self.params.remapped_labels
         else:
@@ -846,7 +859,9 @@ class KerasModel(Interpreter):
         return self.model.predict(frames)
 
     def confusion_tracks(self, dataset, filename, threshold=0.8):
-        logging.info("Calculating confusion with threshold %s", threshold)
+        logging.info(
+            "Calculating confusion with threshold %s saving to %s", threshold, filename
+        )
         true_categories = []
         track_ids = []
         avg_mass = []
@@ -869,7 +884,6 @@ class KerasModel(Interpreter):
         pred_per_track = {}
 
         # if self.params.multi_label:
-        self.labels.append("nothing")
         # predicted_categori/es = []
         # for p in y_pred:
         # predicted_categories.append(tf.where(p >= 0.8).numpy().ravel())
@@ -886,40 +900,87 @@ class KerasModel(Interpreter):
             )
             track_pred[1].classified_frame(None, p, mass)
 
-        results = [
-            ("No-Smoothing", []),
-            ("Old-Smoothing", []),
-            ("New-Smoothing", []),
-        ]
+        results = []
+        confidences = []
+        raw_class_confidences = []
         for y, pred in pred_per_track.values():
             pred.normalize_score()
             preds = np.array([p.prediction for p in pred.predictions])
 
             no_smoothing = np.mean(preds, axis=0)
-            masses = np.array(pred.masses)[:, None]
-            old_smoothing = pred.class_best_score
-            new_smooth = preds * masses
-            new_smooth = np.sum(new_smooth, axis=0)
-            new_smooth /= np.sum(masses)
-
-            for i, pred_type in enumerate([no_smoothing, old_smoothing, new_smooth]):
-                best_pred = np.argmax(pred_type)
-                confidence = pred_type[best_pred]
-                if confidence < threshold:
-                    best_pred = len(self.labels) - 1  # Nothing
-                results[i][1].append(best_pred)
+            best_pred = np.argmax(no_smoothing)
+            results.append(best_pred)
+            confidences.append(no_smoothing[best_pred])
             flat_y.append(y)
+            raw_class_confidences.append(no_smoothing)
 
         true_categories = np.int64(flat_y)
         # else:
         #     predicted_categories = np.int64(tf.argmax(y_pred, axis=1))
-        for result in results:
-            cm = confusion_matrix(
-                true_categories, np.int64(result[1]), labels=np.arange(len(self.labels))
-            )
+        labels = self.labels.copy()
+        labels.append("Nothing")
+        results = np.int64(results)
+        confidences = np.array(confidences)
+
+        # raw_preds_i = np.uint8(raw_preds_i)
+        raw_class_confidences = np.array(raw_class_confidences)
+        npy_file = filename.parent / f"{filename.stem}-raw.npy"
+        logging.info("Saving %s", npy_file)
+        with npy_file.open("wb") as f:
+            np.save(f, true_categories)
+            np.save(f, results)
+            np.save(f, raw_class_confidences)
+
+        # thresholds found from best_score for the year of 2025
+        # new models may require different thresholds
+        thresholds_per_label = [
+            0.46797615,
+            0.70631117,
+            0.2496017,
+            0.96398157,
+            0.33895272,
+            0.9697655,
+            0.35740834,
+            0.60906386,
+            0.88741493,
+            0.02124451,
+            0.9998618,
+            0.6102594,
+            0.5604206,
+            0.9881419,
+            0.98753905,
+            0.987157,
+        ]
+        thresholds_per_label = np.array(thresholds_per_label)
+        thresholds_per_label[thresholds_per_label < 0.5] = 0.5
+
+        preds = results.copy()
+        for i, threshold in enumerate(thresholds_per_label):
+            pred_mask = preds == i
+            # set these to None
+            conf_mask = confidences < threshold
+            preds[pred_mask & conf_mask] = len(labels) - 1
+        cm = confusion_matrix(true_categories, preds, labels=np.arange(len(labels)))
+        # Log the confusion matrix as an image summary.
+        figure = plot_confusion_matrix(cm, class_names=labels)
+        smoothing_file = filename.parent / f"{filename.stem}-fscore"
+        plt.savefig(smoothing_file.with_suffix(".png"), format="png")
+        np.save(smoothing_file.with_suffix(".npy"), cm)
+
+        thresholds = [0.8]
+        for threshold in thresholds:
+            preds = results.copy()
+
+            # set these to None
+            preds[confidences < threshold] = len(labels) - 1
+            cm = confusion_matrix(true_categories, preds, labels=np.arange(len(labels)))
             # Log the confusion matrix as an image summary.
-            figure = plot_confusion_matrix(cm, class_names=self.labels)
-            plt.savefig(f"{result[0]}-{filename}", format="png")
+            figure = plot_confusion_matrix(cm, class_names=labels)
+            smoothing_file = (
+                filename.parent / f"{filename.stem}-{round(100*threshold)}%"
+            )
+            plt.savefig(smoothing_file.with_suffix(".png"), format="png")
+            np.save(smoothing_file.with_suffix(".npy"), cm)
 
     def confusion_tfrecords(self, dataset, filename):
         true_categories = tf.concat([y for x, y in dataset], axis=0)
@@ -935,7 +996,7 @@ class KerasModel(Interpreter):
                 true_categories = np.int64(tf.argmax(true_categories, axis=1))
         y_pred = self.model.predict(dataset)
         if self.params.multi_label:
-            self.labels.append("nothing")
+            self.labels.append("Nothing")
             # predicted_categori/es = []
             # for p in y_pred:
             # predicted_categories.append(tf.where(p >= 0.8).numpy().ravel())
@@ -1080,7 +1141,7 @@ class KerasModel(Interpreter):
 
 
 # from tensorflow examples
-def plot_confusion_matrix(cm, class_names):
+def plot_confusion_matrix(cm, class_names, title="Confusion Matrix"):
     """
     Returns a matplotlib figure containing the plotted confusion matrix.
 
@@ -1088,14 +1149,18 @@ def plot_confusion_matrix(cm, class_names):
       cm (array, shape = [n, n]): a confusion matrix of integer classes
       class_names (array, shape = [n]): String names of the integer classes
     """
-
-    figure = plt.figure(figsize=(8, 8))
+    plt.clf()
+    figure = plt.figure(figsize=(16, 16))
     plt.imshow(cm, interpolation="nearest", cmap=plt.cm.Blues)
-    plt.title("Confusion matrix")
+    plt.title(title)
     plt.colorbar()
     tick_marks = np.arange(len(class_names))
-    plt.xticks(tick_marks, class_names, rotation=45)
-    plt.yticks(tick_marks, class_names)
+    plt.xticks(tick_marks, class_names, rotation=90)
+    ylabels = []
+    for i, label in enumerate(class_names):
+        ylabel = f"{label} ({np.sum(cm[i])})"
+        ylabels.append(ylabel)
+    plt.yticks(tick_marks, ylabels)
 
     # Use white text if squares are dark; otherwise black.
     counts = cm.copy()
@@ -1393,6 +1458,12 @@ class ClearMemory(Callback):
         print("epoch edned", epoch)
         gc.collect()
         tf.keras.backend.clear_session()
+
+
+def get_acceptable_labels(type):
+    if type == "thermal":
+        return thermaldataset.get_acceptable_labels()
+    return irdataset.get_acceptable_labels()
 
 
 def get_excluded(type, multi_label=False):

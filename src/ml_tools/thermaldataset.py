@@ -13,6 +13,7 @@ import logging
 from ml_tools.featurenorms import mean_v, std_v
 from ml_tools.frame import TrackChannels
 from pathlib import Path
+from ml_tools.tools import saveclassify_image
 
 # seed = 1341
 # tf.random.set_seed(seed)
@@ -24,9 +25,36 @@ AUTOTUNE = tf.data.AUTOTUNE
 insect = None
 fp = None
 
+IMG_SIZE = 45
+
+
+# labels can be any subset of this, prevents new labels being trained on until we explicitly add them to here
+def get_acceptable_labels():
+    logging.warning("Need to add remapped labels into acceptable labels")
+    return None
+    return [
+        "bird",
+        "cat",
+        "deer",
+        "dog",
+        "false-positive",
+        "hedgehog",
+        "human",
+        "kiwi",
+        "leporidae",
+        "mustelid",
+        "penguin",
+        "possum",
+        "rodent",
+        "sheep",
+        "vehicle",
+        "wallaby",
+    ]
+
 
 def get_excluded():
     return [
+        "animal",
         "goat",
         "lizard",
         "not identifiable",
@@ -38,13 +66,17 @@ def get_excluded():
         "mammal",
         "frog",
         "cow",
+        "static",
         # added gp forretrain
         "wombat",
-        "gray kangaroo",
-        "echidna",
-        "fox",
-        "deer",
-        "sheep",
+        "bandicoot",
+        "horse",
+        "otter",
+        # "gray kangaroo",
+        # "echidna",
+        # "fox",
+        # "deer",
+        # "sheep",
         # "wombat",
     ]
 
@@ -52,7 +84,10 @@ def get_excluded():
 def get_remapped(multi_label=False):
     land_bird = "land-bird" if multi_label else "bird"
     return {
+        "brushtail possum": "possum",
+        "fox": "dog",
         "echidna": "hedgehog",
+        "kangaroo": "wallaby",
         "grey kangaroo": "wallaby",
         "sambar deer": "deer",
         "mouse": "rodent",
@@ -162,12 +197,12 @@ def load_dataset(filenames, remap_lookup, labels, args):
 
 rotation_augmentation = tf.keras.Sequential(
     [
+        # Tested at 0.5 and 0.1 seems to work best
         tf.keras.layers.RandomRotation(0.1, fill_mode="nearest", fill_value=0),
     ]
 )
 data_augmentation = tf.keras.Sequential(
     [
-        tf.keras.layers.RandomFlip("horizontal"),
         tf.keras.layers.RandomBrightness(0.2),  # better per frame or per sequence??
         tf.keras.layers.RandomContrast(0.5),
     ]
@@ -209,11 +244,11 @@ def read_tfrecord(
     if load_images:
         if TrackChannels.filtered.name in channels:
             tfrecord_format["image/filteredencoded"] = tf.io.FixedLenSequenceFeature(
-                [num_frames * 32 * 32], dtype=tf.float32, allow_missing=True
+                [num_frames * IMG_SIZE * IMG_SIZE], dtype=tf.float32, allow_missing=True
             )
         if TrackChannels.thermal.name in channels:
             tfrecord_format["image/thermalencoded"] = tf.io.FixedLenSequenceFeature(
-                [num_frames * 32 * 32], dtype=tf.float32, allow_missing=True
+                [num_frames * IMG_SIZE * IMG_SIZE], dtype=tf.float32, allow_missing=True
             )
 
     if include_track:
@@ -227,10 +262,10 @@ def read_tfrecord(
     if load_images:
         if TrackChannels.thermal.name in channels:
             thermalencoded = example["image/thermalencoded"]
-            thermals = tf.reshape(thermalencoded, [num_frames, 32, 32, 1])
+            thermals = tf.reshape(thermalencoded, [num_frames, IMG_SIZE, IMG_SIZE, 1])
         if TrackChannels.filtered.name in channels:
             filteredencoded = example["image/filteredencoded"]
-            filtered = tf.reshape(filteredencoded, [num_frames, 32, 32, 1])
+            filtered = tf.reshape(filteredencoded, [num_frames, IMG_SIZE, IMG_SIZE, 1])
         rgb_image = None
         for type in channels:
             if type == TrackChannels.thermal.name:
@@ -245,7 +280,16 @@ def read_tfrecord(
         if augment:
             logging.info("Augmenting")
             rgb_image = rotation_augmentation(rgb_image)
-        rgb_image = tf.ensure_shape(rgb_image, (num_frames, 32, 32, len(channels)))
+            random_value = tf.random.uniform(
+                shape=[], minval=0.0, maxval=1.0, dtype=tf.float32
+            )
+            if tf.greater(random_value, 0.5):
+                rgb_image = tf.image.flip_left_right(rgb_image)
+        rgb_image = tf.ensure_shape(
+            rgb_image, (num_frames, IMG_SIZE, IMG_SIZE, len(channels))
+        )
+        rgb_image = tf.image.crop_to_bounding_box(rgb_image, 7, 7, 32, 32)
+
         if num_frames > 1:
             rgb_image = tile_images(rgb_image)
 
@@ -310,7 +354,8 @@ from collections import Counter
 # test stuff
 def main():
     init_logging()
-    config = Config.load_from_file("classifier-thermal.yaml")
+    logging.info("Loading %s", "classifier.yaml")
+    config = Config.load_from_file("classifier.yaml")
     from .tfdataset import get_dataset, get_distribution
 
     # file = "/home/gp/cacophony/classifier-data/thermal-training/cp-training/training-meta.json"
@@ -320,6 +365,10 @@ def main():
         meta = json.load(f)
     labels = meta.get("labels", [])
     datasets = []
+    excluded_labels = get_excluded()
+    # for l in labels:
+    #     if l not in ["mustelid", "deer", "sheep"]:
+    #         excluded_labels.append(l)
 
     resampled_ds, remapped, labels, epoch_size = get_dataset(
         # dir,
@@ -328,14 +377,16 @@ def main():
         labels,
         batch_size=32,
         image_size=(160, 160),
-        # augment=True,
+        augment=True,
         # preprocess_fn=tf.keras.applications.inception_v3.preprocess_input,
         resample=False,
+        shuffle=False,
         include_features=False,
         remapped_labels=get_remapped(),
-        excluded_labels=get_excluded(),
+        excluded_labels=excluded_labels,
         include_track=True,
-        num_frames=1,
+        num_frames=25,
+        deterministic=True,
     )
     print("Ecpoh size is", epoch_size)
     # print(get_distribution(resampled_ds, len(labels), extra_meta=False))
@@ -347,13 +398,49 @@ def main():
         batch_i = 0
         print("epoch", e)
         for x, y in resampled_ds:
-            show_batch(x, y, labels, save=save_dir / f"{batch_i}.jpg", tracks=True)
+            save_batch(x, y, labels, save_dir, tracks=True)
+            # show_batch(x, y, labels, save=save_dir / f"{batch_i}.jpg", tracks=True)
             batch_i += 1
     # return
 
 
+save_index = 0
+
+
+def save_batch(image_batch, label_batch, labels, save_dir, tracks=False):
+    global save_index
+    if tracks:
+        track_batch = label_batch[1]
+        label_batch = label_batch[0]
+    for n, img in enumerate(image_batch):
+        img = np.uint8(img)
+        file_title = (
+            f"{labels[np.argmax(label_batch[n])]}-{track_batch[n]}-{save_index}.png"
+        )
+        save_index += 1
+        file_name = save_dir / file_title
+        saveclassify_image(img, file_name)
+    #     [:,:,1]
+    #     channels = img.shape[-1]
+    #     repeat = 3 - channels
+    #     while repeat > 0:
+    #         img = np.concatenate((img, img[:, :, :1]), axis=2)
+    #         repeat -= 1
+    #     plt.imshow(img)
+    #     if tracks:
+    #         plt.title(f"{labels[np.argmax(label_batch[n])]}-{track_batch[n]}")
+    #     else:
+    #         plt.title(labels[np.argmax(label_batch[n])])
+
+    #     plt.axis("off")
+    # # return
+    # if save:
+    #     plt.savefig(save)
+    # plt.show()
+
+
 def show_batch(image_batch, label_batch, labels, save=None, tracks=False):
-    plt.figure(figsize=(10, 10))
+    plt.figure(figsize=(20, 20))
     print("images in batch", len(image_batch), len(label_batch))
     num_images = min(len(image_batch), 25)
     if tracks:
@@ -361,14 +448,12 @@ def show_batch(image_batch, label_batch, labels, save=None, tracks=False):
         label_batch = label_batch[0]
     for n in range(num_images):
         ax = plt.subplot(5, 5, n + 1)
-        img = np.uint8(image_batch[n])
+        img = np.uint8(image_batch[n])[:, :, 1]
         channels = img.shape[-1]
         repeat = 3 - channels
         while repeat > 0:
             img = np.concatenate((img, img[:, :, :1]), axis=2)
             repeat -= 1
-        # if repeat > 0:
-        # print(img.shape, " repeating", repeat)
         plt.imshow(img)
         if tracks:
             plt.title(f"{labels[np.argmax(label_batch[n])]}-{track_batch[n]}")

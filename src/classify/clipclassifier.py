@@ -26,13 +26,19 @@ class ClipClassifier:
     FRAME_SKIP = 1
 
     def __init__(
-        self, config, model=None, keep_original_predictions=False, tracking_events=False
+        self,
+        config,
+        model=None,
+        keep_original_predictions=False,
+        tracking_events=False,
+        model_by_country=True,
     ):
         """Create an instance of a clip classifier"""
         self.keep_original_predictions = keep_original_predictions
         self.config = config
         # super(ClipClassifier, self).__init__(config, tracking_config)
         self.model = model
+        self.model_by_country = model_by_country
         if self.keep_original_predictions:
             self.model.id = f"post-{self.model.id}"
             self.model.name = f"post-{self.model.name}"
@@ -48,12 +54,7 @@ class ClipClassifier:
     def set_is_recording(self, is_recording):
         self._is_recording = is_recording
 
-    def load_models(self):
-        for model in self.config.classify.models:
-            logging.info("Loading %s", model)
-            classifier = self.get_classifier(model)
-
-    def get_classifier(self, model):
+    def get_classifier(self, model, location=None):
         """
         Returns a classifier object, which is created on demand.
         This means if the ClipClassifier is copied to a new process a new Classifier instance will be created.
@@ -61,6 +62,15 @@ class ClipClassifier:
         if model.id in self.models:
             return self.models[model.id]
         load_start = time.time()
+        model_file = Path(model.model_file)
+        if location is not None:
+            country = country_by_location(location["lat"], location["lng"])
+            if country is not None:
+                country_model = model_file.parent.parent / country
+                logging.info("CHecking if country model exists %s", country_model)
+                if country_model.exists():
+                    model.model_file = country_model / model_file.name
+                    logging.info("Setting to country model %s", model.model_file)
         logging.info("classifier loading %s", model.model_file)
         classifier = get_interpreter(model, model.run_over_network)
         logging.info("classifier loaded (%s)", time.time() - load_start)
@@ -233,7 +243,9 @@ class ClipClassifier:
 
     def classify_clip(self, clip, model, meta_data, reuse_frames=None):
         start = time.time()
-        classifier = self.get_classifier(model)
+        location = meta_data.get("location")
+        logging.info("getting classified with %s", location)
+        classifier = self.get_classifier(model, location)
         predictions = Predictions(classifier.labels, model, classifier.thresholds)
         predictions.model_load_time = time.time() - start
 
@@ -609,3 +621,12 @@ class ClipClassifier:
             models,
             calculate_thumbnails=False,
         )
+
+
+def country_by_location(lat, lng):
+    from config.buildconfig import BuildConfig
+
+    for country, rect in BuildConfig.COUNTRY_LOCATIONS.items():
+        if rect.contains(lng, lat):
+            return country
+    return None

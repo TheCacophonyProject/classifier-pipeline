@@ -235,7 +235,14 @@ class Frame:
             frame.flow = flow
         return frame
 
-    def resize_with_aspect(self, dim, crop_rectangle, keep_edge=False):
+    def resize_with_aspect(
+        self,
+        dim,
+        crop_rectangle,
+        keep_edge=False,
+        edge_offset=(0, 0, 0, 0),
+        original_region=None,
+    ):
         if self.thermal is not None:
             self.thermal = resize_and_pad(
                 self.thermal,
@@ -243,6 +250,8 @@ class Frame:
                 self.region,
                 crop_rectangle,
                 keep_edge=keep_edge,
+                edge_offset=edge_offset,
+                original_region=original_region,
             )
         if self.mask is not None:
             self.mask = resize_and_pad(
@@ -253,6 +262,7 @@ class Frame:
                 keep_edge=keep_edge,
                 pad=0,
                 interpolation=cv2.INTER_NEAREST,
+                edge_offset=edge_offset,
             )
         if self.filtered is not None:
             self.filtered = resize_and_pad(
@@ -262,6 +272,8 @@ class Frame:
                 crop_rectangle,
                 keep_edge=keep_edge,
                 pad=0,
+                edge_offset=edge_offset,
+                original_region=original_region,
             )
         if self.flow is not None:
             flow_h = resize_and_pad(
@@ -271,6 +283,7 @@ class Frame:
                 crop_rectangle,
                 keep_edge=keep_edge,
                 pad=0,
+                edge_offset=edge_offset,
             )
             flow_v = resize_and_pad(
                 self.flow[:, :, 1],
@@ -279,6 +292,7 @@ class Frame:
                 crop_rectangle,
                 keep_edge=keep_edge,
                 pad=0,
+                edge_offset=edge_offset,
             )
             self.flow = np.stack((flow_h, flow_v), axis=2)
 

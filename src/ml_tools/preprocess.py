@@ -64,8 +64,10 @@ def preprocess_frame(
     thermal_norm_limits=None,
     cropped=False,
     sub_median=True,
+    median=None,
+    clip_thermals_at_zero=True,
 ):
-    if sub_median:
+    if sub_median and median is None:
         median = np.median(frame.thermal)
     if not cropped:
         cropped_frame = frame.crop_by_region(region, only_thermal=calculate_filtered)
@@ -87,8 +89,9 @@ def preprocess_frame(
     )
     if sub_median:
         cropped_frame.thermal -= median
-    if thermal_norm_limits is None:
+    if thermal_norm_limits is None and clip_thermals_at_zero:
         np.clip(cropped_frame.thermal, 0, None, out=cropped_frame.thermal)
+
     if filtered_norm_limits is not None:
         cropped_frame.filtered, stats = imageprocessing.normalize(
             cropped_frame.filtered,
@@ -141,7 +144,7 @@ def preprocess_single_frame(
     return image
 
 
-# index = 0
+index = 0
 
 
 #
@@ -185,7 +188,7 @@ def preprocess_movement(
     data = np.stack(data, axis=2)
 
     #
-    # # # # # for testing
+    # # # # # # for testing
     # global index
     # index += 1
     # tools.saveclassify_image(
