@@ -58,6 +58,7 @@ class ClipTrackExtractor(ClipTracker):
         calculate_filtered=False,
         calculate_thumbnail_info=False,
         from_pi=False,
+        max_frames=None,
     ):
         super().__init__(
             config,
@@ -67,6 +68,7 @@ class ClipTrackExtractor(ClipTracker):
             verbose=verbose,
             do_tracking=do_tracking,
             calculate_thumbnail_info=calculate_thumbnail_info,
+            max_frames=max_frames,
         )
 
         if from_pi:
@@ -100,6 +102,7 @@ class ClipTrackExtractor(ClipTracker):
             self.cache_to_disk,
             self.use_opt_flow,
             self.keep_frames,
+            self.max_frames,
         )
         clip.type = self.type
         reader = CptvReader(str(clip.source_file))

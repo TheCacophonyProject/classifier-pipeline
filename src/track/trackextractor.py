@@ -119,7 +119,15 @@ def extract_thread(filename):
     extract_file(filename, config, cache_to_disk, retrack=retrack, to_stdout=to_stdout)
 
 
-def extract_file(filename, config, cache_to_disk, retrack=False, to_stdout=False):
+def extract_file(
+    filename,
+    config,
+    cache_to_disk,
+    retrack=False,
+    to_stdout=False,
+    max_frames=None,
+    save_meta=True,
+):
 
     filename = Path(filename)
     if not filename.is_file():
@@ -133,6 +141,7 @@ def extract_file(filename, config, cache_to_disk, retrack=False, to_stdout=False
             config.use_opt_flow,
             cache_to_disk,
             verbose=config.verbose,
+            max_frames=max_frames,
         )
         logging.info("Using cptv extractor")
 
@@ -178,17 +187,29 @@ def extract_file(filename, config, cache_to_disk, retrack=False, to_stdout=False
         previewer.export_clip_preview(mpeg_filename, clip)
     logging.info("saving meta data %s", meta_filename)
 
-    save_metadata(
-        existing_metadata, filename, meta_filename, clip, track_extractor, to_stdout
+    metadata = get_metadata(
+        existing_metadata,
+        filename,
+        meta_filename,
+        clip,
+        track_extractor,
+        to_stdout,
+        save_meta,
     )
     if cache_to_disk:
         clip.frame_buffer.remove_cache()
 
-    return clip, track_extractor
+    return clip, track_extractor, metadata
 
 
-def save_metadata(
-    existing_metadata, filename, meta_filename, clip, track_extractor, to_stdout=False
+def get_metadata(
+    existing_metadata,
+    filename,
+    meta_filename,
+    clip,
+    track_extractor,
+    to_stdout=False,
+    save=True,
 ):
     metadata = clip.get_metadata()
     for i, track in enumerate(clip.tracks):
@@ -224,6 +245,7 @@ def save_metadata(
         metadata = existing_metadata
     if to_stdout:
         print(json.dumps(metadata, cls=tools.CustomJSONEncoder))
-    else:
+    elif save:
         with open(meta_filename, "w") as f:
             json.dump(metadata, f, indent=4, cls=tools.CustomJSONEncoder)
+    return metadata

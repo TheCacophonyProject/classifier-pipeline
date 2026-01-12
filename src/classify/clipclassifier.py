@@ -155,11 +155,11 @@ class ClipClassifier:
         cache_to_disk = (
             cache if cache is not None else self.config.classify.cache_to_disk
         )
-
+        meta_data = None
         if track:
             logging.info("Doing tracking")
-            clip, track_extractor = extract_file(
-                filename, self.config, cache_to_disk, to_stdout=False
+            clip, track_extractor, meta_data = extract_file(
+                filename, self.config, cache_to_disk, to_stdout=False, save_meta=False
             )
         elif ext == ".cptv":
             track_extractor = ClipTrackExtractor(
@@ -185,10 +185,11 @@ class ClipClassifier:
         if not os.path.exists(filename):
             logging.error("File %s not found.", filename)
             return False
-        if not os.path.exists(meta_file):
-            logging.error("File %s not found.", meta_file)
-            return False
-        meta_data = tools.load_clip_metadata(meta_file)
+        if meta_data is None:
+            if not os.path.exists(meta_file):
+                logging.error("File %s not found.", meta_file)
+                return False
+            meta_data = tools.load_clip_metadata(meta_file)
 
         logging.info("Processing file '{}'".format(filename))
 
@@ -386,40 +387,43 @@ class ClipClassifier:
 
         filename = Path(filename)
         meta_file = filename.with_suffix(".txt")
+        has_metadata = meta_file.exists()
         if not filename.exists():
             logging.error("File %s not found.", filename)
             return False
-        if not meta_file.exists():
-            logging.error("File %s not found.", meta_file)
-            return False
-        meta_data = tools.load_clip_metadata(meta_file)
+        # if not meta_file.exists():
+        #     logging.error("File %s not found.", meta_file)
+        #     return False
+
         filename = Path(filename)
-        meta_file = filename.with_suffix(".txt")
-        if not filename.exists():
-            logging.error("File %s not found.", filename)
-            return False
-        if not meta_file.exists():
-            logging.error("File %s not found.", meta_file)
-            return False
-        meta_data = tools.load_clip_metadata(meta_file)
+        if has_metadata:
 
-        rec_end = datetime.fromisoformat(meta_data["end_time"])
+            # get segments here, or frames
+            # only extra data for segments
+            track_extractor = ClipTrackExtractor(
+                self.config.tracking,
+                self.config.use_opt_flow,
+                calculate_filtered=True,
+                verbose=self.config.verbose,
+            )
 
-        # get segments here, or frames
-        # only extra data for segments
-        track_extractor = ClipTrackExtractor(
-            self.config.tracking,
-            self.config.use_opt_flow,
-            calculate_filtered=True,
-            verbose=self.config.verbose,
-        )
+            clip = Clip(track_extractor.config, filename)
+            meta_data = tools.load_clip_metadata(meta_file)
 
-        clip = Clip(track_extractor.config, filename)
-        clip.load_metadata(
-            meta_data,
-            self.config.build.tag_precedence,
-        )
-        track_extractor.init_clip(clip)
+            rec_end = datetime.fromisoformat(meta_data["end_time"])
+
+            clip.load_metadata(
+                meta_data,
+                self.config.build.tag_precedence,
+            )
+            track_extractor.init_clip(clip)
+        else:
+            meta_data = {}
+            # just reloading the file might be bettery for memory so dont keep frames in memory
+            clip, track_extractor, meta_data = extract_file(
+                filename, self.config, False, max_frames=45, save_meta=False
+            )
+            rec_end = datetime.fromisoformat(meta_data["end_time"])
 
         logging.info("Just running on first model")
         start = time.time()
