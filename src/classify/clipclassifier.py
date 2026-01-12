@@ -64,7 +64,8 @@ class ClipClassifier:
         load_start = time.time()
         model_file = Path(model.model_file)
         if location is not None:
-            country = country_by_location(location["lat"], location["lng"])
+            coordinates = location.get("coordinates")
+            country = country_by_location(coordinates[1], coordinates[0])
             if country is not None:
                 country_model = model_file.parent.parent / country
                 logging.info("CHecking if country model exists %s", country_model)
