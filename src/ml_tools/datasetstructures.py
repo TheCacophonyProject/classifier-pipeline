@@ -32,6 +32,7 @@ class SegmentType(Enum):
     TOP_RANDOM = 6
     ALL_RANDOM_NOMIN = 7
     ALL_RANDOM_MASKED = 8
+    ELONGATION = 9
 
 
 class BaseSample(ABC):
@@ -91,9 +92,13 @@ class BaseSample(ABC):
 
 
 class Sample(BaseSample):
+    _sample_id = 1
+
     def __init__(self, label):
         self.original_label = label
         self.remapped_label = label
+        self.id = Sample._sample_id
+        Sample._sample_id += 1
 
     @property
     def label(self):
@@ -255,7 +260,7 @@ class TrackHeader:
         skip_last=None,
         max_frames=None,
     ):
-        crop_rectangle = Rectangle(2, 2, 160 - 2 * 2, 140 - 2 * 2)
+        crop_rectangle = Rectangle(1, 1, 160 - 2, 120 - 2)
 
         logging.debug(
             "Calculating sample with min %s and max %s ffc %s and skip %s",
@@ -369,7 +374,7 @@ class TrackHeader:
         self,
         segment_width,
         segment_frame_spacing=9,
-        segment_types=[SegmentType.ALL_RANDOM],
+        segment_types=[SegmentType.ALL_RANDOM_MASKED],
         segment_min_mass=None,
         repeats=1,
         max_segments=None,
@@ -665,7 +670,6 @@ class Camera:
 
 
 class FrameSample(Sample):
-    _frame_id = 1
 
     def __init__(
         self,
@@ -683,8 +687,6 @@ class FrameSample(Sample):
     ):
         super().__init__(label)
         self.clip_id = clip_id
-        self.id = FrameSample._frame_id
-        FrameSample._frame_id += 1
 
         self.track_id = track_id
         self.frame_number = frame_num
@@ -767,8 +769,6 @@ class FrameSample(Sample):
 class SegmentHeader(Sample):
     """Header for segment."""
 
-    _segment_id = 1
-
     def __init__(
         self,
         clip_id,
@@ -800,8 +800,6 @@ class SegmentHeader(Sample):
         self.movement_data = movement_data
         self.top_mass = top_mass
         self.best_mass = best_mass
-        self.id = SegmentHeader._segment_id
-        SegmentHeader._segment_id += 1
         # reference to track this segment came from
         self.clip_id = clip_id
         self.track_id = track_id
@@ -819,6 +817,7 @@ class SegmentHeader(Sample):
         self.camera = camera
         self._source_file = source_file
         self._track_median_mass = track_median_mass
+        self._bin_id = self.station_id
 
     @property
     def track_median_mass(self):
@@ -878,7 +877,7 @@ class SegmentHeader(Sample):
     @property
     def bin_id(self):
         """Unique name of this segments track."""
-        return f"{self.station_id}"
+        return f"{self._bin_id}"
 
     def __str__(self):
         return "{0} label {1} offset:{2} weight:{3:.1f}".format(
@@ -890,7 +889,7 @@ class SegmentHeader(Sample):
         return self.id
 
     def get_data(self, db):
-        crop_rectangle = tools.Rectangle(2, 2, 160 - 2 * 2, 140 - 2 * 2)
+        crop_rectangle = tools.Rectangle(1, 1, 160 - 2, 120 - 2)
 
         try:
             background = db.get_clip_background(self.clip_id)
@@ -981,7 +980,7 @@ def get_segments(
     lower_mass=0,
     repeats=1,
     min_frames=None,
-    segment_types=[SegmentType.ALL_RANDOM],
+    segment_types=[SegmentType.ALL_RANDOM_MASKED],
     max_segments=None,
     location=None,
     station_id=None,
@@ -1025,6 +1024,7 @@ def get_segments(
         ]
         if fp_frames is not None and label not in FP_LABELS:
             frame_indices = [f for f in frame_indices if f not in fp_frames]
+
         if len(frame_indices) == 0:
             logging.warn("Nothing to load for %s - %s", clip_id, track_id)
             return [], filtered_stats
@@ -1036,7 +1036,77 @@ def get_segments(
         else:
             s_min_mass = 1
             # remove blank frames
+        frame_indices = np.array(frame_indices)
 
+        if segment_type == SegmentType.ELONGATION:
+            crop_rectangle = tools.Rectangle(1, 1, 160 - 2, 120 - 2)
+            border_regions = []
+            non_border_regions = []
+
+            relative_frames = frame_indices - start_frame
+            e_regions = regions[relative_frames]
+            for r in e_regions:
+                r.set_is_along_border(crop_rectangle)
+
+                if r.is_along_border:
+                    border_regions.append(r)
+                else:
+                    non_border_regions.append(r)
+
+            for r, f in zip(e_regions, frame_indices):
+                assert r.frame_number == f
+
+            elong_sorted = sorted(
+                non_border_regions, key=lambda r: r.elongation, reverse=True
+            )
+            elong_regions = elong_sorted[:25]
+
+            if len(non_border_regions) < 4:
+                # want to sort these by area
+                border_sorted = sorted(
+                    border_regions, key=lambda r: r.area, reverse=True
+                )
+                remaining = segment_width // 2 - len(elong_regions)
+                if remaining > 0:
+                    # print("ADding ",remaining, " from border regions as only have ", len(non_border_regions), " non border vs ", len(border_regions),clip_id,track_id)
+                    elong_regions.extend(border_sorted[:remaining])
+
+            frames = [r.frame_number for r in elong_regions]
+            remaining = segment_width - len(frames)
+            # sample another same frames again if need be
+            if remaining > 0:
+                extra_frames = np.random.choice(
+                    frames,
+                    min(remaining, len(frames)),
+                    replace=False,
+                )
+                frames = np.concatenate([frames, extra_frames])
+            frames.sort()
+            frames = np.array(frames)
+            relative_frames = frames - start_frame
+            mass_slice = mass_history[relative_frames]
+            segment_mass = np.sum(mass_slice)
+            segment_avg_mass = segment_mass / len(mass_slice)
+            segment = SegmentHeader(
+                clip_id,
+                track_id,
+                start_frame=start_frame,
+                frames=segment_width,
+                weight=1,
+                mass=segment_mass,
+                label=label,
+                regions=elong_regions,
+                frame_indices=frames,
+                movement_data=None,
+                camera=camera,
+                location=location,
+                station_id=station_id,
+                rec_time=rec_time,
+                source_file=source_file,
+                filtered=False,
+            )
+            segments.append(segment)
+            continue
         if segment_type == SegmentType.TOP_RANDOM:
             # take top 50 mass frames
             frame_indices = sorted(
@@ -1046,7 +1116,7 @@ def get_segments(
             )
             frame_indices = frame_indices[:50]
             frame_indices.sort()
-        if segment_type == SegmentType.TOP_SEQUENTIAL:
+        if segment_type in [SegmentType.TOP_SEQUENTIAL]:
             new_segments, filtered = get_top_mass_segments(
                 clip_id,
                 track_id,
@@ -1071,7 +1141,7 @@ def get_segments(
             filtered_stats["too short"] += 1
             continue
 
-        frame_indices = np.array(frame_indices)
+        # gp seems much to high 18/09/2025
         segment_count = max(1, len(frame_indices) // segment_frame_spacing)
         segment_count = int(segment_count)
         mask_length = 25
@@ -1124,8 +1194,9 @@ def get_segments(
                     or min_segments is None
                     or len(segments) >= min_segments
                 ):
+                    # gp changes from > 1 segments to > 0 18/09/2025
                     if (
-                        len(frame_indices) < segment_width / 2.0 and len(segments) > 1
+                        len(frame_indices) < segment_width / 2.0 and len(segments) > 0
                     ) or len(frame_indices) < segment_width / 4:
                         break
 
@@ -1319,8 +1390,7 @@ class TrackingSample(Sample):
         camera,
         filename,
     ):
-        self.id = TrackingSample._s_id
-        TrackingSample._s_id += 1
+        super().__init__(labels)
         self.clip_id = clip_id
         self.filename = filename
         self.track_id = track_id

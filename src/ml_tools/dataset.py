@@ -22,6 +22,9 @@ from track.region import Region
 import json
 from config.buildconfig import BuildConfig
 from pathlib import Path
+from functools import partial
+
+from multiprocessing import Pool
 
 
 class Dataset:
@@ -100,12 +103,11 @@ class Dataset:
             self.segment_spacing = 1
             self.segment_min_avg_mass = 10
             self.min_frame_mass = 16
-            self.segment_types = [SegmentType.ALL_RANDOM]
+            self.segment_types = [SegmentType.ALL_RANDOM_MASKED]
             self.max_frames = 75
-
         self.country_rectangle = BuildConfig.COUNTRY_LOCATIONS.get(self.country)
         logging.info(
-            "Filtering by country %s have boundying %s",
+            "Filtering by country %s have bounding rect %s",
             self.country,
             self.country_rectangle,
         )
@@ -196,14 +198,55 @@ class Dataset:
 
         counter = 0
         logging.info("Loading clips")
-        for db_clip in self.dataset_dir.glob(f"**/*{self.ext}"):
-            tracks_added = self.load_clip(db_clip, dont_filter_segment)
-            if tracks_added == 0:
-                logging.info("No tracks added for %s", db_clip)
-            counter += 1
-            if counter % 50 == 0:
-                logging.debug("Dataset loaded %s", counter)
-        return [counter, counter]
+        clips = list(self.dataset_dir.glob(f"**/*{self.ext}"))
+
+        load_func = partial(
+            load_clip_multi,
+            tag_precedence=self.tag_precedence,
+            excluded_tags=self.excluded_tags,
+            label_mapping=self.label_mapping,
+            use_segments=self.use_segments,
+            segment_spacing=self.segment_spacing,
+            segment_length=self.segment_length,
+            segment_types=self.segment_types,
+            segment_min_avg_mass=self.segment_min_avg_mass,
+            dont_filter_segment=dont_filter_segment,
+            skip_ffc=self.skip_ffc,
+            max_segments=self.max_segments,
+            country_rectangle=self.country_rectangle,
+            raw=self.raw,
+            min_frame_mass=self.min_frame_mass,
+            max_frame_mass=self.max_frame_mass,
+            filter_by_lq=self.filter_by_lq,
+            is_ir=self.type == "IR",
+        )
+        sample_id = 1
+        with Pool(processes=8) as pool:
+            for clip_header, filtered_stats in pool.imap_unordered(
+                load_func, clips, chunksize=8
+            ):
+                self.merge_filtered(filtered_stats)
+
+                if clip_header is None:
+                    continue
+                self.clips.append(clip_header)
+
+                for track_header in clip_header.tracks:
+                    for sample in track_header.samples:
+                        sample.id = sample_id
+                        sample_id += 1
+                        self.add_clip_sample_mappings(sample)
+                        if track_header.label not in self.labels:
+                            self.labels.append(track_header.label)
+
+    def merge_filtered(self, filtered_stats):
+        for reason, count in filtered_stats.items():
+            if isinstance(count, set):
+                self.filtered_stats.setdefault(reason, set())
+                self.filtered_stats[reason].update(count)
+            else:
+                self.filtered_stats.setdefault(reason, 0)
+                self.filtered_stats[reason] += count
 
     def load_clip(self, db_clip, dont_filter_segment=False):
         if self.raw:
@@ -315,6 +358,17 @@ class Dataset:
         bins[sample.id] = sample
         # (sample)
         return True
+
+    # move this sample to have a bin_id based of clip_id rather than station_id (default)
+    def split_by_clip(self, sample):
+        try:
+            del self.samples_by_bin[sample.bin_id][sample.id]
+        except:
+            pass
+
+        sample._bin_id = sample.clip_id
+        bins = self.samples_by_bin.setdefault(sample.bin_id, {})
+        bins[sample.id] = sample
 
     def epoch_samples(
         self, cap_samples=None, replace=True, random=True, cap_at=None, label_cap=None
@@ -626,3 +680,93 @@ def filter_clip(clip, location, location_bounds, filtered_stats=None, after_date
         return True
 
     return False
+
+
+def load_clip_multi(
+    db_clip,
+    tag_precedence=None,
+    excluded_tags=None,
+    label_mapping=None,
+    use_segments=True,
+    segment_spacing=1,
+    segment_length=3,
+    segment_types=None,
+    segment_min_avg_mass=None,
+    dont_filter_segment=False,
+    skip_ffc=True,
+    max_segments=None,
+    country_rectangle=None,
+    raw=True,
+    min_frame_mass=None,
+    max_frame_mass=None,
+    filter_by_lq=False,
+    is_ir=False,
+):
+    filtered_stats = {}
+    if raw:
+        db = RawDatabase(str(db_clip))
+    else:
+        db = TrackDatabase(str(db_clip))
+    try:
+        clip_header = db.get_clip_tracks(tag_precedence)
+    except:
+        logging.error("Could not load %s", db_clip, exc_info=True)
+        return None, filtered_stats
+    if clip_header is None or filter_clip(
+        clip_header,
+        clip_header.location,
+        country_rectangle,
+        filtered_stats,
+    ):
+        return None, filtered_stats
+    filtered = 0
+    added = 0
+    clip_header.tracks = [
+        track
+        for track in clip_header.tracks
+        if not filter_track(track, excluded_tags, filtered_stats)
+    ]
+
+    for track_header in clip_header.tracks:
+        if label_mapping:
+            track_header.remapped_label = label_mapping.get(
+                track_header.original_label, track_header.original_label
+            )
+        added += 1
+        if use_segments:
+            segment_frame_spacing = int(
+                round(segment_spacing * clip_header.frames_per_second)
+            )
+            segment_width = segment_length
+            track_header.get_segments(
+                segment_width,
+                segment_frame_spacing,
+                segment_types,
+                segment_min_avg_mass,
+                max_segments=max_segments,
+                dont_filter=dont_filter_segment,
+                skip_ffc=skip_ffc,
+                ffc_frames=clip_header.ffc_frames,
+            )
+            filtered_stats.setdefault("segment_mass", 0)
+            filtered_stats["segment_mass"] += track_header.filtered_stats[
+                "segment_mass"
+            ]
+
+        else:
+            skip_last = None
+            if is_ir == "IR":
+                # a lot of ir clips have bad tracking near end so just reduce track length
+                skip_last = 0.1
+            track_header.calculate_sample_frames(
+                min_mass=(
+                    min_frame_mass if not filter_by_lq else track_header.lower_mass
+                ),
+                max_mass=(
+                    max_frame_mass if not filter_by_lq else track_header.upper_mass
+                ),
+                ffc_frames=clip_header.ffc_frames,
+                skip_last=skip_last,
+            )
+
+    return clip_header, filtered_stats

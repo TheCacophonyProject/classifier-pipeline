@@ -148,13 +148,7 @@ class ForestModel(Interpreter):
     def shape(self):
         return 1, (1, len(self.features))
 
-    def preprocess(self):
-        return
-
-    def predict(self, x):
-        return self.model.predict_proba(x)
-
-    def predict_track(self, clip, track, **args):
+    def preprocess(self, clip, track, **args):
         predict_from_last = args.get(
             "predict_from_last",
         )
@@ -180,6 +174,20 @@ class ForestModel(Interpreter):
             f_mask = feature_mask(self.features_used)
             x = np.take(x, f_mask)
 
+        return frames, x, masses
+
+    def predict(self, x):
+        return self.model.predict_proba(x)
+
+    def frames_for_prediction(self, clip, track, **args):
+        # dont really need this
+        return None
+
+    def predict_track(self, clip, track, **args):
+        result = self.preprocess(clip, track, **args)
+        if result is None:
+            return None
+        frames, x, masses = result
         # x = x[np.newaxis, :]
         predictions = self.model.predict_proba(x)
         # print("predictions", predictions.shape)
@@ -200,7 +208,6 @@ def process_track(
     background = clip.background
     all_frames = None
     frame_temp_median = {}
-    available_frames = len(clip.frame_buffer)
     if predict_from_last is None:
         bounds = track.bounds_history
         if last_frame_predicted is not None:
@@ -212,6 +219,7 @@ def process_track(
         first_frame = bounds[0].frame_number
         last_frame = bounds[-1].frame_number
     else:
+        available_frames = len(clip.frame_buffer)
         bounds = track.bounds_history[-min(available_frames, predict_from_last) :]
         if last_frame_predicted is not None:
             last_track_frame = bounds[-1].frame_number
@@ -293,7 +301,7 @@ def forest_features(
     background,
     frame_temp_median,
     regions,
-    mgrid,
+    mgrid=None,
     buf_len=1,
     cropped=True,
     normalize=True,
@@ -712,7 +720,7 @@ class FrameFeatures:
 
 
 # Find centre of mass and size/orientation of the hot spot
-def intensity_weighted_moments(sub, mgrid, region=None):
+def intensity_weighted_moments(sub, mgrid=None, region=None):
     tot = np.sum(sub)
     # print(tot, "using", region)
     if tot <= 0.0:
@@ -722,10 +730,12 @@ def intensity_weighted_moments(sub, mgrid, region=None):
         # surely all zeros in this case
 
     # Calculate weighted centroid
-    Y = mgrid[0][: sub.shape[0], : sub.shape[1]]
-    X = mgrid[1][: sub.shape[0], : sub.shape[1]]
-    # Y, X = np.mgrid[0 : sub.shape[0], 0 : sub.shape[1]]
 
+    if mgrid is None:
+        Y, X = np.mgrid[0 : sub.shape[0], 0 : sub.shape[1]]
+    else:
+        Y = mgrid[0][: sub.shape[0], : sub.shape[1]]
+        X = mgrid[1][: sub.shape[0], : sub.shape[1]]
     cx = np.sum(sub * X) / tot
     cy = np.sum(sub * Y) / tot
     X = X - cx

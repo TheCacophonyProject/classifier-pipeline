@@ -6,6 +6,7 @@ import numpy as np
 from ml_tools.hyperparams import HyperParams
 from pathlib import Path
 from classify.trackprediction import TrackPrediction
+from ml_tools.imageprocessing import normalize
 import requests
 
 
@@ -27,6 +28,9 @@ class Interpreter(ABC):
         self.version = metadata.get("version", None)
         self.labels = metadata["labels"]
         self.params = HyperParams()
+        self.params["remapped_labels"] = metadata.get("remapped_labels")
+        self.params["excluded_labels"] = metadata.get("excluded_labels")
+
         self.params.update(metadata.get("hyperparams", {}))
         self.data_type = metadata.get("type", "thermal")
 
@@ -313,7 +317,7 @@ class Interpreter(ABC):
         thermal_min_diff = None
         thermal_norm_limits = None
         filtered_norm_limits = None
-        for i, region in enumerate(reversed(track.bounds_history)):
+        for region in reversed(track.bounds_history):
             if region.blank:
                 continue
             if region.width == 0 or region.height == 0:
@@ -348,6 +352,7 @@ class Interpreter(ABC):
                     min_diff = new_min
                 if new_max > max_diff:
                     max_diff = new_max
+
         if self.params.thermal_diff_norm:
             thermal_norm_limits = (thermal_min_diff, thermal_max_diff)
 
@@ -360,11 +365,36 @@ class Interpreter(ABC):
 
         track_data = {}
         unique_regions = {}
+        frame_temp_medians = {}
+        clip_thermals_at_zero = True
         for segment in segments:
             for region in segment.regions:
                 if region.frame_number not in unique_regions:
                     unique_regions[region.frame_number] = region
+                    frame = clip.get_frame(region.frame_number)
+                    if frame is None:
+                        logging.error(
+                            "Clasifying clip %s track %s can't get frame %s",
+                            clip.get_id(),
+                            track.get_id(),
+                            region.frame_number,
+                        )
+                        raise Exception(
+                            "Clasifying clip {} track {} can't get frame {}".format(
+                                clip.get_id(), track.get_id(), region.frame_number
+                            )
+                        )
+                    frame_temp_medians[region.frame_number] = np.median(frame.thermal)
 
+                    if clip_thermals_at_zero:
+                        # check that we have nice values other wise allow negatives when normalizing
+                        sub_thermal = region.subimage(frame.thermal)
+                        sub_thermal = (
+                            np.float32(sub_thermal)
+                            - frame_temp_medians[region.frame_number]
+                        )
+                        if np.median(sub_thermal) <= 0:
+                            clip_thermals_at_zero = False
         # should really be over whole track buts let just do the indices we predict of
         #  seems to make little different to just doing a min max normalization
 
@@ -400,6 +430,8 @@ class Interpreter(ABC):
                 calculate_filtered=False,
                 filtered_norm_limits=filtered_norm_limits,
                 thermal_norm_limits=thermal_norm_limits,
+                median=frame_temp_medians[region.frame_number],
+                clip_thermals_at_zero=clip_thermals_at_zero,
             )
             track_data[frame.frame_number] = cropped_frame
         features = None
@@ -532,6 +564,25 @@ def inc3_preprocess(x):
     return x
 
 
+def get_interpreter_from_path(model_file):
+    logging.info("Loading %s", model_file)
+
+    if model_file.suffix in [".keras", ".pb"]:
+        from ml_tools.kerasmodel import KerasModel
+
+        classifier = KerasModel()
+        classifier.init_model(model_file)
+        classifier.load_model()
+
+    elif model_file.suffix == ".tflite":
+        classifier = LiteInterpreter(model_file)
+    elif model_file.suffix == ".pkl":
+        from ml_tools.forestmodel import ForestModel
+
+        classifier = ForestModel(model_file)
+    return classifier
+
+
 def get_interpreter(model, run_over_network=False, load_model=True):
     # model_name, type = os.path.splitext(model.model_file)
 
@@ -561,3 +612,40 @@ def get_interpreter(model, run_over_network=False, load_model=True):
     classifier.id = model.id
     classifier.port = model.port
     return classifier
+
+
+def get_contours(contour_image, frame_number):
+    import cv2
+
+    contour_image, stats = normalize(contour_image, new_max=255)
+
+    image = cv2.GaussianBlur(np.uint8(contour_image), (15, 15), 0)
+
+    flags = cv2.THRESH_BINARY + cv2.THRESH_OTSU
+
+    _, image = cv2.threshold(image, 0, 255, flags)
+    cv2.imwrite(f"contours/contours-{frame_number}.png", image)
+
+    contours, _ = cv2.findContours(
+        np.uint8(image),
+        cv2.RETR_EXTERNAL,
+        # cv2.CHAIN_APPROX_SIMPLE,
+        cv2.CHAIN_APPROX_TC89_L1,
+    )
+    if len(contours) == 0:
+        return 0
+
+    contours = sorted(contours, key=lambda c: len(c), reverse=True)
+
+    return len(contours[0])
+
+
+class ModelMeta(Interpreter):
+    def __init__(self, model_name):
+        super().__init__(model_name)
+
+    def predict(self):
+        raise "No predict for model meta"
+
+    def shape(self):
+        raise "No shape for model meta"

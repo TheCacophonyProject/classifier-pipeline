@@ -39,6 +39,7 @@ class FrameBuffer:
         self.opt_flow = None
         self.high_quality_flow = high_quality_flow
         self.frames = None
+        self.frames_by_frame_number = {}
         self.prev_frame = None
         self.calc_flow = calc_flow
         self.max_frames = max_frames
@@ -69,8 +70,10 @@ class FrameBuffer:
             else:
                 if self.max_frames and len(self.frames) == self.max_frames:
                     with self.frame_lock:
+                        del self.frames_by_frame_number[self.frames[0].frame_number]
                         del self.frames[0]
                 self.frames.append(frame)
+                self.frames_by_frame_number[frame.frame_number] = frame
         return frame
 
     @property
@@ -78,20 +81,27 @@ class FrameBuffer:
         return self.cache or self.opt_flow
 
     def get_frame(self, frame_number):
-        if self.prev_frame and self.prev_frame.frame_number == frame_number:
+        frame = None
+        if frame_number in self.frames_by_frame_number:
+            frame = self.frames_by_frame_number[frame_number]
+        elif self.prev_frame and self.prev_frame.frame_number == frame_number:
             return self.prev_frame
         elif self.current_frame and self.current_frame.frame_number == frame_number:
             return self.current_frame
         elif self.cache:
             return self.cache.get_frame(frame_number)
-        if self.current_frame is None:
-            return None
-        if frame_number > self.current_frame.frame_number:
-            return None
+
+        # if self.current_frame is None:
+        #     return None
+        # if frame_number > self.current_frame.frame_number:
+        #     return None
+
         # this supports max frames etc
-        frame_ago = self.current_frame.frame_number - frame_number
-        frame = self.get_frame_ago(frame_ago)
-        assert frame == None or frame.frame_number == frame_number
+        # frame_ago = self.current_frame.frame_number - frame_number
+        # frame = self.get_frame_ago(frame_ago)
+        assert (
+            frame == None or frame.frame_number == frame_number
+        ), f"{frame.frame_number} is not the same as requested {frame_number}"
         return frame
 
     def close_cache(self):
@@ -102,22 +112,6 @@ class FrameBuffer:
         if self.cache:
             self.cache.delete()
 
-    def get_frame_ago(self, n=1):
-        if n == 0:
-            return self.current_frame
-        elif n == 1:
-            return self.get_last_frame()
-        if len(self.frames) > n:
-            return self.frames[-(n + 1)]
-        return None
-
-    def get_last_frame(self):
-        if self.prev_frame:
-            return self.prev_frame
-        elif len(self.frames) > 0:
-            return self.frames[-1]
-        return None
-
     def get_last_x(self, x=25):
         if self.cache and self.prev_frame:
             return self.prev_frame
@@ -125,27 +119,35 @@ class FrameBuffer:
             return self.frames[-x:]
         return None
 
-    def get_last_filtered(self, region=None):
-        if self.cache:
-            if not self.prev_frame:
-                return None
-            prev = self.prev_frame.filtered
-        else:
-            if len(self.frames) > 0:
-                prev = self.frames[-1].filtered
-            else:
-                return None
+    #    def get_last_frame(self):
+    #         if self.prev_frame:
+    #             return self.prev_frame
+    #         elif len(self.frames) > 0:
+    #             return self.frames[-1]
+    #         return None
 
-        if region:
-            return region.subimage(prev)
-        else:
-            return prev
+    # def get_last_filtered(self, region=None):
+    #     if self.cache:
+    #         if not self.prev_frame:
+    #             return None
+    #         prev = self.prev_frame.filtered
+    #     else:
+    #         if len(self.frames) > 0:
+    #             prev = self.frames[-1].filtered
+    #         else:
+    #             return None
+
+    #     if region:
+    #         return region.subimage(prev)
+    #     else:
+    #         return prev
 
     def reset(self):
         """
         Empties buffer
         """
         self.frames = []
+        self.frames_by_frame_number = {}
 
     def __len__(self):
         return len(self.frames)

@@ -1,5 +1,6 @@
 import attr
 import numpy as np
+import math
 
 
 @attr.s(eq=False)
@@ -26,6 +27,12 @@ class Rectangle:
 
     def copy(self):
         return Rectangle(self.x, self.y, self.width, self.height)
+
+    @property
+    def elongation(self):
+        return max(self.width, self.height) / min(self.width, self.height)
+
+    # (self.mid_x, self.mid_y)
 
     @property
     def mid(self):
@@ -96,6 +103,38 @@ class Rectangle:
             self.top : self.top + self.height, self.left : self.left + self.width
         ]
 
+    # enlarge rectangle such equal pixels are added to width and height  with respect to the crop rectangle
+    def enlarge_even(self, width_enlarge, height_enlarge, crop):
+
+        self.left -= width_enlarge
+        self.right += width_enlarge
+        self.top -= height_enlarge
+        self.bottom += height_enlarge
+        left_adjust = crop.left - self.left
+        left_adjust = max(0, left_adjust)
+        left_adjust = min(left_adjust, crop.width)
+
+        right_adjust = 0
+        right_adjust = self.right - crop.right
+        right_adjust = max(0, right_adjust)
+        right_adjust = min(right_adjust, crop.width)
+        width_adjust = max(left_adjust, right_adjust)
+
+        self.left += width_adjust
+        self.right -= width_adjust
+
+        bottom_adjust = self.bottom - crop.bottom
+        bottom_adjust = max(0, bottom_adjust)
+        bottom_adjust = min(bottom_adjust, crop.height)
+
+        top_adjust = crop.top - self.top
+        top_adjust = max(0, top_adjust)
+        top_adjust = min(top_adjust, crop.height)
+
+        height_adjust = max(bottom_adjust, top_adjust)
+        self.top += height_adjust
+        self.bottom -= height_adjust
+
     def enlarge(self, border, max=None):
         """Enlarges this by border amount in each dimension such that it fits
         within the boundaries of max"""
@@ -136,3 +175,25 @@ class Rectangle:
         else:
             region_info["pixel_variance"] = 0
         return region_info
+
+    # enlarge a region such that the aspect ration of final_dim will be maintained
+    # when it is resized to (final_dim,final_dim) and add extra pixels so that rotation augments
+    # dont get empty pixels
+    def enlarge_for_rotation(self, crop_rectangle, final_dim=32, extra_needed=13):
+        scale_percent = (final_dim / np.array([self.width, self.height])).min()
+
+        extra_pixels = extra_needed / scale_percent
+        height_enlarge = math.ceil(extra_pixels / 2)
+
+        width_enlarge = math.ceil(extra_pixels / 2)
+
+        adjusted_height = self.height + extra_pixels
+        adjusted_width = self.width + extra_pixels
+        if self.width > self.height:
+            diff = adjusted_width - adjusted_height
+            height_enlarge = math.ceil((extra_pixels + diff) / 2)
+        else:
+            diff = adjusted_height - adjusted_width
+            width_enlarge = math.ceil((extra_pixels + diff) / 2)
+
+        self.enlarge_even(width_enlarge, height_enlarge, crop=crop_rectangle)
