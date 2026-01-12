@@ -27,7 +27,9 @@ class DirWatcher(FileSystemEventHandler):
         if not event.is_directory:
             event_file = Path(event.src_path)
             if event_file.suffix == ".cptv":
-                if event_file.with_suffix(".txt").exists():
+                if event_file.with_suffix(".txt").exists() or event_file.stem.endswith(
+                    "-track"
+                ):
                     self.process_queue.put(event_file)
             elif event_file.suffix == ".txt":
                 if event_file.with_suffix(".cptv").exists():
@@ -112,13 +114,13 @@ def main():
     bus = None
     dbus_object = None
     need_dbus = thermal_config.motion.postprocess_events
-
+    loop = None
     if need_dbus:
         max_attempts = 3
         attempt = 1
         while bus is None:
             try:
-                dbus_object, bus, thread = connect_to_dbus(callback_fn)
+                dbus_object, bus, thread, loop = connect_to_dbus(callback_fn)
             except Exception as ex:
                 logging.info(
                     "Couldn't connecto dbus waiting 20 seconds and trying again",
@@ -189,7 +191,8 @@ def main():
 
     except KeyboardInterrupt:
         observer.stop()
-    loop.quit()
+    if loop is not None:
+        loop.quit()
     if observer.is_alive:
         observer.stop()
 
@@ -202,7 +205,7 @@ def connect_to_dbus(rec_callback):
 
     dbus_thread = threading.Thread(target=dbus_events, args=(loop, bus, rec_callback))
     dbus_thread.start()
-    return dbus_object, bus, dbus_thread
+    return dbus_object, bus, dbus_thread, loop
 
 
 def dbus_events(loop, dbus_object, callback_fn):
