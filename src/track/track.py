@@ -779,7 +779,12 @@ class Track:
         jitter_smaller = 0
         for i, bound in enumerate(self.bounds_history[1:]):
             prev_bound = self.bounds_history[i]
-            if prev_bound.is_along_border or bound.is_along_border or prev_bound.blank or bound.blank:
+            if (
+                prev_bound.is_along_border
+                or bound.is_along_border
+                or prev_bound.blank
+                or bound.blank
+            ):
                 continue
             height_diff = bound.height - prev_bound.height
             width_diff = prev_bound.width - bound.width
