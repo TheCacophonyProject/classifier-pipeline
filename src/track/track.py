@@ -378,8 +378,9 @@ class Track:
     # Percentage increase that is considered jitter, e.g. if a region gets
     # 30% bigger or smaller
     JITTER_THRESHOLD = 0.3
-    # must change atleast 5 pixels to be considered for jitter
-    MIN_JITTER_CHANGE = 5
+    # must change atleast X pixels to be considered for jitter
+    # changed to 10 14/01/2026 - allow more jitter on small regions not sure we need this anymore
+    MIN_JITTER_CHANGE = 10
 
     def __init__(
         self,
@@ -778,7 +779,7 @@ class Track:
         jitter_smaller = 0
         for i, bound in enumerate(self.bounds_history[1:]):
             prev_bound = self.bounds_history[i]
-            if prev_bound.is_along_border or bound.is_along_border:
+            if prev_bound.is_along_border or bound.is_along_border or prev_bound.blank or bound.blank:
                 continue
             height_diff = bound.height - prev_bound.height
             width_diff = prev_bound.width - bound.width
