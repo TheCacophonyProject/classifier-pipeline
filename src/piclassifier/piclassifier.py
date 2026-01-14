@@ -149,7 +149,7 @@ class PiClassifier(Processor):
 
         if self.fp_model is not None:
             self.fp_model.load_model()
-        if self.classifier is not None:
+        if self.classifier is not None and not self.classifier.run_over_network:
             self.classifier.load_model()
 
         if self.headers.model == "IR":
