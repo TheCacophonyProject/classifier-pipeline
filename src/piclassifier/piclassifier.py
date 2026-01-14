@@ -434,7 +434,7 @@ class PiClassifier(Processor):
         self.classifier_initialised = True
         if self.classifier.run_over_network:
             if not utils.is_service_running("thermal-classifier"):
-                success = utils.startup_network_classifier(True)
+                success = utils.toggle_network_classifier(True)
                 if not success:
                     raise Exception("COuild not start network classifier")
             return

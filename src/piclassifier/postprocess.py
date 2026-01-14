@@ -16,7 +16,7 @@ from functools import partial
 import threading
 import dbus
 from gi.repository import GLib
-from piclassifier.utils import startup_network_classifier, is_service_running
+from piclassifier.utils import toggle_network_classifier, is_service_running
 
 
 class DirWatcher(FileSystemEventHandler):
@@ -147,7 +147,7 @@ def main():
 
             if not is_service_running("thermal-classifier"):
                 logging.info("Network classifier is not running starting it up")
-                success = startup_network_classifier(True)
+                success = toggle_network_classifier(True)
                 if not success:
                     raise Exception("Could not start up netowrk classifier")
                 # give it some time to start up
