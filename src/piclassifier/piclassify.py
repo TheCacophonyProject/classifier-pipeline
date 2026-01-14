@@ -138,15 +138,17 @@ def main():
             break
 
     # try not run classifier unless we are inside a recording window
-    enable_network_classifier = thermal_config.motion.postprocess or (
+    enable_network_classifier = (
         model is not None and thermal_config.motion.run_classifier
     )
 
-    if thermal_config.recorder.rec_window.inside_window() and enable_network_classifier:
-        success = utils.startup_network_classifier(model.run_over_network)
-        if not success:
-            raise Exception("Could not start up network classifier")
-    else:
+    # will start this up later, if tc2-agent is offloading recordings this can overload the system
+    # best to wait until we get frames
+    # if thermal_config.recorder.rec_window.inside_window() and enable_network_classifier:
+    #     success = utils.startup_network_classifier(model.run_over_network)
+    #     if not success:
+    #         raise Exception("Could not start up network classifier")
+    if not enable_network_classifier:
         utils.stop_network_classifier()
 
     success = utils.startup_postprocessor(thermal_config.motion.postprocess)
