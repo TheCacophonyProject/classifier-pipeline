@@ -19,7 +19,6 @@ from . import beacon
 from piclassifier.trapcontroller import trigger_trap
 from piclassifier.attiny import set_recording_state
 from pathlib import Path
-from ml_tools.imageprocessing import normalize
 from functools import partial
 from piclassifier import utils
 

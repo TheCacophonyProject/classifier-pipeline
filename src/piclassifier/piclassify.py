@@ -10,19 +10,14 @@ import time
 import numpy as np
 from threading import Thread
 
-from config.timewindow import WindowStatus, TimeWindow, RelAbsTime
 from config.config import Config
 from config.thermalconfig import ThermalConfig
 from .headerinfo import HeaderInfo
 from ml_tools.logs import init_logging
-from ml_tools.rectangle import Rectangle
-from .piclassifier import PiClassifier, run_classifier
-from .cameras import lepton3
 import multiprocessing
 from .eventreporter import log_event
 from piclassifier.monitorconfig import monitor_file
 from pathlib import Path
-import subprocess
 from piclassifier import utils
 
 SOCKET_NAME = "/var/run/lepton-frames"
@@ -198,6 +193,8 @@ def file_changed(event):
 
 
 def parse_file(file, config, thermal_config, preview_type, fps):
+    from config.timewindow import TimeWindow, RelAbsTime
+
     _, ext = os.path.splitext(file)
     thermal_config.recorder.rec_window = rec_window = TimeWindow(
         RelAbsTime(""), RelAbsTime(""), None, None, 0
@@ -211,6 +208,8 @@ def parse_file(file, config, thermal_config, preview_type, fps):
 
 def parse_ir(file, config, thermal_config, preview_type, fps):
     from piclassifier import irmotiondetector
+    from .piclassifier import PiClassifier
+
     import cv2
 
     irmotiondetector.MIN_FRAMES = 0
@@ -317,6 +316,8 @@ def preview_socket(headers, frame_queue):
 
 
 def parse_cptv(file, config, thermal_config_file, preview_type, fps):
+    from .piclassifier import PiClassifier
+
     from cptv import Frame
     from cptv_rs_python_bindings import CptvReader
 
@@ -408,6 +409,8 @@ def parse_cptv(file, config, thermal_config_file, preview_type, fps):
 
 
 def get_processor(process_queue, config, thermal_config, headers):
+    from .piclassifier import run_classifier
+
     p_processor = multiprocessing.Process(
         target=run_classifier,
         args=(
@@ -530,6 +533,8 @@ def ir_camera(config, thermal_config, process_queue):
 
 
 def next_snapshot(window, prev_window_type=None):
+    from config.timewindow import WindowStatus
+
     current_status = None
     if prev_window_type is None:
         current_status = window.window_status()
@@ -651,6 +656,9 @@ def kill_process(process):
 
 
 def handle_connection(connection, config, thermal_config_file, process_queue):
+    from .cameras import lepton3
+    from ml_tools.rectangle import Rectangle
+
     headers, extra_b = handle_headers(connection)
     thermal_config = ThermalConfig.load_from_file(thermal_config_file, headers.model)
     logging.info(

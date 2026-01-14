@@ -24,7 +24,7 @@ from datetime import datetime
 
 from .clip import Clip
 from piclassifier.cptvmotiondetector import is_affected_by_ffc
-from ml_tools.imageprocessing import detect_objects, normalize
+from ml_tools.imageprocessing import detect_objects
 from track.cliptracker import ClipTracker
 import logging
 from cptv_rs_python_bindings import CptvReader

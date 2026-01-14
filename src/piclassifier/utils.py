@@ -33,7 +33,7 @@ def stop_network_classifier():
 
 def toggle_network_classifier(enable):
     if enable:
-        cmd = "sudo systemctl enable thermal-classifier && sudo systemctl start thermal-classifier"
+        cmd = "sudo systemctl start thermal-classifier"
     else:
         cmd = "sudo systemctl disable thermal-classifier && sudo systemctl stop thermal-classifier"
     return run_cmd(cmd)
