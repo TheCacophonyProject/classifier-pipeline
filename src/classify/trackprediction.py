@@ -467,7 +467,8 @@ class TrackPrediction:
         if self.classify_time is not None:
             prediction_meta["classify_time"] = round(self.classify_time, 1)
 
-        prediction_meta["label"] = self.predicted_tag()
+        prediction_meta["tag"] = self.predicted_tag()
+
         # GP makes api pick up the label this will change when logic is moved to API
         confidence = self.max_score if self.max_score else 0
         if thresholds is not None:
@@ -476,11 +477,16 @@ class TrackPrediction:
             threshold = DEFAULT_THRESHOLD
 
         prediction_meta["threshold_used"] = threshold
-        if confidence >= threshold:
-            prediction_meta["confident_tag"] = self.predicted_tag()
-        else:
-            # check api can handle None
-            prediction_meta["confident_tag"] = None
+        prediction_meta["confident"] = confidence >= threshold
+
+        # label and confident tag can be removed once api is updated gp 24th dec 2025
+        # prediction_meta["label"] = self.predicted_tag()
+        # if confidence >= threshold:
+        #     prediction_meta["confident_tag"] = self.predicted_tag()
+        # else:
+        #     # check api can handle None
+        #     prediction_meta["confident_tag"] = None
+
         prediction_meta["confidence"] = round(confidence, 2)
         prediction_meta["clarity"] = round(self.clarity, 3) if self.clarity else 0
         prediction_meta["all_class_confidences"] = {}
