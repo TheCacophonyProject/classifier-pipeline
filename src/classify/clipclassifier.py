@@ -6,13 +6,10 @@ import time
 import math
 import numpy as np
 
-import cv2
 from classify.trackprediction import Predictions
 from track.clip import Clip
 from track.cliptrackextractor import ClipTrackExtractor, is_affected_by_ffc
-from ml_tools import tools
-from track.irtrackextractor import IRTrackExtractor
-from ml_tools.previewer import Previewer
+from ml_tools.tools import load_clip_metadata, clear_session, CustomJSONEncoder
 from ml_tools.interpreter import get_interpreter
 from track.trackextractor import extract_file
 from classify.thumbnail import get_thumbnail_info, best_trackless_thumb
@@ -45,7 +42,12 @@ class ClipClassifier:
 
         # prediction record for each track
 
-        self.previewer = Previewer.create_if_required(config, config.classify.preview)
+        if config.classify.preview and not config.classify.preview.lower() == "none":
+            from ml_tools.previewer import Previewer
+
+            self.previewer = Previewer.create_if_required(
+                config, config.classify.preview
+            )
 
         self.models = {}
         self.tracking_events = tracking_events
@@ -82,7 +84,7 @@ class ClipClassifier:
         """Reads meta-data for a given cptv file."""
         source_meta_filename = os.path.splitext(filename)[0] + ".txt"
         if os.path.exists(source_meta_filename):
-            meta_data = tools.load_clip_metadata(source_meta_filename)
+            meta_data = load_clip_metadata(source_meta_filename)
 
             tags = set()
             for record in meta_data["Tags"]:
@@ -155,11 +157,11 @@ class ClipClassifier:
         cache_to_disk = (
             cache if cache is not None else self.config.classify.cache_to_disk
         )
-
+        meta_data = None
         if track:
             logging.info("Doing tracking")
-            clip, track_extractor = extract_file(
-                filename, self.config, cache_to_disk, to_stdout=False
+            clip, track_extractor, meta_data = extract_file(
+                filename, self.config, cache_to_disk, to_stdout=False, save_meta=False
             )
         elif ext == ".cptv":
             track_extractor = ClipTrackExtractor(
@@ -174,6 +176,8 @@ class ClipClassifier:
             logging.info("Using clip extractor")
 
         elif ext in [".avi", ".mp4"]:
+            from track.irtrackextractor import IRTrackExtractor
+
             track_extractor = IRTrackExtractor(self.config.tracking, cache_to_disk)
             logging.info("Using ir extractor")
         else:
@@ -185,10 +189,11 @@ class ClipClassifier:
         if not os.path.exists(filename):
             logging.error("File %s not found.", filename)
             return False
-        if not os.path.exists(meta_file):
-            logging.error("File %s not found.", meta_file)
-            return False
-        meta_data = tools.load_clip_metadata(meta_file)
+        if meta_data is None:
+            if not os.path.exists(meta_file):
+                logging.error("File %s not found.", meta_file)
+                return False
+            meta_data = load_clip_metadata(meta_file)
 
         logging.info("Processing file '{}'".format(filename))
 
@@ -289,7 +294,7 @@ class ClipClassifier:
             )
             logging.info("Took {:.1f}ms per frame".format(ms_per_frame))
         if classifier.TYPE == "Keras":
-            tools.clear_session()
+            clear_session()
         del classifier
         gc.collect()
 
@@ -368,11 +373,11 @@ class ClipClassifier:
         if self.config.classify.meta_to_stdout:
             logging.info("Printing json meta data")
 
-            print(json.dumps(meta_data, cls=tools.CustomJSONEncoder))
+            print(json.dumps(meta_data, cls=CustomJSONEncoder))
         else:
             logging.info("saving meta data %s", meta_filename)
             with open(meta_filename, "w") as f:
-                json.dump(meta_data, f, indent=4, cls=tools.CustomJSONEncoder)
+                json.dump(meta_data, f, indent=4, cls=CustomJSONEncoder)
         return meta_data
 
     def post_process_file(self, filename, service):
@@ -382,44 +387,46 @@ class ClipClassifier:
         from ml_tools.frame import Frame
         from ml_tools.preprocess import preprocess_frame, preprocess_movement
         from datetime import datetime
-        import dbus
 
         filename = Path(filename)
         meta_file = filename.with_suffix(".txt")
+        has_metadata = meta_file.exists()
         if not filename.exists():
             logging.error("File %s not found.", filename)
             return False
-        if not meta_file.exists():
-            logging.error("File %s not found.", meta_file)
-            return False
-        meta_data = tools.load_clip_metadata(meta_file)
+        # if not meta_file.exists():
+        #     logging.error("File %s not found.", meta_file)
+        #     return False
+
         filename = Path(filename)
-        meta_file = filename.with_suffix(".txt")
-        if not filename.exists():
-            logging.error("File %s not found.", filename)
-            return False
-        if not meta_file.exists():
-            logging.error("File %s not found.", meta_file)
-            return False
-        meta_data = tools.load_clip_metadata(meta_file)
+        if has_metadata:
 
-        rec_end = datetime.fromisoformat(meta_data["end_time"])
+            # get segments here, or frames
+            # only extra data for segments
+            track_extractor = ClipTrackExtractor(
+                self.config.tracking,
+                self.config.use_opt_flow,
+                calculate_filtered=True,
+                verbose=self.config.verbose,
+            )
 
-        # get segments here, or frames
-        # only extra data for segments
-        track_extractor = ClipTrackExtractor(
-            self.config.tracking,
-            self.config.use_opt_flow,
-            calculate_filtered=True,
-            verbose=self.config.verbose,
-        )
+            clip = Clip(track_extractor.config, filename)
+            meta_data = load_clip_metadata(meta_file)
 
-        clip = Clip(track_extractor.config, filename)
-        clip.load_metadata(
-            meta_data,
-            self.config.build.tag_precedence,
-        )
-        track_extractor.init_clip(clip)
+            rec_end = datetime.fromisoformat(meta_data["end_time"])
+
+            clip.load_metadata(
+                meta_data,
+                self.config.build.tag_precedence,
+            )
+            track_extractor.init_clip(clip)
+        else:
+            meta_data = {}
+            # just reloading the file might be bettery for memory so dont keep frames in memory
+            clip, track_extractor, meta_data = extract_file(
+                filename, self.config, False, max_frames=45, save_meta=False
+            )
+            rec_end = datetime.fromisoformat(meta_data["end_time"])
 
         logging.info("Just running on first model")
         start = time.time()

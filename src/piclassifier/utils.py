@@ -19,7 +19,7 @@ def run_cmd(cmd):
 
 def startup_postprocessor(enable):
     if enable:
-        cmd = "sudo systemctl enable thermal-postprocess && sudo systemctl restart thermal-postprocess"
+        cmd = "sudo systemctl restart thermal-postprocess"
     else:
         # disable but start once so that it can finish any stale files that may exist
         cmd = "sudo systemctl disable thermal-postprocess && sudo systemctl restart thermal-postprocess"
@@ -31,9 +31,9 @@ def stop_network_classifier():
     return run_cmd(cmd)
 
 
-def startup_network_classifier(enable):
+def toggle_network_classifier(enable):
     if enable:
-        cmd = "sudo systemctl enable thermal-classifier && sudo systemctl start thermal-classifier"
+        cmd = "sudo systemctl start thermal-classifier"
     else:
         cmd = "sudo systemctl disable thermal-classifier && sudo systemctl stop thermal-classifier"
     return run_cmd(cmd)
