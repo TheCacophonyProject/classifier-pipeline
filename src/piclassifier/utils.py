@@ -19,7 +19,7 @@ def run_cmd(cmd):
 
 def startup_postprocessor(enable):
     if enable:
-        cmd = "sudo systemctl enable thermal-postprocess && sudo systemctl restart thermal-postprocess"
+        cmd = "sudo systemctl restart thermal-postprocess"
     else:
         # disable but start once so that it can finish any stale files that may exist
         cmd = "sudo systemctl disable thermal-postprocess && sudo systemctl restart thermal-postprocess"

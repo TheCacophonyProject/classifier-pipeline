@@ -6,13 +6,10 @@ import time
 import math
 import numpy as np
 
-import cv2
 from classify.trackprediction import Predictions
 from track.clip import Clip
 from track.cliptrackextractor import ClipTrackExtractor, is_affected_by_ffc
-from ml_tools import tools
-from track.irtrackextractor import IRTrackExtractor
-from ml_tools.previewer import Previewer
+from ml_tools.tools import load_clip_metadata, clear_session, CustomJSONEncoder
 from ml_tools.interpreter import get_interpreter
 from track.trackextractor import extract_file
 from classify.thumbnail import get_thumbnail_info, best_trackless_thumb
@@ -45,7 +42,12 @@ class ClipClassifier:
 
         # prediction record for each track
 
-        self.previewer = Previewer.create_if_required(config, config.classify.preview)
+        if config.classify.preview and not config.classify.preview.lower() == "none":
+            from ml_tools.previewer import Previewer
+
+            self.previewer = Previewer.create_if_required(
+                config, config.classify.preview
+            )
 
         self.models = {}
         self.tracking_events = tracking_events
@@ -82,7 +84,7 @@ class ClipClassifier:
         """Reads meta-data for a given cptv file."""
         source_meta_filename = os.path.splitext(filename)[0] + ".txt"
         if os.path.exists(source_meta_filename):
-            meta_data = tools.load_clip_metadata(source_meta_filename)
+            meta_data = load_clip_metadata(source_meta_filename)
 
             tags = set()
             for record in meta_data["Tags"]:
@@ -174,6 +176,8 @@ class ClipClassifier:
             logging.info("Using clip extractor")
 
         elif ext in [".avi", ".mp4"]:
+            from track.irtrackextractor import IRTrackExtractor
+
             track_extractor = IRTrackExtractor(self.config.tracking, cache_to_disk)
             logging.info("Using ir extractor")
         else:
@@ -189,7 +193,7 @@ class ClipClassifier:
             if not os.path.exists(meta_file):
                 logging.error("File %s not found.", meta_file)
                 return False
-            meta_data = tools.load_clip_metadata(meta_file)
+            meta_data = load_clip_metadata(meta_file)
 
         logging.info("Processing file '{}'".format(filename))
 
@@ -290,7 +294,7 @@ class ClipClassifier:
             )
             logging.info("Took {:.1f}ms per frame".format(ms_per_frame))
         if classifier.TYPE == "Keras":
-            tools.clear_session()
+            clear_session()
         del classifier
         gc.collect()
 
@@ -369,11 +373,11 @@ class ClipClassifier:
         if self.config.classify.meta_to_stdout:
             logging.info("Printing json meta data")
 
-            print(json.dumps(meta_data, cls=tools.CustomJSONEncoder))
+            print(json.dumps(meta_data, cls=CustomJSONEncoder))
         else:
             logging.info("saving meta data %s", meta_filename)
             with open(meta_filename, "w") as f:
-                json.dump(meta_data, f, indent=4, cls=tools.CustomJSONEncoder)
+                json.dump(meta_data, f, indent=4, cls=CustomJSONEncoder)
         return meta_data
 
     def post_process_file(self, filename, service):
@@ -383,7 +387,6 @@ class ClipClassifier:
         from ml_tools.frame import Frame
         from ml_tools.preprocess import preprocess_frame, preprocess_movement
         from datetime import datetime
-        import dbus
 
         filename = Path(filename)
         meta_file = filename.with_suffix(".txt")
@@ -408,7 +411,7 @@ class ClipClassifier:
             )
 
             clip = Clip(track_extractor.config, filename)
-            meta_data = tools.load_clip_metadata(meta_file)
+            meta_data = load_clip_metadata(meta_file)
 
             rec_end = datetime.fromisoformat(meta_data["end_time"])
 

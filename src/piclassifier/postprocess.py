@@ -115,21 +115,7 @@ def main():
     dbus_object = None
     need_dbus = thermal_config.motion.postprocess_events
     loop = None
-    if need_dbus:
-        max_attempts = 3
-        attempt = 1
-        while bus is None:
-            try:
-                dbus_object, bus, thread, loop = connect_to_dbus(callback_fn)
-            except Exception as ex:
-                logging.info(
-                    "Couldn't connecto dbus waiting 20 seconds and trying again",
-                    exc_info=True,
-                )
-                if attempt >= max_attempts:
-                    raise ex
-                time.sleep(20)
-            attempt += 1
+
     try:
         while True:
             try:
@@ -144,6 +130,22 @@ def main():
             if not new_file.exists():
                 continue
             # reprocess file
+
+            if need_dbus:
+                max_attempts = 3
+                attempt = 1
+                while bus is None:
+                    try:
+                        dbus_object, bus, _, loop = connect_to_dbus(callback_fn)
+                    except Exception as ex:
+                        logging.info(
+                            "Couldn't connecto dbus waiting 20 seconds and trying again",
+                            exc_info=True,
+                        )
+                        if attempt >= max_attempts:
+                            raise ex
+                        time.sleep(20)
+                    attempt += 1
 
             if not is_service_running("thermal-classifier"):
                 logging.info("Network classifier is not running starting it up")
