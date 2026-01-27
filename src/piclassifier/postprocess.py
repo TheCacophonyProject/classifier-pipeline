@@ -36,11 +36,7 @@ class DirWatcher(FileSystemEventHandler):
                     self.process_queue.put(event_file.with_suffix(".cptv"))
 
 
-def get_model(thermal_config, config):
-    if not thermal_config.motion.run_classifier:
-        logging.info("Classifier isn't configured to run in config")
-        return None
-
+def get_model(config):
     network_model = [
         model for model in config.classify.models if model.run_over_network
     ]
@@ -73,7 +69,7 @@ def main():
     output_dir = Path(thermal_config.recorder.output_dir)
     reprocess_dir = output_dir / "postprocess"
     reprocess_dir.mkdir(exist_ok=True)
-    network_model = get_model(thermal_config, config)
+    network_model = get_model(config)
     if network_model is None:
         logging.info("No network model exiting")
         sys.exit(0)
