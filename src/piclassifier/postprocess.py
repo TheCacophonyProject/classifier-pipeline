@@ -32,7 +32,9 @@ class DirWatcher(FileSystemEventHandler):
                 ):
                     self.process_queue.put(event_file)
             elif event_file.suffix == ".txt":
-                if event_file.with_suffix(".cptv").exists():
+                if event_file.with_suffix(
+                    ".cptv"
+                ).exists() and not event_file.stem.endswith("-track"):
                     self.process_queue.put(event_file.with_suffix(".cptv"))
 
 
