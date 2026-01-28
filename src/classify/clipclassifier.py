@@ -14,6 +14,7 @@ from ml_tools.interpreter import get_interpreter
 from track.trackextractor import extract_file
 from classify.thumbnail import get_thumbnail_info, best_trackless_thumb
 from pathlib import Path
+from piclassifier.eventreporter import log_event
 
 
 class ClipClassifier:
@@ -432,6 +433,7 @@ class ClipClassifier:
         start = time.time()
         model = self.config.classify.models[0]
         classifier = self.get_classifier(model)
+        classifier_is_ready = not classifier.run_over_network
         predictions = Predictions(classifier.labels, model, classifier.thresholds)
         predictions.model_load_time = time.time() - start
 
@@ -577,8 +579,26 @@ class ClipClassifier:
                     chunk * chunk_size + chunk_size,
                     len(preprocessed),
                 )
-                pred = classifier.predict(preprocessed_chunk)
+
+                # if service was just started could take a while to load ~45 seconds
+                if not classifier_is_ready:
+                    logging.info(
+                        "Checking if classifier is ready at %s",
+                        f"http://127.0.0.1:{classifier.port}/ready",
+                    )
+                    classifier_is_ready = wait_for_classifier(
+                        f"http://127.0.0.1:{classifier.port}/ready"
+                    )
+                try:
+                    pred = classifier.predict(preprocessed_chunk)
+                except Exception as ex:
+                    logging.error(
+                        "Could not classify chunk not trying again ", exc_info=True
+                    )
+                    log_event("Classify Error", {"Error": repr(ex)})
+                    break
                 preds.extend(pred)
+
             track_prediction = classifier.track_prediction_from_raw(
                 track_id, pred_frame_numbers, preds, masses
             )
@@ -638,3 +658,21 @@ def country_by_location(lat, lng):
         if rect.contains(lng, lat):
             return country
     return None
+
+
+def wait_for_classifier(url, timeout=45):
+    import requests
+
+    start_time = time.time()
+    while time.time() < start_time + timeout:
+        try:
+            response = requests.get(url)
+            if response.status_code == 200:
+                is_ready = response.json()["ready"]
+                if is_ready:
+                    return True
+        except requests.exceptions.ConnectionError:
+            logging.info("Network Classifier not ready, retrying in 2 seconds...")
+        time.sleep(2)
+    logging.error("Timeout reached. Network Classifier is not responding.")
+    return False

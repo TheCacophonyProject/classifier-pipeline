@@ -1,6 +1,4 @@
-from flask import Flask
-from flask import request
-from flask import Response
+from flask import Flask, request, Response, jsonify
 import numpy as np
 import sys
 from ml_tools.interpreter import get_interpreter
@@ -14,6 +12,11 @@ app = Flask(__name__)
 # app.config["MAX_CONTENT_LENGTH"] = 407200
 interpreter = None
 input_shape = None
+
+
+@app.route("/ready", methods=["GET"])
+def is_ready():
+    return jsonify({"ready": interpreter is not None})
 
 
 @app.route("/predict", methods=["POST"])

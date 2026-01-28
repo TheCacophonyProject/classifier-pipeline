@@ -101,6 +101,7 @@ def main():
         observer.schedule(dir_watcher, reprocess_dir, recursive=False)
         observer.start()
         config.validate()
+
     clip_classifier = ClipClassifier(
         config,
         network_model,
@@ -119,6 +120,7 @@ def main():
             try:
                 new_file = process_queue.get(block=False)
             except:
+                send_finished_request()
                 if pending_exit:
                     logging.info("Finished processing exit")
                     break
@@ -127,8 +129,9 @@ def main():
             new_file = Path(new_file)
             if not new_file.exists():
                 continue
-            # reprocess file
 
+            # reprocess file
+            send_on_request(60 * 6)
             if need_dbus:
                 max_attempts = 3
                 attempt = 1
@@ -220,3 +223,29 @@ def dbus_events(loop, dbus_object, callback_fn):
         signal_name="ServiceStarted",
     )
     loop.run()
+
+
+DBUS_NAME = "org.cacophony.ATtiny"
+DBUS_PATH = "/org/cacophony/ATtiny"
+
+from dbus.mainloop.glib import DBusGMainLoop
+
+60 * 5
+
+
+def send_on_request(delay):
+    bus = dbus.SystemBus(mainloop=DBusGMainLoop())
+    try:
+        proxy = bus.get_object(DBUS_NAME, DBUS_PATH)
+        proxy.StayOnForProcess("postprocess", delay)
+    except:
+        logging.error("atttiny stayon dbus error ", exc_info=True)
+
+
+def send_finished_request():
+    bus = dbus.SystemBus(mainloop=DBusGMainLoop())
+    try:
+        proxy = bus.get_object(DBUS_NAME, DBUS_PATH)
+        proxy.StayOnFinished("postprocess")
+    except:
+        logging.error("atttiny stayon dbus error ", exc_info=True)
