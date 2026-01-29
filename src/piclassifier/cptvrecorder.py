@@ -1,14 +1,10 @@
 from datetime import datetime
 import logging
-import os
 import yaml
-from track.cliptrackextractor import ClipTrackExtractor
 from cptv import CPTVWriter
 from cptv import Frame
 from datetime import timedelta
-import time
 from piclassifier.recorder import Recorder
-from pathlib import Path
 from ml_tools.logs import init_logging
 import multiprocessing
 from .eventreporter import log_event

@@ -19,7 +19,6 @@ from . import beacon
 from piclassifier.trapcontroller import trigger_trap
 from piclassifier.attiny import set_recording_state
 from pathlib import Path
-from ml_tools.imageprocessing import normalize
 from functools import partial
 from piclassifier import utils
 
@@ -150,7 +149,7 @@ class PiClassifier(Processor):
 
         if self.fp_model is not None:
             self.fp_model.load_model()
-        if self.classifier is not None:
+        if self.classifier is not None and not self.classifier.run_over_network:
             self.classifier.load_model()
 
         if self.headers.model == "IR":
@@ -434,7 +433,7 @@ class PiClassifier(Processor):
         self.classifier_initialised = True
         if self.classifier.run_over_network:
             if not utils.is_service_running("thermal-classifier"):
-                success = utils.startup_network_classifier(True)
+                success = utils.toggle_network_classifier(True)
                 if not success:
                     raise Exception("COuild not start network classifier")
             return

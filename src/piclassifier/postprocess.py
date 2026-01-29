@@ -16,7 +16,7 @@ from functools import partial
 import threading
 import dbus
 from gi.repository import GLib
-from piclassifier.utils import startup_network_classifier, is_service_running
+from piclassifier.utils import toggle_network_classifier, is_service_running
 
 
 class DirWatcher(FileSystemEventHandler):
@@ -27,18 +27,18 @@ class DirWatcher(FileSystemEventHandler):
         if not event.is_directory:
             event_file = Path(event.src_path)
             if event_file.suffix == ".cptv":
-                if event_file.with_suffix(".txt").exists():
+                if event_file.with_suffix(".txt").exists() or event_file.stem.endswith(
+                    "-track"
+                ):
                     self.process_queue.put(event_file)
             elif event_file.suffix == ".txt":
-                if event_file.with_suffix(".cptv").exists():
+                if event_file.with_suffix(
+                    ".cptv"
+                ).exists() and not event_file.stem.endswith("-track"):
                     self.process_queue.put(event_file.with_suffix(".cptv"))
 
 
-def get_model(thermal_config, config):
-    if not thermal_config.motion.run_classifier:
-        logging.info("Classifier isn't configured to run in config")
-        return None
-
+def get_model(config):
     network_model = [
         model for model in config.classify.models if model.run_over_network
     ]
@@ -71,7 +71,7 @@ def main():
     output_dir = Path(thermal_config.recorder.output_dir)
     reprocess_dir = output_dir / "postprocess"
     reprocess_dir.mkdir(exist_ok=True)
-    network_model = get_model(thermal_config, config)
+    network_model = get_model(config)
     if network_model is None:
         logging.info("No network model exiting")
         sys.exit(0)
@@ -101,6 +101,7 @@ def main():
         observer.schedule(dir_watcher, reprocess_dir, recursive=False)
         observer.start()
         config.validate()
+
     clip_classifier = ClipClassifier(
         config,
         network_model,
@@ -112,27 +113,14 @@ def main():
     bus = None
     dbus_object = None
     need_dbus = thermal_config.motion.postprocess_events
+    loop = None
 
-    if need_dbus:
-        max_attempts = 3
-        attempt = 1
-        while bus is None:
-            try:
-                dbus_object, bus, thread = connect_to_dbus(callback_fn)
-            except Exception as ex:
-                logging.info(
-                    "Couldn't connecto dbus waiting 20 seconds and trying again",
-                    exc_info=True,
-                )
-                if attempt >= max_attempts:
-                    raise ex
-                time.sleep(20)
-            attempt += 1
     try:
         while True:
             try:
                 new_file = process_queue.get(block=False)
             except:
+                send_finished_request()
                 if pending_exit:
                     logging.info("Finished processing exit")
                     break
@@ -141,11 +129,28 @@ def main():
             new_file = Path(new_file)
             if not new_file.exists():
                 continue
+
             # reprocess file
+            send_on_request(60 * 6)
+            if need_dbus:
+                max_attempts = 3
+                attempt = 1
+                while bus is None:
+                    try:
+                        dbus_object, bus, _, loop = connect_to_dbus(callback_fn)
+                    except Exception as ex:
+                        logging.info(
+                            "Couldn't connecto dbus waiting 20 seconds and trying again",
+                            exc_info=True,
+                        )
+                        if attempt >= max_attempts:
+                            raise ex
+                        time.sleep(20)
+                    attempt += 1
 
             if not is_service_running("thermal-classifier"):
                 logging.info("Network classifier is not running starting it up")
-                success = startup_network_classifier(True)
+                success = toggle_network_classifier(True)
                 if not success:
                     raise Exception("Could not start up netowrk classifier")
                 # give it some time to start up
@@ -189,7 +194,8 @@ def main():
 
     except KeyboardInterrupt:
         observer.stop()
-    loop.quit()
+    if loop is not None:
+        loop.quit()
     if observer.is_alive:
         observer.stop()
 
@@ -202,7 +208,7 @@ def connect_to_dbus(rec_callback):
 
     dbus_thread = threading.Thread(target=dbus_events, args=(loop, bus, rec_callback))
     dbus_thread.start()
-    return dbus_object, bus, dbus_thread
+    return dbus_object, bus, dbus_thread, loop
 
 
 def dbus_events(loop, dbus_object, callback_fn):
@@ -217,3 +223,29 @@ def dbus_events(loop, dbus_object, callback_fn):
         signal_name="ServiceStarted",
     )
     loop.run()
+
+
+DBUS_NAME = "org.cacophony.ATtiny"
+DBUS_PATH = "/org/cacophony/ATtiny"
+
+from dbus.mainloop.glib import DBusGMainLoop
+
+60 * 5
+
+
+def send_on_request(delay):
+    bus = dbus.SystemBus(mainloop=DBusGMainLoop())
+    try:
+        proxy = bus.get_object(DBUS_NAME, DBUS_PATH)
+        proxy.StayOnForProcess("postprocess", delay)
+    except:
+        logging.error("atttiny stayon dbus error ", exc_info=True)
+
+
+def send_finished_request():
+    bus = dbus.SystemBus(mainloop=DBusGMainLoop())
+    try:
+        proxy = bus.get_object(DBUS_NAME, DBUS_PATH)
+        proxy.StayOnFinished("postprocess")
+    except:
+        logging.error("atttiny stayon dbus error ", exc_info=True)

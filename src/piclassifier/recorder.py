@@ -6,8 +6,6 @@ import shutil
 import time
 from pathlib import Path
 
-from ml_tools.logs import init_logging
-
 TEMP_DIR = "temp"
 
 
