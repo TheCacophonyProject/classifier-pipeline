@@ -436,7 +436,8 @@ def handle_headers(connection):
             if left_over[:5] == b"clear":
                 left_over = left_over[5:]
             break
-    return HeaderInfo.parse_header(headers.decode()), left_over
+    header_s = headers.decode()
+    return HeaderInfo.parse_header(header_s), left_over
 
 
 def ir_camera(config, thermal_config, process_queue):
@@ -648,9 +649,193 @@ def kill_process(process):
         logging.error("Could not kill process", exc_info=True)
 
 
+def get_uint32(raw, offset):
+    return (
+        raw[offset + 1]
+        | (raw[offset] << 8)
+        | (raw[offset + 3] << 16)
+        | (raw[offset + 2] << 24)
+    )
+
+gzip_header =[0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xff]
+
+STATIC_LZ77_DYNAMIC_BLOCK_HEADER = [
+    5, 224, 3, 152, 109, 105, 182, 6, 106, 190, 255, 24, 107, 70, 196, 222, 153, 89, 85, 231, 182,
+    109, 219, 182, 109, 219, 182, 109, 219, 182, 109, 219, 182, 109, 119, 223, 83, 200, 220, 59,
+    34, 230, 26, 227, 235, 7,
+]
+
+def medium_power(thermal_config,config,connection,headers,extra_b):
+    from cptv_rs_python_bindings import CptvStreamReader
+
+    from ml_tools.imageprocessing import normalize
+    import cv2
+    import zlib
+    # pi_classifier = PiClassifier(
+    #     config,
+    #     thermal_config,
+    #     headers,
+    #     thermal_config.motion.run_classifier,
+    #     0,
+    #     None,
+    # )
+    reader = CptvStreamReader()
+    decompressor = zlib.decompressobj()
+    decompressed_chunk = decompressor.decompress(gzip_header)
+    decompressed_chunk = decompressor.decompress(STATIC_LZ77_DYNAMIC_BLOCK_HEADER)
+
+    u8_data = None
+    frame_i = 0
+    while True:
+        if extra_b is not None:
+            byte_data = extra_b + connection.recv(
+                headers.frame_size - len(extra_b)
+            )
+            extra_b = None
+        else:
+           byte_data = connection.recv(headers.frame_size)
+        decompressed_chunk = decompressor.decompress(byte_data)
+        if u8_data is None:
+            u8_data = np.frombuffer(decompressed_chunk, dtype=np.uint8)
+        else:
+            u8_data = np.concat((u8_data, np.frombuffer(decompressed_chunk, dtype=np.uint8)),axis = 0)
+
+        while True:
+
+            result= reader.next_frame_from_data(u8_data)
+            if result is not None:
+                frame,used = result
+                u8_data = u8_data[used:]
+                logging.info("Loaded a frame from gz data")
+                frame_i+=1
+                normed,_ = normalize(frame.pix,new_max = 255)
+                normed = np.uint8(normed)
+                cv2.imwrite(f"/home/pi/streamed/frame{i}.png",normed)
+                # cv2.imshow("f",normed)
+                # cv2.waitKey()
+                # u8_array = u8_array[used:]
+                # offset = 0
+                # data = u8_array[offset: offset + packet_size]
+            else:
+                # need more data
+                logging.info("Need more data")
+                break
+
+            
+
+        
+        # # to get extra properties and allow pickling convert to cptv.Frame
+        # frame = Frame(
+        #     frame.pix,
+        #     timedelta(milliseconds=frame.time_on),
+        #     timedelta(milliseconds=frame.last_ffc_time),
+        #     frame.temp_c,
+        #     frame.last_ffc_temp_c,
+        #     frame.background_frame,
+        # )
+
+        # frame_queue.put(frame)
+
+        # frame.ffc_imminent = False
+        # frame.ffc_status = 0
+
+        # if frame.background_frame:
+        #     pi_classifier.motion_detector._background._background = frame.pix
+        #     continue
+        # pi_classifier.process_frame(frame, time.time())
+        # if fps is not None:
+        #     time.sleep(1.0 / fps)
+    
+    try:
+        reader = CptvStreamReader()
+        raw_data = None
+        while True:
+            # if not processor.is_alive():
+            #     # this potentially loops on indefinately on an error if the error is to do with the headers
+            #     logging.info("Processor stopped restarting")
+            #     processor = get_processor(
+            #         process_queue, config, thermal_config, headers
+            #     )
+            #     processor.start()
+            if extra_b is not None:
+                data = extra_b + connection.recv(
+                    headers.frame_size - len(extra_b), socket.MSG_WAITALL
+                )
+                extra_b = None
+            else:
+                data = connection.recv(headers.frame_size, socket.MSG_WAITALL)
+            # data could be less i think than frame_size
+
+
+            if not data:
+                logging.info("disconnected from camera")
+                break
+            try:
+                message = data[:5]
+                if message == b"clear":
+                    logging.info(
+                        "processing error from camera"
+                    )  # TODO Check if this is handled properly.
+                    break
+            except:
+                pass
+            read += 1
+
+            data_length = get_uint32(data,0)
+            logging.info("Receive %s", data_length, len(data))
+            new_raw_data = np.frombuffer(gzip.decompress(data[4:data_length+4]))
+            if raw_data is not None:
+                raw_data = np.concat((raw_data,new_raw_data))
+            else:
+                raw_data =  new_raw_data
+            
+            # may have multiple frames
+            while True:
+                result= reader.next_frame_from_data(raw_data, dtype=np.uint8)
+                if result is None:
+                    break
+                    # need more data
+                else:
+                    frame,used = result
+                    raw_data = raw_data[used:]
+
+
+
+
+            # frame = raw_frame.parse(data)
+            # frame.received_at = time.time()
+            # cropped_frame = crop_rectangle.subimage(frame.pix)
+            # t_min = np.amin(cropped_frame)
+            # # seems to happen if pi is working hard
+            # if t_min == 0:
+            #     logging.warning(
+            #         "received frame has odd values skipping thermal frame min {} cpu % {} memory % {}".format(
+            #             t_min, psutil.cpu_percent(), psutil.virtual_memory()[2]
+            #         )
+            #     )
+            #     log_event("bad-thermal-frame", f"Bad Pixel of {t_min}")
+            #     process_queue.put(SKIP_SIGNAL)
+            # else:
+            #     process_queue.put((frame, time.time()))
+    finally:
+        if processor.is_alive:
+            process_queue.put(STOP_SIGNAL)
+            # give it time to clean up, seems to take a while if classifier is running
+            processor.join(50)
+            if processor.is_alive():
+                logging.info("Killing process")
+                try:
+                    kill_process_with_timeout(processor)
+                except:
+                    pass
 def handle_connection(connection, config, thermal_config_file, process_queue):
     headers, extra_b = handle_headers(connection)
     thermal_config = ThermalConfig.load_from_file(thermal_config_file, headers.model)
+
+    if True or headers.medium_power:
+        medium_power(thermal_config,config,connection,headers,extra_b)
+        
+        # do things 
     logging.info(
         "parsed camera headers %s running with config %s", headers, thermal_config
     )
