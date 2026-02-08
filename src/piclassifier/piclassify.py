@@ -657,20 +657,103 @@ def get_uint32(raw, offset):
         | (raw[offset + 2] << 24)
     )
 
-gzip_header =[0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xff]
 
-STATIC_LZ77_DYNAMIC_BLOCK_HEADER = [
-    5, 224, 3, 152, 109, 105, 182, 6, 106, 190, 255, 24, 107, 70, 196, 222, 153, 89, 85, 231, 182,
-    109, 219, 182, 109, 219, 182, 109, 219, 182, 109, 219, 182, 109, 119, 223, 83, 200, 220, 59,
-    34, 230, 26, 227, 235, 7,
-]
+gzip_header = bytes([0x1F, 0x8B, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xFF])
 
-def medium_power(thermal_config,config,connection,headers,extra_b):
+STATIC_LZ77_DYNAMIC_BLOCK_HEADER = bytes(
+    [
+        5,
+        224,
+        3,
+        152,
+        109,
+        105,
+        182,
+        6,
+        106,
+        190,
+        255,
+        24,
+        107,
+        70,
+        196,
+        222,
+        153,
+        89,
+        85,
+        231,
+        182,
+        109,
+        219,
+        182,
+        109,
+        219,
+        182,
+        109,
+        219,
+        182,
+        109,
+        219,
+        182,
+        109,
+        119,
+        223,
+        83,
+        200,
+        220,
+        59,
+        34,
+        230,
+        26,
+        227,
+        235,
+        7,
+    ]
+)
+
+
+import zlib
+import io
+import struct
+import gzip
+
+
+def decompress(decompressor, data, read_header=False):
+
+    fp = io.BytesIO(data)
+    if not read_header:
+        gzip._read_gzip_header(fp)
+        data = data[fp.tell() :]
+
+    decompressed = decompressor.decompress(data)
+    unused_data = decompressor.unused_data[8:].lstrip(b"\x00")
+
+    # print("Tell is no0w ", fp.tell()," Unused data is " , len(decompressor.unused_data), " decompressed is ",len(decompressed))
+    if not decompressor.eof or len(decompressor.unused_data) < 8:
+        print("Reach eof")
+        # 1/0
+        return unused_data, decompressed
+        raise EOFError(
+            "Compressed file ended before the end-of-stream " "marker was reached"
+        )
+    crc, length = struct.unpack("<II", decompressor.unused_data[:8])
+
+    if crc != zlib.crc32(decompressed):
+        return unused_data, decompressed
+
+        raise Exception("CRC check failed")
+    if length != (len(decompressed) & 0xFFFFFFFF):
+        raise Exception("Incorrect length of data produced")
+    return unused_data, decompressed
+
+
+def medium_power(thermal_config, config, connection, headers, extra_b):
     from cptv_rs_python_bindings import CptvStreamReader
 
     from ml_tools.imageprocessing import normalize
     import cv2
     import zlib
+
     # pi_classifier = PiClassifier(
     #     config,
     #     thermal_config,
@@ -680,37 +763,44 @@ def medium_power(thermal_config,config,connection,headers,extra_b):
     #     None,
     # )
     reader = CptvStreamReader()
-    decompressor = zlib.decompressobj()
-    decompressed_chunk = decompressor.decompress(gzip_header)
-    decompressed_chunk = decompressor.decompress(STATIC_LZ77_DYNAMIC_BLOCK_HEADER)
+    decompressor = zlib.decompressobj(wbits=-zlib.MAX_WBITS)
+
+    # decompressed_chunk = decompressor.decompress(gzip_header)
+    # decompressed_chunk = decompressor.decompress(STATIC_LZ77_DYNAMIC_BLOCK_HEADER)
 
     u8_data = None
     frame_i = 0
+    read_header = False
+    data = b""
     while True:
         if extra_b is not None:
-            byte_data = extra_b + connection.recv(
-                headers.frame_size - len(extra_b)
-            )
+            byte_data = extra_b + connection.recv(headers.frame_size - len(extra_b))
             extra_b = None
         else:
-           byte_data = connection.recv(headers.frame_size)
-        decompressed_chunk = decompressor.decompress(byte_data)
+            byte_data = connection.recv(headers.frame_size)
+
+        data = data + byte_data
+        data, decompressed_chunk = decompress(decompressor, data, read_header)
+        logging.info("Have decompressed %s", len(decompressed_chunk))
+        read_header = True
         if u8_data is None:
             u8_data = np.frombuffer(decompressed_chunk, dtype=np.uint8)
         else:
-            u8_data = np.concat((u8_data, np.frombuffer(decompressed_chunk, dtype=np.uint8)),axis = 0)
+
+            u8_data = np.concat(
+                (u8_data, np.frombuffer(decompressed_chunk, dtype=np.uint8)), axis=0
+            )
 
         while True:
-
-            result= reader.next_frame_from_data(u8_data)
+            result = reader.next_frame_from_data(u8_data)
             if result is not None:
-                frame,used = result
+                frame, used = result
                 u8_data = u8_data[used:]
                 logging.info("Loaded a frame from gz data")
-                frame_i+=1
-                normed,_ = normalize(frame.pix,new_max = 255)
+                frame_i += 1
+                normed, _ = normalize(frame.pix, new_max=255)
                 normed = np.uint8(normed)
-                cv2.imwrite(f"/home/pi/streamed/frame{i}.png",normed)
+                cv2.imwrite(f"/home/pi/streamed/frame{i}.png", normed)
                 # cv2.imshow("f",normed)
                 # cv2.waitKey()
                 # u8_array = u8_array[used:]
@@ -721,9 +811,6 @@ def medium_power(thermal_config,config,connection,headers,extra_b):
                 logging.info("Need more data")
                 break
 
-            
-
-        
         # # to get extra properties and allow pickling convert to cptv.Frame
         # frame = Frame(
         #     frame.pix,
@@ -745,7 +832,7 @@ def medium_power(thermal_config,config,connection,headers,extra_b):
         # pi_classifier.process_frame(frame, time.time())
         # if fps is not None:
         #     time.sleep(1.0 / fps)
-    
+
     try:
         reader = CptvStreamReader()
         raw_data = None
@@ -766,7 +853,6 @@ def medium_power(thermal_config,config,connection,headers,extra_b):
                 data = connection.recv(headers.frame_size, socket.MSG_WAITALL)
             # data could be less i think than frame_size
 
-
             if not data:
                 logging.info("disconnected from camera")
                 break
@@ -781,26 +867,23 @@ def medium_power(thermal_config,config,connection,headers,extra_b):
                 pass
             read += 1
 
-            data_length = get_uint32(data,0)
+            data_length = get_uint32(data, 0)
             logging.info("Receive %s", data_length, len(data))
-            new_raw_data = np.frombuffer(gzip.decompress(data[4:data_length+4]))
+            new_raw_data = np.frombuffer(gzip.decompress(data[4 : data_length + 4]))
             if raw_data is not None:
-                raw_data = np.concat((raw_data,new_raw_data))
+                raw_data = np.concat((raw_data, new_raw_data))
             else:
-                raw_data =  new_raw_data
-            
+                raw_data = new_raw_data
+
             # may have multiple frames
             while True:
-                result= reader.next_frame_from_data(raw_data, dtype=np.uint8)
+                result = reader.next_frame_from_data(raw_data, dtype=np.uint8)
                 if result is None:
                     break
                     # need more data
                 else:
-                    frame,used = result
+                    frame, used = result
                     raw_data = raw_data[used:]
-
-
-
 
             # frame = raw_frame.parse(data)
             # frame.received_at = time.time()
@@ -828,14 +911,16 @@ def medium_power(thermal_config,config,connection,headers,extra_b):
                     kill_process_with_timeout(processor)
                 except:
                     pass
+
+
 def handle_connection(connection, config, thermal_config_file, process_queue):
     headers, extra_b = handle_headers(connection)
     thermal_config = ThermalConfig.load_from_file(thermal_config_file, headers.model)
 
     if True or headers.medium_power:
-        medium_power(thermal_config,config,connection,headers,extra_b)
-        
-        # do things 
+        medium_power(thermal_config, config, connection, headers, extra_b)
+
+        # do things
     logging.info(
         "parsed camera headers %s running with config %s", headers, thermal_config
     )

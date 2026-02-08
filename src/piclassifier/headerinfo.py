@@ -19,23 +19,23 @@ class HeaderInfo:
     FRAME_SIZE = "FrameSize"
     SERIAL = "CameraSerial"
     FIRMWARE = "Firmware"
-    medium_power = attr.ib(default = False)
+    medium_power = attr.ib(default=False)
     res_x = attr.ib(default=160)
-    res_y = attr.ib(default = 120)
-    fps = attr.ib(default = 9)
-    brand = attr.ib(default = "lepton")
+    res_y = attr.ib(default=120)
+    fps = attr.ib(default=9)
+    brand = attr.ib(default="lepton")
     model = attr.ib(default="3.5")
-    frame_size = attr.ib(default = 39040)
-    pixel_bits = attr.ib(default = 16)
-    serial = attr.ib(default = "12")
-    firmware = attr.ib(default = "12")
+    frame_size = attr.ib(default=39040)
+    pixel_bits = attr.ib(default=16)
+    serial = attr.ib(default="12")
+    firmware = attr.ib(default="12")
 
     @classmethod
     def parse_header(cls, raw_string):
-        if raw_string =="medium":
+        if raw_string == "medium":
             return cls(medium_power=True)
         raw = yaml.safe_load(raw_string)
-        
+
         headers = cls(
             res_x=raw.get(HeaderInfo.X_RESOLUTION),
             res_y=raw.get(HeaderInfo.Y_RESOLUTION),
