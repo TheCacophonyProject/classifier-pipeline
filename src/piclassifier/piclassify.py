@@ -778,8 +778,8 @@ def medium_power(thermal_config, config, connection, headers, extra_b):
             extra_b = None
         else:
             byte_data = connection.recv(headers.frame_size)
-
         data = data + byte_data
+        logging.info("Received %s", len(byte_data))
         data, decompressed_chunk = decompress(decompressor, data, read_header)
         logging.info("Have decompressed %s", len(decompressed_chunk))
         read_header = True
@@ -787,7 +787,7 @@ def medium_power(thermal_config, config, connection, headers, extra_b):
             u8_data = np.frombuffer(decompressed_chunk, dtype=np.uint8)
         else:
 
-            u8_data = np.concat(
+            u8_data = np.concatenate(
                 (u8_data, np.frombuffer(decompressed_chunk, dtype=np.uint8)), axis=0
             )
 
