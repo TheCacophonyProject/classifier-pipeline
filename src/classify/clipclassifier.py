@@ -619,7 +619,6 @@ class ClipClassifier:
             ):
                 dbus_preds = track_prediction.class_best_score.copy()
                 dbus_preds = np.uint8(np.round(dbus_preds * 100))
-                best = np.argmax(predictions)
                 dbus_preds = dbus_preds.tolist()
 
                 service.TrackReprocessed(
@@ -628,9 +627,9 @@ class ClipClassifier:
                     dbus_preds,
                     track_prediction.predicted_tag(),
                     int(round(100 * track_prediction.max_score)),
-                    region.to_ltrb(),
+                    np.uint8(region.to_ltrb()).tolist(),
                     region.frame_number,
-                    region.mass,
+                    int(region.mass),
                     region.blank,
                     True,
                     data["track"].bounds_history[-1].frame_number,

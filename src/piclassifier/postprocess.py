@@ -140,7 +140,8 @@ def main():
                         dbus_object, bus, _, loop = connect_to_dbus(callback_fn)
                     except Exception as ex:
                         logging.info(
-                            "Couldn't connecto dbus waiting 20 seconds and trying again",
+                            "Couldn't connect to dbus (%s) waiting 20 seconds and trying again",
+                            service.DBUS_NAME,
                             exc_info=True,
                         )
                         if attempt >= max_attempts:
