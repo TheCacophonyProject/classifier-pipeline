@@ -2,12 +2,9 @@ import json
 import dateutil
 import numpy as np
 import logging
-from ml_tools import tools
 from track.region import Region
 from abc import ABC, abstractmethod
 from ml_tools.rectangle import Rectangle
-from config.buildconfig import BuildConfig
-from ml_tools import imageprocessing
 from enum import Enum
 import attr
 
@@ -17,7 +14,7 @@ CPTV_FILE_WIDTH = 160
 CPTV_FILE_HEIGHT = 120
 FRAME_SIZE = 32
 MIN_SIZE = 4
-
+NO_MIN_FRAMES = ["stoat", "mustelid", "weasel", "ferret"]
 # hard coded for now
 FP_LABELS = ["other", "unidentified", "rain", "false-positive", "water", "insect"]
 
@@ -246,8 +243,9 @@ class TrackHeader:
             except:
                 pass
         meta_dict["label"] = self.label
+        from ml_tools.tools import CustomJSONEncoder
 
-        return json.dumps(meta_dict, indent=3, cls=tools.CustomJSONEncoder)
+        return json.dumps(meta_dict, indent=3, cls=CustomJSONEncoder)
 
     def add_sample(self, sample):
         self.samples.append(sample)
@@ -354,7 +352,7 @@ class TrackHeader:
         for rect in self.regions:
             rx, ry = rect.mid_x, rect.mid_y
             size = max(rect.width, rect.height)
-            adjusted_rect = tools.Rectangle(rx - size / 2, ry - size / 2, size, size)
+            adjusted_rect = Rectangle(rx - size / 2, ry - size / 2, size, size)
             self.frame_crop.append(
                 get_cropped_fraction(adjusted_rect, self.res_x, self.res_y)
             )
@@ -391,7 +389,7 @@ class TrackHeader:
         if segment_frames is not None:
             raise Exception("Have not implement this path")
         min_frames = segment_width / 4.0
-        if self.label in BuildConfig.NO_MIN_FRAMES:
+        if self.label in NO_MIN_FRAMES:
             # try and always get one for these
             min_frames = 0
             if min_segments is None:
@@ -889,7 +887,9 @@ class SegmentHeader(Sample):
         return self.id
 
     def get_data(self, db):
-        crop_rectangle = tools.Rectangle(1, 1, 160 - 2, 120 - 2)
+        from ml_tools.imageprocessing import normalize
+
+        crop_rectangle = Rectangle(1, 1, 160 - 2, 120 - 2)
 
         try:
             background = db.get_clip_background(self.clip_id)
@@ -912,15 +912,11 @@ class SegmentHeader(Sample):
                 frame.thermal -= temp
                 np.clip(frame.thermal, a_min=0, a_max=None, out=frame.thermal)
 
-                frame.thermal, stats = imageprocessing.normalize(
-                    frame.thermal, new_max=255
-                )
+                frame.thermal, stats = normalize(frame.thermal, new_max=255)
                 if not stats[0]:
                     frame.thermal = np.zeros((frame.thermal.shape))
                     # continue
-                frame.filtered, stats = imageprocessing.normalize(
-                    frame.filtered, new_max=255
-                )
+                frame.filtered, stats = normalize(frame.filtered, new_max=255)
                 if not stats[0]:
                     frame.filtered = np.zeros((frame.filtered.shape))
 
@@ -948,7 +944,7 @@ class SegmentHeader(Sample):
 
 def get_cropped_fraction(region: Rectangle, width, height):
     """Returns the fraction regions mass outside the rect ((0,0), (width, height)"""
-    bounds = tools.Rectangle(0, 0, width - 1, height - 1)
+    bounds = Rectangle(0, 0, width - 1, height - 1)
     return 1 - (bounds.overlap_area(region) / region.area)
 
 
@@ -994,13 +990,14 @@ def get_segments(
     repeat_frame_indices=True,
     min_segments=None,
 ):
+    if segment_types is None:
+        segment_types = [SegmentType.ALL_RANDOM_MASKED]
     if min_frames is None:
         min_frames = segment_width / 4.0
     segments = []
     mass_history = np.uint16([region.mass for region in regions])
     filtered_stats = {"segment_mass": 0, "too short": 0}
     has_no_mass = np.sum(mass_history) == 0
-
     for segment_type in segment_types:
         s_min_mass = segment_min_mass
         if segment_type == SegmentType.ALL_RANDOM_NOMIN:
@@ -1037,9 +1034,8 @@ def get_segments(
             s_min_mass = 1
             # remove blank frames
         frame_indices = np.array(frame_indices)
-
         if segment_type == SegmentType.ELONGATION:
-            crop_rectangle = tools.Rectangle(1, 1, 160 - 2, 120 - 2)
+            crop_rectangle = Rectangle(1, 1, 160 - 2, 120 - 2)
             border_regions = []
             non_border_regions = []
 
@@ -1149,7 +1145,11 @@ def get_segments(
         if max_segments is not None and segment_type not in [SegmentType.ALL_SECTIONS]:
             segment_count = min(max_segments, segment_count)
             # adjust size of mask if we take less segments
-            mask_length = max(mask_length, len(frame_indices) // segment_count)
+            if segment_count == 1:
+                mask_length = 0
+            else:
+                mask_length = max(mask_length, len(frame_indices) // segment_count)
+
         # take any segment_width frames, this could be done each epoch
         whole_indices = frame_indices
         random_frames = segment_type in [
@@ -1187,17 +1187,18 @@ def get_segments(
                         frame_indices = segment_indices[mask]
                         frame_indices = np.uint32(frame_indices)
                         np.random.shuffle(frame_indices)
-
                 # always get atleast one segment, not doing annymore
                 if (
                     len(frame_indices) == 0
                     or min_segments is None
                     or len(segments) >= min_segments
                 ):
+
                     # gp changes from > 1 segments to > 0 18/09/2025
                     if (
                         len(frame_indices) < segment_width / 2.0 and len(segments) > 0
                     ) or len(frame_indices) < segment_width / 4:
+                        logging.info("Not enough indices %s", len(frame_indices))
                         break
 
                 if segment_type == SegmentType.ALL_SECTIONS:
@@ -1236,6 +1237,7 @@ def get_segments(
                     )
                     frames = np.concatenate([frames, extra_frames])
                 frames.sort()
+
                 relative_frames = frames - start_frame
                 mass_slice = mass_history[relative_frames]
                 segment_mass = np.sum(mass_slice)

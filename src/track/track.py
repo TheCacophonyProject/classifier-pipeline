@@ -22,11 +22,6 @@ import math
 import numpy as np
 from collections import namedtuple
 
-from ml_tools.rectangle import Rectangle
-from track.region import Region
-from .kalman import Kalman
-from ml_tools.tools import eucl_distance_sq
-from ml_tools.datasetstructures import get_segments, SegmentHeader, SegmentType
 import logging
 from track.tracker import Tracker
 
@@ -65,6 +60,8 @@ class RegionTracker(Tracker):
     def __init__(self, id, tracking_config, crop_rectangle=None):
         self.track_id = id
         self.clear_run = 0
+        from .kalman import Kalman
+
         self.kalman_tracker = Kalman()
         self._frames_since_target_seen = 0
         self.frames = 0
@@ -104,7 +101,7 @@ class RegionTracker(Tracker):
     def last_bound(self):
         return self._last_bound
 
-    def get_size_change(self, current_area, region: Region):
+    def get_size_change(self, current_area, region):
         """
         Gets a value representing the difference in regions sizes
         """
@@ -237,6 +234,8 @@ class RegionTracker(Tracker):
         return (pred_vel_x, pred_vel_y)
 
     def add_blank_frame(self):
+        from region import Region
+
         kalman_amount = (
             self.frames
             - RegionTracker.MIN_KALMAN_FRAMES
@@ -484,7 +483,7 @@ class Track:
         repeats=1,
         min_frames=0,
         segment_frames=None,
-        segment_types=[SegmentType.ALL_RANDOM],
+        segment_types=None,
         from_last=None,
         max_segments=None,
         ffc_frames=None,
@@ -492,6 +491,8 @@ class Track:
         filter_by_fp=False,
         min_segments=1,
     ):
+        from ml_tools.datasetstructures import get_segments, SegmentHeader
+
         if from_last is not None:
             if from_last == 0:
                 return []
@@ -737,6 +738,7 @@ class Track:
         that this is a good track. This should be done once tracking is finished
         # :return: a TrackMovementStatistics record
         """
+        from ml_tools.tools import eucl_distance_sq
 
         if len(self) <= 1:
             self.stats = TrackMovementStatistics()
@@ -829,7 +831,7 @@ class Track:
         )
         self.stats = stats
 
-    def smooth(self, frame_bounds: Rectangle):
+    def smooth(self, frame_bounds):
         """
         Smooths out any quick changes in track dimensions
         :param frame_bounds The boundaries of the video frame.
@@ -977,7 +979,7 @@ class Track:
         return self.vel_x[-1], self.vel_y[-1]
 
     @property
-    def last_bound(self) -> Region:
+    def last_bound(self):
         return self.bounds_history[-1]
 
     def __repr__(self):

@@ -97,27 +97,35 @@ class SlidingWindow:
 class MotionDetector(ABC):
     def __init__(self, thermal_config, headers):
         self.movement_detected = False
-        self.use_low_power_mode = thermal_config.recorder.use_low_power_mode
+        if thermal_config is not None:
+            self.use_low_power_mode = thermal_config.recorder.use_low_power_mode
+            self.rec_window = thermal_config.recorder.rec_window
+            self.location_config = thermal_config.location
+            self.use_sunrise = self.rec_window.use_sunrise_sunset()
+        else:
+            self.use_low_power_mode = False
+            self.rec_window = None
+            self.location_config = None
+            self.use_sunrise = False
         self.num_frames = 0
-        self.rec_window = thermal_config.recorder.rec_window
-        self.location_config = thermal_config.location
-        self.use_sunrise = self.rec_window.use_sunrise_sunset()
+
         self.last_sunrise_check = None
         self.location = None
         self.sunrise = None
         self.sunset = None
         self.recording = False
 
-        if self.rec_window.use_sunrise_sunset():
+        if self.use_sunrise:
             self.rec_window.set_location(
                 *self.location_config.get_lat_long(use_default=True),
                 self.location_config.altitude,
             )
-        logging.info(
-            "Recording window %s - %s ",
-            self.rec_window.start.dt,
-            self.rec_window.end.dt,
-        )
+        if self.rec_window:
+            logging.info(
+                "Recording window %s - %s ",
+                self.rec_window.start.dt,
+                self.rec_window.end.dt,
+            )
         self.headers = headers
 
     @property
@@ -141,7 +149,11 @@ class MotionDetector(ABC):
         """Tracker type IR or Thermal"""
 
     def can_record(self):
-        return self.rec_window.inside_window() and not self.use_low_power_mode
+        return (
+            self.rec_window.inside_window()
+            if self.rec_window
+            else True and not self.use_low_power_mode
+        )
 
     @abstractmethod
     def disconnected(self):

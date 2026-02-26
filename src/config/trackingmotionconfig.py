@@ -27,7 +27,7 @@ class TrackingMotionConfig(DefaultConfig):
             camera_model="lepton3",
             temp_thresh=2900,
             background_thresh=20,
-            default=True,
+            default=False,
             min_temp_thresh=None,
             max_temp_thresh=None,
             track_min_delta=1.0,
@@ -37,7 +37,7 @@ class TrackingMotionConfig(DefaultConfig):
             camera_model="lepton3.5",
             temp_thresh=28000,
             background_thresh=50,
-            default=False,
+            default=True,
             min_temp_thresh=None,
             max_temp_thresh=None,
             track_min_delta=1.0,
@@ -120,8 +120,8 @@ class ThresholdConfig(DefaultConfig):
     def get_defaults(cls):
         return cls(
             camera_model="default-model",
-            temp_thresh=2900,
-            background_thresh=20,
+            temp_thresh=28000,
+            background_thresh=50,
             default=False,
             min_temp_thresh=None,
             max_temp_thresh=None,

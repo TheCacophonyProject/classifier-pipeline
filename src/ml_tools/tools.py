@@ -8,13 +8,9 @@ import pickle
 import json
 import datetime
 import glob
-import cv2
 import enum
-import timezonefinder
-from PIL import Image, ImageFont, ImageDraw
 from pathlib import Path
 from ml_tools.rectangle import Rectangle
-from dateutil import parser
 from enum import Enum
 
 EPISON = 1e-5
@@ -74,6 +70,8 @@ def convert_heat_to_img(frame, colormap=None, temp_min=None, temp_max=None):
     :return: a pillow Image containing a colorised heatmap
     """
     # normalise
+    from PIL import Image
+
     if colormap is None:
         colormap = _load_colourmap(None)
     if temp_min is None:
@@ -93,9 +91,12 @@ def load_clip_metadata(filename):
     :param filename: full path and filename to meta file
     :return: returns the stats file
     """
+    from dateutil import parser
+
     with open(filename, "r") as t:
         # add in some metadata stats
         meta = json.load(t)
+
     if meta.get("recordingDateTime"):
         meta["recordingDateTime"] = parser.parse(meta["recordingDateTime"])
     if meta.get("tracks") is None and meta.get("Tracks"):
@@ -120,6 +121,8 @@ def calculate_variance(filtered, prev_filtered):
 
 
 def get_optical_flow_function(high_quality=False):
+    import cv2
+
     opt_flow = cv2.optflow.createOptFlow_DualTVL1()
     opt_flow.setUseInitialFlow(True)
     if not high_quality:
@@ -160,6 +163,8 @@ def resource_path(name):
 
 
 def add_heat_number(img, frame, scale):
+    from PIL import ImageDraw, ImageFont
+
     draw = ImageDraw.Draw(img)
     font = ImageFont.truetype(resource_path("Ubuntu-R.ttf"), 8)
     for y, row in enumerate(frame):
@@ -212,6 +217,8 @@ def saveclassify_image(data, filename):
 
 
 def get_timezone_str(lat, lng):
+    import timezonefinder
+
     tf = timezonefinder.TimezoneFinder()
     timezone_str = tf.certain_timezone_at(lat=lat, lng=lng)
 

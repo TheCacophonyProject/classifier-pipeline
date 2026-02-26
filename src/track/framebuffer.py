@@ -17,9 +17,7 @@ You should have received a copy of the GNU General Public License
 along with this program. If not, see <http://www.gnu.org/licenses/>.
 """
 
-from ml_tools.framecache import FrameCache
 from ml_tools.frame import Frame
-from ml_tools.tools import get_optical_flow_function
 from threading import Lock
 
 
@@ -35,7 +33,12 @@ class FrameBuffer:
         keep_frames,
         max_frames=None,
     ):
-        self.cache = FrameCache(cptv_name) if cache_to_disk else None
+        if cache_to_disk:
+            from ml_tools.framecache import FrameCache
+
+            self.cache = FrameCache(cptv_name)
+        else:
+            self.cache = None
         self.opt_flow = None
         self.high_quality_flow = high_quality_flow
         self.frames = None
@@ -52,6 +55,8 @@ class FrameBuffer:
         self.reset()
 
     def set_optical_flow(self):
+        from ml_tools.tools import get_optical_flow_function
+
         if self.opt_flow is None:
             self.opt_flow = get_optical_flow_function(self.high_quality_flow)
 

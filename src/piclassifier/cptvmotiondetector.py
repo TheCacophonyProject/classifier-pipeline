@@ -1,7 +1,6 @@
 import numpy as np
 from datetime import timedelta
 import logging
-
 from .motiondetector import (
     SlidingWindow,
     MotionDetector,
@@ -9,6 +8,10 @@ from .motiondetector import (
     RunningMean,
 )
 from ml_tools.rectangle import Rectangle
+
+
+class Config:
+    pass
 
 
 class CPTVMotionDetector(MotionDetector):
@@ -21,13 +24,35 @@ class CPTVMotionDetector(MotionDetector):
         self.headers = headers
         if headers.model and headers.model.lower() == "lepton3.5":
             CPTVMotionDetector.BACKGROUND_WEIGHT_ADD = 1
-        self.config = thermal_config.motion
-        self.location_config = thermal_config.location
-        self.num_preview_frames = thermal_config.recorder.preview_secs * headers.fps
-        self.compare_gap = self.config.frame_compare_gap + 1
-        edge = self.config.edge_pixels
-        self.min_frames = thermal_config.recorder.min_secs * headers.fps
-        self.max_frames = thermal_config.recorder.max_secs * headers.fps
+        if thermal_config is None:
+            self.compare_gap = 46
+            self.num_preview_frames = 45
+            self.min_frames = 5 * 9
+            self.max_frames = 600 * 9
+            config = Config()
+            config.temp_thresh = 28000
+            config.delta_thresh = 150
+            config.count_thresh = 3
+            config.frame_compare_gap = 45
+            config.one_diff_only = True
+            config.trigger_frames = 2
+            config.edge_pixels = 1
+            config.warmer_only = True
+            config.dynamic_thresh = True
+            config.do_tracking = False
+            self.config = config
+            self.location_config = None
+            edge = self.config.edge_pixels
+
+        else:
+            self.config = thermal_config.motion
+            self.location_config = thermal_config.location
+            self.num_preview_frames = thermal_config.recorder.preview_secs * headers.fps
+            self.compare_gap = self.config.frame_compare_gap + 1
+            edge = self.config.edge_pixels
+            self.min_frames = thermal_config.recorder.min_secs * headers.fps
+            self.max_frames = thermal_config.recorder.max_secs * headers.fps
+            self.one_diff_only = self.config.one_diff_only
 
         if not self.config.one_diff_only:
             self.diff_window = SlidingWindow(

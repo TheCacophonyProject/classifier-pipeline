@@ -1,6 +1,4 @@
 import attr
-import numpy as np
-import math
 
 
 @attr.s(eq=False)
@@ -180,6 +178,9 @@ class Rectangle:
     # when it is resized to (final_dim,final_dim) and add extra pixels so that rotation augments
     # dont get empty pixels
     def enlarge_for_rotation(self, crop_rectangle, final_dim=32, extra_needed=13):
+        import numpy as np
+        import math
+
         scale_percent = (final_dim / np.array([self.width, self.height])).min()
 
         extra_pixels = extra_needed / scale_percent

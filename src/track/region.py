@@ -17,11 +17,8 @@ You should have received a copy of the GNU General Public License
 along with this program. If not, see <http://www.gnu.org/licenses/>.
 """
 
-import ml_tools.tools as tools
 from ml_tools.rectangle import Rectangle
 import attr
-import logging
-import numpy as np
 
 
 @attr.s(eq=False, slots=True)
@@ -56,6 +53,8 @@ class Region(Rectangle):
 
     def to_array(self):
         """Return rectangle as left, top, right, bottom co-ords."""
+        import numpy as np
+
         return np.uint16(
             [
                 self.left,
@@ -70,6 +69,8 @@ class Region(Rectangle):
 
     @classmethod
     def region_from_array(cls, region_bounds):
+        import numpy as np
+
         width = int(region_bounds[2]) - region_bounds[0]
         height = int(region_bounds[3]) - region_bounds[1]
         height = np.uint8(max(height, 0))
@@ -145,11 +146,13 @@ class Region(Rectangle):
         calculates variance on this frame for this region
         filtered is assumed to be cropped to the region
         """
+        from ml_tools.tools import calculate_variance
+
         height, width = filtered.shape
         assert (
             width == self.width and height == self.height
         ), "calculating variance on incorrectly sized filtered"
-        self.pixel_variance = tools.calculate_variance(filtered, prev_filtered)
+        self.pixel_variance = calculate_variance(filtered, prev_filtered)
 
     def set_is_along_border(self, bounds, edge=0):
         self.is_along_border = (
@@ -180,21 +183,21 @@ class Region(Rectangle):
         """Calculates the distance between 2 regions by using the distance between
         (top, left), mid points and (bottom,right) of each region
         """
+        from ml_tools.tools import eucl_distance_sq
+
         distances = []
 
         expected_x = int(other.x)
         expected_y = int(other.y)
-        distance = tools.eucl_distance_sq((expected_x, expected_y), (self.x, self.y))
+        distance = eucl_distance_sq((expected_x, expected_y), (self.x, self.y))
         distances.append(distance)
 
         expected_x = int(other.mid_x)
         expected_y = int(other.mid_y)
-        distance = tools.eucl_distance_sq(
-            (expected_x, expected_y), (self.mid_x, self.mid_y)
-        )
+        distance = eucl_distance_sq((expected_x, expected_y), (self.mid_x, self.mid_y))
         distances.append(distance)
 
-        distance = tools.eucl_distance_sq(
+        distance = eucl_distance_sq(
             (
                 other.right,
                 other.bottom,
@@ -233,6 +236,8 @@ class Region(Rectangle):
 
 def calculate_mass(filtered, threshold):
     """Calculates mass of filtered frame with threshold applied"""
+    import numpy as np
+
     if filtered.size == 0:
         return 0
     _, mass = blur_and_return_as_mask(filtered, threshold=threshold)

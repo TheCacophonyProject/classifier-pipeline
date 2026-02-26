@@ -6,8 +6,6 @@ import numpy as np
 from ml_tools.hyperparams import HyperParams
 from pathlib import Path
 from classify.trackprediction import TrackPrediction
-from ml_tools.imageprocessing import normalize
-import requests
 
 
 class Interpreter(ABC):
@@ -50,6 +48,8 @@ class Interpreter(ABC):
         ...
 
     def predict_over_network(self, data):
+        import requests
+
         headers = {"content-type": "application/octet-stream"}
         response = requests.post(
             f"http://127.0.0.1:{self.port}/predict",
@@ -436,6 +436,7 @@ class Interpreter(ABC):
             track_data[frame.frame_number] = cropped_frame
         features = None
         if self.params.mvm:
+
             from ml_tools.forestmodel import process_track as forest_process_track
 
             features = forest_process_track(
@@ -616,6 +617,7 @@ def get_interpreter(model, run_over_network=False, load_model=True):
 
 def get_contours(contour_image, frame_number):
     import cv2
+    from ml_tools.imageprocessing import normalize
 
     contour_image, stats = normalize(contour_image, new_max=255)
 

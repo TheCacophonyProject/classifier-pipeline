@@ -2,10 +2,6 @@ import cv2
 import numpy as np
 
 from pathlib import Path
-from PIL import Image
-from scipy import ndimage
-from PIL import Image
-import logging
 
 
 def resize_and_pad(
@@ -71,6 +67,8 @@ def resize_and_pad(
 
 
 def rotate(image, degrees, mode="nearest", order=1):
+    from scipy import ndimage
+
     return ndimage.rotate(image, degrees, reshape=False, mode=mode, order=order)
 
 
@@ -170,6 +168,8 @@ def normalize(data, min=None, max=None, new_max=1):
 
 
 def save_image_channels(data, filename):
+    from PIL import Image
+
     Path(filename).parent.mkdir(parents=True, exist_ok=True)
     r = Image.fromarray(np.uint8(data[:, :, 0] * 255))
     g = Image.fromarray(np.uint8(data[:, :, 1] * 255))

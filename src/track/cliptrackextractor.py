@@ -24,10 +24,8 @@ from datetime import datetime
 
 from .clip import Clip
 from piclassifier.cptvmotiondetector import is_affected_by_ffc
-from ml_tools.imageprocessing import detect_objects, normalize
 from track.cliptracker import ClipTracker
 import logging
-from cptv_rs_python_bindings import CptvReader
 from piclassifier.motiondetector import WeightedBackground
 
 
@@ -47,7 +45,7 @@ class ClipTrackExtractor(ClipTracker):
     def __init__(
         self,
         config,
-        use_opt_flow,
+        use_opt_flow=False,
         cache_to_disk=False,
         keep_frames=True,
         calc_stats=True,
@@ -68,7 +66,6 @@ class ClipTrackExtractor(ClipTracker):
             do_tracking=do_tracking,
             calculate_thumbnail_info=calculate_thumbnail_info,
         )
-
         if from_pi:
             self.version = f"PI-{ClipTrackExtractor.VERSION}"
         else:
@@ -94,6 +91,7 @@ class ClipTrackExtractor(ClipTracker):
         #     self.dilate_kernel = np.ones((size, size), np.uint8)
 
     def init_clip(self, clip):
+        from cptv_rs_python_bindings import CptvReader
 
         clip.set_frame_buffer(
             self.high_quality_optical_flow,
@@ -150,6 +148,7 @@ class ClipTrackExtractor(ClipTracker):
         return True
 
     def _track_clip(self, clip, process_background=False):
+        from cptv_rs_python_bindings import CptvReader
 
         if clip.background is None:
             logging.error("Clip has no background have you called init_clip first")
@@ -196,6 +195,7 @@ class ClipTrackExtractor(ClipTracker):
         :param thermal: A numpy array of shape (height, width) and type uint16
         If specified background subtraction algorithm will be used.
         """
+
         ffc_affected = is_affected_by_ffc(frame)
         thermal = frame.pix.copy()
         if ffc_affected:
@@ -206,9 +206,12 @@ class ClipTrackExtractor(ClipTracker):
         if self.do_tracking or self.calculate_filtered or self.calculate_thumbnail_info:
             filtered = np.float32(frame.pix) - self.background_alg.background
         if self.do_tracking or self.calculate_thumbnail_info:
+            from ml_tools.imageprocessing import detect_objects
+
             obj_filtered, threshold = self._get_filtered_frame(
                 clip, thermal, denoise=self.config.denoise
             )
+
             _, mask, component_details, centroids = detect_objects(
                 obj_filtered, otsus=False, threshold=threshold, kernel=(5, 5)
             )
@@ -238,3 +241,18 @@ class ClipTrackExtractor(ClipTracker):
                 )
                 self._apply_region_matchings(clip, regions)
             clip.region_history.append(regions)
+
+
+def is_affected_by_ffc(cptv_frame):
+    from datetime import timedelta
+
+    if hasattr(cptv_frame, "ffc_status") and cptv_frame.ffc_status in [1, 2]:
+        return True
+
+    if cptv_frame.time_on is None or cptv_frame.last_ffc_time is None:
+        return False
+    if isinstance(cptv_frame.time_on, int):
+        return (cptv_frame.time_on - cptv_frame.last_ffc_time) < timedelta(
+            seconds=9.9
+        ).seconds
+    return (cptv_frame.time_on - cptv_frame.last_ffc_time) < timedelta(seconds=9.9)

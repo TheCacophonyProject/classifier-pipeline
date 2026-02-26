@@ -314,7 +314,7 @@ class IRTrackExtractor(ClipTracker):
         if not DO_SALIENCY:
             return thermal, 0
         for _ in range(repeats):
-            (success, saliencyMap) = self.saliency.computeSaliency(thermal)
+            success, saliencyMap = self.saliency.computeSaliency(thermal)
         saliencyMap = (saliencyMap * 255).astype("uint8")
         return saliencyMap, 0
 

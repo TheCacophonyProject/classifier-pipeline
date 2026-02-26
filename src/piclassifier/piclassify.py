@@ -425,26 +425,26 @@ def handle_headers(connection):
     while True:
         logging.info("Getting header info")
         data = connection.recv(4096)
-        logging.info("Received %s",len(data))
+        logging.info("Received %s", len(data))
         if not data:
             raise Exception("Disconnected from camera while getting headers")
         headers += data
         done = headers.find(b"\n\n")
         if done > -1:
-            logging.info("Headers %s done %s ",headers,done)
+            logging.info("Headers %s done %s ", headers, done)
             # need the clear message
             left_over = headers[done + 2 :]
             headers = headers[:done]
 
             # ensure we handle the clear message
             if len(left_over) < 5:
-                left_over += connection.recv(5-len(left_over))
-                
+                left_over += connection.recv(5 - len(left_over))
+
             if left_over[:5] == b"clear":
                 left_over = left_over[5:]
             break
     header_s = headers.decode()
-    logging.info("header is %s ",header_s)
+    logging.info("header is %s ", header_s)
     return HeaderInfo.parse_header(header_s), left_over
 
 
@@ -727,7 +727,7 @@ import gzip
 
 
 def decompress(decompressor, data, read_header=False):
-    
+
     fp = io.BytesIO(data)
     if not read_header:
         result = gzip._read_gzip_header(fp)
@@ -740,15 +740,15 @@ def decompress(decompressor, data, read_header=False):
     try:
         decompressed = decompressor.decompress(data)
     except:
-        logging.error("Error decompressing ",exc_info=True)
-        return data,b"",read_header
+        logging.error("Error decompressing ", exc_info=True)
+        return data, b"", read_header
     unused_data = decompressor.unused_data[8:].lstrip(b"\x00")
 
     # print("Tell is no0w ", fp.tell()," Unused data is " , len(decompressor.unused_data), " decompressed is ",len(decompressed))
     if not decompressor.eof or len(decompressor.unused_data) < 8:
         print("Reach eof")
         # 1/0
-        return unused_data, decompressed,read_header
+        return unused_data, decompressed, read_header
         raise EOFError(
             "Compressed file ended before the end-of-stream " "marker was reached"
         )
@@ -756,12 +756,12 @@ def decompress(decompressor, data, read_header=False):
 
     if crc != zlib.crc32(decompressed):
         logging.error("CRC error")
-        return unused_data, decompressed,read_header
+        return unused_data, decompressed, read_header
 
         raise Exception("CRC check failed")
     if length != (len(decompressed) & 0xFFFFFFFF):
         raise Exception("Incorrect length of data produced")
-    return unused_data, decompressed,read_header
+    return unused_data, decompressed, read_header
 
 
 def medium_power(thermal_config, config, connection, headers, extra_b):
@@ -770,7 +770,10 @@ def medium_power(thermal_config, config, connection, headers, extra_b):
     from ml_tools.imageprocessing import normalize
     import cv2
     import zlib
-    logging.info("GOt header running medium power extra size %s: %s",len(extra_b),extra_b[:50])
+
+    logging.info(
+        "GOt header running medium power extra size %s: %s", len(extra_b), extra_b[:50]
+    )
     # pi_classifier = PiClassifier(
     #     config,
     #     thermal_config,
@@ -791,22 +794,26 @@ def medium_power(thermal_config, config, connection, headers, extra_b):
     connection.settimeout(5)
     data = b""
     finished = False
-    logging.info("Headers frame size is %s extra b size is %s",headers.frame_size,len(extra_b))
-    f = open("/home/pi/streamed/raw.gz","wb")
+    logging.info(
+        "Headers frame size is %s extra b size is %s", headers.frame_size, len(extra_b)
+    )
+    f = open("/home/pi/streamed/raw.gz", "wb")
     while not finished:
         byte_data = b""
         try:
             if extra_b is not None:
-                byte_data = extra_b + connection.recv(headers.frame_size - len(extra_b))#,socket.MSG_WAITALL)
+                byte_data = extra_b + connection.recv(
+                    headers.frame_size - len(extra_b)
+                )  # ,socket.MSG_WAITALL)
                 extra_b = None
             else:
-                byte_data = connection.recv(headers.frame_size)#,socket.MSG_WAITALL)
+                byte_data = connection.recv(headers.frame_size)  # ,socket.MSG_WAITALL)
         except TimeoutError as e:
             logging.info("TImed out")
             time.sleep(1)
             # continue
         except:
-            logging.error("No data resetting data",exc_info=True)
+            logging.error("No data resetting data", exc_info=True)
             byte_data = b""
             data = b""
             time.sleep(1)
@@ -815,30 +822,40 @@ def medium_power(thermal_config, config, connection, headers, extra_b):
         #     continue
         # if len(byte_data)==0 and read_header:
         #     logging.info("Finished closing file")
-        if len(byte_data)==0:
+        if len(byte_data) == 0:
             continue
-        
-        f.write(byte_data)
-        if byte_data[-5:] == b"clear":
+        clear_index = byte_data.find(b"clear")
+        if clear_index > -1:
+            byte_data = byte_data[:clear_index]
+            f.write(byte_data)
+
             logging.info("Received clear finished file")
             finished = True
             f.close()
         else:
+            f.write(byte_data)
             data = data + byte_data
 
-
-        logging.info("Have data %s %s  ",len(data),data[:10])
+        logging.info("Have data %s %s  ", len(data), data[:10])
         try:
-            data, decompressed_chunk,read_header = decompress(decompressor, data, read_header)
+            data, decompressed_chunk, read_header = decompress(
+                decompressor, data, read_header
+            )
         except:
             logging.error("Error decompressing ", exc_info=True)
             time.sleep(1)
+            if len(data) > 40000:
+                logging.info("Failed")
+                # return
             continue
 
-        logging.info("Have decompressed %s left over data is %s", len(decompressed_chunk), len(data))
-        if len(decompressed_chunk) ==0:
+        logging.info(
+            "Have decompressed %s left over data is %s",
+            len(decompressed_chunk),
+            len(data),
+        )
+        if len(decompressed_chunk) == 0:
             continue
-        
 
         if u8_data is None:
             u8_data = np.frombuffer(decompressed_chunk, dtype=np.uint8)
@@ -847,7 +864,7 @@ def medium_power(thermal_config, config, connection, headers, extra_b):
                 (u8_data, np.frombuffer(decompressed_chunk, dtype=np.uint8)), axis=0
             )
 
-        logging.info("Loading frames wtih %s",len(u8_data))
+        logging.info("Loading frames wtih %s", len(u8_data))
         while True:
             result = reader.next_frame_from_data(u8_data)
             if result is not None:
@@ -861,9 +878,13 @@ def medium_power(thermal_config, config, connection, headers, extra_b):
             else:
                 # need more data
                 logging.info("Need more data have %s", len(u8_data))
+                if len(u8_data) > 40000:
+                    logging.info("Exiting have error")
+                #   return
                 break
+    logging.info("FINISHED")
+    time.sleep(200)
 
-        
 
 def handle_connection(connection, config, thermal_config_file, process_queue):
     headers, extra_b = handle_headers(connection)

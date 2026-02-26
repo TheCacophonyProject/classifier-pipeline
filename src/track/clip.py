@@ -21,15 +21,9 @@ import datetime
 import logging
 import numpy as np
 import os
-import pytz
-import cv2
 
-from ml_tools.imageprocessing import normalize, detect_objects
-from ml_tools.rectangle import Rectangle
 from track.framebuffer import FrameBuffer
 from track.track import Track
-from track.region import Region
-from piclassifier.cptvmotiondetector import is_affected_by_ffc
 
 RES_X = 160
 RES_Y = 120
@@ -38,7 +32,6 @@ RES_Y = 120
 class Clip:
     PREVIEW = "preview"
     FRAMES_PER_SECOND = 9
-    local_tz = pytz.timezone("Pacific/Auckland")
     CLIP_ID = 1
     # used when calculating background, mininimum percentage the difference object
     # and background object must overlap i.e. they are a valid object
@@ -105,6 +98,8 @@ class Clip:
         return self.frame_buffer.max_frames
 
     def rescaled_background(self, dims):
+        import cv2
+
         if self.rescaled is not None:
             if self.rescaled[0] == self.current_frame:
                 logging.info("Loading from cache")
@@ -122,15 +117,30 @@ class Clip:
         return self._background
 
     def set_model(self, camera_model):
-        logging.debug("set model %s", camera_model)
+        logging.info("set model %s", camera_model)
         self.camera_model = camera_model
-        threshold = self.config.motion.threshold_for_model(camera_model)
+        if self.config is not None:
+            threshold = self.config.motion.threshold_for_model(camera_model)
+        else:
+            logging.info("Using default lepton3.5 thresholds")
+            from config.trackingmotionconfig import ThresholdConfig
+
+            threshold = ThresholdConfig(
+                camera_model="lepton3.5",
+                temp_thresh=28000,
+                background_thresh=50,
+                default=True,
+                min_temp_thresh=None,
+                max_temp_thresh=None,
+                track_min_delta=1.0,
+                track_max_delta=150,
+            )
         if threshold:
             self.threshold_config = threshold
             self.set_motion_thresholds(threshold)
 
     def set_motion_thresholds(self, threshold):
-        logging.debug("set thresholds %s", threshold)
+        logging.info("set thresholds %s", threshold)
         self.background_thresh = threshold.background_thresh
         self.temp_thresh = threshold.temp_thresh
         self.stats.threshold = self.background_thresh
@@ -233,6 +243,11 @@ class Clip:
         # self._background_calculated()
 
     def remove_background_animals(self, initial_frame, initial_diff):
+        from ml_tools.imageprocessing import normalize, detect_objects
+        import cv2
+        from track.region import Region
+        from ml_tools.rectangle import Rectangle
+
         """
         Try and remove animals that are already in the initial frames, by
         checking for connected components in the intital_diff frame
@@ -312,24 +327,14 @@ class Clip:
     def get_id(self):
         return str(self._id)
 
-    # def set_temp_thresh(self):
-    #     if self.config.motion.dynamic_thresh:
-    #         min_temp = self.threshold_config.min_temp_thresh
-    #         max_temp = self.threshold_config.max_temp_thresh
-    #         if max_temp:
-    #             self.temp_thresh = min(max_temp, self.stats.mean_background_value)
-    #         else:
-    #             self.temp_thresh = self.stats.mean_background_value
-    #         if min_temp:
-    #             self.temp_thresh = max(min_temp, self.temp_thresh)
-    #         self.stats.temp_thresh = self.temp_thresh
-    #     else:
-    #         self.temp_thresh = self.config.motion.temp_thresh
-
     def set_video_stats(self, video_start_time):
         """
         Extracts useful statics from video clip.
         """
+        import pytz
+
+        local_tz = pytz.timezone("Pacific/Auckland")
+
         self.video_start_time = video_start_time
         self.stats.date_time = video_start_time.astimezone(Clip.local_tz)
         self.stats.is_night = (
@@ -403,7 +408,9 @@ class Clip:
             track.crop_rectangle = self.crop_rectangle
 
     def _set_crop_rectangle(self):
-        edge = self.config.edge_pixels
+        from ml_tools.rectangle import Rectangle
+
+        edge = self.config.edge_pixels if self.config else 1
         self.crop_rectangle = Rectangle(
             edge, edge, self.res_x - 2 * edge, self.res_y - 2 * edge
         )
@@ -417,7 +424,7 @@ class Clip:
         )
 
     def print_if_verbose(self, info_string):
-        if self.config.verbose:
+        if self.config.verbose if self.config else False:
             logging.info(info_string)
 
     def add_frame(self, thermal, filtered, mask=None, ffc_affected=False):

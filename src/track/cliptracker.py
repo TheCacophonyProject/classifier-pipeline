@@ -1,14 +1,11 @@
 from abc import ABC, abstractmethod
 import logging
-import time
 import math
-import cv2
 import numpy as np
 
 from track.track import Track
 from track.region import Region
 from ml_tools.rectangle import Rectangle
-from ml_tools.imageprocessing import normalize, hist_diff
 
 
 class ClipTracker(ABC):
@@ -95,6 +92,7 @@ class ClipTracker(ABC):
         :param background: (optional) used for background subtraction
         :return: uint8 filtered frame and adjusted clip threshold for normalized frame
         """
+        from ml_tools.imageprocessing import normalize
 
         filtered = np.float32(thermal.copy())
         if sub_change:
@@ -112,7 +110,9 @@ class ClipTracker(ABC):
         )
         filtered, stats = normalize(filtered, new_max=255)
         if denoise:
-            filtered = cv2.fastNlMeansDenoising(np.uint8(filtered), None)
+            from cv2 import fastNlMeansDenoising
+
+            filtered = fastNlMeansDenoising(np.uint8(filtered), None)
         if stats[1] == stats[2]:
             mapped_thresh = clip.background_thresh
         else:
@@ -132,6 +132,7 @@ class ClipTracker(ABC):
         self._filter_inactive_tracks(clip, unactive_tracks)
 
     def _match_existing_tracks(self, clip, regions):
+
         scores = []
         used_regions = set()
         unmatched_regions = set(regions)
@@ -163,6 +164,8 @@ class ClipTracker(ABC):
             unmatched_regions.remove(region)
             if not self.config.filter_regions_pre_match:
                 if self.config.min_hist_diff is not None:
+                    from ml_tools.imageprocessing import hist_diff
+
                     background = self.background_alg.background
                     # if self.scale:
                     #     background = clip.rescaled_background(
@@ -244,6 +247,8 @@ class ClipTracker(ABC):
                 )
 
     def get_delta_frame(self, clip):
+        from ml_tools.imageprocessing import normalize
+
         frame = clip.frame_buffer.current_frame
         prev_frame = clip.frame_buffer.prev_frame
         if prev_frame is None:
@@ -540,8 +545,10 @@ class Background(ABC):
             return self.kernel_trigger
 
     def detect_motion(self):
+        from cv2 import erode
+
         fg = self.compute_filtered(None)
-        erosion_image = cv2.erode(fg, self.get_kernel())
+        erosion_image = erode(fg, self.get_kernel())
         erosion_pixels = len(erosion_image[erosion_image > 0])
 
         self.prev_triggered = erosion_pixels > 0
@@ -567,7 +574,9 @@ class CVBackground(Background):
 
             self.algorithm = bgs.SuBSENSE()
         elif tracking_alg == "mog2":
-            self.algorithm = cv2.createBackgroundSubtractorMOG2(
+            from cv2 import createBackgroundSubtractorMOG2
+
+            self.algorithm = createBackgroundSubtractorMOG2(
                 history=1000, detectShadows=False
             )
         else:
@@ -657,6 +666,7 @@ def get_diff_back_filtered(background, frame, back_thresh):
     :param background: (optional) used for background subtraction
     :return: uint8 filtered frame and adjusted clip threshold for normalized frame
     """
+    from ml_tools.imageprocessing import normalize
 
     filtered = np.float32(frame.copy())
     filtered = abs(filtered - background)

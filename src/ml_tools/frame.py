@@ -1,8 +1,5 @@
 import attr
-import cv2
 import numpy as np
-from ml_tools.tools import get_clipped_flow
-from ml_tools.imageprocessing import resize_cv, rotate, normalize, resize_and_pad
 import enum
 
 
@@ -145,6 +142,9 @@ class Frame:
         Generate optical flow from thermal frames
         :param opt_flow: An optical flow algorithm
         """
+        import cv2
+        from ml_tools.imageprocessing import normalize
+
         height, width = self.thermal.shape
         flow = np.zeros([height, width, 2], dtype=np.float32)
         scaled_thermal = self.thermal.copy()
@@ -170,11 +170,15 @@ class Frame:
             self.flow_clipped = False
 
     def clip_flow(self):
+        from ml_tools.tools import get_clipped_flow
+
         if self.flow is not None:
             self.flow = get_clipped_flow(self.flow)
             self.flow_clipped = True
 
     def get_flow_split(self, clip_flow=False):
+        from ml_tools.tools import get_clipped_flow
+
         if self.flow is not None:
             if self.clip_flow and not self.flow_clipped:
                 flow_c = get_clipped_flow(self.flow)
@@ -185,6 +189,8 @@ class Frame:
         return None, None
 
     def normalize(self):
+        from ml_tools.imageprocessing import normalize
+
         if self.thermal is not None:
             self.thermal, _ = normalize(self.thermal, new_max=255)
         if self.filtered is not None:
@@ -243,6 +249,9 @@ class Frame:
         edge_offset=(0, 0, 0, 0),
         original_region=None,
     ):
+        from cv2 import INTER_NEAREST
+        from ml_tools.imageprocessing import resize_and_pad
+
         if self.thermal is not None:
             self.thermal = resize_and_pad(
                 self.thermal,
@@ -261,7 +270,7 @@ class Frame:
                 crop_rectangle,
                 keep_edge=keep_edge,
                 pad=0,
-                interpolation=cv2.INTER_NEAREST,
+                interpolation=INTER_NEAREST,
                 edge_offset=edge_offset,
             )
         if self.filtered is not None:
@@ -297,13 +306,18 @@ class Frame:
             self.flow = np.stack((flow_h, flow_v), axis=2)
 
     def resize(self, dim):
+        from cv2 import INTER_NEAREST
+        from ml_tools.imageprocessing import resize_cv
+
         self.thermal = resize_cv(self.thermal, dim)
-        self.mask = resize_cv(self.mask, dim, interpolation=cv2.INTER_NEAREST)
+        self.mask = resize_cv(self.mask, dim, interpolation=INTER_NEAREST)
         if self.flow is not None:
             self.flow = resize_cv(self.flow, dim)
         self.filtered = resize_cv(self.filtered, dim)
 
     def rotate(self, degrees):
+        from ml_tools.imageprocessing import rotate
+
         if self.thermal is not None:
             self.thermal = rotate(self.thermal, degrees)
         if self.mask is not None:
