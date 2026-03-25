@@ -72,15 +72,17 @@ def classify_job(clip_classifier, clientsocket, addr):
     try:
         job = read_all(clientsocket).decode()
         args = json.loads(job)
-        if "file" not in args:
-            logging.error("File name must be specified in argument dictionary")
+        try:
+            job = ClassifyJob.from_dict(**args)
+        except Exception as e:
+            logging.error("Could not parse job",exc_info=True)
             clientsocket.sendall(
                 json.dumps(
-                    {"error": "File name must be specified in argument dictionary"}
+                    {"error": f"Could not parse job {e}"}
                 ).encode()
             )
             return
-        logging.info("Classifying %s with args %s", args["file"], args)
+        logging.info("Classifying %s", job)
 
         meta_data = clip_classifier.process_file(
             args["file"],
@@ -137,6 +139,25 @@ def str2bool(v):
     else:
         raise argparse.ArgumentTypeError("Boolean value expected.")
 
+
+
+import attr
+@attr.s
+
+class ClassifyJob:
+    file = attr.ib()
+    cache = attr.ib()
+    reuse_frames = attr.ib()
+    track = attr.ib()
+    calculate_thumbnails = attr.ib()
+
+
+    def as_dict(self):
+        return attr.asdict(self)
+
+    @classmethod
+    def from_dict(cls,file,cache,resuse_frames,track,calculate_thumbnails):
+        return cls(file=file,cache=cache,resuse_frames=resuse_frames,track=track,calculate_thumbnails=calculate_thumbnails)
 
 if __name__ == "__main__":
     main()

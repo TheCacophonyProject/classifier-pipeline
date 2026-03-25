@@ -7,7 +7,7 @@ import logging
 from ml_tools.logs import init_logging
 from config.config import Config
 import time
-
+from classifyservice import ClassifyJob
 
 def str2bool(v):
     if isinstance(v, bool):
@@ -35,6 +35,18 @@ def parse_args(cmd_args=None):
         "--meta-to-stdout",
         action="count",
         help="Print metadata to stdout instead of saving to file.",
+    )
+
+    parser.add_argument(
+        "-t",
+        "--track",
+        action="store_true",
+        help="Run tracking on the file before extracting",
+    )
+    parser.add_argument(
+        "--calculate-thumbnails",
+        action="store_true",
+        help="Calculate thumbnails",
     )
     parser.add_argument(
         "source",
@@ -72,8 +84,8 @@ def main(cmd_args=None):
                     ex,
                 )
                 time.sleep(10)
-        data = {"file": args.source, "cache": args.cache, "reuse_frames": False}
-        sock.send(json.dumps(data).encode())
+        data = ClassifyJob(file=args.source,cache= args.cache, track = args.track, calculate_thumbnails = args.calculate_thumbnails)
+        sock.send(json.dumps(data.as_dict()).encode())
 
         results = read_all(sock).decode()
         meta_data = json.loads(str(results))
@@ -103,7 +115,6 @@ def read_all(socket):
         else:
             break
     return data
-
 
 if __name__ == "__main__":
     main()
