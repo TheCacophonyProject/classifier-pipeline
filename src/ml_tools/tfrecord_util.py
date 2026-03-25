@@ -13,6 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 r"""TFRecord related utilities."""
+
 from six.moves import range
 import tensorflow as tf
 

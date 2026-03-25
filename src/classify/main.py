@@ -126,14 +126,15 @@ def main(cmd_args=None):
 
     start = time.time()
     # testing stuff
-    # clip_classifier.post_process_file(args.source, None)
-    clip_classifier.process(
-        args.source,
-        cache=args.cache,
-        reuse_frames=args.reuse_prediction_frames,
-        track=args.track,
-        calculate_thumbnails=args.calculate_thumbnails,
-    )
+    clip_classifier.post_process_file(args.source, None)
+    # return
+    # clip_classifier.process(
+    #     args.source,
+    #     cache=args.cache,
+    #     reuse_frames=args.reuse_prediction_frames,
+    #     track=args.track,
+    #     calculate_thumbnails=args.calculate_thumbnails,
+    # )
     logging.info("Took %s", time.time() - start)
 
 
