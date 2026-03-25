@@ -600,6 +600,7 @@ class PiClassifier(Processor):
                         track_prediction.last_frame_classified,
                         self.predictions[model_id].labels,
                         model_id,
+                        track.received_at,
                     )
                     if track.get_id() in self.monitored_tracks:
                         del self.monitored_tracks[track.get_id()]
@@ -870,7 +871,7 @@ class PiClassifier(Processor):
         self.motion_detector.disconnected()
         if self.recorder.recording and self.tracking_events:
             self.recording = False
-            self.service.recording(False)
+            self.service.recording(time.time(), False)
         self.recorder.force_stop()
         self.snapshot_recorder.force_stop()
         if self.constant_recorder is not None:
@@ -939,7 +940,7 @@ class PiClassifier(Processor):
             self.rec_time += time.time() - s_r
             if self.recording:
                 if self.tracking_events:
-                    self.service.recording(True)
+                    self.service.recording(self.clip.video_start_time.timestamp(), True)
                 if not self.use_low_power_mode:
                     set_recording_state(True)
 
@@ -952,7 +953,9 @@ class PiClassifier(Processor):
         if self.recorder.recording:
             t_start = time.time()
             if self.do_tracking:
-                self.track_extractor.process_frame(self.clip, lepton_frame)
+                self.track_extractor.process_frame(
+                    self.clip, lepton_frame, received_at=received_at
+                )
                 active_best = self.get_and_update_thumbnail()
                 if self.clip.thumb_info is None or (
                     active_best is not None
@@ -1025,6 +1028,7 @@ class PiClassifier(Processor):
                         last_prediction,
                         [] if model_id is None else self.predictions[model_id].labels,
                         model_id,
+                        monitored_track.received_at,
                     )
 
                     if not tracking:
@@ -1036,7 +1040,7 @@ class PiClassifier(Processor):
 
         if not self.recorder.recording and self.recording and self.tracking_events:
             self.recording = False
-            self.service.recording(False)
+            self.service.recording(received_at, False)
 
         self.frame_num += 1
         self.total_time += time.time() - start

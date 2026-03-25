@@ -395,6 +395,7 @@ class Track:
         :param id: id number for track, if not specified is provided by an auto-incrementer
         """
         self.in_trap = False
+        self.received_at = None
         self.trap_reported = False
         self.trigger_frame = None
         self.direction = 0
@@ -542,7 +543,9 @@ class Track:
         return segments
 
     @classmethod
-    def from_region(cls, clip, region, tracker_version=None, tracking_config=None):
+    def from_region(
+        cls, clip, region, tracker_version=None, tracking_config=None, received_at=None
+    ):
         track = cls(
             clip.get_id(),
             fps=clip.frames_per_second,
@@ -552,6 +555,7 @@ class Track:
         )
         track.start_frame = region.frame_number
         track.start_s = region.frame_number / float(clip.frames_per_second)
+        track.received_at = received_at
         track.add_region(region)
         return track
 

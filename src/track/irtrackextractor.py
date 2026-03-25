@@ -292,7 +292,7 @@ class IRTrackExtractor(ClipTracker):
             self.saliency.setImagesize(res_x, res_y)
             self.saliency.init()
 
-    def process_frame(self, clip, frame, ffc_affected=False):
+    def process_frame(self, clip, frame, ffc_affected=False, received_at=None):
         start = time.time()
         if len(frame.shape) == 3:
             # in rgb so convert to gray
@@ -308,7 +308,7 @@ class IRTrackExtractor(ClipTracker):
         if ffc_affected:
             self.print_if_verbose("{} ffc_affected".format(clip.current_frame))
         clip.ffc_affected = ffc_affected
-        self._process_frame(clip, frame, ffc_affected)
+        self._process_frame(clip, frame, ffc_affected, received_at=received_at)
 
     def _get_filtered_frame_ir(self, thermal, repeats=1):
         if not DO_SALIENCY:
@@ -388,7 +388,7 @@ class IRTrackExtractor(ClipTracker):
         rectangles = [rect[1] for rect in rectangles]
         return rectangles
 
-    def _process_frame(self, clip, frame, ffc_affected=False):
+    def _process_frame(self, clip, frame, ffc_affected=False, received_at=None):
         wait = 1
         """
         Tracks objects through frame
@@ -472,7 +472,7 @@ class IRTrackExtractor(ClipTracker):
             else:
                 s = time.time()
                 regions = self._get_regions_of_interest(clip, component_details)
-                self._apply_region_matchings(clip, regions)
+                self._apply_region_matchings(clip, regions, received_at=received_at)
             for track in clip.active_tracks:
                 if track.trap_reported:
                     continue

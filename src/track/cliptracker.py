@@ -121,13 +121,15 @@ class ClipTracker(ABC):
             mapped_thresh = clip.background_thresh / (stats[1] - stats[2]) * 255
         return filtered, mapped_thresh
 
-    def _apply_region_matchings(self, clip, regions):
+    def _apply_region_matchings(self, clip, regions, received_at=None):
         """
         Work out the best matchings between tracks and regions of interest for the current frame.
         Create any new tracks required.
         """
         unmatched_regions, matched_tracks = self._match_existing_tracks(clip, regions)
-        new_tracks = self._create_new_tracks(clip, unmatched_regions)
+        new_tracks = self._create_new_tracks(
+            clip, unmatched_regions, received_at=received_at
+        )
 
         unactive_tracks = clip.active_tracks - matched_tracks - new_tracks
         clip.active_tracks = matched_tracks | new_tracks
@@ -203,7 +205,7 @@ class ClipTracker(ABC):
 
         return unmatched_regions, matched_tracks
 
-    def _create_new_tracks(self, clip, unmatched_regions):
+    def _create_new_tracks(self, clip, unmatched_regions, received_at=None):
         """Create new tracks for any unmatched regions"""
         new_tracks = set()
         for region in unmatched_regions:
@@ -219,6 +221,7 @@ class ClipTracker(ABC):
                 region,
                 self.tracker_version,
                 tracking_config=self.config,
+                received_at=received_at,
             )
             new_tracks.add(track)
             clip._add_active_track(track)
