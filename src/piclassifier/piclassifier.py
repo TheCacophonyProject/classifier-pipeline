@@ -945,10 +945,7 @@ class PiClassifier(Processor):
             if self.recording:
                 if self.tracking_events:
                     self.service.recording(
-                        (
-                            datetime.now()
-                            - timedelta(seconds=len(preview_frames) / self.headers.fps)
-                        ).timestamp(),
+                        received_at,
                         True,
                     )
                 if not self.use_low_power_mode:
