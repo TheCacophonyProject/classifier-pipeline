@@ -132,6 +132,7 @@ class ClipTracker(ABC):
         unactive_tracks = clip.active_tracks - matched_tracks - new_tracks
         clip.active_tracks = matched_tracks | new_tracks
         self._filter_inactive_tracks(clip, unactive_tracks)
+        return new_tracks
 
     def _match_existing_tracks(self, clip, regions):
         scores = []

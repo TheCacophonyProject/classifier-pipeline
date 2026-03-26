@@ -189,11 +189,13 @@ class ClipTrackExtractor(ClipTracker):
         do_tracking = self.do_tracking
         self.background_alg = background_alg
         self.do_tracking = self.do_tracking and track_frames
+        new_tracks = []
         for frame in frames:
-            self.process_frame(clip, frame)
+            new_tracks.extend(self.process_frame(clip, frame))
         self.do_tracking = do_tracking
+        return new_tracks
 
-    def process_frame(self, clip, frame, **args):
+    def process_frame(self, clip, frame):
         """
         Tracks objects through frame
         :param thermal: A numpy array of shape (height, width) and type uint16
@@ -217,7 +219,7 @@ class ClipTrackExtractor(ClipTracker):
             )
         _ = clip.add_frame(thermal, filtered, mask, ffc_affected)
         if not self.do_tracking:
-            return
+            return []
 
         # if clip.from_metadata:
         #     for track in clip.tracks:
@@ -231,6 +233,7 @@ class ClipTrackExtractor(ClipTracker):
         #                     else None
         #                 ),
         #             )
+        new_tracks = []
         if not clip.from_metadata:
             regions = []
             if ffc_affected:
@@ -239,5 +242,6 @@ class ClipTrackExtractor(ClipTracker):
                 regions = self._get_regions_of_interest(
                     clip, component_details[1:], centroids[1:]
                 )
-                self._apply_region_matchings(clip, regions)
+                new_tracks = self._apply_region_matchings(clip, regions)
             clip.region_history.append(regions)
+        return new_tracks

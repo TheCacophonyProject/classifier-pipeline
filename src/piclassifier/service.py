@@ -142,9 +142,11 @@ class Service(dbus.service.Object):
     @dbus.service.method(DBUS_NAME, signature="a{ias}")
     def ClassificationLabels(self):
         logging.info("Getting labels %s", self.labels)
+        if len(self.labels) == 0:
+            return dbus.Array([], signature="(ias)")
         return self.labels
 
-    @dbus.service.signal(DBUS_NAME, signature="iiaisiaiiibbis")
+    @dbus.service.signal(DBUS_NAME, signature="iiaisiaiiibbisx")
     def Tracking(
         self,
         clip_id,
@@ -159,6 +161,7 @@ class Service(dbus.service.Object):
         tracking,
         last_prediction_frame,
         model_id,
+        track_start_time,
     ):
         pass
 
@@ -280,6 +283,7 @@ class SnapshotService:
         last_prediction_frame,
         labels,
         model_id,
+        track_start_time,
     ):
         logging.debug(
             "Tracking?  %s region %s prediction %s track %s",
@@ -307,6 +311,7 @@ class SnapshotService:
                 tracking,
                 last_prediction_frame,
                 str(model_id),
+                int(track_start_time * 1000),
             )
         else:
             self.service.Tracking(
@@ -322,6 +327,7 @@ class SnapshotService:
                 tracking,
                 last_prediction_frame,
                 "0",
+                int(track_start_time * 1000),
             )
 
     def track_filtered(self, clip_id, track_id):
@@ -329,7 +335,7 @@ class SnapshotService:
             return
         self.service.TrackFiltered(clip_id, track_id)
 
-    def recording(self, is_recording):
+    def recording(self, epoch_time, is_recording):
         if self.service is None:
             return
-        self.service.Recording(np.int64(time.time()), is_recording)
+        self.service.Recording(np.int64(epoch_time * 1000), is_recording)
