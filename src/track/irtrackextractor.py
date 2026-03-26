@@ -388,7 +388,7 @@ class IRTrackExtractor(ClipTracker):
         rectangles = [rect[1] for rect in rectangles]
         return rectangles
 
-    def _process_frame(self, clip, frame, ffc_affected=False, received_at=None):
+    def _process_frame(self, clip, frame, ffc_affected=False):
         wait = 1
         """
         Tracks objects through frame
@@ -472,7 +472,7 @@ class IRTrackExtractor(ClipTracker):
             else:
                 s = time.time()
                 regions = self._get_regions_of_interest(clip, component_details)
-                self._apply_region_matchings(clip, regions, received_at=received_at)
+                self._apply_region_matchings(clip, regions)
             for track in clip.active_tracks:
                 if track.trap_reported:
                     continue
