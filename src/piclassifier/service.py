@@ -142,6 +142,8 @@ class Service(dbus.service.Object):
     @dbus.service.method(DBUS_NAME, signature="a{ias}")
     def ClassificationLabels(self):
         logging.info("Getting labels %s", self.labels)
+        if len(self.labels) == 0:
+            return dbus.Array([], signature="(ias)")
         return self.labels
 
     @dbus.service.signal(DBUS_NAME, signature="iiaisiaiiibbisx")
