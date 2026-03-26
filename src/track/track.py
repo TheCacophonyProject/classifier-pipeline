@@ -543,9 +543,7 @@ class Track:
         return segments
 
     @classmethod
-    def from_region(
-        cls, clip, region, tracker_version=None, tracking_config=None, received_at=None
-    ):
+    def from_region(cls, clip, region, tracker_version=None, tracking_config=None):
         track = cls(
             clip.get_id(),
             fps=clip.frames_per_second,
@@ -555,7 +553,6 @@ class Track:
         )
         track.start_frame = region.frame_number
         track.start_s = region.frame_number / float(clip.frames_per_second)
-        track.received_at = received_at
         track.add_region(region)
         return track
 

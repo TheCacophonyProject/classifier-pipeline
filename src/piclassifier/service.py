@@ -144,7 +144,7 @@ class Service(dbus.service.Object):
         logging.info("Getting labels %s", self.labels)
         return self.labels
 
-    @dbus.service.signal(DBUS_NAME, signature="iiaisiaiiibbisi")
+    @dbus.service.signal(DBUS_NAME, signature="iiaisiaiiibbisx")
     def Tracking(
         self,
         clip_id,

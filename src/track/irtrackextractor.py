@@ -292,7 +292,7 @@ class IRTrackExtractor(ClipTracker):
             self.saliency.setImagesize(res_x, res_y)
             self.saliency.init()
 
-    def process_frame(self, clip, frame, ffc_affected=False, received_at=None):
+    def process_frame(self, clip, frame, ffc_affected=False):
         start = time.time()
         if len(frame.shape) == 3:
             # in rgb so convert to gray
@@ -308,7 +308,7 @@ class IRTrackExtractor(ClipTracker):
         if ffc_affected:
             self.print_if_verbose("{} ffc_affected".format(clip.current_frame))
         clip.ffc_affected = ffc_affected
-        self._process_frame(clip, frame, ffc_affected, received_at=received_at)
+        self._process_frame(clip, frame, ffc_affected)
 
     def _get_filtered_frame_ir(self, thermal, repeats=1):
         if not DO_SALIENCY:
