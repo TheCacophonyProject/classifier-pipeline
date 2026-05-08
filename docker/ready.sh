@@ -1,0 +1,1 @@
+python3 src/classifyjob.py --ready dummy.cptv
