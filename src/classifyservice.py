@@ -73,7 +73,10 @@ class ClassifyService:
 def classify_job(clip_classifier, clientsocket, addr):
     try:
         job = read_all(clientsocket).decode()
-        print("Received job", job)
+        if len(job) == 0:
+            logging.info("Client disconnected")
+            return
+        logging.info("Received job %s", job)
         args = json.loads(job)
         try:
             job = ClassifyJob.from_dict(**args)
