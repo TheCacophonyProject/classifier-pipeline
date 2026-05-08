@@ -14,7 +14,6 @@ from datetime import datetime
 from pathlib import Path
 from ml_tools.logs import init_logging
 
-
 DBUS_NAME = "org.cacophony.thermalrecorder"
 DBUS_PATH = "/org/cacophony/thermalrecorder"
 

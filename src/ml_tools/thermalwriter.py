@@ -23,6 +23,7 @@ Example usage:
       --output_file_prefix="${OUTPUT_DIR/FILE_PREFIX}" \
       --num_shards=100
 """
+
 import cv2
 from PIL import Image
 from pathlib import Path

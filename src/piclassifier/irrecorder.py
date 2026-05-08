@@ -16,7 +16,6 @@ from track.cliptrackextractor import ClipTrackExtractor
 from ml_tools.logs import init_logging
 from .eventreporter import log_event
 
-
 VIDEO_EXT = ".mp4"
 
 # FOURCC = cv2.VideoWriter_fourcc(*"avc1")

@@ -65,13 +65,14 @@ class ClipClassifier:
         model_file = Path(model.model_file)
         if location is not None:
             coordinates = location.get("coordinates")
-            country = country_by_location(coordinates[1], coordinates[0])
-            if country is not None:
-                country_model = model_file.parent.parent / country
-                logging.info("CHecking if country model exists %s", country_model)
-                if country_model.exists():
-                    model.model_file = country_model / model_file.name
-                    logging.info("Setting to country model %s", model.model_file)
+            if coordinates is not None:
+                country = country_by_location(coordinates[1], coordinates[0])
+                if country is not None:
+                    country_model = model_file.parent.parent / country
+                    logging.info("Checking if country model exists %s", country_model)
+                    if country_model.exists():
+                        model.model_file = country_model / model_file.name
+                        logging.info("Setting to country model %s", model.model_file)
         logging.info("classifier loading %s", model.model_file)
         classifier = get_interpreter(model, model.run_over_network)
         logging.info("classifier loaded (%s)", time.time() - load_start)

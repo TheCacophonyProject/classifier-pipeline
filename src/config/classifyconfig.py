@@ -33,7 +33,6 @@ class ClassifyConfig(DefaultConfig):
     meta_to_stdout = attr.ib()
     preview = attr.ib()
     cache_to_disk = attr.ib()
-    service_socket = attr.ib()
 
     @classmethod
     def load(cls, classify):
@@ -44,7 +43,6 @@ class ClassifyConfig(DefaultConfig):
                 "preview", classify["preview"], PREVIEW_OPTIONS
             ),
             cache_to_disk=classify["cache_to_disk"],
-            service_socket=classify["service_socket"],
         )
 
     def load_models(raw):
@@ -64,7 +62,6 @@ class ClassifyConfig(DefaultConfig):
             meta_to_stdout=False,
             preview="none",
             cache_to_disk=False,
-            service_socket="/etc/cacophony/classifier",
         )
 
     def validate(self):

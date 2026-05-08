@@ -3,7 +3,6 @@ import os
 
 from .train import train_model
 
-
 # this is a good list for a full search, but will take a long time to run (days)
 FULL_SEARCH_PARAMS = {
     "batch_size": [1, 2, 4, 8, 16, 32, 64],

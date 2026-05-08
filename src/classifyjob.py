@@ -5,9 +5,9 @@ import socket
 import argparse
 import logging
 from ml_tools.logs import init_logging
-from config.config import Config
 import time
 from classifyservice import ClassifyJob
+
 
 def str2bool(v):
     if isinstance(v, bool):
@@ -22,6 +22,19 @@ def str2bool(v):
 
 def parse_args(cmd_args=None):
     parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--service_socket",
+        default="/etc/cacophony/thermal-classifier",
+        help="Socket name",
+    )
+
+    parser.add_argument(
+        "--ready",
+        action="store_true",
+        default=False,
+        help="Check if classify service is up and running",
+    )
+
     parser.add_argument(
         "--cache",
         type=str2bool,
@@ -59,20 +72,26 @@ def parse_args(cmd_args=None):
     return args
 
 
+def test_socket(sock, address):
+    sock.connect(address)
+    return True
+
+
 def main(cmd_args=None):
     args = parse_args(cmd_args)
     init_logging()
     logging.info("Classifying %s", args.source)
     sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-    config = Config.load_from_file()
+    if args.ready:
+        return test_socket(sock, args.service_socket)
     results = ""
     try:
         count = 0
         retries = 1
         while True:
             try:
-                sock.connect(config.classify.service_socket)
-                logging.info("Connected to %s ", config.classify.service_socket)
+                sock.connect(args.service_socket)
+                logging.info("Connected to %s ", args.service_socket)
                 break
             except Exception as ex:
                 if count >= retries:
@@ -80,19 +99,24 @@ def main(cmd_args=None):
                 count += 1
                 logging.warning(
                     "Could not connect to %s retrying in 10s error was %s",
-                    config.classify.service_socket,
+                    args.service_socket,
                     ex,
                 )
                 time.sleep(10)
-        data = ClassifyJob(file=args.source,cache= args.cache, track = args.track, calculate_thumbnails = args.calculate_thumbnails)
+        data = ClassifyJob(
+            file=args.source,
+            cache=args.cache,
+            track=args.track,
+            calculate_thumbnails=args.calculate_thumbnails,
+        )
         sock.send(json.dumps(data.as_dict()).encode())
 
         results = read_all(sock).decode()
         meta_data = json.loads(str(results))
         if "error" in meta_data:
+            logging.error("Error classifying %s %s", args.source, meta_data["error"])
             raise Exception(meta_data["error"])
 
-            logging.error("Error classifying %s %s", args.source, meta_data["error"])
     except socket.error as msg:
         print(msg)
         sys.exit(1)
@@ -101,7 +125,13 @@ def main(cmd_args=None):
         sock.close()
     if args.meta_to_stdout:
         print(str(results))
-    return str(results)
+    # else:
+    #     source_file = Path(args.source)
+    #     meta_filename = source_file.with_suffix(".txt")
+
+    #     logging.info("saving meta data %s", meta_filename)
+    #     with open(meta_filename, "w") as f:
+    #         json.dump(meta_data, f, indent=4, cls=CustomJSONEncoder)
 
 
 def read_all(socket):
@@ -115,6 +145,7 @@ def read_all(socket):
         else:
             break
     return data
+
 
 if __name__ == "__main__":
     main()

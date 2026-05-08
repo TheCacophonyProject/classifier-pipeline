@@ -13,6 +13,11 @@ from ml_tools.tools import CustomJSONEncoder
 
 def parse_args():
     parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--service_socket",
+        default="/etc/cacophony/thermal-classifier",
+        help="Socket name",
+    )
 
     parser.add_argument("-c", "--config-file", help="Path to config file to use")
     return parser.parse_args()
@@ -26,7 +31,7 @@ def main():
     config = Config.load_from_file(args.config_file)
     service = ClassifyService(config)
     try:
-        service.run()
+        service.run(args.service_socket)
     except KeyboardInterrupt:
         logging.info("Keyboard interupt closing down")
     except PermissionError:
@@ -43,20 +48,17 @@ class ClassifyService:
             config,
         )
 
-    def run(self):
-        logging.info("Running on %s", self.config.classify.service_socket)
-        max_jobs = 2
+    def run(self, service_socket):
+        logging.info("Running on %s", service_socket)
         try:
-            os.unlink(self.config.classify.service_socket)
+            os.unlink(service_socket)
         except OSError:
-            if os.path.exists(self.config.classify.service_socket):
+            if os.path.exists(service_socket):
                 raise
 
         sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-        sock.bind(self.config.classify.service_socket)
+        sock.bind(service_socket)
         sock.listen(1)
-        self.clip_classifier.models = {}
-        self.clip_classifier.load_models()
 
         while True:
             logging.info("waiting for jobs")
@@ -71,23 +73,23 @@ class ClassifyService:
 def classify_job(clip_classifier, clientsocket, addr):
     try:
         job = read_all(clientsocket).decode()
+        print("Received job", job)
         args = json.loads(job)
         try:
             job = ClassifyJob.from_dict(**args)
         except Exception as e:
-            logging.error("Could not parse job",exc_info=True)
+            logging.error("Could not parse job", exc_info=True)
             clientsocket.sendall(
-                json.dumps(
-                    {"error": f"Could not parse job {e}"}
-                ).encode()
+                json.dumps({"error": f"Could not parse job {e}"}).encode()
             )
             return
         logging.info("Classifying %s", job)
 
         meta_data = clip_classifier.process_file(
-            args["file"],
-            cache=args.get("cache"),
-            reuse_frames=args.get("reuse_frames"),
+            job.file,
+            job.cache,
+            track=job.track,
+            calculate_thumbnails=job.calculate_thumbnails,
         )
 
         response = clientsocket.sendall(
@@ -98,12 +100,12 @@ def classify_job(clip_classifier, clientsocket, addr):
     except BrokenPipeError:
         logging.error(
             "Error sending metadata for job %s too %s",
-            args["file"],
+            job.file,
             addr,
             exc_info=True,
         )
     except Exception as e:
-        logging.error("Error classifying job %s", args["file"], exc_info=True)
+        logging.error("Error classifying job %s", job.file, exc_info=True)
         clientsocket.sendall(
             json.dumps(
                 {"error": f"Error classifying {traceback.format_exc()}"}
@@ -140,24 +142,28 @@ def str2bool(v):
         raise argparse.ArgumentTypeError("Boolean value expected.")
 
 
-
 import attr
-@attr.s
 
+
+@attr.s
 class ClassifyJob:
     file = attr.ib()
     cache = attr.ib()
-    reuse_frames = attr.ib()
     track = attr.ib()
     calculate_thumbnails = attr.ib()
-
 
     def as_dict(self):
         return attr.asdict(self)
 
     @classmethod
-    def from_dict(cls,file,cache,resuse_frames,track,calculate_thumbnails):
-        return cls(file=file,cache=cache,resuse_frames=resuse_frames,track=track,calculate_thumbnails=calculate_thumbnails)
+    def from_dict(cls, file, cache, track, calculate_thumbnails):
+        return cls(
+            file=file,
+            cache=cache,
+            track=track,
+            calculate_thumbnails=calculate_thumbnails,
+        )
+
 
 if __name__ == "__main__":
     main()

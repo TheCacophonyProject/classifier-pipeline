@@ -24,4 +24,6 @@ RUN cp classifier-docker.yaml /etc/cacophony/classifier.yaml
 RUN touch /etc/cacophony/classifier
 RUN python3 latestmodel.py
 
+COPY docker/ready.sh .
 WORKDIR /
+CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/conf.d/supervisord.conf", "-n"]
