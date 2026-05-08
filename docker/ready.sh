@@ -1,1 +1,1 @@
-python3 src/classifyjob.py --ready dummy.cptv
+python3 classifyjob.py --ready dummy.cptv
