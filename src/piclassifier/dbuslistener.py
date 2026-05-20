@@ -35,15 +35,19 @@ def tracking(
     tracking,
     last_prediction_frame,
     model_id,
+    tracking_start_time,
 ):
+    tracking_start_time = datetime.fromtimestamp(tracking_start_time / 1000)
+
     logging.info(
-        "Received tracking event for clip %s track %s prediction of %s with %s%% confidence still tracking ? %s at region %s",
+        "Received tracking event for clip %s track %s prediction of %s with %s%% confidence still tracking ? %s at region %s tracking_start_time %s",
         clip_id,
         track_id,
         what,
         confidence,
         tracking,
         region,
+        tracking_start_time,
     )
 
 
@@ -55,9 +59,13 @@ def normalize(thumb):
 
 def recording(dt, is_recording):
     if is_recording:
-        logging.info("Recording started at %s", datetime.fromtimestamp(dt))
+        logging.info(
+            "Recording started at %s received this event at %s",
+            datetime.fromtimestamp(dt / 1000),
+            datetime.now(),
+        )
     else:
-        logging.info("Recording ended at %s", datetime.fromtimestamp(dt))
+        logging.info("Recording ended at %s", datetime.fromtimestamp(dt / 1000))
 
 
 def track_filtered(clip_id, track_id):

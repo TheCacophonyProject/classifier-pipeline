@@ -22,7 +22,9 @@ class ClipTracker(ABC):
         do_tracking=True,
         scale=None,
         calculate_thumbnail_info=False,
+        max_frames=None,
     ):
+        self.max_frames = max_frames
         config = config.get(self.type)
         self.scale = scale
         self.calculate_thumbnail_info = calculate_thumbnail_info
@@ -130,6 +132,7 @@ class ClipTracker(ABC):
         unactive_tracks = clip.active_tracks - matched_tracks - new_tracks
         clip.active_tracks = matched_tracks | new_tracks
         self._filter_inactive_tracks(clip, unactive_tracks)
+        return new_tracks
 
     def _match_existing_tracks(self, clip, regions):
         scores = []

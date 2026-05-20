@@ -24,7 +24,7 @@ from datetime import datetime
 
 from .clip import Clip
 from piclassifier.cptvmotiondetector import is_affected_by_ffc
-from ml_tools.imageprocessing import detect_objects, normalize
+from ml_tools.imageprocessing import detect_objects
 from track.cliptracker import ClipTracker
 import logging
 from cptv_rs_python_bindings import CptvReader
@@ -58,6 +58,7 @@ class ClipTrackExtractor(ClipTracker):
         calculate_filtered=False,
         calculate_thumbnail_info=False,
         from_pi=False,
+        max_frames=None,
     ):
         super().__init__(
             config,
@@ -67,6 +68,7 @@ class ClipTrackExtractor(ClipTracker):
             verbose=verbose,
             do_tracking=do_tracking,
             calculate_thumbnail_info=calculate_thumbnail_info,
+            max_frames=max_frames,
         )
 
         if from_pi:
@@ -100,6 +102,7 @@ class ClipTrackExtractor(ClipTracker):
             self.cache_to_disk,
             self.use_opt_flow,
             self.keep_frames,
+            self.max_frames,
         )
         clip.type = self.type
         reader = CptvReader(str(clip.source_file))
@@ -186,11 +189,13 @@ class ClipTrackExtractor(ClipTracker):
         do_tracking = self.do_tracking
         self.background_alg = background_alg
         self.do_tracking = self.do_tracking and track_frames
+        new_tracks = []
         for frame in frames:
-            self.process_frame(clip, frame)
+            new_tracks.extend(self.process_frame(clip, frame))
         self.do_tracking = do_tracking
+        return new_tracks
 
-    def process_frame(self, clip, frame, **args):
+    def process_frame(self, clip, frame):
         """
         Tracks objects through frame
         :param thermal: A numpy array of shape (height, width) and type uint16
@@ -214,7 +219,7 @@ class ClipTrackExtractor(ClipTracker):
             )
         _ = clip.add_frame(thermal, filtered, mask, ffc_affected)
         if not self.do_tracking:
-            return
+            return []
 
         # if clip.from_metadata:
         #     for track in clip.tracks:
@@ -228,6 +233,7 @@ class ClipTrackExtractor(ClipTracker):
         #                     else None
         #                 ),
         #             )
+        new_tracks = []
         if not clip.from_metadata:
             regions = []
             if ffc_affected:
@@ -236,5 +242,6 @@ class ClipTrackExtractor(ClipTracker):
                 regions = self._get_regions_of_interest(
                     clip, component_details[1:], centroids[1:]
                 )
-                self._apply_region_matchings(clip, regions)
+                new_tracks = self._apply_region_matchings(clip, regions)
             clip.region_history.append(regions)
+        return new_tracks

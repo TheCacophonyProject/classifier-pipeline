@@ -159,7 +159,7 @@ class RecorderConfig:
             max_secs=recorder.get("max-secs", 600),
             preview_secs=recorder.get("preview-secs", 5),
             rec_window=TimeWindow(
-                RelAbsTime(window.get("start-recording"), default_offset=30 * 60),
+                RelAbsTime(window.get("start-recording"), default_offset=-30 * 60),
                 RelAbsTime(window.get("stop-recording"), default_offset=30 * 60),
                 *location_config.get_lat_long(use_default=True),
                 location_config.altitude,
