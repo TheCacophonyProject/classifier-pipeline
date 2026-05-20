@@ -95,7 +95,7 @@ class ModelConfig:
         model = cls(
             id=raw["id"],
             name=raw["name"],
-            type=raw.get("type", "Keras"),
+            type=raw.get("type"),
             model_file=raw["model_file"],
             model_weights=raw.get("model_weights"),
             wallaby=raw.get("wallaby", False),

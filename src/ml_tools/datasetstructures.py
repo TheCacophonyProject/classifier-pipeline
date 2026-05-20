@@ -387,6 +387,7 @@ class TrackHeader:
         frame_min_mass=None,
         filter_by_fp=True,
         min_segments=None,
+        seed = None
     ):
         if segment_frames is not None:
             raise Exception("Have not implement this path")
@@ -422,6 +423,7 @@ class TrackHeader:
             fp_frames=self.fp_frames if filter_by_fp else None,
             rec_time=self.start_time,
             min_segments=min_segments,
+            seed = seed
         )
         self.filtered_stats.update(filtered_stats)
         # GP could get this from the tracks when writing
@@ -993,6 +995,7 @@ def get_segments(
     fp_frames=None,
     repeat_frame_indices=True,
     min_segments=None,
+    seed = None
 ):
     if min_frames is None:
         min_frames = segment_width / 4.0
@@ -1038,6 +1041,10 @@ def get_segments(
             # remove blank frames
         frame_indices = np.array(frame_indices)
 
+
+        rng = np.random.default_rng(seed=seed)
+
+
         if segment_type == SegmentType.ELONGATION:
             crop_rectangle = tools.Rectangle(1, 1, 160 - 2, 120 - 2)
             border_regions = []
@@ -1075,7 +1082,7 @@ def get_segments(
             remaining = segment_width - len(frames)
             # sample another same frames again if need be
             if remaining > 0:
-                extra_frames = np.random.choice(
+                extra_frames = rng.choice(
                     frames,
                     min(remaining, len(frames)),
                     replace=False,
@@ -1160,6 +1167,7 @@ def get_segments(
             SegmentType.ALL_RANDOM_MASKED,
             None,
         ]
+
         for _ in range(repeats):
             if segment_type == SegmentType.ALL_RANDOM_MASKED:
                 segment_indices = np.arange(len(regions))
@@ -1174,7 +1182,7 @@ def get_segments(
 
                 if random_frames:
                     # random_frames and not random_sections:
-                    np.random.shuffle(frame_indices)
+                    rng.shuffle(frame_indices)
             for i in range(segment_count):
                 if segment_type == SegmentType.ALL_RANDOM_MASKED:
                     if len(whole_indices) < 40:
@@ -1204,7 +1212,7 @@ def get_segments(
                     # random frames from section 2.2 * segment_width
                     section = frame_indices[: int(segment_width * 2.2)]
 
-                    indices = np.random.choice(
+                    indices = rng.choice(
                         len(section),
                         min(segment_width, len(section)),
                         replace=False,
@@ -1229,7 +1237,7 @@ def get_segments(
                 remaining = segment_width - len(frames)
                 # sample another same frames again if need be
                 if remaining > 0:
-                    extra_frames = np.random.choice(
+                    extra_frames = rng.choice(
                         frames,
                         min(remaining, len(frames)),
                         replace=False,
@@ -1265,9 +1273,8 @@ def get_segments(
                     # i think this can be default, means we dont need to handle
                     # short segments elsewhere
                     if len(frames) < segment_width:
-                        extra_samples = np.random.choice(
-                            frames, segment_width - len(frames)
-                        )
+                        extra_samples = rng.choice(frames,segment_width - len(frames))
+
                         frames = list(frames)
                         frames.extend(extra_samples)
                         frames.sort()

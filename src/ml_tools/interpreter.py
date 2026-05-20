@@ -18,6 +18,7 @@ class Interpreter(ABC):
         self.run_over_network = run_over_network
         self.port = 8123
         self.id = None
+        self.seed = None
 
     def load_json(self, filename):
         """Loads model and parameters from file."""
@@ -237,6 +238,7 @@ class Interpreter(ABC):
                 dont_filter=dont_filter,
                 filter_by_fp=False,
                 min_segments=args.get("min_segments"),
+                seed = self.seed
             )
             return segments
         else:
@@ -564,18 +566,16 @@ def inc3_preprocess(x):
     return x
 
 
-def get_interpreter_from_path(model_file):
+def get_interpreter_from_path(model_file,run_over_network=False,load_model=True):
     logging.info("Loading %s", model_file)
 
     if model_file.suffix in [".keras", ".pb"]:
         from ml_tools.kerasmodel import KerasModel
 
-        classifier = KerasModel()
-        classifier.init_model(model_file)
-        classifier.load_model()
-
+        classifier = KerasModel(run_over_network=run_over_network)
+        classifier.init_model(model_file,run_over_network =run_over_network,load_model=load_model)
     elif model_file.suffix == ".tflite":
-        classifier = LiteInterpreter(model_file)
+        classifier = LiteInterpreter(model_file,run_over_network =run_over_network,load_model=load_model)
     elif model_file.suffix == ".pkl":
         from ml_tools.forestmodel import ForestModel
 
@@ -583,11 +583,22 @@ def get_interpreter_from_path(model_file):
     return classifier
 
 
-def get_interpreter(model, run_over_network=False, load_model=True):
-    # model_name, type = os.path.splitext(model.model_file)
-
-    logging.info(
-        "Loading %s of type %s over network: %s",
+def guess_type(model_file):
+    model_file = Path(model_file)
+    if model_file.suffix in [".keras", ".pb"]:
+        from ml_tools.kerasmodel import KerasModel
+        return KerasModel.TYPE
+    elif model_file.suffix == ".tflite":
+        return LiteInterpreter.TYPE
+    elif model_file.suffix == ".pkl":
+        from ml_tools.forestmodel import ForestModel
+        return ForestModel.TYPE
+    
+def get_interpreter(model, run_over_network=False, load_model=True,seed = None):
+    if model.type is None:
+        model.type = guess_type(model.model_file)
+    
+    logging.info("Loading %s type %s over network: %s",
         model.model_file,
         model.type,
         model.run_over_network,
@@ -611,6 +622,9 @@ def get_interpreter(model, run_over_network=False, load_model=True):
         )
     classifier.id = model.id
     classifier.port = model.port
+
+    if seed is not None:
+        classifier.seed = seed
     return classifier
 
 
