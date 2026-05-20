@@ -395,6 +395,7 @@ class Track:
         :param id: id number for track, if not specified is provided by an auto-incrementer
         """
         self.in_trap = False
+        self.received_at = None
         self.trap_reported = False
         self.trigger_frame = None
         self.direction = 0

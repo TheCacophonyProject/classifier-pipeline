@@ -378,7 +378,7 @@ class PiClassifier(Processor):
                 self.fp_model.labels, fp_config, self.fp_model.thresholds
             )
 
-    def new_clip(self, preview_frames):
+    def new_clip(self, preview_frames, received_at):
         self.clip = Clip(
             self.tracking_config,
             "stream",
@@ -419,7 +419,7 @@ class PiClassifier(Processor):
             track_frames = 5
             retrack_back = True
             # background is calculated in motion, so already 5 frames ahead
-        self.track_extractor.start_tracking(
+        new_tracks = self.track_extractor.start_tracking(
             self.clip,
             preview_frames,
             track_frames=track_frames,
@@ -428,6 +428,8 @@ class PiClassifier(Processor):
             # background_frame=clip.background,
             # background_frames=background_frames,
         )
+        for t in new_tracks:
+            t.received_at = received_at
 
     def startup_classifier(self):
         self.classifier_initialised = True
@@ -591,6 +593,8 @@ class PiClassifier(Processor):
                     # tracking ended as is false-positive
                     track_prediction.tracking = False
                     track_prediction.normalize_score()
+                    logging.info("Track received at %s", track.received_at)
+
                     self.service.tracking(
                         self.clip._id,
                         track,
@@ -600,6 +604,7 @@ class PiClassifier(Processor):
                         track_prediction.last_frame_classified,
                         self.predictions[model_id].labels,
                         model_id,
+                        track.received_at,
                     )
                     if track.get_id() in self.monitored_tracks:
                         del self.monitored_tracks[track.get_id()]
@@ -870,7 +875,7 @@ class PiClassifier(Processor):
         self.motion_detector.disconnected()
         if self.recorder.recording and self.tracking_events:
             self.recording = False
-            self.service.recording(False)
+            self.service.recording(time.time(), False)
         self.recorder.force_stop()
         self.snapshot_recorder.force_stop()
         if self.constant_recorder is not None:
@@ -939,20 +944,25 @@ class PiClassifier(Processor):
             self.rec_time += time.time() - s_r
             if self.recording:
                 if self.tracking_events:
-                    self.service.recording(True)
+                    self.service.recording(
+                        received_at,
+                        True,
+                    )
                 if not self.use_low_power_mode:
                     set_recording_state(True)
 
                 if self.bluetooth_beacons:
                     beacon.recording()
                 t_start = time.time()
-                self.new_clip(preview_frames)
+                self.new_clip(preview_frames, received_at)
                 self.tracking_time += time.time() - t_start
 
         if self.recorder.recording:
             t_start = time.time()
             if self.do_tracking:
-                self.track_extractor.process_frame(self.clip, lepton_frame)
+                new_tracks = self.track_extractor.process_frame(self.clip, lepton_frame)
+                for t in new_tracks:
+                    t.received_at = received_at
                 active_best = self.get_and_update_thumbnail()
                 if self.clip.thumb_info is None or (
                     active_best is not None
@@ -1025,6 +1035,7 @@ class PiClassifier(Processor):
                         last_prediction,
                         [] if model_id is None else self.predictions[model_id].labels,
                         model_id,
+                        monitored_track.received_at,
                     )
 
                     if not tracking:
@@ -1036,7 +1047,7 @@ class PiClassifier(Processor):
 
         if not self.recorder.recording and self.recording and self.tracking_events:
             self.recording = False
-            self.service.recording(False)
+            self.service.recording(received_at, False)
 
         self.frame_num += 1
         self.total_time += time.time() - start
