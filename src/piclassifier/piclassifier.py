@@ -365,6 +365,9 @@ class PiClassifier(Processor):
                 self.classifier.labels, model, self.classifier.thresholds
             )
             self.num_labels = len(self.classifier.labels)
+            logging.info("Ignoring segment types %s and using ALL_RANDOM",self.classifier.params.segment_types)
+
+            self.classifier.params["segment_types"] = ["ALL_RANDOM"]
             logging.info("Labels are %s ", self.classifier.labels)
             global predictions
             predictions = self.predictions
