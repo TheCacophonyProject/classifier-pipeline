@@ -1,3 +1,0 @@
-#!/bin/sh
-
-find -name '*.py' | xargs black --target-version=py39 --check --diff

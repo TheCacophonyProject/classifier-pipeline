@@ -22,7 +22,7 @@ jobs:
       - run: python -m pip install --upgrade pip
       
       - run: pip install black --upgrade
-      - run: ./check-style
+      - run: black *.py --check  --target-version=py312
         
       - name: Install dependencies
         run: |
