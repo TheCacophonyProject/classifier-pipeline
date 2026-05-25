@@ -712,7 +712,7 @@ def load_clip_multi(
     else:
         db = TrackDatabase(str(db_clip))
     if db.model != "lepton3.5":
-        logging.warn("Ignoring lepton3 data")
+        # logging.warn("Ignoring lepton3 data")
         filtered_stats["model"]=1
         return None, filtered_stats
     try:

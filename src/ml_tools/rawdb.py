@@ -72,7 +72,7 @@ class RawDatabase:
         if self.model is None or self.model not in ["lepton3","lepton3.5"]:
             self.load_model()
             self._meta_data["model"]= self.model
-            logging.info("Saving model metadata %s",self.model)
+            # logging.info("Saving model metadata %s",self.model)
             with self.meta_data_file.open("w") as f:
                 json.dump(self._meta_data, f,indent=4)
 
