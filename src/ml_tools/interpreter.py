@@ -458,7 +458,7 @@ class Interpreter(ABC):
                 self.params.frame_size,
                 self.params.channels,
                 self.preprocess_fn,
-                sample=f"{clip.get_id()}-{track.get_id()}",
+                sample=f"Clip-{clip.get_id()}-track-{track.get_id()}",
             )
             if frames is None:
                 logging.warn("No frames to predict on")

@@ -73,6 +73,13 @@ def parse_args():
         help="Use consecutive frames for segments",
     )
     parser.add_argument("data_dir", help="Directory of hdf5 files")
+
+    parser.add_argument(
+        "--seed",
+        type=int,
+        default=None,
+        help="Seed to use for randomness, this will make predictions the same every run on a file",
+    )
     args = parser.parse_args()
     if args.date:
         # if args.date == "None":
@@ -94,6 +101,9 @@ def parse_args():
         # args.date = datetime.datetime.now() - datetime.timedelta(days=30)
     if args.data_dir is not None:
         args.data_dir = Path(args.data_dir)
+    if args.seed is None:
+        import time
+        args.seed = int(time.time())
     logging.info("Loading training set up to %s", args.date)
     return args
 
@@ -368,11 +378,13 @@ def get_test_set_camera(dataset, test_clips, after_date):
     return test_samples
 
 
-def split_by_file(dataset, config, split_file, base_dir, make_val=True):
+def split_by_file(dataset, config, split_file, base_dir, make_val=False, seed = None):
     base_dir = Path(base_dir)
     with open(split_file, "r") as f:
         split = json.load(f)
-
+    if seed is None:
+        seed = split.get("seed")
+        logging.info("Using seed %s",seed)
     samples_by_source = {}
     for s in dataset.samples_by_id.values():
         samples_by_source.setdefault(s.source_file.name, []).append(s)
@@ -399,13 +411,14 @@ def split_by_file(dataset, config, split_file, base_dir, make_val=True):
             if source_file.exists():
                 try:
                     # can filter crappy segments here, or can do at train stage to have some way of testing different thresholds
-                    split_dataset.load_clip(source_file, dont_filter_segment=True)
+                    split_dataset.load_clip(source_file, dont_filter_segment=True,seed = seed)
                 except:
                     logging.error("Could not load %s", source_file, exc_info=True)
             else:
                 pass
                 # logging.warn("No source file %s found for %s", f, name)
         datasets.append(split_dataset)
+
 
     print_counts(*datasets)
     if make_val:
@@ -632,8 +645,8 @@ def get_mappings():
     return regroup
 
 
-def dump_split_ids(datasets, out_file="datasplit.json"):
-    splits = {}
+def dump_split_ids(datasets, seed = None, out_file="datasplit.json"):
+    splits = {"seed":seed}
     logging.info("Wrinting split ids to %s", out_file)
     for d in datasets:
         samples_by_source = d.get_samples_by_source()
@@ -718,7 +731,7 @@ def main():
 
     if args.split_file:
         logging.info("Loading datasets from split file %s", args.split_file)
-        datasets = split_by_file(master_dataset, config, args.split_file, args.data_dir)
+        datasets = split_by_file(master_dataset, config, args.split_file, args.data_dir,args.seed)
         labels = set()
         for dataset in datasets:
             labels.update(dataset.labels)
@@ -728,9 +741,10 @@ def main():
         for dataset in datasets:
             dataset.labels = labels
     else:
-        master_dataset.load_clips(dont_filter_segment=True)
+        master_dataset.load_clips(dont_filter_segment=True,seed = args.seed)
 
         master_dataset.labels.sort()
+
         print("Loaded  found {:.1f}k samples".format(len(master_dataset.clips) / 1000))
         for key, value in master_dataset.filtered_stats.items():
             if value != 0:
@@ -753,7 +767,7 @@ def main():
 
         rough_balance(datasets)
         validate_datasets(datasets, test_clips, args.date)
-        dump_split_ids(datasets, record_dir / "datasplit.json")
+        dump_split_ids(datasets,args.seed, record_dir / "datasplit.json",)
 
     print_counts(*datasets)
     print("split data")

@@ -190,6 +190,7 @@ class Dataset:
         after_date=None,
         label=None,
         dont_filter_segment=False,
+        seed = None,
     ):
         """
         Loads track headers from track database with optional filter
@@ -219,6 +220,7 @@ class Dataset:
             max_frame_mass=self.max_frame_mass,
             filter_by_lq=self.filter_by_lq,
             is_ir=self.type == "IR",
+            seed = seed
         )
         sample_id = 1
         with Pool(processes=8) as pool:
@@ -248,7 +250,7 @@ class Dataset:
                 self.filtered_stats.setdefault(reason, 0)
                 self.filtered_stats[reason] += count
 
-    def load_clip(self, db_clip, dont_filter_segment=False):
+    def load_clip(self, db_clip, dont_filter_segment=False,seed =None):
         if self.raw:
             db = RawDatabase(db_clip)
         else:
@@ -293,6 +295,7 @@ class Dataset:
                     dont_filter=dont_filter_segment,
                     skip_ffc=self.skip_ffc,
                     ffc_frames=clip_header.ffc_frames,
+                    seed = seed
                 )
                 self.filtered_stats["segment_mass"] += track_header.filtered_stats[
                     "segment_mass"
@@ -701,6 +704,7 @@ def load_clip_multi(
     max_frame_mass=None,
     filter_by_lq=False,
     is_ir=False,
+    seed = None,
 ):
     filtered_stats = {}
     if raw:
@@ -747,6 +751,7 @@ def load_clip_multi(
                 dont_filter=dont_filter_segment,
                 skip_ffc=skip_ffc,
                 ffc_frames=clip_header.ffc_frames,
+                seed = seed
             )
             filtered_stats.setdefault("segment_mass", 0)
             filtered_stats["segment_mass"] += track_header.filtered_stats[
