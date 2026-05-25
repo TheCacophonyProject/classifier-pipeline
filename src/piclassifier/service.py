@@ -259,19 +259,22 @@ class SnapshotService:
     def run_server(
         self, get_frame, headers, take_snapshot_fn, labels, get_thumbnail, thumbnail_dir
     ):
-        session_bus = dbus.SystemBus(mainloop=DBusGMainLoop())
-        name = dbus.service.BusName(DBUS_NAME, session_bus)
-        self.service = Service(
-            session_bus,
-            get_frame,
-            headers,
-            take_snapshot_fn,
-            labels,
-            get_thumbnail,
-            thumbnail_dir,
-        )
-        self.service.ServiceStarted()
-        self.loop.run()
+        try:
+            session_bus = dbus.SystemBus(mainloop=DBusGMainLoop())
+            name = dbus.service.BusName(DBUS_NAME, session_bus)
+            self.service = Service(
+                session_bus,
+                get_frame,
+                headers,
+                take_snapshot_fn,
+                labels,
+                get_thumbnail,
+                thumbnail_dir,
+            )
+            self.service.ServiceStarted()
+            self.loop.run()
+        except:
+            logging.error("Couldn't run dbus server at %s %s",DBUS_NAME,session_bus)
 
     def tracking(
         self,

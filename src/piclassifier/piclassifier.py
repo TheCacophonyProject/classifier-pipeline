@@ -91,7 +91,9 @@ class PiClassifier(Processor):
         classify,
         detect_after=None,
         preview_type=None,
+        seed = None
     ):
+        self.seed = seed
         self.constant_recorder = None
         global output_dir
         output_dir = thermal_config.recorder.output_dir
@@ -345,7 +347,7 @@ class PiClassifier(Processor):
 
         if model is not None:
             self.classifier = get_interpreter(
-                model, run_over_network=model.run_over_network, load_model=load_model
+                model, run_over_network=model.run_over_network, load_model=load_model,seed = self.seed
             )
             global classifier
             classifier = self.classifier
@@ -363,6 +365,9 @@ class PiClassifier(Processor):
                 self.classifier.labels, model, self.classifier.thresholds
             )
             self.num_labels = len(self.classifier.labels)
+            logging.info("Ignoring segment types %s and using ALL_RANDOM",self.classifier.params.segment_types)
+
+            self.classifier.params["segment_types"] = ["ALL_RANDOM"]
             logging.info("Labels are %s ", self.classifier.labels)
             global predictions
             predictions = self.predictions
@@ -1182,10 +1187,13 @@ def on_recording_stopping(
                 service.track_filtered(clip._id, track.get_id())
         for track in clip.tracks:
             if track.thumb_info is not None:
-                np.save(
-                    f"{str(output_dir)}/thumbnails/{clip.get_id()}-{track.get_id()}.npy",
-                    track.thumb_info.thumb,
-                )
+                try:
+                    np.save(
+                        f"{str(output_dir)}/thumbnails/{clip.get_id()}-{track.get_id()}.npy",
+                        track.thumb_info.thumb,
+                    )
+                except:
+                    logging.error("Couldn't save thumbnail file ",exc_info=True)
         if predictions is not None:
             valid_preds = {}
 
