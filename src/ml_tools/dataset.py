@@ -295,7 +295,7 @@ class Dataset:
                     dont_filter=dont_filter_segment,
                     skip_ffc=self.skip_ffc,
                     ffc_frames=clip_header.ffc_frames,
-                    seed = seed
+                    seed = seed + track_header.clip_id + track_header.track_id
                 )
                 self.filtered_stats["segment_mass"] += track_header.filtered_stats[
                     "segment_mass"
@@ -745,13 +745,14 @@ def load_clip_multi(
             track_header.get_segments(
                 segment_width,
                 segment_frame_spacing,
+
                 segment_types,
                 segment_min_avg_mass,
                 max_segments=max_segments,
                 dont_filter=dont_filter_segment,
                 skip_ffc=skip_ffc,
                 ffc_frames=clip_header.ffc_frames,
-                seed = seed
+                seed = seed + track_header.clip_id + track_header.track_id
             )
             filtered_stats.setdefault("segment_mass", 0)
             filtered_stats["segment_mass"] += track_header.filtered_stats[

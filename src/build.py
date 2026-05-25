@@ -103,6 +103,7 @@ def parse_args():
         args.data_dir = Path(args.data_dir)
     if args.seed is None:
         import time
+
         args.seed = int(time.time())
     logging.info("Loading training set up to %s", args.date)
     return args
@@ -378,13 +379,13 @@ def get_test_set_camera(dataset, test_clips, after_date):
     return test_samples
 
 
-def split_by_file(dataset, config, split_file, base_dir, make_val=False, seed = None):
+def split_by_file(dataset, config, split_file, base_dir, make_val=False, seed=None):
     base_dir = Path(base_dir)
     with open(split_file, "r") as f:
         split = json.load(f)
     if seed is None:
         seed = split.get("seed")
-        logging.info("Using seed %s",seed)
+        logging.info("Using seed %s", seed)
     samples_by_source = {}
     for s in dataset.samples_by_id.values():
         samples_by_source.setdefault(s.source_file.name, []).append(s)
@@ -411,14 +412,15 @@ def split_by_file(dataset, config, split_file, base_dir, make_val=False, seed = 
             if source_file.exists():
                 try:
                     # can filter crappy segments here, or can do at train stage to have some way of testing different thresholds
-                    split_dataset.load_clip(source_file, dont_filter_segment=True,seed = seed)
+                    split_dataset.load_clip(
+                        source_file, dont_filter_segment=True, seed=seed
+                    )
                 except:
                     logging.error("Could not load %s", source_file, exc_info=True)
             else:
                 pass
                 # logging.warn("No source file %s found for %s", f, name)
         datasets.append(split_dataset)
-
 
     print_counts(*datasets)
     if make_val:
@@ -645,8 +647,8 @@ def get_mappings():
     return regroup
 
 
-def dump_split_ids(datasets, seed = None, out_file="datasplit.json"):
-    splits = {"seed":seed}
+def dump_split_ids(datasets, seed=None, out_file="datasplit.json"):
+    splits = {"seed": seed}
     logging.info("Wrinting split ids to %s", out_file)
     for d in datasets:
         samples_by_source = d.get_samples_by_source()
@@ -731,7 +733,9 @@ def main():
 
     if args.split_file:
         logging.info("Loading datasets from split file %s", args.split_file)
-        datasets = split_by_file(master_dataset, config, args.split_file, args.data_dir,args.seed)
+        datasets = split_by_file(
+            master_dataset, config, args.split_file, args.data_dir, args.seed
+        )
         labels = set()
         for dataset in datasets:
             labels.update(dataset.labels)
@@ -741,7 +745,7 @@ def main():
         for dataset in datasets:
             dataset.labels = labels
     else:
-        master_dataset.load_clips(dont_filter_segment=True,seed = args.seed)
+        master_dataset.load_clips(dont_filter_segment=True, seed=args.seed)
 
         master_dataset.labels.sort()
 
@@ -767,7 +771,11 @@ def main():
 
         rough_balance(datasets)
         validate_datasets(datasets, test_clips, args.date)
-        dump_split_ids(datasets,args.seed, record_dir / "datasplit.json",)
+        dump_split_ids(
+            datasets,
+            args.seed,
+            record_dir / "datasplit.json",
+        )
 
     print_counts(*datasets)
     print("split data")
