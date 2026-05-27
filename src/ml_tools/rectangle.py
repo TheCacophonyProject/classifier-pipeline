@@ -104,36 +104,39 @@ class Rectangle:
         ]
 
     # enlarge rectangle such equal pixels are added to width and height  with respect to the crop rectangle
-    def enlarge_even(self, width_enlarge, height_enlarge, crop):
+    def enlarge_even(self, width_enlarge, height_enlarge, crop, even_enlarge = False):
 
         self.left -= width_enlarge
         self.right += width_enlarge
         self.top -= height_enlarge
         self.bottom += height_enlarge
         left_adjust = crop.left - self.left
-        left_adjust = max(0, left_adjust)
-        left_adjust = min(left_adjust, crop.width)
+        # left_adjust = max(0, left_adjust)
+        # left_adjust = min(left_adjust, crop.width)
 
         right_adjust = 0
         right_adjust = self.right - crop.right
-        right_adjust = max(0, right_adjust)
-        right_adjust = min(right_adjust, crop.width)
-        width_adjust = max(left_adjust, right_adjust)
+        # right_adjust = max(0, right_adjust)
+        # right_adjust = min(right_adjust, crop.width)
 
-        self.left += width_adjust
-        self.right -= width_adjust
+
+        if even_enlarge:
+            width_adjust = max(left_adjust, right_adjust)
+
+            self.left += width_adjust
+            self.right -= width_adjust
 
         bottom_adjust = self.bottom - crop.bottom
-        bottom_adjust = max(0, bottom_adjust)
-        bottom_adjust = min(bottom_adjust, crop.height)
+        # bottom_adjust = max(0, bottom_adjust)
+        # bottom_adjust = min(bottom_adjust, crop.height)
 
         top_adjust = crop.top - self.top
-        top_adjust = max(0, top_adjust)
-        top_adjust = min(top_adjust, crop.height)
-
-        height_adjust = max(bottom_adjust, top_adjust)
-        self.top += height_adjust
-        self.bottom -= height_adjust
+        # top_adjust = max(0, top_adjust)
+        # top_adjust = min(top_adjust, crop.height)
+        if even_enlarge:
+            height_adjust = max(bottom_adjust, top_adjust)
+            self.top += height_adjust
+            self.bottom -= height_adjust
 
     def enlarge(self, border, max=None):
         """Enlarges this by border amount in each dimension such that it fits
@@ -144,6 +147,10 @@ class Rectangle:
         self.bottom += border
         if max:
             self.crop(max)
+
+    def contains_rec(self, other):
+        """Is this point contained in the rectangle"""
+        return self.left <= other.left and self.right >= other.right and self.top >= other.top and self.bottom <= other.bottom
 
     def contains(self, x, y):
         """Is this point contained in the rectangle"""
@@ -176,12 +183,14 @@ class Rectangle:
             region_info["pixel_variance"] = 0
         return region_info
 
+
+
     # enlarge a region such that the aspect ration of final_dim will be maintained
     # when it is resized to (final_dim,final_dim) and add extra pixels so that rotation augments
     # dont get empty pixels
     def enlarge_for_rotation(self, crop_rectangle, final_dim=32, extra_needed=13):
         scale_percent = (final_dim / np.array([self.width, self.height])).min()
-
+        
         extra_pixels = extra_needed / scale_percent
         height_enlarge = math.ceil(extra_pixels / 2)
 
@@ -196,4 +205,34 @@ class Rectangle:
             diff = adjusted_height - adjusted_width
             width_enlarge = math.ceil((extra_pixels + diff) / 2)
 
-        self.enlarge_even(width_enlarge, height_enlarge, crop=crop_rectangle)
+        self.left -= width_enlarge
+        self.right += width_enlarge
+        self.top -= height_enlarge
+        self.bottom += height_enlarge
+        # self.enlarge_even(width_enlarge, height_enlarge, crop=crop_rectangle)
+
+
+    def enlarge_to(self,max_dim):
+
+        delta_w = max_dim - self.width
+        delta_h = max_dim - self.height
+        if delta_w >0:
+            self.x -= delta_w // 2
+            self.width = max_dim
+        if delta_h > 0:
+            self.y -= delta_h // 2
+            self.height = max_dim
+
+    def enlarge_with_aspect(self, max_dim):
+        scale = max_dim / max(self.width, self.height)
+        new_width = math.floor(self.width * scale)
+        new_height = math.floor(self.height * scale)
+        # logging.info("Scale is %s w %s h %s",scale,new_width,new_height)
+
+        delta_w = new_width - self.width
+        delta_h = new_height - self.height
+        self.x -= delta_w // 2
+        self.width = new_width
+        # logging.info("Adjusted w with %s",delta_w//2)
+        self.y -= delta_h // 2
+        self.height = new_height

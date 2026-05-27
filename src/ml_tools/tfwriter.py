@@ -78,10 +78,10 @@ def create_tf_records(
     logging.info(
         "writing to output path: %s for %s samples", output_path, len(samples_by_source)
     )
-    num_processes = 8
+    num_processes = 1
     writer_i = 0
     index = 0
-    jobs_per_process = 600 * num_processes
+    jobs_per_process = 100 * num_processes
     try:
         while index < len(source_files):
             job_queue = Queue()

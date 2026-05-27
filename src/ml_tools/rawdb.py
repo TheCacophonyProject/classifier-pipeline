@@ -50,8 +50,10 @@ class RawDatabase:
         self.frames = None
         self.model = None
         self.crop_rectangle = Rectangle(1, 1, 160 - 2, 120 - 2)
-        self.check_model()
-
+        try:
+            self.check_model()
+        except:
+            pass
     def frames_kept(self):
         return None
 

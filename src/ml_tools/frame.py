@@ -4,7 +4,7 @@ import numpy as np
 from ml_tools.tools import get_clipped_flow
 from ml_tools.imageprocessing import resize_cv, rotate, normalize, resize_and_pad
 import enum
-
+import logging
 
 class TrackChannels(enum.Enum):
     """Indexes to channels in track."""
@@ -15,6 +15,8 @@ class TrackChannels(enum.Enum):
     flow_v = 3
     mask = 4
     flow = 5
+    raw = 6
+    
 
 
 @attr.s(slots=True, eq=False)
@@ -200,6 +202,68 @@ class Frame:
         if self.filtered is not None:
             self.filtered *= adjust
 
+
+
+    def crop_by_region_with_padding(self, region,crop_rectangle,resize_dim):
+        top = 0
+        left = 0
+        if region.width <crop_rectangle.width and crop_rectangle.left > region.left:
+            left = crop_rectangle.left - region.left
+        
+
+        if region.height < crop_rectangle.height and  crop_rectangle.top > region.top:
+            top = crop_rectangle.top - region.top
+        
+
+        new_width = min(crop_rectangle.width,region.width)
+        new_height = min(crop_rectangle.height,region.height)
+        new_width = max(resize_dim,new_width)
+        new_height = max(resize_dim,new_height)
+
+
+        region.crop(crop_rectangle)
+
+        # logging.info("Region has been padded top %s left %s enlarged_region %s",top,left, region)
+    
+        
+        #  make a new frame cropped by region
+        thermal = None
+        filtered = None
+        mask = None
+        flow = None
+        if self.thermal is not None:
+            sub_thermal = region.subimage(self.thermal)
+            thermal = np.full((new_height,new_width),np.amin(sub_thermal),dtype = np.float32)
+            thermal[top:region.height + top,left:region.width+left] = sub_thermal
+
+        if self.filtered is not None:
+            sub_filtered = region.subimage(self.filtered)
+            filtered = np.full((new_height,new_width),np.amin(sub_filtered),dtype = np.float32)
+            filtered[top:region.height + top,left:region.width+left] = sub_filtered
+
+        if self.mask is not None:
+            sub_mask = region.subimage(self.mask)
+            mask = np.zeros((new_height,new_width),dtype=sub_mask.dtype)
+            mask[top:region.height + top,left:region.width+left] = sub_mask
+
+        if self.flow is not None:
+            sub_flow = region.subimage(self.flow)
+            flow = np.zeros((new_height,new_width) + sub_flow.shape[2:],dtype=sub_flow.dtype)
+            flow[top:region.height + top,left:region.width+left] = sub_flow
+        # logging.info("Now %s",thermal.shape)
+        frame = Frame(
+            thermal,
+            filtered,
+            self.frame_number,
+            mask=mask,
+            flow_clipped=self.flow_clipped,
+            ffc_affected=self.ffc_affected,
+            region=region,
+        )
+        frame.flow = flow
+        return frame
+
+
     def crop_by_region(self, region, only_thermal=False, out=None):
         # make a new frame cropped by region
         thermal = None
@@ -242,6 +306,7 @@ class Frame:
         keep_edge=False,
         edge_offset=(0, 0, 0, 0),
         original_region=None,
+        interpolation=cv2.INTER_NEAREST,
     ):
         if self.thermal is not None:
             self.thermal = resize_and_pad(
@@ -252,6 +317,7 @@ class Frame:
                 keep_edge=keep_edge,
                 edge_offset=edge_offset,
                 original_region=original_region,
+                interpolation=interpolation,
             )
         if self.mask is not None:
             self.mask = resize_and_pad(
@@ -260,8 +326,8 @@ class Frame:
                 self.region,
                 crop_rectangle,
                 keep_edge=keep_edge,
-                pad=0,
-                interpolation=cv2.INTER_NEAREST,
+                # pad=0,
+                interpolation=interpolation,
                 edge_offset=edge_offset,
             )
         if self.filtered is not None:
@@ -274,6 +340,8 @@ class Frame:
                 pad=0,
                 edge_offset=edge_offset,
                 original_region=original_region,
+                interpolation=interpolation,
+
             )
         if self.flow is not None:
             flow_h = resize_and_pad(

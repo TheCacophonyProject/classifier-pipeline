@@ -172,7 +172,7 @@ def load_dataset(filenames, remap_lookup, labels, args):
             include_track=args.get("include_track", False),
             num_frames=args.get("num_frames", 25),
             channels=args.get(
-                "channels", [TrackChannels.thermal.name, TrackChannels.filtered.name]
+                "channels", [TrackChannels.raw.name, TrackChannels.thermal.name, TrackChannels.filtered.name]
             ),
         ),
         num_parallel_calls=AUTOTUNE,
@@ -223,7 +223,7 @@ def read_tfrecord(
     extra_label_map=None,
     include_track=False,
     num_frames=25,
-    channels=[TrackChannels.thermal.name, TrackChannels.filtered.name],
+    channels=[TrackChannels.raw.name,TrackChannels.thermal.name, TrackChannels.filtered.name],
 ):
     logging.info(
         "Read tf record with image %s lbls %s labeld %s aug  %s  prepr %s only features %s one hot %s include fetures %s num frames %s",
@@ -237,20 +237,24 @@ def read_tfrecord(
         include_features,
         num_frames,
     )
+    logging.info("Channels are %s",channels)
     load_images = not only_features
     tfrecord_format = {
         "image/class/label": tf.io.FixedLenFeature((), tf.int64, -1),
     }
     if load_images:
         if TrackChannels.filtered.name in channels:
-            tfrecord_format["image/filteredencoded"] = tf.io.FixedLenSequenceFeature(
+            tfrecord_format["image/filtered_encoded"] = tf.io.FixedLenSequenceFeature(
                 [num_frames * IMG_SIZE * IMG_SIZE], dtype=tf.float32, allow_missing=True
             )
         if TrackChannels.thermal.name in channels:
-            tfrecord_format["image/thermalencoded"] = tf.io.FixedLenSequenceFeature(
+            tfrecord_format["image/thermal_norm_encoded"] = tf.io.FixedLenSequenceFeature(
                 [num_frames * IMG_SIZE * IMG_SIZE], dtype=tf.float32, allow_missing=True
             )
-
+        if TrackChannels.raw.name in channels:
+            tfrecord_format["image/thermal_raw_encoded"] = tf.io.FixedLenSequenceFeature(
+                [num_frames * IMG_SIZE * IMG_SIZE], dtype=tf.float32, allow_missing=True
+            )
     if include_track:
         tfrecord_format["image/track_id"] = tf.io.FixedLenFeature((), tf.int64, -1)
         tfrecord_format["image/avg_mass"] = tf.io.FixedLenFeature((), tf.int64, -1)
@@ -261,17 +265,24 @@ def read_tfrecord(
     example = tf.io.parse_single_example(example, tfrecord_format)
     if load_images:
         if TrackChannels.thermal.name in channels:
-            thermalencoded = example["image/thermalencoded"]
-            thermals = tf.reshape(thermalencoded, [num_frames, IMG_SIZE, IMG_SIZE, 1])
+            thermalnorm = 255.0*example["image/thermal_norm_encoded"]
+            thermals = tf.reshape(thermalnorm, [num_frames, IMG_SIZE, IMG_SIZE, 1])
         if TrackChannels.filtered.name in channels:
-            filteredencoded = example["image/filteredencoded"]
+            filteredencoded = 255.0*example["image/filtered_encoded"]
             filtered = tf.reshape(filteredencoded, [num_frames, IMG_SIZE, IMG_SIZE, 1])
+        if TrackChannels.raw.name in channels:
+
+            rawthermal = 255.0*example["image/thermal_raw_encoded"]
+            rawthermal = tf.reshape(rawthermal, [num_frames, IMG_SIZE, IMG_SIZE, 1])
+
         rgb_image = None
         for type in channels:
             if type == TrackChannels.thermal.name:
                 image = thermals
             elif type == TrackChannels.filtered.name:
                 image = filtered
+            elif type == TrackChannels.raw.name:
+                image = rawthermal
             if rgb_image is None:
                 rgb_image = image
             else:
@@ -283,12 +294,16 @@ def read_tfrecord(
             random_value = tf.random.uniform(
                 shape=[], minval=0.0, maxval=1.0, dtype=tf.float32
             )
+            
             if tf.greater(random_value, 0.5):
                 rgb_image = tf.image.flip_left_right(rgb_image)
         rgb_image = tf.ensure_shape(
             rgb_image, (num_frames, IMG_SIZE, IMG_SIZE, len(channels))
         )
-        rgb_image = tf.image.crop_to_bounding_box(rgb_image, 7, 7, 32, 32)
+        if augment:
+            rgb_image =  tf.image.random_crop(rgb_image, size=[num_frames,32, 32, 3])
+        else:
+            rgb_image = tf.image.crop_to_bounding_box(rgb_image, 7, 7, 32, 32)
 
         if num_frames > 1:
             rgb_image = tile_images(rgb_image)
@@ -377,7 +392,7 @@ def main():
         labels,
         batch_size=32,
         image_size=(160, 160),
-        augment=True,
+        augment=False,
         # preprocess_fn=tf.keras.applications.inception_v3.preprocess_input,
         resample=False,
         shuffle=False,
@@ -409,6 +424,7 @@ save_index = 0
 
 def save_batch(image_batch, label_batch, labels, save_dir, tracks=False):
     global save_index
+    logging.info("Input batch is %s",image_batch.shape)
     if tracks:
         track_batch = label_batch[1]
         label_batch = label_batch[0]

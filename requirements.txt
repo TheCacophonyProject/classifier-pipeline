@@ -27,3 +27,5 @@ h5py~=3.14.0
 #requires sudo apt-get install libopencv-dev used for ir track extraction on server
 # pybgs==3.2.0.post1 this was used for ir
 # cacophonyapi
+
+scikit-image~=0.26.0

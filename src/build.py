@@ -635,7 +635,8 @@ def get_mappings():
                 regroup[l] = "kiwi"
             elif parent == "other":
                 regroup[l] = l
-
+            elif l == "weka":
+                regroup[l] = l
             else:
                 if "bird." in path:
                     regroup[l] = "bird"
