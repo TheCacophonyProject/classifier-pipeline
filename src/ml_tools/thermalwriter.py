@@ -200,11 +200,6 @@ def get_data(clip_samples, extra_args):
     # going to redo segments to get rid of ffc segments
     clip_id = clip_samples[0].clip_id
     try:
-        background = db.get_clip_background()
-        if background is None:
-            frame_data = db.get_frames()
-            background = np.median(frame_data, axis=0)
-            del frame_data
         clip_meta = db.get_clip_meta(extra_args.get("tag_precedence"))
         frame_temp_median = clip_meta.frame_temp_median
 
@@ -343,7 +338,7 @@ def get_data(clip_samples, extra_args):
             if ADD_FEATURES:
                 features, _, _ = forest_features(
                     track_frames,
-                    background,
+                    db.get_clip_background(),
                     frame_temp_median,
                     [f.region for f in track_frames],
                     normalize=True,

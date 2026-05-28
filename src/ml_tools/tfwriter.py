@@ -13,21 +13,23 @@
 # limitations under the License.
 # ==============================================================================
 from pathlib import Path
-from multiprocessing import Process, Queue
+import multiprocessing
+_spawn_ctx = multiprocessing.get_context("spawn")
 import os
 from absl import logging
 import numpy as np
 import psutil
-import tensorflow as tf
 
 
 def process_job(queue, labels, base_dir, save_data, writer_i, extra_args):
     import gc
+    import tensorflow as tf
 
     pid = os.getpid()
 
     name = f"{writer_i}-{pid}.tfrecord"
-    logging.info("Writing to %s", name)
+    mem_mb = psutil.Process().memory_info().rss / 1024**2
+    logging.info("Writing to %s mem usage %s", name,mem_mb)
     options = tf.io.TFRecordOptions(compression_type="GZIP")
     writer = tf.io.TFRecordWriter(str(base_dir / name), options=options)
     i = 0
@@ -39,7 +41,9 @@ def process_job(queue, labels, base_dir, save_data, writer_i, extra_args):
         samples = queue.get()
         try:
             if samples == "DONE":
-                logging.info("Worker %s done: received %s samples, processed %s files", name,i, files)
+
+                mem_mb = psutil.Process().memory_info().rss / 1024**2
+                logging.info("Worker %s done: received %s samples, processed %s files memory %s", name,i, files,mem_mb)
                 writer.close()
                 break
             else:
@@ -87,10 +91,10 @@ def create_tf_records(
     jobs_per_process = 100 * num_processes
     try:
         while index < len(source_files):
-            job_queue = Queue()
+            job_queue = _spawn_ctx.Queue()
             processes = []
             for i in range(num_processes):
-                p = Process(
+                p = _spawn_ctx.Process(
                     target=process_job,
                     args=(
                         job_queue,
