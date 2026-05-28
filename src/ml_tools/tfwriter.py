@@ -21,10 +21,12 @@ import numpy as np
 import psutil
 
 
-def process_job(queue, labels, base_dir, save_data_name, writer_i, extra_args):
+def process_job(queue, labels, base_dir, save_data_name, writer_i,excluded_tags, extra_args):
     import gc
     import tensorflow as tf
-
+    from ml_tools.logs import init_logging
+    init_logging()
+    
     if save_data_name == "thermal":
         from ml_tools.thermalwriter import save_data
     elif save_data_name == "ir":
@@ -45,20 +47,20 @@ def process_job(queue, labels, base_dir, save_data_name, writer_i, extra_args):
     num_frames = extra_args.get("num_frames", 25)
     while True:
         i += 1
-        samples = queue.get()
+        source_file = queue.get()
         try:
-            if samples == "DONE":
+            if isinstance(source_file, str):
+                if source_file == "DONE":
 
-                mem_mb = psutil.Process().memory_info().rss / 1024**2
-                logging.info("Worker %s done: received %s samples, processed %s files memory %s", name,i, files,mem_mb)
-                writer.close()
-                break
+                    mem_mb = psutil.Process().memory_info().rss / 1024**2
+                    logging.info("Worker %s done: received %s samples, processed %s files memory %s", name,i, files,mem_mb)
+                    writer.close()
+                    break
+                else:
+                    logging.error("Unknown string %s",source_file)
             else:
-                if len(samples) == 0:
-                    continue
-                saved += save_data(samples, writer, labels, extra_args)
+                saved += save_data(source_file, excluded_tags,writer, labels, extra_args)
                 files += 1
-                del samples
 
                 if i % int(2500 / num_frames) == 0:
                     mem_mb = psutil.Process().memory_info().rss / 1024**2
@@ -66,7 +68,7 @@ def process_job(queue, labels, base_dir, save_data_name, writer_i, extra_args):
                     gc.collect()
                     writer.flush()
         except:
-            logging.error("Process_job error %s", samples[0].source_file, exc_info=True)
+            logging.error("Process_job error %s", source_file, exc_info=True)
 
 
 def create_tf_records(
@@ -74,6 +76,7 @@ def create_tf_records(
     output_path,
     labels,
     save_data_name,
+    excluded_tags,
     num_shards=1,
     augment=False,
     **extra_args,
@@ -85,17 +88,18 @@ def create_tf_records(
             if child.is_file():
                 child.unlink()
     output_path.mkdir(parents=True, exist_ok=True)
-    samples_by_source = dataset.get_samples_by_source()
-    source_files = list(samples_by_source.keys())
+    source_files =list(dataset.source_files)
+    dataset.clear()
+
     np.random.shuffle(source_files)
-    num_labels = len(dataset.labels)
     logging.info(
-        "writing to output path: %s for %s samples", output_path, len(samples_by_source)
-    )
+        "writing to output path: %s for %s recordings", output_path, len(source_files))
+    
     num_processes = 2
     writer_i = 0
     index = 0
     jobs_per_process = 100 * num_processes
+    logging.info("Writing samples")
     try:
         while index < len(source_files):
             job_queue = _spawn_ctx.Queue()
@@ -109,6 +113,7 @@ def create_tf_records(
                         output_path,
                         save_data_name,
                         writer_i,
+                        excluded_tags,
                         extra_args,
                     ),
                 )
@@ -117,7 +122,7 @@ def create_tf_records(
                 added = 0
             writer_i += 1
             for source_file in source_files[index : index + jobs_per_process]:
-                job_queue.put((samples_by_source[source_file]))
+                job_queue.put(source_file)
                 added += 1
 
             index += jobs_per_process

@@ -137,8 +137,8 @@ def create_tf_example(sample, data, features, labels, num_frames, country_code):
     return example
 
 
-def save_data(samples, writer, labels, extra_args):
-    sample_data = get_data(samples, extra_args)
+def save_data(source_file,excluded_tags, writer, labels, extra_args):
+    sample_data = get_data(source_file, excluded_tags,extra_args)
     if sample_data is None:
         return 0
     saved = 0
@@ -153,14 +153,15 @@ def save_data(samples, writer, labels, extra_args):
             saved += 1
     except:
         logging.error(
-            "Could not save data for %s", samples[0].source_file, exc_info=True
+            "Could not save data for %s", source_file, exc_info=True
         )
     return saved
 
 
-def get_data(clip_samples, extra_args):
+def get_data(source_file,excluded_tags, extra_args):
     from skimage import exposure
     import cv2
+    from ml_tools.dataset import filter_track
     # prepare the sample data for saving
     ENLARGE_FOR_AUGMENT = True
     ADD_FEATURES = False
@@ -168,35 +169,40 @@ def get_data(clip_samples, extra_args):
     THERMAL_MAX_KV = 31515 #42 celcius
     TILE_DIM = 32
 
-    if len(clip_samples) == 0:
-        return None
     data = []
     crop_rectangle = Rectangle(1, 1, 160 - 2, 120 - 2)
     resize_dim = TILE_DIM
     if ENLARGE_FOR_AUGMENT:
         # allow extra pixels for augmentation
         resize_dim = 45
-    if clip_samples[0].source_file.suffix == ".hdf5":
+    if source_file.suffix == ".hdf5":
         from ml_tools.trackdatabase import TrackDatabase
+
+        raise Exception(
+            "Need to implement min max filtered values for hdf5 track"
+        )
 
         db = TrackDatabase(clip_samples[0].source_file)
     else:
-        db = RawDatabase(clip_samples[0].source_file)
+        db = RawDatabase(source_file)
         db.load_frames()
-
     # going to redo segments to get rid of ffc segments
-    clip_id = clip_samples[0].clip_id
     try:
         clip_meta = db.get_clip_meta(extra_args.get("tag_precedence"))
         frame_temp_median = clip_meta.frame_temp_median
 
         # group samples by track_id
-        samples_by_track = {}
-        for s in clip_samples:
-            samples_by_track.setdefault(s.track_id, []).append(s)
+        # samples_by_track = {}
+        # for s in clip_samples:
+            # samples_by_track.setdefault(s.track_id, []).append(s)
 
-        for track_id in samples_by_track.keys():
-            samples = samples_by_track[track_id]
+        clip_meta.tracks = [
+            track
+            for track in clip_meta.tracks
+            if not filter_track(track, excluded_tags)
+        ]
+        for track in clip_meta.tracks:
+            
             thermal_min = 0
             by_frame_number = {}
             thermal_max_diff = None
@@ -204,119 +210,108 @@ def get_data(clip_samples, extra_args):
             max_diff = None
             min_diff = None
             thermal_diff_norm = extra_args.get("thermal_diff_norm", False)
-            if clip_samples[0].source_file.suffix != ".hdf5":
-                track = next(
-                    (track for track in clip_meta.tracks if track.track_id == track_id),
-                    None,
+
+            if extra_args.get("label_mapping") is not None:
+                track.remapped_label = extra_args["label_mapping"].get(
+                    track.original_label, track.original_label
                 )
-                if extra_args.get("label_mapping") is not None:
-                    track.remapped_label = extra_args["label_mapping"].get(
-                        track.original_label, track.original_label
-                    )
-                if track is None:
-                    logging.error(
-                        "Cannot find track %s in clip %s", track_id, clip_meta.clip_id
-                    )
+       
+            # GP All assumes we dont have a track over multiple bins (Whcih we probably never want)
+            if extra_args.get("use_segments", True):
+                segment_types = extra_args.get("segment_types")
+                # loading segments here again as this has access to ffc frames
+                track.get_segments(
+                    segment_width=extra_args.get("segment_width", 25),
+                    segment_frame_spacing=extra_args.get(
+                        "segment_frame_spacing", 9
+                    ),
+                    segment_types=segment_types,
+                    segment_min_mass=extra_args.get("segment_min_avg_mass"),
+                    dont_filter=extra_args.get("dont_filter_segment", False),
+                    skip_ffc=extra_args.get("skip_ffc", True),
+                    ffc_frames=clip_meta.ffc_frames,
+                    max_segments=extra_args.get("max_segments"),
+                    frame_min_mass=extra_args.get("min_mass"),
+                    filter_by_fp=extra_args.get("filter_by_fp"),
+                )
+            else:
+                filter_by_lq = extra_args.get("filter_by_lq", False)
+                track.calculate_sample_frames(
+                    min_mass=(
+                        extra_args.get("min_mass")
+                        if not filter_by_lq
+                        else track.lower_mass
+                    ),
+                    max_mass=(
+                        extra_args.get("max_mass")
+                        if not filter_by_lq
+                        else track.upper_mass
+                    ),
+                    ffc_frames=clip_meta.ffc_frames,
+                    max_frames=extra_args.get("max_frames"),
+                )
+            samples = track.samples
+            frame_temp_median = {}
+            track_frames = []
+
+            for frame_i in range(
+                track.start_frame, track.start_frame + track.num_frames
+            ):
+                f = db.frames[frame_i]
+                region = track.regions_by_frame[frame_i]
+
+                if region.blank or region.width <= 0 or region.height <= 0:
                     continue
-                # GP All assumes we dont have a track over multiple bins (Whcih we probably never want)
-                if extra_args.get("use_segments", True):
-                    segment_types = extra_args.get("segment_types")
-                    track.get_segments(
-                        segment_width=extra_args.get("segment_width", 25),
-                        segment_frame_spacing=extra_args.get(
-                            "segment_frame_spacing", 9
-                        ),
-                        segment_types=segment_types,
-                        segment_min_mass=extra_args.get("segment_min_avg_mass"),
-                        dont_filter=extra_args.get("dont_filter_segment", False),
-                        skip_ffc=extra_args.get("skip_ffc", True),
-                        ffc_frames=clip_meta.ffc_frames,
-                        max_segments=len(samples),
-                        frame_min_mass=extra_args.get("min_mass"),
-                        filter_by_fp=extra_args.get("filter_by_fp"),
-                    )
-                else:
-                    filter_by_lq = extra_args.get("filter_by_lq", False)
-                    track.calculate_sample_frames(
-                        min_mass=(
-                            extra_args.get("min_mass")
-                            if not filter_by_lq
-                            else track.lower_mass
-                        ),
-                        max_mass=(
-                            extra_args.get("max_mass")
-                            if not filter_by_lq
-                            else track.upper_mass
-                        ),
-                        ffc_frames=clip_meta.ffc_frames,
-                        max_frames=extra_args.get("max_frames"),
-                    )
-                samples = track.samples
-                frame_temp_median = {}
-                track_frames = []
+                median_temp = np.median(f.thermal)
+                frame_temp_median[frame_i] = median_temp
 
-                for frame_i in range(
-                    track.start_frame, track.start_frame + track.num_frames
-                ):
-                    f = db.frames[frame_i]
-                    region = track.regions_by_frame[frame_i]
-
-                    if region.blank or region.width <= 0 or region.height <= 0:
-                        continue
-                    median_temp = np.median(f.thermal)
-                    frame_temp_median[frame_i] = median_temp
-
-                    diff_frame = region.subimage(f.filtered)
+                diff_frame = region.subimage(f.filtered)
+                new_max = np.amax(diff_frame)
+                new_min = np.amin(diff_frame)
+                if min_diff is None or new_min < min_diff:
+                    min_diff = new_min
+                    # min_diff = max(0, new_min)
+                if max_diff is None or new_max > max_diff:
+                    max_diff = new_max
+                if thermal_diff_norm:
+                    # no benefit in doing for thermal
+                    diff_frame = region.subimage(f.thermal) - median_temp
                     new_max = np.amax(diff_frame)
                     new_min = np.amin(diff_frame)
-                    if min_diff is None or new_min < min_diff:
-                        min_diff = new_min
-                        # min_diff = max(0, new_min)
-                    if max_diff is None or new_max > max_diff:
-                        max_diff = new_max
-                    if thermal_diff_norm:
-                        # no benefit in doing for thermal
-                        diff_frame = region.subimage(f.thermal) - median_temp
-                        new_max = np.amax(diff_frame)
-                        new_min = np.amin(diff_frame)
-                        if thermal_min_diff is None or new_min < thermal_min_diff:
-                            thermal_min_diff = new_min
-                        if thermal_max_diff is None or new_max > thermal_max_diff:
-                            thermal_max_diff = new_max
+                    if thermal_min_diff is None or new_min < thermal_min_diff:
+                        thermal_min_diff = new_min
+                    if thermal_max_diff is None or new_max > thermal_max_diff:
+                        thermal_max_diff = new_max
 
-                    if thermal_min == 0:
-                        # check that we have nice values other wise allow negatives when normalizing
-                        sub_thermal = region.subimage(f.thermal)
-                        sub_thermal = np.float32(sub_thermal) - median_temp
-                        if np.median(sub_thermal) <= 0:
-                            thermal_min = None
+                if thermal_min == 0:
+                    # check that we have nice values other wise allow negatives when normalizing
+                    sub_thermal = region.subimage(f.thermal)
+                    sub_thermal = np.float32(sub_thermal) - median_temp
+                    if np.median(sub_thermal) <= 0:
+                        thermal_min = None
 
 
-                    enlarged_region = region.copy()
-                    if ENLARGE_FOR_AUGMENT:
-                        if region.width > resize_dim or region.height >resize_dim:
+                enlarged_region = region.copy()
+                if ENLARGE_FOR_AUGMENT:
+                    if region.width > resize_dim or region.height >resize_dim:
 
-                            enlarged_region.enlarge_for_rotation(crop_rectangle)
-                        else:
-                            enlarged_region.enlarge_to(resize_dim)
-                        # logging.info("Enlarging for augment %s %s",region, enlarged_region)
-                    
-                    
-
-                    if not crop_rectangle.contains_rec(enlarged_region): 
-                        cropped = f.crop_by_region_with_padding(enlarged_region,crop_rectangle,resize_dim)
+                        enlarged_region.enlarge_for_rotation(crop_rectangle)
                     else:
+                        enlarged_region.enlarge_to(resize_dim)
+                    # logging.info("Enlarging for augment %s %s",region, enlarged_region)
+                
+                
 
-                        cropped = f.crop_by_region(enlarged_region)
-                    cropped.float_arrays()
-                    track_frames.append(cropped)
-                    by_frame_number[f.frame_number] = (cropped, median_temp)
-            else:
-                raise Exception(
-                    "Need to implement min max filtered values for hdf5 track"
-                )
+                if not crop_rectangle.contains_rec(enlarged_region): 
+                    cropped = f.crop_by_region_with_padding(enlarged_region,crop_rectangle,resize_dim)
+                else:
 
-            logging.debug("Saving %s samples %s", track_id, len(samples))
+                    cropped = f.crop_by_region(enlarged_region)
+                cropped.float_arrays()
+                track_frames.append(cropped)
+                by_frame_number[f.frame_number] = (cropped, median_temp)
+
+            logging.debug("Saving %s samples %s", track.track_id, len(samples))
             used_frames = []
             features = None
             if ADD_FEATURES:
@@ -357,12 +352,12 @@ def get_data(clip_samples, extra_args):
                         ):
                             logging.error(
                                 "Strange values for %s max %s min %s",
-                                clip_id,
+                                track.clip_id,
                                 np.amax(frame.thermal),
                                 np.amin(frame.thermal),
                             )
                             raise Exception(
-                                f"Strange values for {clip_id} - {track_id} #{frame_number}"
+                                f"Strange values for {track.clip_id} - {track.track_id} #{frame_number}"
                             )
 
 
@@ -441,7 +436,7 @@ def get_data(clip_samples, extra_args):
             by_frame_number ={}
     except:
         logging.error(
-            "Cant get Samples for %s", clip_samples[0].source_file, exc_info=True
+            "Cant get Samples for %s", source_file, exc_info=True
         )
         return None
     return (data, clip_meta.country_code)

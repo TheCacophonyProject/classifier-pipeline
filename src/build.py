@@ -821,57 +821,47 @@ def main():
                 train_set.add_samples(new_samples)
         print("Count post augmentation")
         print_counts(*datasets)
-
     for dataset in datasets:
-        dir = os.path.join(record_dir, dataset.name)
-        extra_args = {
-            "use_segments": master_dataset.use_segments,
-            "label_mapping": dataset.label_mapping,
-        }
-        if config.train.type == "IR":
-            extra_args["back_thresh"] = threshold
-            create_tf_records(
-                dataset,
-                dir,
-                datasets[0].labels,
-                "ir",
-                num_shards=100,
-                back_thresh=threshold,
-            )
-        else:
-            if args.ext != ".hdf5":
-                extra_args.update(
-                    {
-                        "segment_frame_spacing": master_dataset.segment_spacing * 9,
-                        "segment_width": master_dataset.segment_length,
-                        "segment_types": master_dataset.segment_types,
-                        "segment_min_avg_mass": master_dataset.segment_min_avg_mass,
-                        "max_segments": master_dataset.max_segments,
-                        "dont_filter_segment": True,
-                        "skip_ffc": True,
-                        "tag_precedence": config.build.tag_precedence,
-                        "min_mass": master_dataset.min_frame_mass,
-                        "thermal_diff_norm": config.build.thermal_diff_norm,
-                        "filter_by_lq": master_dataset.filter_by_lq,
-                        "max_frames": master_dataset.max_frames,
-                    }
-                )
-            # dont filter the test set,
-            extra_args["filter_by_fp"] = dataset.name != "test"
-            create_tf_records(
-                dataset,
-                dir,
-                datasets[0].labels,
-                "thermal",
-                num_shards=100,
-                num_frames=dataset.segment_length,
-                **extra_args,
-            )
         counts = {}
         for label in dataset.labels:
             count = len(dataset.samples_by_label.get(label, []))
             counts[label] = count
         dataset_counts[dataset.name] = counts
+    extra_args = {
+        "use_segments": master_dataset.use_segments,
+        "label_mapping": master_dataset.label_mapping,
+        "segment_frame_spacing": master_dataset.segment_spacing * 9,
+        "segment_width": master_dataset.segment_length,
+        "segment_types": master_dataset.segment_types,
+        "segment_min_avg_mass": master_dataset.segment_min_avg_mass,
+        "max_segments": master_dataset.max_segments,
+        "dont_filter_segment": True,
+        "skip_ffc": True,
+        "tag_precedence": config.build.tag_precedence,
+        "min_mass": master_dataset.min_frame_mass,
+        "thermal_diff_norm": config.build.thermal_diff_norm,
+        "filter_by_lq": master_dataset.filter_by_lq,
+        "max_frames": master_dataset.max_frames,
+    }
+
+    for dataset in datasets:
+        dataset.clear()
+
+    for dataset in datasets:
+        dir = os.path.join(record_dir, dataset.name)
+        # dont filter the test set,
+        extra_args["filter_by_fp"] = dataset.name != "test"
+        create_tf_records(
+            dataset,
+            dir,
+            datasets[0].labels,
+            "thermal",
+            master_dataset.excluded_tags,
+            num_shards=100,
+            num_frames=dataset.segment_length,
+            **extra_args,
+        )
+
     # dont need dataset anymore just need some meta
     meta_filename = f"{record_dir}/training-meta.json"
     meta_data = {

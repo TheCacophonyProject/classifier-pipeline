@@ -126,8 +126,7 @@ class Dataset:
             "bad_track_json": 0,
         }
         self.lbl_p = None
-        self.numpy_data = None
-
+        self.source_files = set()
         self.skip_ffc = True
 
     @property
@@ -347,6 +346,7 @@ class Dataset:
         return samples_by_label
 
     def add_clip_sample_mappings(self, sample):
+        self.source_files.add(sample.source_file)
         self.samples_by_id[sample.id] = sample
         # self.samples[sample.id] = sample
 
@@ -561,6 +561,11 @@ class Dataset:
     def has_data(self):
         return len(self.samples_by_id) > 0
 
+    def clear(self):
+        self.samples_by_id.clear()
+        self.samples_by_bin.clear()
+        self.clips.clear()
+
     def remove_sample_by_id(self, id, bin_id):
         del self.samples_by_id[id]
         try:
@@ -711,6 +716,8 @@ def load_clip_multi(
         db = RawDatabase(str(db_clip))
     else:
         db = TrackDatabase(str(db_clip))
+
+    db.check_model()
     if db.model != "lepton3.5":
         # logging.warn("Ignoring lepton3 data")
         filtered_stats["model"]=1

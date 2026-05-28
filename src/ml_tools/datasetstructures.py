@@ -216,6 +216,9 @@ class TrackHeader:
         self.samples = []
 
     @property
+    def id(self):
+        return self.track_id
+    @property
     def label(self):
         return (
             self.original_label if self.remapped_label is None else self.remapped_label
