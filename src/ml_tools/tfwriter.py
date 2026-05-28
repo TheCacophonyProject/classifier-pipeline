@@ -21,9 +21,16 @@ import numpy as np
 import psutil
 
 
-def process_job(queue, labels, base_dir, save_data, writer_i, extra_args):
+def process_job(queue, labels, base_dir, save_data_name, writer_i, extra_args):
     import gc
     import tensorflow as tf
+
+    if save_data_name == "thermal":
+        from ml_tools.thermalwriter import save_data
+    elif save_data_name == "ir":
+        from ml_tools.irwriter import save_data
+    else:
+        raise ValueError(f"Unknown save_data_name: {save_data_name}")
 
     pid = os.getpid()
 
@@ -66,7 +73,7 @@ def create_tf_records(
     dataset,
     output_path,
     labels,
-    save_data,
+    save_data_name,
     num_shards=1,
     augment=False,
     **extra_args,
@@ -85,7 +92,7 @@ def create_tf_records(
     logging.info(
         "writing to output path: %s for %s samples", output_path, len(samples_by_source)
     )
-    num_processes = 8
+    num_processes = 2
     writer_i = 0
     index = 0
     jobs_per_process = 100 * num_processes
@@ -100,7 +107,7 @@ def create_tf_records(
                         job_queue,
                         labels,
                         output_path,
-                        save_data,
+                        save_data_name,
                         writer_i,
                         extra_args,
                     ),

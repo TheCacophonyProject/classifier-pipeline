@@ -17,8 +17,6 @@ from config.config import Config
 from ml_tools.dataset import Dataset
 from ml_tools.datasetstructures import Camera
 from ml_tools.tfwriter import create_tf_records
-from ml_tools.irwriter import save_data as save_ir_data
-from ml_tools.thermalwriter import save_data as save_thermal_data
 from ml_tools.tools import CustomJSONEncoder
 import attrs
 import numpy as np
@@ -836,7 +834,7 @@ def main():
                 dataset,
                 dir,
                 datasets[0].labels,
-                save_ir_data,
+                "ir",
                 num_shards=100,
                 back_thresh=threshold,
             )
@@ -864,7 +862,7 @@ def main():
                 dataset,
                 dir,
                 datasets[0].labels,
-                save_thermal_data,
+                "thermal",
                 num_shards=100,
                 num_frames=dataset.segment_length,
                 **extra_args,

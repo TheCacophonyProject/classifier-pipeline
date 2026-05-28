@@ -24,33 +24,15 @@ Example usage:
       --num_shards=100
 """
 
-import cv2
-from PIL import Image
-from pathlib import Path
-import time
-import collections
 import hashlib
-import io
-import json
-import os
 
-from absl import app
-from absl import flags
 from absl import logging
 import numpy as np
-from PIL import Image, ImageOps
 
-import tensorflow as tf
 from . import tfrecord_util
-from ml_tools import tools
 from ml_tools.imageprocessing import normalize
-from ml_tools.forestmodel import forest_features
-from ml_tools import imageprocessing
-from ml_tools.frame import TrackChannels
-from ml_tools.trackdatabase import TrackDatabase
 from ml_tools.rawdb import RawDatabase
 from ml_tools.rectangle import Rectangle
-from ml_tools.datasetstructures import SegmentType
 
 crop_rectangle = Rectangle(0, 0, 640, 480)
 
@@ -86,6 +68,8 @@ def create_tf_example(sample, data, features, labels, num_frames, country_code):
     Raises:
       ValueError: if the image pointed to by data['filename'] is not a valid JPEG
     """
+    import tensorflow as tf
+
     average_dim = [r.area for r in sample.track_bounds]
     average_dim = int(round(np.mean(average_dim) ** 0.5))
     thermal_raw = list(data[0])
@@ -176,6 +160,7 @@ def save_data(samples, writer, labels, extra_args):
 
 def get_data(clip_samples, extra_args):
     from skimage import exposure
+    import cv2
     # prepare the sample data for saving
     ENLARGE_FOR_AUGMENT = True
     ADD_FEATURES = False
@@ -186,12 +171,14 @@ def get_data(clip_samples, extra_args):
     if len(clip_samples) == 0:
         return None
     data = []
-    crop_rectangle = tools.Rectangle(1, 1, 160 - 2, 120 - 2)
+    crop_rectangle = Rectangle(1, 1, 160 - 2, 120 - 2)
     resize_dim = TILE_DIM
     if ENLARGE_FOR_AUGMENT:
         # allow extra pixels for augmentation
         resize_dim = 45
     if clip_samples[0].source_file.suffix == ".hdf5":
+        from ml_tools.trackdatabase import TrackDatabase
+
         db = TrackDatabase(clip_samples[0].source_file)
     else:
         db = RawDatabase(clip_samples[0].source_file)
@@ -328,14 +315,13 @@ def get_data(clip_samples, extra_args):
                 raise Exception(
                     "Need to implement min max filtered values for hdf5 track"
                 )
-                track_frames = db.get_track(
-                    clip_id, track_id, channels=[TrackChannels.thermal], crop=True
-                )
 
             logging.debug("Saving %s samples %s", track_id, len(samples))
             used_frames = []
             features = None
             if ADD_FEATURES:
+                from ml_tools.forestmodel import forest_features
+
                 features, _, _ = forest_features(
                     track_frames,
                     db.get_clip_background(),
@@ -387,7 +373,7 @@ def get_data(clip_samples, extra_args):
                             np.clip(
                                 frame.mask, a_min=0, a_max=None, out=frame.mask
                             )
-                        frame.mask, stats = imageprocessing.normalize(
+                        frame.mask, stats = normalize(
                             frame.thermal,
                         )
 
@@ -401,7 +387,7 @@ def get_data(clip_samples, extra_args):
                             # frame.thermal[frame.thermal < temp_median] = 0
                         np.clip(frame.thermal, THERMAL_MIN_KV, THERMAL_MAX_KV,out = frame.thermal)
 
-                        frame.thermal, stats = imageprocessing.normalize(
+                        frame.thermal, stats = normalize(
                             frame.thermal,
                             min=THERMAL_MIN_KV,
                             max=THERMAL_MAX_KV,
@@ -410,7 +396,7 @@ def get_data(clip_samples, extra_args):
                         if not stats[0]:
                             frame.thermal = np.zeros((frame.thermal.shape))
                         #i dont think we need to normalize the same for all
-                        frame.filtered, stats = imageprocessing.normalize(
+                        frame.filtered, stats = normalize(
                             frame.filtered
                         )
 
