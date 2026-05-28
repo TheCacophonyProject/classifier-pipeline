@@ -54,6 +54,8 @@ def get_acceptable_labels():
 
 def get_excluded():
     return [
+        "noise",
+        "agouti",
         "animal",
         "goat",
         "lizard",
