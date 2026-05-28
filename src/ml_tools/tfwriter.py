@@ -95,7 +95,7 @@ def create_tf_records(
     logging.info(
         "writing to output path: %s for %s recordings", output_path, len(source_files))
     
-    num_processes = 2
+    num_processes = 8
     writer_i = 0
     index = 0
     jobs_per_process = 100 * num_processes
