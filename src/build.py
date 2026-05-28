@@ -780,6 +780,10 @@ def main():
 
     print_counts(*datasets)
     print("split data")
+    import psutil, os
+
+    mem_mb = psutil.Process(os.getpid()).memory_info().rss / 1024 / 1024
+    logging.info("Memory used after split: %.1f MB", mem_mb)
 
     dataset_counts = {}
     # create_tf_records = create_thermal_records

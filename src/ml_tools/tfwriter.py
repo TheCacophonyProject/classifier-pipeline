@@ -17,6 +17,7 @@ from multiprocessing import Process, Queue
 import os
 from absl import logging
 import numpy as np
+import psutil
 import tensorflow as tf
 
 
@@ -38,6 +39,7 @@ def process_job(queue, labels, base_dir, save_data, writer_i, extra_args):
         samples = queue.get()
         try:
             if samples == "DONE":
+                logging.info("Worker %s done: received %s samples, processed %s files", name,i, files)
                 writer.close()
                 break
             else:
@@ -48,7 +50,8 @@ def process_job(queue, labels, base_dir, save_data, writer_i, extra_args):
                 del samples
 
                 if i % int(2500 / num_frames) == 0:
-                    logging.info("Saved %s ", files)
+                    mem_mb = psutil.Process().memory_info().rss / 1024**2
+                    logging.info("Saved %s to %s  mem %.1f MB", files, name, mem_mb)
                     gc.collect()
                     writer.flush()
         except:
@@ -78,7 +81,7 @@ def create_tf_records(
     logging.info(
         "writing to output path: %s for %s samples", output_path, len(samples_by_source)
     )
-    num_processes = 1
+    num_processes = 8
     writer_i = 0
     index = 0
     jobs_per_process = 100 * num_processes
@@ -107,7 +110,8 @@ def create_tf_records(
                 added += 1
 
             index += jobs_per_process
-            logging.info("Processing %d", job_queue.qsize())
+            mem_mb = psutil.Process().memory_info().rss / 1024**2
+            logging.info("Processing %d mem %.1f MB", job_queue.qsize(), mem_mb)
             for i in range(len(processes)):
                 job_queue.put(("DONE"))
             for process in processes:
@@ -118,7 +122,8 @@ def create_tf_records(
                     for process in processes:
                         process.terminate()
                     exit()
-            logging.info("Saved %s", len(dataset.samples_by_id))
+            mem_mb = psutil.Process().memory_info().rss / 1024**2
+            logging.info("Saved %s mem %.1f MB", len(dataset.samples_by_id), mem_mb)
 
     except:
         logging.error("Error saving track info", exc_info=True)

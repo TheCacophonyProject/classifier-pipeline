@@ -329,7 +329,6 @@ def get_data(clip_samples, extra_args):
                     cropped.float_arrays()
                     track_frames.append(cropped)
                     by_frame_number[f.frame_number] = (cropped, median_temp)
-
             else:
                 raise Exception(
                     "Need to implement min max filtered values for hdf5 track"
@@ -350,8 +349,6 @@ def get_data(clip_samples, extra_args):
                     normalize=True,
                     cropped=True,
                 )
-
-            clahe = cv2.createCLAHE(clipLimit=2, tileGridSize=(2,2))
 
             # normalize by maximum difference between background and tracked region
             # probably only need to use difference on the frames used for this record
@@ -460,6 +457,7 @@ def get_data(clip_samples, extra_args):
                 thermalNorm = np.array(thermalNorm)
 
                 data.append((sample, (thermalRaw, filtered,thermalNorm), features))
+            by_frame_number ={}
     except:
         logging.error(
             "Cant get Samples for %s", clip_samples[0].source_file, exc_info=True
