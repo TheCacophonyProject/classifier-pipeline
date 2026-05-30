@@ -361,19 +361,23 @@ def get_data(source_file,excluded_tags, extra_args):
                             )
 
 
-                        frame.mask = frame.thermal.copy()                        
-                        # Uuse mask for CLAHE
+
+                        # this is actually normalized thermal not mask
+                        frame.mask = frame.thermal.copy() 
                         frame.mask -= temp_median
-                        if thermal_min == 0:
+                        # check that we have nice values other wise allow negatives when normalizing
+                        if np.median(frame.mask) >= 0:
                             np.clip(
                                 frame.mask, a_min=0, a_max=None, out=frame.mask
                             )
                         frame.mask, stats = normalize(
-                            frame.thermal,
+                            frame.mask,
                         )
 
                         if not stats[0]:
                             frame.mask = np.zeros((frame.mask.shape))
+                        else:
+                            frame.mask = exposure.equalize_adapthist(frame.mask,     kernel_size=(frame.mask.shape[0] // 2, frame.mask.shape[1]//2),clip_limit =0.008)
 
 
 
@@ -391,6 +395,11 @@ def get_data(source_file,excluded_tags, extra_args):
                         if not stats[0]:
                             frame.thermal = np.zeros((frame.thermal.shape))
                         #i dont think we need to normalize the same for all
+                
+
+                        # check that we have nice values other wise allow negatives when normalizing
+                        if np.median(frame.filtered) >= 0:
+                            np.clip(frame.filtered, a_min =0 , a_max = None,out = frame.filtered)
                         frame.filtered, stats = normalize(
                             frame.filtered
                         )
@@ -402,7 +411,6 @@ def get_data(source_file,excluded_tags, extra_args):
                             frame.filtered =exposure.equalize_adapthist(frame.filtered,     kernel_size=(frame.filtered.shape[0] // 2, frame.filtered.shape[1]//2),clip_limit =0.008)
                       
                       
-                        frame.mask = exposure.equalize_adapthist(frame.mask,     kernel_size=(frame.mask.shape[0] // 2, frame.mask.shape[1]//2),clip_limit =0.008)
                         if frame.region.width > resize_dim or frame.region.height >resize_dim:
 
                             # downsize
