@@ -95,7 +95,8 @@ def create_tf_records(
     logging.info(
         "writing to output path: %s for %s recordings", output_path, len(source_files))
     
-    num_processes = 8
+    num_processes = os.cpu_count()
+    logging.info("Using %s processes",num_processes)
     writer_i = 0
     index = 0
     jobs_per_process = 600 * num_processes
