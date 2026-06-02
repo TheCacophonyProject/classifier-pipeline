@@ -101,7 +101,10 @@ def evaluate_dir(
                 output = model.predict(preprocessed)
                 prediction = TrackPrediction(data[0], model.labels)
                 prediction.classified_frames(frames, output, masses)
-                for track in meta_data["Tracks"]:
+                tracks = meta_data.get("Tracks", [])
+                if len(tracks) == 0:
+                    tracks = meta_data.get("tracks", [])
+                for track in tracks:
                     if track["id"] == track_id:
                         track["fp_model_predictions"] = prediction.get_metadata(None)
                         break
