@@ -74,7 +74,7 @@ def create_tf_example(sample, data, features, labels, num_frames, country_code):
     average_dim = int(round(np.mean(average_dim) ** 0.5))
     thermal_raw = list(data[0])
     filtereds = list(data[1])
-    thermal_norm = list(data[1])
+    thermal_norm = list(data[2])
 
     image_id = sample.unique_id
     image_height, image_width = thermal_raw[0].shape
@@ -370,6 +370,7 @@ def get_data(source_file,excluded_tags, extra_args):
                             np.clip(
                                 frame.mask, a_min=0, a_max=None, out=frame.mask
                             )
+
                         frame.mask, stats = normalize(
                             frame.mask,
                         )
@@ -424,13 +425,16 @@ def get_data(source_file,excluded_tags, extra_args):
                             )
                        
                         
-
                         # frame.mask = clahe.apply(np.uint8(frame.mask))
                         # frame.thermal, stats = imageprocessing.normalize(
                         #     frame.thermal, new_max=255
                         # )
+
+                        # cv2.imshow("f",np.uint8(255*frame.mask))
                         # cv2.imshow("t",np.uint8(255*frame.filtered))
+                        # cv2.moveWindow("t",0,0)
                         # cv2.waitKey()
+                        # frame.filtered[:] = 0
                     assert frame.thermal.shape == (45,45), f"SHape is wrong {frame.region}"
                     filtered.append(frame.filtered)
                     thermalRaw.append(frame.thermal)
