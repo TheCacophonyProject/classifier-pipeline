@@ -130,7 +130,7 @@ def load_clip_data(cptv_file):
             track
             for track in clip.tracks
             if not filter_track(track, BuildConfig.EXCLUDED_TAGS, reason)
-            # and track.fp_frames is None
+            and track.fp_frames is None
         ]
         if len(clip.tracks) == 0:
             logging.info("No tracks after filtering %s", cptv_file)
