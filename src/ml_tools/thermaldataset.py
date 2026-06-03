@@ -29,10 +29,10 @@ IMG_SIZE = 45
 
 
 # labels can be any subset of this, prevents new labels being trained on until we explicitly add them to here
-def get_acceptable_labels():
+def get_acceptable_labels(remapped_labels):
     logging.warning("Need to add remapped labels into acceptable labels")
-    return None
-    return [
+
+    accepted_labels =  [
         "bird",
         "cat",
         "deer",
@@ -51,6 +51,10 @@ def get_acceptable_labels():
         "wallaby",
     ]
 
+    for k, v in remapped_labels.items():
+        if v in accepted_labels and k not in accepted_labels:
+            accepted_labels.append(k)
+    return accepted_labels
 
 def get_excluded():
     return [
@@ -84,8 +88,9 @@ def get_excluded():
 
 
 def get_remapped(multi_label=False):
-    land_bird = "land-bird" if multi_label else "bird"
-    return {
+    land_bird = "bird"
+
+    mappings  ={
         "brushtail possum": "possum",
         "fox": "dog",
         "echidna": "hedgehog",
@@ -106,8 +111,12 @@ def get_remapped(multi_label=False):
         "pukeko": land_bird,
         "quail": land_bird,
         "chicken": land_bird,
+        "weka": land_bird,
     }
-
+    if multi_label:
+        mappings["chicken"]= "chicken"
+        mappings["weka"]= "weka"
+    return mappings
 
 def get_extra_mappings(labels):
     land_birds = ["land-bird"]

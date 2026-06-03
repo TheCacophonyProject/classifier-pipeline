@@ -542,15 +542,7 @@ class KerasModel(Interpreter):
             self.excluded_labels, self.remapped_labels = get_excluded(
                 self.data_type, self.params.multi_label
             )
-            acceptable_types = get_acceptable_labels(self.data_type)
-            if acceptable_types is not None:
-                for lbl in self.labels:
-                    if lbl not in acceptable_types and lbl not in self.excluded_labels:
-                        logging.info(
-                            "Adding %s to excluded list as it is not in our acceptable label list",
-                            lbl,
-                        )
-                        self.excluded_labels.append(lbl)
+            
 
         if self.params.remapped_labels is not None:
             self.remapped_labels = self.params.remapped_labels
@@ -558,10 +550,19 @@ class KerasModel(Interpreter):
             self.remapped_labels, self.remapped_labels = get_excluded(
                 self.data_type, self.params.multi_label
             )
+        acceptable_types = get_acceptable_labels(self.data_type,self.remapped_labels)
+        if acceptable_types is not None:
+            for lbl in self.labels:
+                if lbl not in acceptable_types and lbl not in self.excluded_labels:
+                    logging.info(
+                        "Adding %s to excluded list as it is not in our acceptable label list",
+                        lbl,
+                    )
+                    self.excluded_labels.append(lbl)
         train_files = self.data_dir / "train"
         validate_files = self.data_dir / "validation"
         logging.info(
-            "Excluding %s remapping %s", self.excluded_labels, self.remapped_labels
+            "Excluding %s remapping %s accepted labels %s", self.excluded_labels, self.remapped_labels,acceptable_types
         )
 
         if self.params.multi_label and "land-bird" not in self.labels:
@@ -1460,10 +1461,10 @@ class ClearMemory(Callback):
         tf.keras.backend.clear_session()
 
 
-def get_acceptable_labels(type):
+def get_acceptable_labels(type,remapped_labels):
     if type == "thermal":
-        return thermaldataset.get_acceptable_labels()
-    return irdataset.get_acceptable_labels()
+        return thermaldataset.get_acceptable_labels(remapped_labels)
+    return irdataset.get_acceptable_labels(remapped_labels)
 
 
 def get_excluded(type, multi_label=False):
