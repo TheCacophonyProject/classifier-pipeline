@@ -724,7 +724,7 @@ class KerasModel(Interpreter):
             mode="max",
         )
         earlyStopping = tf.keras.callbacks.EarlyStopping(
-            patience=22,
+            patience=11,
             monitor=(
                 "val_binary_accuracy"
                 if self.params.multi_label
