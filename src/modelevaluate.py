@@ -865,7 +865,7 @@ def main():
     weights = None
     if args.model_file:
         model_file = Path(args.model_file)
-    if args.weights:
+    if args.weights and args.weights != "final":
         weights = model_file / args.weights
     base_dir = Path(config.base_folder) / "training-data"
     # shredhold from res

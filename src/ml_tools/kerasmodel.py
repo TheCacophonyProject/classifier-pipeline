@@ -564,11 +564,13 @@ class KerasModel(Interpreter):
         logging.info(
             "Excluding %s remapping %s accepted labels %s", self.excluded_labels, self.remapped_labels,acceptable_types
         )
-
-        if self.params.multi_label and "land-bird" not in self.labels:
-            self.labels.append("land-bird")
+        if self.params.multi_label:
+            if "weka" not in self.labels:
+                self.labels.append("weka")
+            if "chicken" not in self.labels:
+                self.labels.append("chicken")
+        self.labels.sort()
         self.orig_labels = self.labels.copy()
-
         self.preprocess_fn = self.get_preprocess_fn()
         self.train, remapped, new_labels, epoch_size = get_dataset(
             train_files,
@@ -883,43 +885,56 @@ class KerasModel(Interpreter):
                 true_categories = np.int64(tf.argmax(true_categories, axis=1))
         y_pred = self.model.predict(dataset)
         pred_per_track = {}
-
         # if self.params.multi_label:
         # predicted_categori/es = []
         # for p in y_pred:
         # predicted_categories.append(tf.where(p >= 0.8).numpy().ravel())
         # predicted_categories = np.int64(predicted_categories)
 
-        flat_y = []
         for y, track_id, mass, p in zip(true_categories, track_ids, avg_mass, y_pred):
-            if self.params.multi_label:
-                y_max = np.argmax(y)
-            else:
-                y_max = y
+            # if self.params.multi_label:
+            #     y_max = np.argmax(y)
+            # else:
+            #     y_max = y
             track_pred = pred_per_track.setdefault(
-                track_id, (y_max, TrackPrediction(track_id, self.labels))
+                track_id, (np.nonzero(y)[0],TrackPrediction(track_id, self.labels))
             )
             track_pred[1].classified_frame(None, p, mass)
-
+        flat_y = []
         results = []
         confidences = []
         raw_class_confidences = []
-        for y, pred in pred_per_track.values():
+        labels = self.labels.copy()
+        labels.append("Nothing")
+        for y_true, pred in pred_per_track.values():
             pred.normalize_score()
             preds = np.array([p.prediction for p in pred.predictions])
 
+            # if we do multi label we may of multiple y_true and preds
+            # otherwise this will calculate the same as before
             no_smoothing = np.mean(preds, axis=0)
-            best_pred = np.argmax(no_smoothing)
-            results.append(best_pred)
-            confidences.append(no_smoothing[best_pred])
-            flat_y.append(y)
-            raw_class_confidences.append(no_smoothing)
+            preds = np.where(no_smoothing >= 0.5)[0]
+            if len(preds)==0:
+                preds = [np.argmax(no_smoothing)]
+            for y in y_true:
+                if y in preds:
+                    idx = np.argmax(preds ==y)
+                    results.append(idx)
+                    confidences.append(no_smoothing[idx])
+                    raw_class_confidences.append(no_smoothing)
+                    flat_y.append(y)
 
+                else:
+                    for idx in preds:
+                        results.append(idx)
+                        confidences.append(no_smoothing[idx])
+                        flat_y.append(y)
+                        raw_class_confidences.append(no_smoothing)
+            assert len(results) == len(flat_y)
         true_categories = np.int64(flat_y)
         # else:
         #     predicted_categories = np.int64(tf.argmax(y_pred, axis=1))
-        labels = self.labels.copy()
-        labels.append("Nothing")
+        
         results = np.int64(results)
         confidences = np.array(confidences)
 

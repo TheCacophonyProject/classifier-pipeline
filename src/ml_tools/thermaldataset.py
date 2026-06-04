@@ -30,7 +30,7 @@ IMG_SIZE = 45
 
 # labels can be any subset of this, prevents new labels being trained on until we explicitly add them to here
 def get_acceptable_labels(remapped_labels):
-    logging.warning("Need to add remapped labels into acceptable labels")
+    # logging.warning("Need to add remapped labels into acceptable labels")
 
     accepted_labels =  [
         "bird",
@@ -49,8 +49,9 @@ def get_acceptable_labels(remapped_labels):
         "sheep",
         "vehicle",
         "wallaby",
+        "weka",
+        "chicken"
     ]
-
     for k, v in remapped_labels.items():
         if v in accepted_labels and k not in accepted_labels:
             accepted_labels.append(k)
@@ -110,17 +111,16 @@ def get_remapped(multi_label=False):
         "pheasant": land_bird,
         "pukeko": land_bird,
         "quail": land_bird,
-        "chicken": land_bird,
-        "weka": land_bird,
     }
-    if multi_label:
-        mappings["chicken"]= "chicken"
-        mappings["weka"]= "weka"
+    if not multi_label:
+        mappings["chicken"]= "bird"
+        mappings["weka"]= "bird"
     return mappings
 
 def get_extra_mappings(labels):
-    land_birds = ["land-bird"]
+    land_birds = ["chicken","weka"]
     if "bird" not in labels:
+        logging.info("Extra mappings none")
         return None
     bird_index = labels.index("bird")
     values = []
@@ -130,6 +130,8 @@ def get_extra_mappings(labels):
             l_i = labels.index(l)
             keys.append(l_i)
             values.append(bird_index)
+    if len(keys)==0:
+        return None
     extra_label_map = tf.lookup.StaticHashTable(
         initializer=tf.lookup.KeyValueTensorInitializer(
             keys=tf.constant(keys),
@@ -138,7 +140,8 @@ def get_extra_mappings(labels):
         default_value=tf.constant(-1),
         name="extra_label_map",
     )
-    logging.info("Extra label mapping is %s to %s ", keys, values)
+    for key,value in zip(keys,values):
+        logging.info("Extra label mapping is %s to %s ", labels[key], labels[value])
     return extra_label_map
 
 
