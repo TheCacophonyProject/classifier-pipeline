@@ -916,13 +916,20 @@ class KerasModel(Interpreter):
             preds = np.where(no_smoothing >= 0.5)[0]
             if len(preds)==0:
                 preds = [np.argmax(no_smoothing)]
+            if len(y_true)>1:
+                ll  = []
+                for y in y_true:
+                    ll.append(labels[y])
+                logging.info("Have multiple labels %s",ll)
             for y in y_true:
                 if y in preds:
-                    idx = np.argmax(preds ==y)
-                    results.append(idx)
-                    confidences.append(no_smoothing[idx])
+                    idx = y
+                    results.append(y)
+                    confidences.append(no_smoothing[y])
                     raw_class_confidences.append(no_smoothing)
                     flat_y.append(y)
+                    if len(y_true)>1:
+                        logging.info("Pred %s for %s confs %s",labels[idx], labels[y], np.round(100*no_smoothing))
 
                 else:
                     for idx in preds:
@@ -930,6 +937,9 @@ class KerasModel(Interpreter):
                         confidences.append(no_smoothing[idx])
                         flat_y.append(y)
                         raw_class_confidences.append(no_smoothing)
+                        if len(y_true)>1:
+                            logging.info("Wrong Pred %s for %s confs %s",labels[idx], labels[y], np.round(100*no_smoothing))
+
             assert len(results) == len(flat_y)
         true_categories = np.int64(flat_y)
         # else:

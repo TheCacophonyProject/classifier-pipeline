@@ -206,6 +206,9 @@ def load_dataset(filenames, remap_lookup, labels, args):
     elif args.get("include_features"):
         filter_none = lambda x, y: tf.size(x[1]) > 0
         dataset = dataset.filter(filter_none)
+    if augment:
+        dataset = prepare_cutmix_dataset(dataset, img_size=image_size[0])
+
     return dataset
 
 
@@ -345,6 +348,7 @@ def read_tfrecord(
             label = tf.one_hot(label, num_labels)
             if extra_label_map is not None:
                 label = tf.reduce_max(label, axis=0)
+        label = tf.cast(label,dtype=tf.float32)
         if include_track:
 
             track_id = tf.cast(example["image/track_id"], tf.int32)
@@ -361,6 +365,79 @@ def read_tfrecord(
     elif include_features:
         return (rgb_image, tf.squeeze(example["image/features"]))
     return rgb_image
+
+
+def prepare_cutmix_dataset(dataset_original, img_size=32*5):
+    # 1. Create a second dataset and shuffle it to mix different images together
+    dataset_shuffled = dataset_original.shuffle(buffer_size=4096)
+    
+    # 2. Zip them together so each element is ((img1, lbl1), (img2, lbl2))
+    zipped_dataset = tf.data.Dataset.zip((dataset_original, dataset_shuffled))
+    
+    # 3. Map the CutMix function (passed via lambda to include parameters)
+    cutmix_dataset = zipped_dataset.map(
+        lambda d1, d2: video_mosaic_cutmix(d1, d2, img_size=img_size),
+        num_parallel_calls=tf.data.AUTOTUNE
+    )
+        
+    return cutmix_dataset
+
+def video_mosaic_cutmix(data1, data2, grid_rows=5, grid_cols=5, img_size=5*32, alpha=1.0):
+    image1, label1 = data1
+    image2, label2 = data2
+    
+    # 1. Define dimensions of an individual sub-frame
+    sub_h = img_size // grid_rows
+    sub_w = img_size // grid_cols
+    total_cells = grid_rows * grid_cols
+    
+    # 2. Sample how many sub-frames to replace (from Beta distribution)
+    beta_dist = tf.compat.v1.distributions.Beta(alpha, alpha)
+    lam = beta_dist.sample([])
+    
+    # Convert lambda to a discrete number of blocks to swap (at least 1, at most total-1)
+    num_blocks_to_swap = tf.cast(
+        tf.math.round((1.0 - lam) * tf.cast(total_cells, tf.float32)), 
+        tf.int32
+    )
+    num_blocks_to_swap = tf.clip_by_value(num_blocks_to_swap, 1, total_cells - 1)
+    
+    # 3. Create a random binary mask for the grid cells
+    # Generate a random shuffle of grid indices
+    indices = tf.range(total_cells)
+    shuffled_indices = tf.random.shuffle(indices)
+    
+    # Select which indices will be replaced by image2
+    swap_indices = shuffled_indices[:num_blocks_to_swap]
+    
+    # Build a 1D boolean mask for the cells
+    cell_mask_1d = tf.reduce_any(
+        tf.equal(tf.expand_dims(indices, 0), tf.expand_dims(swap_indices, 1)), 
+        axis=0
+    )
+    
+    # Reshape the 1D mask back into the 2D grid shape (e.g., 2x2)
+    grid_mask = tf.reshape(cell_mask_1d, [grid_rows, grid_cols])
+    
+    # 4. Upsample the grid mask to full image resolution using block repeats
+    # This stretches a 2x2 mask out to a 224x224 mask perfectly aligned to sub-frames
+    mask_expanded = tf.repeat(grid_mask, repeats=sub_h, axis=0)
+    mask_expanded = tf.repeat(mask_expanded, repeats=sub_w, axis=1)
+    
+    # Add a channel dimension and cast to float
+    mask_expanded = tf.cast(mask_expanded[:, :, tf.newaxis], tf.float32)
+    
+    # 5. Blend the two mosaic images using our clean grid-aligned mask
+    mixed_image = image1 * (1.0 - mask_expanded) + image2 * mask_expanded
+    
+    # 6. Compute exact adjusted lambda based on how many cells were swapped
+    actual_swap_ratio = tf.cast(num_blocks_to_swap, tf.float32) / tf.cast(total_cells, tf.float32)
+    adjusted_lam = 1.0 - actual_swap_ratio
+    
+    # Blend the one-hot labels
+    mixed_label = label1 * adjusted_lam + label2 * (1.0 - adjusted_lam)
+    
+    return mixed_image, mixed_label
 
 
 def tile_images(images):
@@ -406,14 +483,14 @@ def main():
         labels,
         batch_size=32,
         image_size=(160, 160),
-        augment=False,
+        augment=True,
         # preprocess_fn=tf.keras.applications.inception_v3.preprocess_input,
         resample=False,
         shuffle=False,
         include_features=False,
         remapped_labels=get_remapped(),
         excluded_labels=excluded_labels,
-        include_track=True,
+        include_track=False,
         num_frames=25,
         deterministic=True,
     )
@@ -427,7 +504,7 @@ def main():
         batch_i = 0
         print("epoch", e)
         for x, y in resampled_ds:
-            save_batch(x, y, labels, save_dir, tracks=True)
+            save_batch(x, y, labels, save_dir, tracks=False)
             # show_batch(x, y, labels, save=save_dir / f"{batch_i}.jpg", tracks=True)
             batch_i += 1
     # return
@@ -444,9 +521,15 @@ def save_batch(image_batch, label_batch, labels, save_dir, tracks=False):
         label_batch = label_batch[0]
     for n, img in enumerate(image_batch):
         img = np.uint8(img)
-        file_title = (
-            f"{labels[np.argmax(label_batch[n])]}-{track_batch[n]}-{save_index}.png"
-        )
+
+        if tracks:
+            file_title = (
+                f"{labels[np.argmax(label_batch[n])]}-{track_batch[n]}-{save_index}.png"
+            )
+        else:
+            file_title = (
+                f"{labels[np.argmax(label_batch[n])]}-{save_index}.png"
+            )
         save_index += 1
         file_name = save_dir / file_title
         saveclassify_image(img, file_name)
