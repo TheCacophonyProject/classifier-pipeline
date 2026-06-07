@@ -44,7 +44,7 @@ def main():
     init_logging()
     labels = ['bird', 'cat', 'deer', 'dog', 'false-positive', 'hedgehog', 'human', 'kiwi', 'leporidae', 'mustelid', 'penguin', 'possum', 'rodent', 'sheep', 'vehicle', 'wallaby','weka','chicken'] 
   
-    #new_labels = extract_embeddings(args.dataset,args.model,args.output,weights = args.weights,included_labels = labels)
+    new_labels = extract_embeddings(args.dataset,args.model,args.output,weights = args.weights,included_labels = labels)
     label_f = args.output.with_name(f"{args.output.stem}-labels.npy")
     new_labels = np.load(label_f)
     logging.info("Loaded labels %s",new_labels)
@@ -60,6 +60,8 @@ def run_umap(model_file,features_file,labels):
     import seaborn as sns
     from sklearn.cluster import AgglomerativeClustering
 
+    multi_label = True
+
     meta_file = model_file.with_suffix(".json")
     with open(meta_file) as f:
         meta = json.load(f)
@@ -67,6 +69,7 @@ def run_umap(model_file,features_file,labels):
     features = np.load(features_file)
     labels_file = features_file.with_name(f"{features_file.stem.replace("-features","-labels")}.npy")
     true_labels = np.load(labels_file)
+
 
     # dont do fps
     fp_index = np.where(labels == "false-positive")[0][0]
@@ -198,7 +201,7 @@ def extract_embeddings(dataset_dir, model_file, output_file, weights = None,batc
     input_shape = model.input.shape  # (batch, h, w, c)
     img_h = input_shape[1]
     num_channels = input_shape[-1]
-    channels = [TrackChannels.thermal.name, TrackChannels.filtered.name, TrackChannels.filtered.name][:num_channels]
+    # channels = [TrackChannels.thermal.name, TrackChannels.filtered.name, TrackChannels.filtered.name][:num_channels]
 
     dataset, _, new_labels, _ = get_dataset(
         thermaldataset.load_dataset,
@@ -210,11 +213,23 @@ def extract_embeddings(dataset_dir, model_file, output_file, weights = None,batc
         excluded_labels=excluded_labels,
         remapped_labels=remapped_labels,
         deterministic=True,
-        channels=channels,
+        # channels=channels,
     )
 
     predictions = truncated.predict(dataset)
-    true_labels = np.concatenate([np.argmax(y.numpy(), axis=1) for _, y in dataset])
+    true_labels = []
+    bird_index = labels.index("bird")
+    for _,y in dataset:
+        non_zero = np.nonzero(y.numpy)[0]
+        if len(non_zero) >1:
+            # at the moment only bird or something else as multi
+            y = non_zero[non_zero!=bird_index][0]
+            print("FOr non zero",non_zero, " Using ", labels[y])
+        else:
+            y = non_zero[0]
+        true_labels.append(y)
+    # true_labels = np.concatenate([np.argmax(y.numpy(), axis=1) for _, y in dataset])
+    true_labels   = np.array(true_labels)
     output_predictions = output_file.with_name(f"{output_file.stem}-features.npy")
     output_labels = output_file.with_name(f"{output_file.stem}-labels.npy")
     new_labels_out = output_file.with_name(f"{output_file.stem}-classes.npy")
