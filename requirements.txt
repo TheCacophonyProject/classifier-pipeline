@@ -29,3 +29,4 @@ h5py~=3.14.0
 # cacophonyapi
 
 scikit-image~=0.26.0
+tensorflow-probability[tf]
