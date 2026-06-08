@@ -3,7 +3,6 @@ import random
 from ml_tools import tools
 from ml_tools.frame import TrackChannels
 import logging
-from ml_tools import imageprocessing
 from track.region import Region
 import cv2
 from ml_tools.tools import FrameTypes
@@ -32,7 +31,8 @@ def convert(image):
 
 
 def augement_frame(frame, frame_size, dim):
-    frame = imageprocessing.resize_cv(
+    from ml_tools.imageprocessing import resize_cv
+    frame = resize_cv(
         frame,
         dim,
         extra_h=random.randint(0, int(frame_size * 0.05)),
@@ -53,6 +53,69 @@ def augement_frame(frame, frame_size, dim):
     return image.numpy()
 
 
+
+def preprocess_frame_v2(
+    frame,
+    out_dim,
+    region,
+    crop_rectangle=None,
+    median=None,
+):
+    from ml_tools.imageprocessing import adapt_hist,normalize
+    THERMAL_MIN_KV =  27315 
+    THERMAL_MAX_KV = 31515 #42 celcius
+    # enlarge to
+    enlarged_region = region.copy()
+
+    if region.width > out_dim or region.height >out_dim:
+
+        enlarged_region.enlarge_for_rotation(final_dim = out_dim,extra_needed = 0)
+    else:
+        enlarged_region.enlarge_to(out_dim)
+
+    # enlarged_region.enlarge_to(out_dim)
+    # logging.info("original region %s now %s",region,enlarged_region)
+    cropped_frame = frame.crop_by_region_with_padding(enlarged_region,crop_rectangle,out_dim)
+    cropped_frame.float_arrays()
+    # logging.info("Frame has been cropped  was %s now is %s",frame.thermal.shape,cropped_frame.thermal.shape)
+    cropped_frame.thermal_norm = cropped_frame.thermal.copy()
+    cropped_frame.thermal_norm -= median
+    if np.median(cropped_frame.thermal_norm) >= 0:
+        np.clip(
+            cropped_frame.thermal_norm, a_min=0, a_max=None, out=cropped_frame.mask
+        )
+    cropped_frame.thermal_norm, _ = normalize(
+        cropped_frame.thermal_norm,
+    )
+    cropped_frame.thermal_norm =adapt_hist(cropped_frame.thermal_norm)*255
+    
+
+    cropped_frame.filtered, _ = normalize(
+        cropped_frame.filtered,
+    )
+    cropped_frame.filtered =adapt_hist(cropped_frame.filtered) * 255
+    np.clip(cropped_frame.thermal, THERMAL_MIN_KV, THERMAL_MAX_KV,out = cropped_frame.thermal)
+
+    cropped_frame.thermal, _ = normalize(
+        cropped_frame.thermal,
+        min=THERMAL_MIN_KV,
+        max=THERMAL_MAX_KV,
+        new_max=255
+    )
+
+    if cropped_frame.region.width > out_dim or cropped_frame.region.height >out_dim:
+
+        # downsize
+        cropped_frame.resize_with_aspect(
+            (out_dim,out_dim),
+            crop_rectangle,
+            keep_edge=False,
+            original_region=region,
+            interpolation = cv2.INTER_AREA
+        )
+    cropped_frame.preprocessed = True
+    return cropped_frame
+
 def preprocess_frame(
     frame,
     out_dim,
@@ -67,6 +130,7 @@ def preprocess_frame(
     median=None,
     clip_thermals_at_zero=True,
 ):
+    from imageprocessing import normalize
     if sub_median and median is None:
         median = np.median(frame.thermal)
     if not cropped:
@@ -93,7 +157,7 @@ def preprocess_frame(
         np.clip(cropped_frame.thermal, 0, None, out=cropped_frame.thermal)
 
     if filtered_norm_limits is not None:
-        cropped_frame.filtered, stats = imageprocessing.normalize(
+        cropped_frame.filtered, stats = normalize(
             cropped_frame.filtered,
             min=filtered_norm_limits[0],
             max=filtered_norm_limits[1],
@@ -104,7 +168,7 @@ def preprocess_frame(
             thermal_max = None
             if thermal_norm_limits is not None:
                 thermal_min, thermal_max = thermal_norm_limits
-            cropped_frame.thermal, _ = imageprocessing.normalize(
+            cropped_frame.thermal, _ = normalize(
                 cropped_frame.thermal, min=thermal_min, max=thermal_max, new_max=255
             )
     else:
@@ -157,6 +221,7 @@ def preprocess_movement(
     sample=None,
     seed = None
 ):
+    from ml_tools.imageprocessing import square_clip
     frame_types = {}
     data = []
     frame_samples = list(np.arange(len(preprocess_frames)))
@@ -173,7 +238,8 @@ def preprocess_movement(
             data.append(frame_types[channel])
             continue
         channel_segment = [frame.get_channel(channel) for frame in preprocess_frames]
-        channel_data, success = imageprocessing.square_clip(
+  
+        channel_data, success = square_clip(
             channel_segment,
             frames_per_row,
             (frame_size, frame_size),
@@ -187,7 +253,6 @@ def preprocess_movement(
         data.append(channel_data)
         frame_types[channel] = channel_data
     data = np.stack(data, axis=2)
-
     #
     # # # # # # for testing
     # global index
@@ -200,5 +265,4 @@ def preprocess_movement(
     if preprocess_fn:
         data = preprocess_fn(data)
 
-    # np.save(f"samples/{sample}-{index}.npy",np.float32(data))
     return np.float32(data)

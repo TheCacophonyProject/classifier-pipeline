@@ -50,7 +50,9 @@ def get_acceptable_labels(remapped_labels):
         "vehicle",
         "wallaby",
         "weka",
-        "chicken"
+        "chicken",
+        "pig",
+        "cow"
     ]
     for k, v in remapped_labels.items():
         if v in accepted_labels and k not in accepted_labels:

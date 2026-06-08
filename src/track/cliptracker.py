@@ -25,7 +25,7 @@ class ClipTracker(ABC):
         max_frames=None,
     ):
         self.max_frames = max_frames
-        config = config.get(self.type)
+        config = config.get(self.type,"thermal")
         self.scale = scale
         self.calculate_thumbnail_info = calculate_thumbnail_info
         # if scale:

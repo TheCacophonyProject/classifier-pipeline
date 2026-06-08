@@ -8,6 +8,11 @@ from PIL import Image
 import logging
 
 
+def adapt_hist(image):
+    from skimage import exposure
+
+    return exposure.equalize_adapthist(image,     kernel_size=(image.shape[0] // 2, image.shape[1]//2),clip_limit =0.008)
+
 def resize_and_pad(
     frame,
     new_dim,

@@ -185,35 +185,45 @@ class Rectangle:
 
 
 
-    # enlarge a region such that the aspect ration of final_dim will be maintained
-    # when it is resized to (final_dim,final_dim) and add extra pixels so that rotation augments
-    # dont get empty pixels
-    def enlarge_for_rotation(self, crop_rectangle, final_dim=32, extra_needed=13):
-        scale_percent = (final_dim / np.array([self.width, self.height])).min()
+    # # enlarge a region such that the aspect ratio of final_dim will be maintained
+    # # when it is resized to (final_dim,final_dim) and add extra pixels so that rotation augments
+    # # dont get empty pixels
+    # def enlarge_for_rotation(self, final_dim=32, extra_needed=13):
+    #     scale_percent = (final_dim / np.array([self.width, self.height])).min()
         
-        extra_pixels = extra_needed / scale_percent
-        height_enlarge = math.ceil(extra_pixels / 2)
+    #     extra_pixels = extra_needed / scale_percent
+    #     height_enlarge = math.ceil(extra_pixels / 2)
 
-        width_enlarge = math.ceil(extra_pixels / 2)
+    #     width_enlarge = math.ceil(extra_pixels / 2)
+    #     import logging
+    #     logging.info("Enlarging %s scale %s extra %s",self, scale_percent, extra_pixels)
+    #     adjusted_height = self.height + extra_pixels
+    #     adjusted_width = self.width + extra_pixels
+    #     if self.width > self.height:
+    #         diff = adjusted_width - adjusted_height
+    #         height_enlarge = math.ceil((extra_pixels + diff) / 2)
+    #     else:
+    #         diff = adjusted_height - adjusted_width
+    #         width_enlarge = math.ceil((extra_pixels + diff) / 2)
+    #         logging.info("Setting width enlarge to %s",width_enlarge)
 
-        adjusted_height = self.height + extra_pixels
-        adjusted_width = self.width + extra_pixels
-        if self.width > self.height:
-            diff = adjusted_width - adjusted_height
-            height_enlarge = math.ceil((extra_pixels + diff) / 2)
-        else:
-            diff = adjusted_height - adjusted_width
-            width_enlarge = math.ceil((extra_pixels + diff) / 2)
+    #     self.left -= width_enlarge
+    #     self.right += width_enlarge
+    #     self.top -= height_enlarge
+    #     self.bottom += height_enlarge
+    #     # self.enlarge_even(width_enlarge, height_enlarge, crop=crop_rectangle)
 
-        self.left -= width_enlarge
-        self.right += width_enlarge
-        self.top -= height_enlarge
-        self.bottom += height_enlarge
-        # self.enlarge_even(width_enlarge, height_enlarge, crop=crop_rectangle)
+
+    def enlarge_for_rotation(self,final_dim=32,extra_needed=13):
+        scale_percent = (final_dim / np.array([self.width, self.height])).min()
+        extra_pixels = math.ceil(extra_needed / scale_percent)
+        dim = max(self.width,self.height)
+        self.enlarge_to(dim +extra_pixels )
+
+
 
 
     def enlarge_to(self,max_dim):
-
         delta_w = max_dim - self.width
         delta_h = max_dim - self.height
         if delta_w >0:
