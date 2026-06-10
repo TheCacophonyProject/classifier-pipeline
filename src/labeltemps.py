@@ -390,29 +390,29 @@ def track_overlap_check(source_file, excluded_tags):
     # print("All labels ", all_labels)
     # matches = 0
 
-    for stat in all_track_stats:
-        matches = 0
-        expected_matches = label_counts[stat.label] - 1
-        t_id = stat.track_id
+    # for stat in all_track_stats:
+    #     matches = 0
+    #     expected_matches = label_counts[stat.label] - 1
+    #     t_id = stat.track_id
 
-        print(
-            f"source_file {stat.label} {clip.clip_id}:{t_id}: {cv_to_celcius(stat.min_min())}-{cv_to_celcius(stat.max_max())}"
-        )
-        for other in all_track_stats:
-            if stat == other:
-                continue
-            if stat.matches(other):
-                if stat.label != other.label:
-                    print(
-                        f"Wrong {stat.label} {clip.clip_id}:{t_id}: {cv_to_celcius(stat.min_min())}-{cv_to_celcius(stat.max_max())} is over laping with {other.label} {other.track_id}: {cv_to_celcius(other.min_min())}-{cv_to_celcius(other.max_max())} "
-                    )
-                else:
-                    matches += 1
-                    print(
-                        f"match {stat.label} {clip.clip_id}:{t_id}: {cv_to_celcius(stat.min_min())}-{cv_to_celcius(stat.max_max())} is over laping with {other.label} {other.track_id}: {cv_to_celcius(other.min_min())}-{cv_to_celcius(other.max_max())} "
-                    )
-        if matches != expected_matches:
-            print(f"Expect {expected_matches} and got {matches}")
+    #     print(
+    #         f"source_file {stat.label} {clip.clip_id}:{t_id}: {cv_to_celcius(stat.min_min())}-{cv_to_celcius(stat.max_max())}"
+    #     )
+    #     for other in all_track_stats:
+    #         if stat == other:
+    #             continue
+    #         if stat.matches(other):
+    #             if stat.label != other.label:
+    #                 print(
+    #                     f"Wrong {stat.label} {clip.clip_id}:{t_id}: {cv_to_celcius(stat.min_min())}-{cv_to_celcius(stat.max_max())} is over laping with {other.label} {other.track_id}: {cv_to_celcius(other.min_min())}-{cv_to_celcius(other.max_max())} "
+    #                 )
+    #             else:
+    #                 matches += 1
+    #                 print(
+    #                     f"match {stat.label} {clip.clip_id}:{t_id}: {cv_to_celcius(stat.min_min())}-{cv_to_celcius(stat.max_max())} is over laping with {other.label} {other.track_id}: {cv_to_celcius(other.min_min())}-{cv_to_celcius(other.max_max())} "
+    #                 )
+    #     if matches != expected_matches:
+    #         print(f"Expect {expected_matches} and got {matches}")
     return all_track_stats
 
 
