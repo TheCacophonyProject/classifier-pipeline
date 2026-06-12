@@ -222,7 +222,10 @@ class Dataset:
             seed = seed
         )
         sample_id = 1
-        with Pool(processes=8) as pool:
+        import psutil
+        num_processes = psutil.cpu_count(logical=False)
+
+        with Pool(processes=num_processes) as pool:
             for clip_header, filtered_stats in pool.imap_unordered(
                 load_func, clips, chunksize=8
             ):

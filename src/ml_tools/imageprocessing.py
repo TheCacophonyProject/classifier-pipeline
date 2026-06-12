@@ -159,14 +159,14 @@ def normalize(data, min=None, max=None, new_max=1):
     Returns normalized array, stats tuple (Success, min used, max used)
     """
     if data.size == 0:
-        return np.zeros((data.shape)), (False, None, None)
+        return None, (False, None, None)
     if max is None:
         max = np.amax(data)
     if min is None:
         min = np.amin(data)
     if max == min:
         if max == 0:
-            return np.zeros((data.shape)), (False, max, min)
+            return None, (False, max, min)
         data = data / max
         return data, (True, max, min)
 

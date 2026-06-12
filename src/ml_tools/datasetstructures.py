@@ -996,9 +996,9 @@ def get_segments(
     skip_ffc=True,
     frame_min_mass=None,
     fp_frames=None,
-    repeat_frame_indices=True,
+    repeat_frame_indices=False,
     min_segments=None,
-    seed = None
+    seed = None,
 ):
     if min_frames is None:
         min_frames = segment_width / 4.0
@@ -1027,6 +1027,7 @@ def get_segments(
             and (
                 (has_no_mass or frame_min_mass is None) or region.mass >= frame_min_mass
             )
+            and region.width < 158 and region.height < 118 #dont want full size regions
         ]
         if fp_frames is not None and label not in FP_LABELS:
             frame_indices = [f for f in frame_indices if f not in fp_frames]
@@ -1237,16 +1238,6 @@ def get_segments(
                     segment_end = min(len(frame_indices), segment_end)
                     frames = frame_indices[segment_start:segment_end]
 
-                remaining = segment_width - len(frames)
-                # sample another same frames again if need be
-                if remaining > 0:
-                    extra_frames = rng.choice(
-                        frames,
-                        min(remaining, len(frames)),
-                        replace=False,
-                    )
-                    frames = np.concatenate([frames, extra_frames])
-                frames.sort()
                 relative_frames = frames - start_frame
                 mass_slice = mass_history[relative_frames]
                 segment_mass = np.sum(mass_slice)

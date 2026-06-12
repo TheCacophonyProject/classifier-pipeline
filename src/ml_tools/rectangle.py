@@ -214,9 +214,13 @@ class Rectangle:
     #     # self.enlarge_even(width_enlarge, height_enlarge, crop=crop_rectangle)
 
 
+    # enlarge so that when the image is downsized we have the extra pixels we need
     def enlarge_for_rotation(self,final_dim=32,extra_needed=13):
         scale_percent = (final_dim / np.array([self.width, self.height])).min()
         extra_pixels = math.ceil(extra_needed / scale_percent)
+
+        # extra_pixels = extra_needed * self.width / final_dim
+        # (final_dim / self.width)
         dim = max(self.width,self.height)
         self.enlarge_to(dim +extra_pixels )
 

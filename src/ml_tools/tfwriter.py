@@ -94,8 +94,9 @@ def create_tf_records(
     np.random.shuffle(source_files)
     logging.info(
         "writing to output path: %s for %s recordings", output_path, len(source_files))
-    
-    num_processes = os.cpu_count()
+
+    num_processes = psutil.cpu_count(logical=False)
+    num_processes = 1
     logging.info("Using %s processes",num_processes)
     writer_i = 0
     index = 0

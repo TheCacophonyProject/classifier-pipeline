@@ -14,6 +14,7 @@ from ml_tools.featurenorms import mean_v, std_v
 from ml_tools.frame import TrackChannels
 from pathlib import Path
 from ml_tools.tools import saveclassify_image
+tf.config.run_functions_eagerly(True)
 
 # seed = 1341
 # tf.random.set_seed(seed)
@@ -25,7 +26,6 @@ AUTOTUNE = tf.data.AUTOTUNE
 insect = None
 fp = None
 
-IMG_SIZE = 45
 
 
 # labels can be any subset of this, prevents new labels being trained on until we explicitly add them to here
@@ -51,8 +51,7 @@ def get_acceptable_labels(remapped_labels):
         "wallaby",
         "weka",
         "chicken",
-        "pig",
-        "cow"
+  
     ]
     for k, v in remapped_labels.items():
         if v in accepted_labels and k not in accepted_labels:
@@ -79,6 +78,8 @@ def get_excluded():
         "bandicoot",
         "horse",
         "otter",
+        "pig",
+        "cow"
         # "gray kangaroo",
         # "echidna",
         # "fox",
@@ -170,6 +171,22 @@ def load_dataset(filenames, remap_lookup, labels, args):
     if args.get("multi_label"):
         extra_label_map = get_extra_mappings(labels)
         logging.info("Using multi label")
+
+    rows = 5
+
+    # Ensure the division happens in float space, then compute the mosaic size
+    mosaic_size = tf.cast(image_size[0], tf.float32) / tf.cast(rows, tf.float32)
+    mosaic_larger_size = tf.math.floor(mosaic_size * 1.41)
+
+    mosaic_size = tf.cast(mosaic_size, dtype=tf.int32)
+    mosaic_larger_size = tf.cast(mosaic_larger_size, dtype=tf.int32)
+    # larger images are taken for rotating and random cropping augmentation
+    # TODO could take small ones for datasets other than test
+    difference = tf.math.subtract(mosaic_larger_size , mosaic_size)
+    padding = tf.math.ceil(tf.cast(difference,dtype=tf.float32) / 2.0)
+
+    # Cast everything to int32 at the end
+    padding = tf.cast(padding, dtype=tf.int32)
     dataset = dataset.map(
         partial(
             read_tfrecord,
@@ -177,6 +194,9 @@ def load_dataset(filenames, remap_lookup, labels, args):
             remap_lookup=remap_lookup,
             num_labels=len(labels),
             labeled=labeled,
+            mosaic_size = mosaic_size,
+            mosaic_larger_size = mosaic_larger_size,
+            padding = padding,
             augment=augment,
             preprocess_fn=preprocess_fn,
             include_features=include_features,
@@ -232,6 +252,9 @@ def read_tfrecord(
     remap_lookup,
     num_labels,
     labeled,
+    mosaic_size,
+    mosaic_larger_size,
+    padding,
     augment=False,
     preprocess_fn=None,
     only_features=False,
@@ -243,7 +266,7 @@ def read_tfrecord(
     channels=[TrackChannels.raw.name,TrackChannels.thermal.name, TrackChannels.filtered.name],
 ):
     logging.info(
-        "Read tf record with image %s lbls %s labeld %s aug  %s  prepr %s only features %s one hot %s include fetures %s num frames %s",
+        "Read tf record with image %s lbls %s labeld %s aug  %s  prepr %s only features %s one hot %s include fetures %s num frames %s mosaic_size %s mosaic_enalrged %s padding %s",
         image_size,
         num_labels,
         labeled,
@@ -253,24 +276,30 @@ def read_tfrecord(
         one_hot,
         include_features,
         num_frames,
+        mosaic_size,
+        mosaic_larger_size,
+        padding,
     )
     logging.info("Channels are %s",channels)
     load_images = not only_features
     tfrecord_format = {
         "image/class/label": tf.io.FixedLenFeature((), tf.int64, -1),
+        "image/num_frames":tf.io.FixedLenFeature((), tf.int64, 25),
     }
+  
+
     if load_images:
         if TrackChannels.filtered.name in channels:
             tfrecord_format["image/filtered_encoded"] = tf.io.FixedLenSequenceFeature(
-                [num_frames * IMG_SIZE * IMG_SIZE], dtype=tf.float32, allow_missing=True
+                [], dtype=tf.float32, allow_missing=True
             )
         if TrackChannels.thermal.name in channels:
             tfrecord_format["image/thermal_norm_encoded"] = tf.io.FixedLenSequenceFeature(
-                [num_frames * IMG_SIZE * IMG_SIZE], dtype=tf.float32, allow_missing=True
+                [], dtype=tf.float32, allow_missing=True
             )
         if TrackChannels.raw.name in channels:
             tfrecord_format["image/thermal_raw_encoded"] = tf.io.FixedLenSequenceFeature(
-                [num_frames * IMG_SIZE * IMG_SIZE], dtype=tf.float32, allow_missing=True
+                [], dtype=tf.float32, allow_missing=True
             )
     if include_track:
         tfrecord_format["image/track_id"] = tf.io.FixedLenFeature((), tf.int64, -1)
@@ -280,17 +309,18 @@ def read_tfrecord(
             [36 * 5 + 8], dtype=tf.float32, allow_missing=True
         )
     example = tf.io.parse_single_example(example, tfrecord_format)
+    num_frames = example["image/num_frames"]
     if load_images:
         if TrackChannels.thermal.name in channels:
             thermalnorm = 255.0*example["image/thermal_norm_encoded"]
-            thermals = tf.reshape(thermalnorm, [num_frames, IMG_SIZE, IMG_SIZE, 1])
+            thermals = tf.reshape(thermalnorm, [num_frames, mosaic_larger_size, mosaic_larger_size, 1])
         if TrackChannels.filtered.name in channels:
             filteredencoded = 255.0*example["image/filtered_encoded"]
-            filtered = tf.reshape(filteredencoded, [num_frames, IMG_SIZE, IMG_SIZE, 1])
+            filtered = tf.reshape(filteredencoded, [num_frames, mosaic_larger_size, mosaic_larger_size, 1])
         if TrackChannels.raw.name in channels:
 
             rawthermal = 255.0*example["image/thermal_raw_encoded"]
-            rawthermal = tf.reshape(rawthermal, [num_frames, IMG_SIZE, IMG_SIZE, 1])
+            rawthermal = tf.reshape(rawthermal, [num_frames, mosaic_larger_size, mosaic_larger_size, 1])
 
         rgb_image = None
         for type in channels:
@@ -314,22 +344,29 @@ def read_tfrecord(
             
             if tf.greater(random_value, 0.5):
                 rgb_image = tf.image.flip_left_right(rgb_image)
-        rgb_image = tf.ensure_shape(
-            rgb_image, (num_frames, IMG_SIZE, IMG_SIZE, len(channels))
-        )
+        # rgb_image = tf.ensure_shape(
+        #     rgb_image, [num_frames, mosaic_size, mosaic_size, len(channels)]
+        # )
         if augment:
-            rgb_image =  tf.image.random_crop(rgb_image, size=[num_frames,32, 32, 3])
+            rgb_image =  tf.image.random_crop(rgb_image, size=[num_frames,mosaic_size, mosaic_size, 3])
         else:
-            rgb_image = tf.image.crop_to_bounding_box(rgb_image, 7, 7, 32, 32)
+            rgb_image = tf.image.crop_to_bounding_box(rgb_image, padding,padding, mosaic_size, mosaic_size)
+
 
         if num_frames > 1:
+            pad_size = 25 - tf.shape(rgb_image)[0]
+            rgb_image = tf.pad(rgb_image, [[0, pad_size], [0, 0], [0, 0], [0, 0]])
+            rgb_image = tf.ensure_shape(rgb_image,[25,mosaic_size,mosaic_size, 3])
+            print(rgb_image.shape)
+
             rgb_image = tile_images(rgb_image)
+            print(rgb_image.shape)
 
         if augment:
             rgb_image = data_augmentation(rgb_image)
-        if num_frames == 1:
-            # remove the leading axis
-            rgb_image = tf.squeeze(rgb_image)
+        # if num_frames == 1:
+        #     # remove the leading axis
+        #     rgb_image = tf.squeeze(rgb_image)
 
         if preprocess_fn is not None:
             logging.info(
@@ -367,7 +404,7 @@ def read_tfrecord(
     return rgb_image
 
 
-def prepare_cutmix_dataset(dataset_original, img_size=32*5):
+def prepare_cutmix_dataset(dataset_original, img_size):
     # 1. Create a second dataset and shuffle it to mix different images together
     dataset_shuffled = dataset_original.shuffle(buffer_size=4096)
     
@@ -376,13 +413,13 @@ def prepare_cutmix_dataset(dataset_original, img_size=32*5):
     
     # 3. Map the CutMix function (passed via lambda to include parameters)
     cutmix_dataset = zipped_dataset.map(
-        lambda d1, d2: video_mosaic_cutmix(d1, d2, img_size=img_size),
+        lambda d1, d2: video_mosaic_cutmix(d1, d2, img_size),
         num_parallel_calls=tf.data.AUTOTUNE
     )
         
     return cutmix_dataset
 
-def video_mosaic_cutmix(data1, data2, grid_rows=5, grid_cols=5, img_size=5*32, alpha=1.0):
+def video_mosaic_cutmix(data1, data2, img_size,grid_rows=5, grid_cols=5,alpha=1.0):
     import tensorflow_probability as tfp
     tfd = tfp.distributions
 
