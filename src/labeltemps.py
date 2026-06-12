@@ -42,13 +42,14 @@ class Stat:
         self.clip_ids = []
         self.track_ids = []
         self.background_median = []
-        self.clip_id = None 
+        self.clip_id = None
         self.track_id = None
         self.max_min = 0
         self.min_max = 0
 
     def temp_values(self):
         return f"min: {self.mins[0]} lq: {self.lq[0]} median {self.median} uq {self.uq} max {self.maxs[0]} min max {self.min_max} max min {self.max_min}"
+
     def add(
         self, a_min, lq, median, uq, a_max, timestamp, clip_id, track_id, back_median
     ):
@@ -73,7 +74,7 @@ class Stat:
         stat.uq = [np.median(self.uq)]
         stat.maxs = [np.median(self.maxs)]
         stat.min_max = np.quantile(self.maxs, 0.25)
-        stat.max_min = np.quantile(self.mins,0.75)
+        stat.max_min = np.quantile(self.mins, 0.75)
         stat.background_median = (
             [np.median(self.background_median)] if self.background_median else []
         )
@@ -217,8 +218,13 @@ def main():
                 all_track_stats.extend(track_stats)
 
         import joblib
-        print(f"Saving {len(all_track_stats)} stats to {args.output_dir /'all_track_stats.pkl'}")
-        joblib.dump(all_track_stats, args.output_dir /'all_track_stats.pkl', compress=3)
+
+        print(
+            f"Saving {len(all_track_stats)} stats to {args.output_dir /'all_track_stats.pkl'}"
+        )
+        joblib.dump(
+            all_track_stats, args.output_dir / "all_track_stats.pkl", compress=3
+        )
 
         # args.output_dir.mkdir(parents=True, exist_ok=True)
         # for k, stat in all_stats.items():
@@ -238,7 +244,7 @@ def fit_data(output_dir):
     for stat in all_track_stats:
         if stat.clip_id is None:
             continue
-        stat.label = label_mapping.get(stat.label,stat.label)
+        stat.label = label_mapping.get(stat.label, stat.label)
         if stat.label == "false-positive":
             continue
         labels.add(stat.label)
@@ -256,7 +262,9 @@ def fit_data(output_dir):
     return by_clip
 
 
-def evaluate_matches(by_clip, labels, output_file, threshold=115,percentile = 99,percent_thresh = 0.5):
+def evaluate_matches(
+    by_clip, labels, output_file, threshold=115, percentile=99, percent_thresh=0.5
+):
     from ml_tools.kerasmodel import plot_confusion_matrix
     import matplotlib.pyplot as plt
 
@@ -264,26 +272,26 @@ def evaluate_matches(by_clip, labels, output_file, threshold=115,percentile = 99
     confusion = np.zeros((len(labels), len(labels)), dtype=int)
     tp = fp = tn = fn = 0
     for clip_id, stats in by_clip.items():
-        
+
         stats = sorted(stats, key=lambda s: s.track_id)
         for stat in stats:
             data_points = stat.cluster_data()
-            if len(data_points)==0:
+            if len(data_points) == 0:
                 continue
-            knn,threshold = make_kmeans(1,data_points,percentile)
+            knn, threshold = make_kmeans(1, data_points, percentile)
             for other in stats:
                 if other == stat:
                     continue
                 should_match = stat.label == other.label
-                match_percent = belongs_to_kmeans(knn,other.cluster_data(),threshold)
+                match_percent = belongs_to_kmeans(knn, other.cluster_data(), threshold)
                 does_match = match_percent > percent_thresh
                 j = label_index.get(other.label)
                 if does_match:
-                    data_points = np.concat([data_points, other.cluster_data()],axis=0)
-                    knn,threshold = make_kmeans(1,data_points,percentile)
+                    data_points = np.concat([data_points, other.cluster_data()], axis=0)
+                    knn, threshold = make_kmeans(1, data_points, percentile)
                 if should_match and does_match:
                     # print("Threshold was ",threshold)
-                   
+
                     # print("Adding points threshold is now",threshold)
                     tp += 1
                 elif should_match and not does_match:
@@ -293,9 +301,18 @@ def evaluate_matches(by_clip, labels, output_file, threshold=115,percentile = 99
                     fn += 1
                 elif not should_match and does_match:
                     fp += 1
-                    print("Making kmeans from ",stat.clip_id, "-",stat.track_id, " : ", [stat.label for stat in stats])
+                    print(
+                        "Making kmeans from ",
+                        stat.clip_id,
+                        "-",
+                        stat.track_id,
+                        " : ",
+                        [stat.label for stat in stats],
+                    )
 
-                    print(f"{clip_id} - {stat.track_id} - {stat.label}  {round(match_percent*100)}  matches {other.track_id} {other.label}  ")
+                    print(
+                        f"{clip_id} - {stat.track_id} - {stat.label}  {round(match_percent*100)}  matches {other.track_id} {other.label}  "
+                    )
                 else:
                     tn += 1
                 i = label_index.get(stat.label)
@@ -357,9 +374,10 @@ def track_overlap_check(source_file, excluded_tags):
     from config.buildconfig import BuildConfig
     from ml_tools.dataset import filter_track
     from skimage.metrics import structural_similarity as ssim
+
     THRESHOLD = 50  # .5Celcius
     try:
-            
+
         db = RawDatabase(source_file)
         db.load_frames()
         clip = db.get_clip_meta(BuildConfig.DEFAULT_GROUPS)
@@ -384,24 +402,26 @@ def track_overlap_check(source_file, excluded_tags):
             track_stats = Stat(track.label)
             imgB = None
             prev_region = None
-            for frame_i in range(track.start_frame, track.start_frame + track.num_frames):
+            for frame_i in range(
+                track.start_frame, track.start_frame + track.num_frames
+            ):
                 region = track.regions_by_frame[frame_i]
-                overlaps =False
+                overlaps = False
                 # for other_track in clip.tracks:
-                    # if other_track != track:
-                        # check overlap
-                        # if frame_i in other_track.regions_by_frame:
-                            # overlaps = True
-                            # other_region = other_track.regions_by_frame[frame_i]
-                            # if region.overlap_area(other_region) > region.area *0.25:
-                            #     # print(f"{track.track_id} { frame_i} overlaps {other_track.track_id} {region} ")
-                            #     overlaps=True
-                            #     break
+                # if other_track != track:
+                # check overlap
+                # if frame_i in other_track.regions_by_frame:
+                # overlaps = True
+                # other_region = other_track.regions_by_frame[frame_i]
+                # if region.overlap_area(other_region) > region.area *0.25:
+                #     # print(f"{track.track_id} { frame_i} overlaps {other_track.track_id} {region} ")
+                #     overlaps=True
+                #     break
                 # if overlaps:
-                    # continue
+                # continue
                 original = db.frames[frame_i]
                 # if region.width>2 and region.height > 2:
-                    # region.enlarge(-1)
+                # region.enlarge(-1)
                 f = original.crop_by_region(region)
                 # f.filtered[f.filtered < THRESHOLD] = 0
                 np.clip(f.filtered, a_min=0, a_max=None, out=f.filtered)
@@ -443,7 +463,7 @@ def track_overlap_check(source_file, excluded_tags):
                     track.track_id,
                     back_median,
                 )
-            print("adding track stat with clipid",track_stats.clip_id)
+            print("adding track stat with clipid", track_stats.clip_id)
             all_track_stats.append(track_stats)
         return all_track_stats
         #     median_stat = track_stats.get_median_stat()
@@ -495,6 +515,7 @@ def track_overlap_check(source_file, excluded_tags):
         print(ex)
 
         return []
+
 
 def clip_temp_data(source_file, excluded_tags):
     from ml_tools.rawdb import RawDatabase
@@ -575,11 +596,12 @@ def show_image(img):
     cv2.waitKey()
 
 
-def make_model(max_clusters,data_points):
+def make_model(max_clusters, data_points):
     import numpy as np
     from sklearn.mixture import BayesianGaussianMixture
-    X_train = np.concatenate(data_points,axis=0)
-    print("Concatted shape is ",X_train.shape, " max clusters is",max_clusters)
+
+    X_train = np.concatenate(data_points, axis=0)
+    print("Concatted shape is ", X_train.shape, " max clusters is", max_clusters)
 
     # 1. Generate 3D dummy data (2 natural clusters)
     # np.random.seed(42)
@@ -591,16 +613,16 @@ def make_model(max_clusters,data_points):
     # n_components=10 sets an upper bound maximum of 10 clusters
     # weight_concentration_prior allows the model to kill off unused clusters
     dpgmm = BayesianGaussianMixture(
-        n_components=max_clusters, 
-        # weight_concentration_prior=1e-3, 
-        random_state=42
+        n_components=max_clusters,
+        # weight_concentration_prior=1e-3,
+        random_state=42,
     )
     dpgmm.fit(X_train)
 
     # 3. Check how many clusters actually survived
     # Clusters with weights close to zero are mathematically empty
     active_clusters = np.sum(dpgmm.weights_ > 0.01)
-    print(f"Maximum clusters allowed: ",max_clusters)
+    print(f"Maximum clusters allowed: ", max_clusters)
     print(f"DPGMM automatically kept active: {active_clusters} clusters")
     print(f"Cluster weights: {np.round(dpgmm.weights_, 3)}\n")
 
@@ -611,8 +633,10 @@ def make_model(max_clusters,data_points):
     rejection_threshold = np.percentile(train_scores, 5)
     print(f"Log-Likelihood Rejection Threshold: {rejection_threshold:.3f}\n")
     return dpgmm, rejection_threshold
-def belongs(dpgmm,test_points,threshold,start_frame):
-    
+
+
+def belongs(dpgmm, test_points, threshold, start_frame):
+
     # 6. Evaluate if new points belong
     predicted_clusters = dpgmm.predict(test_points)
     log_likelihoods = dpgmm.score_samples(test_points)
@@ -620,14 +644,14 @@ def belongs(dpgmm,test_points,threshold,start_frame):
     for i, point in enumerate(test_points):
         assigned_cluster = predicted_clusters[i]
         score = log_likelihoods[i]
-        
+
         # Validation step using our threshold
         belongs = score >= threshold
         if not belongs:
-            total_count +=1
+            total_count += 1
             # print(f"Frame {start_frame +i} does not belong")
         # else:
-            # print(f"Frame {start_frame +i} belongs to {assigned_cluster}")
+        # print(f"Frame {start_frame +i} belongs to {assigned_cluster}")
 
         # print(f"Point {point}:")
         # print(f"  -> Assigned to Active Cluster: {assigned_cluster}")
@@ -637,21 +661,22 @@ def belongs(dpgmm,test_points,threshold,start_frame):
         # else:
         #     print("  -> Result: ❌ REJECTED. Outlier / Does not belong.")
         # print()
-    if total_count > len(test_points)//2:
-        print("Track does not belong, ", total_count /len(test_points)*100)
+    if total_count > len(test_points) // 2:
+        print("Track does not belong, ", total_count / len(test_points) * 100)
 
 
-def add_points(kmeans,data):
+def add_points(kmeans, data):
     kmeans.partial_fit(data)
     training_distances = kmeans.transform(data)
     closest_train_distances = training_distances.min(axis=1)
 
-    return kmeans,np.percentile(closest_train_distances,90)
+    return kmeans, np.percentile(closest_train_distances, 90)
 
 
-def make_kmeans(n_clusters,data,percentile):
+def make_kmeans(n_clusters, data, percentile):
     import numpy as np
-    from sklearn.cluster import KMeans,MiniBatchKMeans
+    from sklearn.cluster import KMeans, MiniBatchKMeans
+
     # 1. Generate sample 2D data
 
     # 2. Train the KMeans model
@@ -663,8 +688,10 @@ def make_kmeans(n_clusters,data,percentile):
     # Get the distance to the closest cluster for each training point
     closest_train_distances = training_distances.min(axis=1)
     # print("Closest train distances",np.amin(closest_train_distances),np.mean(closest_train_distances),np.amax(closest_train_distances),np.median(closest_train_distances))
-    return kmeans,np.percentile(closest_train_distances,percentile)
-def belongs_to_kmeans(kmeans,points,threshold):
+    return kmeans, np.percentile(closest_train_distances, percentile)
+
+
+def belongs_to_kmeans(kmeans, points, threshold):
     # 4. Set your maximum distance threshold
     # DISTANCE_THRESHOLD = 3.0
     # print("Threshold is ",threshold)
@@ -684,14 +711,14 @@ def belongs_to_kmeans(kmeans,points,threshold):
     for i, dist in enumerate(min_distances):
         # print("Distance is ",dist)
         if dist <= threshold:
-            matched +=1
+            matched += 1
 
             final_assignments.append(closest_cluster_indices[i])
         else:
             final_assignments.append(-1)  # -1 signifies an outlier / does not belong
     # print("Percent unmatched ", unmatched/ len(points)*100)
-    return matched/ len(points)
-    if unmatched > len(points)//2:
+    return matched / len(points)
+    if unmatched > len(points) // 2:
         # print("Does not match: ",  unmatched/ len(points)*100 )
         return False
     else:
@@ -702,6 +729,7 @@ def belongs_to_kmeans(kmeans,points,threshold):
     #     cluster = final_assignments[i]
     #     status = f"Cluster {cluster}" if cluster != -1 else "Outlier (None)"
     #     print(f"Point {point} -> Assigned to: {status} (Distance: {min_distances[i]:.2f})")
-    
+
+
 if __name__ == "__main__":
     main()

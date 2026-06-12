@@ -842,8 +842,7 @@ def main():
         "thermal_diff_norm": config.build.thermal_diff_norm,
         "filter_by_lq": master_dataset.filter_by_lq,
         "max_frames": master_dataset.max_frames,
-        "mosaic_dim": config.train.hyper_params.get("frame_size",32),
-
+        "mosaic_dim": config.train.hyper_params.get("frame_size", 32),
     }
 
     for dataset in datasets:

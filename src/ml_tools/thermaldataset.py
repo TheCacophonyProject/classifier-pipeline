@@ -14,7 +14,6 @@ from ml_tools.featurenorms import mean_v, std_v
 from ml_tools.frame import TrackChannels
 from pathlib import Path
 from ml_tools.tools import saveclassify_image
-tf.config.run_functions_eagerly(True)
 
 # seed = 1341
 # tf.random.set_seed(seed)
@@ -309,18 +308,18 @@ def read_tfrecord(
             [36 * 5 + 8], dtype=tf.float32, allow_missing=True
         )
     example = tf.io.parse_single_example(example, tfrecord_format)
-    num_frames = example["image/num_frames"]
+    record_frames = example["image/num_frames"]
     if load_images:
         if TrackChannels.thermal.name in channels:
             thermalnorm = 255.0*example["image/thermal_norm_encoded"]
-            thermals = tf.reshape(thermalnorm, [num_frames, mosaic_larger_size, mosaic_larger_size, 1])
+            thermals = tf.reshape(thermalnorm, [record_frames, mosaic_larger_size, mosaic_larger_size, 1])
         if TrackChannels.filtered.name in channels:
             filteredencoded = 255.0*example["image/filtered_encoded"]
-            filtered = tf.reshape(filteredencoded, [num_frames, mosaic_larger_size, mosaic_larger_size, 1])
+            filtered = tf.reshape(filteredencoded, [record_frames, mosaic_larger_size, mosaic_larger_size, 1])
         if TrackChannels.raw.name in channels:
 
             rawthermal = 255.0*example["image/thermal_raw_encoded"]
-            rawthermal = tf.reshape(rawthermal, [num_frames, mosaic_larger_size, mosaic_larger_size, 1])
+            rawthermal = tf.reshape(rawthermal, [record_frames, mosaic_larger_size, mosaic_larger_size, 1])
 
         rgb_image = None
         for type in channels:
@@ -348,33 +347,19 @@ def read_tfrecord(
         #     rgb_image, [num_frames, mosaic_size, mosaic_size, len(channels)]
         # )
         if augment:
-            rgb_image =  tf.image.random_crop(rgb_image, size=[num_frames,mosaic_size, mosaic_size, 3])
+            rgb_image =  tf.image.random_crop(rgb_image, size=[record_frames,mosaic_size, mosaic_size, 3])
         else:
             rgb_image = tf.image.crop_to_bounding_box(rgb_image, padding,padding, mosaic_size, mosaic_size)
 
 
         if num_frames > 1:
-            pad_size = 25 - tf.shape(rgb_image)[0]
+            pad_size = num_frames - tf.shape(rgb_image)[0]
             rgb_image = tf.pad(rgb_image, [[0, pad_size], [0, 0], [0, 0], [0, 0]])
-            rgb_image = tf.ensure_shape(rgb_image,[25,mosaic_size,mosaic_size, 3])
-            print(rgb_image.shape)
+            rgb_image = tf.ensure_shape(rgb_image,[num_frames,mosaic_size,mosaic_size, 3])
 
             rgb_image = tile_images(rgb_image)
-            print(rgb_image.shape)
+        rgb_image = tf.ensure_shape(rgb_image,[*image_size, 3])
 
-        if augment:
-            rgb_image = data_augmentation(rgb_image)
-        # if num_frames == 1:
-        #     # remove the leading axis
-        #     rgb_image = tf.squeeze(rgb_image)
-
-        if preprocess_fn is not None:
-            logging.info(
-                "Preprocessing with %s.%s",
-                preprocess_fn.__module__,
-                preprocess_fn.__name__,
-            )
-            rgb_image = preprocess_fn(rgb_image)
     if labeled:
         label = tf.cast(example["image/class/label"], tf.int32)
         label = remap_lookup.lookup(label)
@@ -481,17 +466,10 @@ def video_mosaic_cutmix(data1, data2, img_size,grid_rows=5, grid_cols=5,alpha=1.
 
 
 def tile_images(images):
-    index = 0
-    image = None
-    for x in range(5):
-        t_row = tf.concat(tf.unstack(images[index : index + 5]), axis=1)
-        if image is None:
-            image = t_row
-        else:
-            image = tf.concat([image, t_row], 0)
-
-        index += 5
-    return image
+    s = tf.shape(images)
+    t = tf.reshape(images, [5, 5, s[1], s[2], 3])
+    t = tf.transpose(t, [0, 2, 1, 3, 4])
+    return tf.reshape(t, [5 * s[1], 5 * s[2], 3])
 
 
 from collections import Counter
@@ -523,14 +501,14 @@ def main():
         labels,
         batch_size=32,
         image_size=(160, 160),
-        augment=True,
+        augment=False,
         # preprocess_fn=tf.keras.applications.inception_v3.preprocess_input,
         resample=False,
         shuffle=False,
         include_features=False,
         remapped_labels=get_remapped(),
         excluded_labels=excluded_labels,
-        include_track=False,
+        include_track=True,
         num_frames=25,
         deterministic=True,
     )
@@ -544,7 +522,7 @@ def main():
         batch_i = 0
         print("epoch", e)
         for x, y in resampled_ds:
-            save_batch(x, y, labels, save_dir, tracks=False)
+            save_batch(x, y, labels, save_dir, tracks=True)
             # show_batch(x, y, labels, save=save_dir / f"{batch_i}.jpg", tracks=True)
             batch_i += 1
     # return

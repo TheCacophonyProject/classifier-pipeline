@@ -165,37 +165,6 @@ def get_dataset(load_function, base_dir, labels, **args):
         logging.warn("No dataset for %s", filenames)
         return None, None
 
-    if args.get("resample"):
-        logging.info("RESAMPLING")
-        # seems the only way to get even distribution
-        label_ds = []
-        unbalanced_ds = []
-        dont_balance = ["vehicle"]
-        for i, l in enumerate(new_labels):
-            l_mask = np.zeros((len(new_labels)))
-            l_mask[i] = 1
-            # mask = tf.constant(mask, dtype=tf.float32)
-
-            l_filter = lambda x, y: tf.math.reduce_all(tf.math.equal(y, l_mask))
-            l_dataset = dataset.filter(l_filter)
-            l_dataset = l_dataset.shuffle(shuffle_size, reshuffle_each_iteration=True)
-            if l in dont_balance:
-                unbalanced_ds.append(l_dataset)
-            else:
-                label_ds.append(l_dataset)
-        dataset = tf.data.Dataset.sample_from_datasets(
-            label_ds,
-            # weights=[1 / len(new_labels)] * len(new_labels),
-            stop_on_empty_dataset=True,
-            rerandomize_each_iteration=True,
-        )
-        dont_balance.append(dataset)
-        dataset = tf.data.Dataset.sample_from_datasets(
-            dont_balance,
-            # weights=[1 / len(new_labels)] * len(new_labels),
-            stop_on_empty_dataset=False,
-            rerandomize_each_iteration=True,
-        )
     if args.get("epoch_size") is not None:
         dataset = dataset.take(args.get("epoch_size"))
         logging.info("Setting dataset to %s", args.get("epoch_size"))
@@ -236,10 +205,32 @@ def get_dataset(load_function, base_dir, labels, **args):
     batch_size = args.get("batch_size", None)
     if batch_size is not None:
         dataset = dataset.batch(batch_size)
+    
+    augment = args.get("augment", False)
+    if augment:
+        logging.info("Augmenting on batches")
+        dataset = dataset.map(lambda x, y: (data_augmentation(x, training=True), y),
+                      num_parallel_calls=tf.data.AUTOTUNE)
+     
+    preprocess_fn = args.get("preprocess_fn")
+    if preprocess_fn is not None:
+        logging.info(
+            "Preprocessing with %s.%s",
+            preprocess_fn.__module__,
+            preprocess_fn.__name__,
+        )
+        dataset = dataset.map(lambda x, y: (preprocess_fn(x, training=True), y),
+                      num_parallel_calls=tf.data.AUTOTUNE)
+
     dataset = dataset.prefetch(buffer_size=AUTOTUNE)
 
     return dataset, remapped, new_labels, epoch_size
-
+data_augmentation = tf.keras.Sequential(
+    [
+        tf.keras.layers.RandomBrightness(0.2),  # better per frame or per sequence??
+        tf.keras.layers.RandomContrast(0.5),
+    ]
+)
 
 def resample(dataset, labels):
     excluded_labels = ["sheep"]
