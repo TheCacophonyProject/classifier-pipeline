@@ -405,8 +405,6 @@ def prepare_cutmix_dataset(dataset_original, img_size):
     return cutmix_dataset
 
 def video_mosaic_cutmix(data1, data2, img_size,grid_rows=5, grid_cols=5,alpha=1.0):
-    import tensorflow_probability as tfp
-    tfd = tfp.distributions
 
     image1, label1 = data1
     image2, label2 = data2
@@ -417,7 +415,7 @@ def video_mosaic_cutmix(data1, data2, img_size,grid_rows=5, grid_cols=5,alpha=1.
     total_cells = grid_rows * grid_cols
     
     # 2. Sample how many sub-frames to replace (from Beta distribution)
-    beta_dist = tfd.Beta(alpha, alpha)
+    beta_dist = tf.compat.v1.distributions.Beta(alpha, alpha)
     lam = beta_dist.sample([])
     
     # Convert lambda to a discrete number of blocks to swap (at least 1, at most total-1)
