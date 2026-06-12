@@ -41,19 +41,17 @@ def process_job(queue, labels, base_dir, save_data_name, writer_i,excluded_tags,
     logging.info("Writing to %s mem usage %s", name,mem_mb)
     options = tf.io.TFRecordOptions(compression_type="GZIP")
     writer = tf.io.TFRecordWriter(str(base_dir / name), options=options)
-    i = 0
     saved = 0
     files = 0
     num_frames = extra_args.get("num_frames", 25)
     while True:
-        i += 1
         source_file = queue.get()
         try:
             if isinstance(source_file, str):
                 if source_file == "DONE":
 
                     mem_mb = psutil.Process().memory_info().rss / 1024**2
-                    logging.info("Worker %s done: received %s samples, processed %s files memory %s", name,i, files,mem_mb)
+                    logging.info("Worker %s done, processed %s files memory %s", name,files,mem_mb)
                     writer.close()
                     break
                 else:
@@ -62,11 +60,12 @@ def process_job(queue, labels, base_dir, save_data_name, writer_i,excluded_tags,
                 saved += save_data(source_file, excluded_tags,writer, labels, extra_args)
                 files += 1
 
-                if i % int(2500 / num_frames) == 0:
+                if files % int(2500 / num_frames) == 0:
                     mem_mb = psutil.Process().memory_info().rss / 1024**2
                     logging.info("Saved %s to %s  mem %.1f MB", files, name, mem_mb)
                     gc.collect()
                     writer.flush()
+
         except:
             logging.error("Process_job error %s", source_file, exc_info=True)
 
