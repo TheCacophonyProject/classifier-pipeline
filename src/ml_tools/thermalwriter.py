@@ -180,7 +180,6 @@ def get_data(source_file,excluded_tags, extra_args):
     if ENLARGE_FOR_AUGMENT:
         # allow extra pixels for augmentation
         resize_dim = int(math.floor(mosaic_dim * 1.41))
-        logging.info("Resizing too %s",resize_dim)
     if source_file.suffix == ".hdf5":
         from ml_tools.trackdatabase import TrackDatabase
 
@@ -288,7 +287,7 @@ def get_data(source_file,excluded_tags, extra_args):
                         if ENLARGE_FOR_AUGMENT:
                             if region.width > resize_dim or region.height >resize_dim:
                                 enlarged_region.enlarge_for_rotation(mosaic_dim, resize_dim - mosaic_dim)
-                                logging.info("%s %s Region %s becomes %s",source_file,clip_meta.clip_id,region,enlarged_region)
+                                # logging.info("%s %s Region %s becomes %s",source_file,clip_meta.clip_id,region,enlarged_region)
 
                             else:
                                 enlarged_region.enlarge_to(resize_dim)
