@@ -227,6 +227,9 @@ def load_dataset(filenames, remap_lookup, labels, args):
         dataset = dataset.filter(filter_none)
     if augment:
         dataset = prepare_cutmix_dataset(dataset, img_size=image_size[0])
+    else:
+        # remove num_frames_used from y
+        dataset = dataset.map(lambda x, y:(x,y[0])),
 
     return dataset
 
@@ -309,6 +312,7 @@ def read_tfrecord(
         )
     example = tf.io.parse_single_example(example, tfrecord_format)
     record_frames = example["image/num_frames"]
+    record_frames = tf.cast(record_frames,tf.int32)
     if load_images:
         if TrackChannels.thermal.name in channels:
             thermalnorm = 255.0*example["image/thermal_norm_encoded"]
@@ -351,13 +355,22 @@ def read_tfrecord(
         else:
             rgb_image = tf.image.crop_to_bounding_box(rgb_image, padding,padding, mosaic_size, mosaic_size)
 
-
-        if num_frames > 1:
+        zero_pad = True
+        if num_frames > 1 and zero_pad:
             pad_size = num_frames - tf.shape(rgb_image)[0]
             rgb_image = tf.pad(rgb_image, [[0, pad_size], [0, 0], [0, 0], [0, 0]])
             rgb_image = tf.ensure_shape(rgb_image,[num_frames,mosaic_size,mosaic_size, 3])
 
-            rgb_image = tile_images(rgb_image)
+        elif num_frames > 1:
+            # this repeats frames to make 25
+            actual_frames = tf.shape(rgb_image)[0]
+            repeat_indices = tf.random.shuffle(tf.tile(tf.range(actual_frames), [num_frames // actual_frames + 1]))[:num_frames]
+            repeat_indices = tf.sort(repeat_indices)
+            rgb_image = tf.gather(rgb_image, repeat_indices)
+            rgb_image = tf.ensure_shape(rgb_image,[num_frames,mosaic_size,mosaic_size, 3])
+            record_frames = 25
+        rgb_image = tile_images(rgb_image)
+
         rgb_image = tf.ensure_shape(rgb_image,[*image_size, 3])
 
     if labeled:
@@ -377,11 +390,14 @@ def read_tfrecord(
             avg_mass = tf.cast(example["image/avg_mass"], tf.int32)
             label = (label, track_id, avg_mass)
         if include_features or only_features:
+            # TODO this has not been updated to work with cut mix
             features = tf.squeeze(example["image/features"])
             if only_features:
                 return features, label
+                
             return (rgb_image, features), label
-        return rgb_image, label
+        return rgb_image, (label,record_frames)
+    # TODO this has not been updated to work with cut mix
     if only_features:
         return tf.squeeze(example["image/features"])
     elif include_features:
@@ -392,50 +408,51 @@ def read_tfrecord(
 def prepare_cutmix_dataset(dataset_original, img_size):
     # 1. Create a second dataset and shuffle it to mix different images together
     dataset_shuffled = dataset_original.shuffle(buffer_size=4096)
-    
+
     # 2. Zip them together so each element is ((img1, lbl1), (img2, lbl2))
     zipped_dataset = tf.data.Dataset.zip((dataset_original, dataset_shuffled))
-    
+
     # 3. Map the CutMix function (passed via lambda to include parameters)
     cutmix_dataset = zipped_dataset.map(
         lambda d1, d2: video_mosaic_cutmix(d1, d2, img_size),
         num_parallel_calls=tf.data.AUTOTUNE
     )
-        
+
     return cutmix_dataset
 
-def video_mosaic_cutmix(data1, data2, img_size,grid_rows=5, grid_cols=5,alpha=1.0):
+def video_mosaic_cutmix(data1, data2, img_size, grid_rows=5, grid_cols=5, alpha=1.0):
 
     image1, label1 = data1
     image2, label2 = data2
-    
+    label1,frames_used1 =   label1
+    label2,frames_used2 =   label2
+    num_frames = tf.math.minimum(frames_used1,frames_used2)
     # 1. Define dimensions of an individual sub-frame
     sub_h = img_size // grid_rows
     sub_w = img_size // grid_cols
     total_cells = grid_rows * grid_cols
-    
+
     # 2. Sample how many sub-frames to replace (from Beta distribution)
     beta_dist = tf.compat.v1.distributions.Beta(alpha, alpha)
     lam = beta_dist.sample([])
-    
-    # Convert lambda to a discrete number of blocks to swap (at least 1, at most total-1)
+
+    # Convert lambda to a discrete number of blocks to swap (at least 1, at most num_frames-1)
+    # Only swap within the real frames to avoid cutmixing empty/tiled cells
     num_blocks_to_swap = tf.cast(
-        tf.math.round((1.0 - lam) * tf.cast(total_cells, tf.float32)), 
+        tf.math.round((1.0 - lam) * tf.cast(num_frames, tf.float32)),
         tf.int32
     )
-    num_blocks_to_swap = tf.clip_by_value(num_blocks_to_swap, 1, total_cells - 1)
-    
+    num_blocks_to_swap = tf.clip_by_value(num_blocks_to_swap, 1, num_frames - 1)
+
     # 3. Create a random binary mask for the grid cells
-    # Generate a random shuffle of grid indices
-    indices = tf.range(total_cells)
-    shuffled_indices = tf.random.shuffle(indices)
-    
-    # Select which indices will be replaced by image2
-    swap_indices = shuffled_indices[:num_blocks_to_swap]
-    
+    # Only shuffle within the real frame indices to avoid empty cells
+    real_indices = tf.random.shuffle(tf.range(num_frames))
+    swap_indices = real_indices[:num_blocks_to_swap]
+
+    all_indices = tf.range(total_cells)
     # Build a 1D boolean mask for the cells
     cell_mask_1d = tf.reduce_any(
-        tf.equal(tf.expand_dims(indices, 0), tf.expand_dims(swap_indices, 1)), 
+        tf.equal(tf.expand_dims(all_indices, 0), tf.expand_dims(swap_indices, 1)),
         axis=0
     )
     
@@ -491,7 +508,7 @@ def main():
     # for l in labels:
     #     if l not in ["mustelid", "deer", "sheep"]:
     #         excluded_labels.append(l)
-
+    include_track = False
     resampled_ds, remapped, labels, epoch_size = get_dataset(
         # dir,
         load_dataset,
@@ -499,14 +516,14 @@ def main():
         labels,
         batch_size=32,
         image_size=(160, 160),
-        augment=False,
+        augment=True,
         # preprocess_fn=tf.keras.applications.inception_v3.preprocess_input,
         resample=False,
         shuffle=False,
         include_features=False,
         remapped_labels=get_remapped(),
         excluded_labels=excluded_labels,
-        include_track=True,
+        include_track=include_track,
         num_frames=25,
         deterministic=True,
     )
@@ -520,7 +537,7 @@ def main():
         batch_i = 0
         print("epoch", e)
         for x, y in resampled_ds:
-            save_batch(x, y, labels, save_dir, tracks=True)
+            save_batch(x, y, labels, save_dir, tracks=include_track)
             # show_batch(x, y, labels, save=save_dir / f"{batch_i}.jpg", tracks=True)
             batch_i += 1
     # return
