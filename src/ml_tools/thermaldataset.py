@@ -229,8 +229,8 @@ def load_dataset(filenames, remap_lookup, labels, args):
         dataset = prepare_cutmix_dataset(dataset, img_size=image_size[0])
     else:
         # remove num_frames_used from y
-        dataset = dataset.map(lambda x, y:(x,y[0])),
-
+        dataset = dataset.map(lambda x, y:  (x,y[0]),                      num_parallel_calls=tf.data.AUTOTUNE)
+        print("Dataset is ",dataset)
     return dataset
 
 
@@ -516,7 +516,7 @@ def main():
         labels,
         batch_size=32,
         image_size=(160, 160),
-        augment=True,
+        augment=False,
         # preprocess_fn=tf.keras.applications.inception_v3.preprocess_input,
         resample=False,
         shuffle=False,

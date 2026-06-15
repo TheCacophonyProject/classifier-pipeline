@@ -132,6 +132,11 @@ class HyperParams(dict):
     def dropout(self):
         return self.get("dropout", 0.3)
 
+
+    @property
+    def fine_tune_learning_rate(self):
+        return self.get("fine_tune_learning_rate", 0.00001)
+    
     @property
     def learning_rate(self):
         return self.get("learning_rate", 0.001)

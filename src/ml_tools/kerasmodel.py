@@ -44,6 +44,7 @@ class KerasModel(Interpreter):
         self.model = None
         self.datasets = None
         self.remapped = None
+        self.steps = None
         self.run_over_network = run_over_network
         # dictionary containing current hyper parameters
         self.params = HyperParams()
@@ -367,7 +368,7 @@ class KerasModel(Interpreter):
             acc = tf.metrics.categorical_accuracy
 
         self.model.compile(
-            optimizer=optimizer(self.params),
+            optimizer=optimizer(self.params,self.steps),
             loss=loss(self.params),
             metrics=[
                 acc,
@@ -420,7 +421,7 @@ class KerasModel(Interpreter):
         logging.info("Using acc %s", acc)
         self.model.summary()
         self.model.compile(
-            optimizer=optimizer(self.params),
+            optimizer=optimizer(self.params,self.steps,fine_tune=True),
             loss=loss(self.params),
             metrics=[
                 acc,
@@ -591,7 +592,7 @@ class KerasModel(Interpreter):
             channels=self.params.channels,
         )
         self.labels = new_labels
-
+        self.steps = epoch_size // self.params.batch_size
         self.log_dir = self.log_base / run_name
         self.log_dir.mkdir(parents=True, exist_ok=True)
         if fine_tune is not None:
@@ -605,13 +606,12 @@ class KerasModel(Interpreter):
             self.adjust_final_layer()
         else:
 
-            if not self.model:
-                self.build_model(
-                    dense_sizes=self.params.dense_sizes,
-                    retrain_from=self.params.retrain_layer,
-                    dropout=self.params.dropout,
-                    run_name=run_name,
-                )
+            self.build_model(
+                dense_sizes=self.params.dense_sizes,
+                retrain_from=self.params.retrain_layer,
+                dropout=self.params.dropout,
+                run_name=run_name,
+            )
 
             if weights is not None:
                 self.model.load_weights(weights)
@@ -1259,20 +1259,26 @@ def loss(params):
     )
 
 
-def optimizer(params):
-    if params.learning_rate_decay is not None:
-        learning_rate = tf.keras.optimizers.schedules.ExponentialDecay(
+def optimizer(params,total_steps,epochs,fine_tune=False):
+    if fine_tune:
+        logging.info("Using fine tune consine optimizer with warm of 2 epochs and final rate %s",params.fine_tune_learning_rate)
+        # 3 epochs
+        warmup_steps = total_steps * 2
+        # 2. Configure the built-in schedule
+        lr_schedule = tf.keras.optimizers.schedules.CosineDecay(
+            initial_learning_rate=0.0,      # Step 0 start rate
+            decay_steps=total_steps,        # Point where decay finishes
+            warmup_target=params.fine_tune_learning_rate,             # Peak fine-tuning learning rate
+            warmup_steps=warmup_steps       # Steps to transition from initial to target
+        )
+    else:
+        lr_schedule = tf.keras.optimizers.schedules.ExponentialDecay(
             params.learning_rate,
-            decay_steps=100000,
+            decay_steps=total_steps* epochs,
             decay_rate=params.learning_rate_decay,
             staircase=True,
         )
-    else:
-        learning_rate = params.learning_rate  # setup optimizer
-    if learning_rate:
-        optimizer = tf.keras.optimizers.Adam(learning_rate=learning_rate)
-    else:
-        optimizer = tf.keras.optimizers.Adam(learning_rate=learning_rate)
+    optimizer = tf.keras.optimizers.Adam(learning_rate=lr_schedule)
     return optimizer
 
 
