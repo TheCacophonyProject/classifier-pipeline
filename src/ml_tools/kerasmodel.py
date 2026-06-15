@@ -1261,7 +1261,7 @@ def loss(params):
 
 def optimizer(params,total_steps,epochs,fine_tune=False):
     if fine_tune:
-        logging.info("Using fine tune consine optimizer with warm of 2 epochs and final rate %s",params.fine_tune_learning_rate)
+        logging.info("Using fine tune cosine optimizer with warm of 2 epochs and final rate %s",params.fine_tune_learning_rate)
         # 3 epochs
         warmup_steps = total_steps * 2
         # 2. Configure the built-in schedule
