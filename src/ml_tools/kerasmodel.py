@@ -595,7 +595,10 @@ class KerasModel(Interpreter):
         self.log_dir = self.log_base / run_name
         self.log_dir.mkdir(parents=True, exist_ok=True)
         if fine_tune is not None:
-            self.init_model(fine_tune, weights=weights, training=True)
+            self.init_model(fine_tune, weights=weights)
+            # dont if this is needed
+            self.model.trainable = self.params.base_training
+
             # load model loads old labels
             self.labels = new_labels
 
