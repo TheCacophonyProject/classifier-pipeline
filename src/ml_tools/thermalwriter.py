@@ -277,7 +277,6 @@ def get_data(source_file,excluded_tags, extra_args):
                 thermalRaw = []  # np.empty(len(frames), dtype=object)
                 filtered = []  # np.empty(len(frames), dtype=object)
                 frame_indices = []
-                logging.info("Sample frame indices are %s",sample.frame_indices)
                 for frame_number in sample.frame_indices:
 
                     # no need to do work twice

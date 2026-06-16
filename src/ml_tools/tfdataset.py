@@ -209,7 +209,7 @@ def get_dataset(load_function, base_dir, labels, **args):
     augment = args.get("augment", False)
     if augment:
         logging.info("Augmenting on batches")
-        dataset = dataset.map(lambda x, y: (data_augmentation(x, training=True), y),
+        dataset = dataset.map(lambda x, y: ((data_augmentation(x[0], training=True),x[1]), y),
                       num_parallel_calls=tf.data.AUTOTUNE)
      
     preprocess_fn = args.get("preprocess_fn")
@@ -219,7 +219,7 @@ def get_dataset(load_function, base_dir, labels, **args):
             preprocess_fn.__module__,
             preprocess_fn.__name__,
         )
-        dataset = dataset.map(lambda x, y: (preprocess_fn(x, training=True), y),
+        dataset = dataset.map(lambda x, y: ((preprocess_fn(x[0], training=True),x[1]), y),
                       num_parallel_calls=tf.data.AUTOTUNE)
 
     dataset = dataset.prefetch(buffer_size=AUTOTUNE)
