@@ -228,7 +228,6 @@ def load_dataset(filenames, remap_lookup, labels, args):
     else:
         # remove num_frames_used from y
         dataset = dataset.map(lambda x, y:  (x,y[0]),                      num_parallel_calls=tf.data.AUTOTUNE)
-        print("Dataset is ",dataset)
     return dataset
 
 
@@ -355,9 +354,10 @@ def read_tfrecord(
             rgb_image = tf.image.crop_to_bounding_box(rgb_image, padding,padding, mosaic_size, mosaic_size)
 
         zero_pad = True
-        times = tf.concat([tf.cast(frame_indices,tf.float32), tf.fill([25 - record_frames], -1.0)], axis=0)
+        # times = tf.concat([tf.cast(frame_indices,tf.float32), tf.fill([25 - record_frames], -1.0)], axis=0)
 
-        mask = (get_frame_mask(record_frames,frame_indices),times)
+        mask = get_frame_mask(record_frames,frame_indices)
+        # ',times)
             
 
         if num_frames > 1 and zero_pad:
@@ -537,7 +537,7 @@ def main():
         num_frames=25,
         deterministic=True,
     )
-    print("Ecpoh size is", epoch_size)
+    print("Epoch size is", epoch_size)
     # print(get_distribution(resampled_ds, len(labels), extra_meta=False))
     # return
     #
@@ -560,7 +560,7 @@ def save_batch(image_batch, label_batch, labels, save_dir, tracks=False):
     global save_index
     image_batch,masks = image_batch
     masks,frame_indices = masks
-
+    
     # for m in masks:
         # print("masks are ",m[0].shape,m.shape,m[1].shape)
     if tracks:
@@ -568,6 +568,10 @@ def save_batch(image_batch, label_batch, labels, save_dir, tracks=False):
         label_batch = label_batch[0]
     for n, img in enumerate(image_batch):
         img = np.uint8(img)
+        if masks[n] is None:
+            logging.info("Mask is none %s track %s",frame_indices[n],track_batch[n])
+        else:
+            continue
         print("Mask is ",masks[n],frame_indices[n])
         if tracks:
             file_title = (

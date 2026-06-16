@@ -322,7 +322,7 @@ class KerasModel(Interpreter):
                 
                 # --- Feature Fusion ---
                 # Concatenate visual maps (5x5x1536) and time maps (5x5x128) along the channels
-                image_features = base_model.output
+                image_features = x
                 combined = layers.Concatenate(axis=-1)([image_features, t])  # Shape: (None, 5, 5, 1664)
                 
                 # Mix the combined space-time features together
