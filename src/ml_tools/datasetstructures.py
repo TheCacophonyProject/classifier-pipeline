@@ -1271,7 +1271,7 @@ def get_segments(
 
                         frames = list(frames)
                         frames.extend(extra_samples)
-                        frames.sort()
+                frames.sort()
 
                 segment = SegmentHeader(
                     clip_id,

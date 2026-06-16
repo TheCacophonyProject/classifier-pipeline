@@ -847,12 +847,23 @@ def main():
 
     for dataset in datasets:
         dataset.clear()
+    border_sum = np.zeros(3)
+    total_border_frames = 0
+    meta_data = {
+        "labels": datasets[0].labels,
+        "type": config.train.type,
+        "counts": dataset_counts,
+        "by_label": False,
+        "config": attrs.asdict(config),
+        "segment_types": master_dataset.segment_types,
+    }
+    meta_data["dataset_backgrounds"] = {}
 
     for dataset in datasets:
         dir = os.path.join(record_dir, dataset.name)
         # dont filter the test set,
         extra_args["filter_by_fp"] = dataset.name != "test"
-        create_tf_records(
+        dataset_border_sum, dataset_border_frames = create_tf_records(
             dataset,
             dir,
             datasets[0].labels,
@@ -863,16 +874,24 @@ def main():
             **extra_args,
         )
 
+        if dataset_border_frames > 0:
+            border_sum += dataset_border_sum
+            total_border_frames += dataset_border_frames
+            meta_data["dataset_backgrounds"][dataset.name] = (
+                dataset_border_sum / dataset_border_frames
+            )
+        else:
+            meta_data["dataset_backgrounds"][dataset.name] = np.zeros(3)
+        logging.info(
+            "Averages for %s is %s ",
+            dataset.name,
+            meta_data["dataset_backgrounds"][dataset.name],
+        )
+
+    logging.info("Averages for total dataset is %s ", border_sum / total_border_frames)
+    meta_data["background_average"] = border_sum / total_border_frames
     # dont need dataset anymore just need some meta
     meta_filename = f"{record_dir}/training-meta.json"
-    meta_data = {
-        "labels": datasets[0].labels,
-        "type": config.train.type,
-        "counts": dataset_counts,
-        "by_label": False,
-        "config": attrs.asdict(config),
-        "segment_types": master_dataset.segment_types,
-    }
 
     with open(meta_filename, "w") as f:
         json.dump(meta_data, f, indent=4, cls=CustomJSONEncoder)

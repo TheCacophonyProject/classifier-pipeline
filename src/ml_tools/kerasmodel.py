@@ -45,6 +45,7 @@ class KerasModel(Interpreter):
         self.datasets = None
         self.remapped = None
         self.steps = None
+        self.epochs = None
         self.run_over_network = run_over_network
         # dictionary containing current hyper parameters
         self.params = HyperParams()
@@ -260,16 +261,18 @@ class KerasModel(Interpreter):
     def build_model(
         self, dense_sizes=None, retrain_from=None, dropout=None, run_name=None
     ):
+        
+        from tensorflow.keras import layers
         # width = self.params.frame_size
         width = self.params.output_dim[0]
-        inputs = tf.keras.Input(
+        input = tf.keras.Input(
             shape=(width, width, len(self.params.channels)), name="input"
         )
         weights = None if self.params.base_training else "imagenet"
-        base_model, preprocess = self.get_base_model(inputs, weights=weights)
+        base_model, preprocess = self.get_base_model(input, weights=weights)
         self.preprocess_fn = preprocess
         # inputs = base_model.input
-        x = base_model(inputs)
+        x = base_model(input)
         # x = base_model(inputs, training=self.params.base_training)
         if self.params.get("model_merge"):
             logging.info(
@@ -284,7 +287,7 @@ class KerasModel(Interpreter):
             feature_input = tf.keras.Input(shape=(188), name="feature_input")
             model_rf = tf.keras.models.load_model(self.params.get("model_rf"))
             rf = model_rf(feature_input)
-            inputs = [cnn.input, feature_input]
+            input = [cnn.input, feature_input]
             cnn.summary()
             model_rf.summary()
             print("Outputs", cnn.outputs, rf)
@@ -296,20 +299,39 @@ class KerasModel(Interpreter):
             preds = tf.keras.layers.Dense(
                 len(self.labels), activation=activation, name="merged-prediction"
             )(x)
-            self.model = tf.keras.models.Model(inputs, outputs=preds)
+            self.model = tf.keras.models.Model(input, outputs=preds)
         elif self.params.lstm:
             x = tf.keras.layers.GlobalAveragePooling2D()(x)
             for i in dense_sizes:
                 x = tf.keras.layers.Dense(i, activation="relu")(x)
             # gp not sure how many should be pre lstm, and how many post
-            cnn = tf.keras.models.Model(inputs, outputs=x)
+            cnn = tf.keras.models.Model(input, outputs=x)
 
             self.model = self.add_lstm(cnn)
         else:
-            x = tf.keras.layers.GlobalAveragePooling2D()(x)
+            #Multi input adding information about the frame number used
+            multi_input=True
+            if multi_input:
+                # --- Input 2: The Timeline Mask Layer (5x5x1) ---
+                mask_input = layers.Input(shape=(5, 5, 1), name="timeline_mask")
+                input = [input, mask_input]
+
+                # Generate temporal feature maps matching the spatial dimensions
+                t = layers.Conv2D(64, (1, 1), activation='relu', padding='same')(mask_input)
+                t = layers.Conv2D(128, (3, 3), activation='relu', padding='same')(t)
+                
+                # --- Feature Fusion ---
+                # Concatenate visual maps (5x5x1536) and time maps (5x5x128) along the channels
+                image_features = base_model.output
+                combined = layers.Concatenate(axis=-1)([image_features, t])  # Shape: (None, 5, 5, 1664)
+                
+                # Mix the combined space-time features together
+                combined = layers.Conv2D(256, (3, 3), activation='relu', padding='same')(combined)
+            
+            x = tf.keras.layers.GlobalAveragePooling2D()(combined)
             if self.params.mvm:
                 mvm_inputs = tf.keras.layers.Input((188))
-                inputs = [inputs, mvm_inputs]
+                input = [input, mvm_inputs]
                 # mvm_features = tf.keras.layers.Flatten()(mvm_inputs)
                 #
                 # if self.params["hq_mvm"]:
@@ -348,7 +370,7 @@ class KerasModel(Interpreter):
             preds = tf.keras.layers.Dense(
                 len(self.labels), activation=activation, name="prediction"
             )(x)
-            self.model = tf.keras.models.Model(inputs, outputs=preds)
+            self.model = tf.keras.models.Model(input, outputs=preds)
         if retrain_from is None:
             retrain_from = self.params.retrain_layer
         if retrain_from:
@@ -368,7 +390,7 @@ class KerasModel(Interpreter):
             acc = tf.metrics.categorical_accuracy
 
         self.model.compile(
-            optimizer=optimizer(self.params,self.steps),
+            optimizer=optimizer(self.params,self.steps,self.epochs),
             loss=loss(self.params),
             metrics=[
                 acc,
@@ -421,7 +443,7 @@ class KerasModel(Interpreter):
         logging.info("Using acc %s", acc)
         self.model.summary()
         self.model.compile(
-            optimizer=optimizer(self.params,self.steps,fine_tune=True),
+            optimizer=optimizer(self.params,self.steps,self.epochs,fine_tune=True),
             loss=loss(self.params),
             metrics=[
                 acc,
@@ -537,6 +559,7 @@ class KerasModel(Interpreter):
         logging.info(
             "%s Training model for %s epochs with weights %s", run_name, epochs, weights
         )
+        self.epochs =epochs
         if self.params.excluded_labels is not None:
             self.excluded_labels = self.params.excluded_labels
         else:

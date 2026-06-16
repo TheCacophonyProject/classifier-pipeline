@@ -159,7 +159,6 @@ def load_dataset(filenames, remap_lookup, labels, args):
     )  # uses data as soon as it streams in, rather than in its original order
 
     image_size = args["image_size"]
-    labeled = args.get("labeled", True)
     augment = args.get("augment", False)
     preprocess_fn = args.get("preprocess_fn")
     include_features = args.get("include_features", False)
@@ -192,7 +191,6 @@ def load_dataset(filenames, remap_lookup, labels, args):
             image_size=image_size,
             remap_lookup=remap_lookup,
             num_labels=len(labels),
-            labeled=labeled,
             mosaic_size = mosaic_size,
             mosaic_larger_size = mosaic_larger_size,
             padding = padding,
@@ -253,7 +251,6 @@ def read_tfrecord(
     image_size,
     remap_lookup,
     num_labels,
-    labeled,
     mosaic_size,
     mosaic_larger_size,
     padding,
@@ -266,12 +263,12 @@ def read_tfrecord(
     include_track=False,
     num_frames=25,
     channels=[TrackChannels.raw.name,TrackChannels.thermal.name, TrackChannels.filtered.name],
+    pad_values = [0,0,0]
 ):
     logging.info(
-        "Read tf record with image %s lbls %s labeld %s aug  %s  prepr %s only features %s one hot %s include fetures %s num frames %s mosaic_size %s mosaic_enalrged %s padding %s",
+        "Read tf record with image %s lbls %s aug  %s  prepr %s only features %s one hot %s include fetures %s num frames %s mosaic_size %s mosaic_enalrged %s padding %s",
         image_size,
         num_labels,
-        labeled,
         augment,
         preprocess_fn,
         only_features,
@@ -287,6 +284,7 @@ def read_tfrecord(
     tfrecord_format = {
         "image/class/label": tf.io.FixedLenFeature((), tf.int64, -1),
         "image/num_frames":tf.io.FixedLenFeature((), tf.int64, 25),
+        "image/frame_numbers":tf.io.FixedLenSequenceFeature([],tf.int64,allow_missing=True)
     }
   
 
@@ -312,6 +310,7 @@ def read_tfrecord(
         )
     example = tf.io.parse_single_example(example, tfrecord_format)
     record_frames = example["image/num_frames"]
+    frame_indices = example["image/frame_numbers"]
     record_frames = tf.cast(record_frames,tf.int32)
     if load_images:
         if TrackChannels.thermal.name in channels:
@@ -356,9 +355,17 @@ def read_tfrecord(
             rgb_image = tf.image.crop_to_bounding_box(rgb_image, padding,padding, mosaic_size, mosaic_size)
 
         zero_pad = True
+        times = tf.concat([tf.cast(frame_indices,tf.float32), tf.fill([25 - record_frames], -1.0)], axis=0)
+
+        mask = (get_frame_mask(record_frames,frame_indices),times)
+            
+
         if num_frames > 1 and zero_pad:
             pad_size = num_frames - tf.shape(rgb_image)[0]
-            rgb_image = tf.pad(rgb_image, [[0, pad_size], [0, 0], [0, 0], [0, 0]])
+            ch_r = tf.pad(rgb_image[..., 0:1], [[0, pad_size], [0, 0], [0, 0], [0, 0]], constant_values=pad_values[0])
+            ch_g = tf.pad(rgb_image[..., 1:2], [[0, pad_size], [0, 0], [0, 0], [0, 0]], constant_values=pad_values[1])
+            ch_b = tf.pad(rgb_image[..., 2:3], [[0, pad_size], [0, 0], [0, 0], [0, 0]], constant_values=pad_values[2])
+            rgb_image = tf.concat([ch_r, ch_g, ch_b], axis=-1)
             rgb_image = tf.ensure_shape(rgb_image,[num_frames,mosaic_size,mosaic_size, 3])
 
         elif num_frames > 1:
@@ -373,36 +380,37 @@ def read_tfrecord(
 
         rgb_image = tf.ensure_shape(rgb_image,[*image_size, 3])
 
-    if labeled:
-        label = tf.cast(example["image/class/label"], tf.int32)
-        label = remap_lookup.lookup(label)
+    label = tf.cast(example["image/class/label"], tf.int32)
+    label = remap_lookup.lookup(label)
+    if extra_label_map is not None:
+        extra = extra_label_map.lookup(label)
+        label = tf.stack([label, extra], axis=0)
+    if one_hot:
+        label = tf.one_hot(label, num_labels)
         if extra_label_map is not None:
-            extra = extra_label_map.lookup(label)
-            label = tf.stack([label, extra], axis=0)
-        if one_hot:
-            label = tf.one_hot(label, num_labels)
-            if extra_label_map is not None:
-                label = tf.reduce_max(label, axis=0)
-        label = tf.cast(label,dtype=tf.float32)
-        if include_track:
+            label = tf.reduce_max(label, axis=0)
+    label = tf.cast(label,dtype=tf.float32)
+    if include_track:
 
-            track_id = tf.cast(example["image/track_id"], tf.int32)
-            avg_mass = tf.cast(example["image/avg_mass"], tf.int32)
-            label = (label, track_id, avg_mass)
-        if include_features or only_features:
-            # TODO this has not been updated to work with cut mix
-            features = tf.squeeze(example["image/features"])
-            if only_features:
-                return features, label
-                
-            return (rgb_image, features), label
-        return rgb_image, (label,record_frames)
+        track_id = tf.cast(example["image/track_id"], tf.int32)
+        avg_mass = tf.cast(example["image/avg_mass"], tf.int32)
+        label = (label, track_id, avg_mass)
+    if not include_features and not only_features:
+        return (rgb_image,mask), (label,record_frames)
+
+    if include_features or only_features:
+        # TODO this has not been updated to work with cut mix
+        features = tf.squeeze(example["image/features"])
+        if only_features:
+            return features, label
+            
+        return (rgb_image, features), label
     # TODO this has not been updated to work with cut mix
-    if only_features:
-        return tf.squeeze(example["image/features"])
-    elif include_features:
-        return (rgb_image, tf.squeeze(example["image/features"]))
-    return rgb_image
+    # if only_features:
+    #     return tf.squeeze(example["image/features"])
+    # elif include_features:
+    #     return (rgb_image, tf.squeeze(example["image/features"]))
+    # return rgb_image
 
 
 def prepare_cutmix_dataset(dataset_original, img_size):
@@ -426,6 +434,8 @@ def video_mosaic_cutmix(data1, data2, img_size, grid_rows=5, grid_cols=5, alpha=
     image2, label2 = data2
     label1,frames_used1 =   label1
     label2,frames_used2 =   label2
+    image1,mask1 =   image1
+    image2,mask2 =   image2
     num_frames = tf.math.minimum(frames_used1,frames_used2)
     # 1. Define dimensions of an individual sub-frame
     sub_h = img_size // grid_rows
@@ -476,8 +486,8 @@ def video_mosaic_cutmix(data1, data2, img_size, grid_rows=5, grid_cols=5, alpha=
     
     # Blend the one-hot labels
     mixed_label = label1 * adjusted_lam + label2 * (1.0 - adjusted_lam)
-    
-    return mixed_image, mixed_label
+    # not sure how the mask will work with this
+    return (mixed_image,mask1), mixed_label
 
 
 def tile_images(images):
@@ -516,7 +526,7 @@ def main():
         labels,
         batch_size=32,
         image_size=(160, 160),
-        augment=False,
+        augment=True,
         # preprocess_fn=tf.keras.applications.inception_v3.preprocess_input,
         resample=False,
         shuffle=False,
@@ -548,13 +558,17 @@ save_index = 0
 
 def save_batch(image_batch, label_batch, labels, save_dir, tracks=False):
     global save_index
-    logging.info("Input batch is %s",image_batch.shape)
+    image_batch,masks = image_batch
+    masks,frame_indices = masks
+
+    # for m in masks:
+        # print("masks are ",m[0].shape,m.shape,m[1].shape)
     if tracks:
         track_batch = label_batch[1]
         label_batch = label_batch[0]
     for n, img in enumerate(image_batch):
         img = np.uint8(img)
-
+        print("Mask is ",masks[n],frame_indices[n])
         if tracks:
             file_title = (
                 f"{labels[np.argmax(label_batch[n])]}-{track_batch[n]}-{save_index}.png"
@@ -613,5 +627,32 @@ def show_batch(image_batch, label_batch, labels, save=None, tracks=False):
     plt.show()
 
 
+
+
+@tf.function
+def get_frame_mask(num_valid, frame_indices, camera_fps=9):
+    """
+    Normalises frame intervals with a fixed 5-minute (300 seconds) ceiling
+    using logarithmic compression. Camera speed is set to 9 FPS.
+    """
+
+    # Establish our fixed 5-minute logarithmic divider ceiling
+    LOG_5MIN_CEILING = tf.math.log1p(300.0)  # log1p(300) equals roughly 5.7071
+
+
+    # Elapsed seconds between consecutive frames at the given camera FPS
+    indices = tf.cast(frame_indices, tf.float32)
+    indices = indices - indices[0]
+    seconds_delta = (indices[1:] - indices[:-1]) / tf.cast(camera_fps, tf.float32)
+    # Apply log1p transformation to handle variation stably, then clip to [0.0, 1.0]
+    normalised_delta = tf.minimum(tf.math.log1p(seconds_delta) / LOG_5MIN_CEILING, 1.0)
+    # Use -1.0 as a strict geometric flag for empty padding slots
+    mask_flat = tf.concat([[0.0], normalised_delta, tf.fill([25 - num_valid], -1.0)], axis=0)
+
+    mask = tf.reshape(mask_flat, (5, 5, 1))
+    return mask
+
 if __name__ == "__main__":
     main()
+
+

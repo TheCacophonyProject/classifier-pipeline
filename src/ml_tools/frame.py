@@ -133,26 +133,26 @@ class Frame:
         new_height = min(crop_rectangle.height, region.height)
         new_width = max(resize_dim, new_width)
         new_height = max(resize_dim, new_height)
-
-        region.crop(crop_rectangle)
+        cropped_region = region.copy()
+        cropped_region.crop(crop_rectangle)
 
         thermal = None
         filtered = None
         mask = None
         if self.thermal is not None:
-            sub_thermal = region.subimage(self.thermal)
+            sub_thermal = cropped_region.subimage(self.thermal)
             thermal = np.full((new_height, new_width), np.amin(sub_thermal), dtype=np.float32)
-            thermal[top:region.height + top, left:region.width + left] = sub_thermal
+            thermal[top:cropped_region.height + top, left:cropped_region.width + left] = sub_thermal
 
         if self.filtered is not None:
-            sub_filtered = region.subimage(self.filtered)
+            sub_filtered = cropped_region.subimage(self.filtered)
             filtered = np.full((new_height, new_width), np.amin(sub_filtered), dtype=np.float32)
-            filtered[top:region.height + top, left:region.width + left] = sub_filtered
+            filtered[top:cropped_region.height + top, left:cropped_region.width + left] = sub_filtered
 
         if self.mask is not None:
-            sub_mask = region.subimage(self.mask)
+            sub_mask = cropped_region.subimage(self.mask)
             mask = np.zeros((new_height, new_width), dtype=sub_mask.dtype)
-            mask[top:region.height + top, left:region.width + left] = sub_mask
+            mask[top:cropped_region.height + top, left:cropped_region.width + left] = sub_mask
 
         return Frame(
             thermal,
@@ -160,7 +160,7 @@ class Frame:
             self.frame_number,
             mask=mask,
             ffc_affected=self.ffc_affected,
-            region=region,
+            region = cropped_region,
         )
 
 

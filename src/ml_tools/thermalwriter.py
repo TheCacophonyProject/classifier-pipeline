@@ -73,7 +73,7 @@ def create_tf_example(sample, data, features, labels, country_code):
 
     average_dim = [r.area for r in sample.track_bounds]
     average_dim = int(round(np.mean(average_dim) ** 0.5))
-    thermal_raw,filtered,thermal_norm =  data
+    thermal_raw,filtered,thermal_norm,frame_indices =  data
     if len(thermal_raw)==0:
         return None
     image_id = sample.unique_id
@@ -87,7 +87,7 @@ def create_tf_example(sample, data, features, labels, country_code):
     thermal_raw = np.array(thermal_raw)
     filtered = np.array(filtered)
     thermal_norm = np.array(thermal_norm)
-
+    frame_indices = np.array(frame_indices)
     thermal_key = hashlib.sha256(thermal_raw).hexdigest()
     filtered_key = hashlib.sha256(filtered).hexdigest()
     mask_key = hashlib.sha256(thermal_norm).hexdigest()
@@ -95,6 +95,7 @@ def create_tf_example(sample, data, features, labels, country_code):
     avg_mass = int(round(sample.mass / len(sample.frame_numbers)))
 
     feature_dict = {
+        "image/frame_numbers": tfrecord_util.int64_list_feature(frame_indices),
         "image/filtered": tfrecord_util.int64_feature(1 if sample.filtered else 0),
         "image/avg_mass": tfrecord_util.int64_feature(avg_mass),
         "image/track_median_mass": tfrecord_util.int64_feature(
@@ -145,8 +146,8 @@ def save_data(source_file,excluded_tags, writer, labels, extra_args):
         return 0
     saved = 0
     try:
-        country_code = sample_data[1]
-        sample_data = sample_data[0]
+        sample_data,country_code,border_data = sample_data
+        
         for sample, images, features in sample_data:
             tf_example = create_tf_example(
                 sample, images, features, labels,  country_code
@@ -158,7 +159,10 @@ def save_data(source_file,excluded_tags, writer, labels, extra_args):
         logging.error(
             "Could not save data for %s", source_file, exc_info=True
         )
-    return saved
+    num_frames = len(border_data[0])
+    if num_frames > 0:
+        border_data = np.mean(border_data,axis=1)
+    return (saved,border_data,num_frames)
 
 
 
@@ -173,7 +177,7 @@ def get_data(source_file,excluded_tags, extra_args):
     THERMAL_MIN_KV =  27315 
     THERMAL_MAX_KV = 31515 #42 celcius
     mosaic_dim = extra_args.get("mosaic_dim")
-
+    border_pixels = [[],[],[]]
     data = []
     crop_rectangle = Rectangle(1, 1, 160 - 2, 120 - 2)
     resize_dim = mosaic_dim
@@ -272,6 +276,8 @@ def get_data(source_file,excluded_tags, extra_args):
                 thermalNorm = []
                 thermalRaw = []  # np.empty(len(frames), dtype=object)
                 filtered = []  # np.empty(len(frames), dtype=object)
+                frame_indices = []
+                logging.info("Sample frame indices are %s",sample.frame_indices)
                 for frame_number in sample.frame_indices:
 
                     # no need to do work twice
@@ -281,19 +287,14 @@ def get_data(source_file,excluded_tags, extra_args):
                         region = track.regions_by_frame[frame_number]
                         median_temp = np.median(frame.thermal)
 
-
-
                         enlarged_region = region.copy()
                         if ENLARGE_FOR_AUGMENT:
                             if region.width > resize_dim or region.height >resize_dim:
-                                enlarged_region.enlarge_for_rotation(mosaic_dim, resize_dim - mosaic_dim)
-                                # logging.info("%s %s Region %s becomes %s",source_file,clip_meta.clip_id,region,enlarged_region)
-
+                               delta_w,delta_h =  enlarged_region.enlarge_for_rotation(mosaic_dim, resize_dim - mosaic_dim)
                             else:
-                                enlarged_region.enlarge_to(resize_dim)
-                        
-                        
+                                delta_w,delta_h = enlarged_region.enlarge_to(resize_dim)
 
+                       
                         cropped_frame = frame.crop_by_region_with_padding(enlarged_region,crop_rectangle,resize_dim)
                         cropped_frame.float_arrays()
                         by_frame_number[frame_number] = (cropped_frame, median_temp)
@@ -363,8 +364,22 @@ def get_data(source_file,excluded_tags, extra_args):
                             continue
 
                         cropped_frame.filtered =exposure.equalize_adapthist(cropped_frame.filtered,     kernel_size=(cropped_frame.filtered.shape[0] // 2, cropped_frame.filtered.shape[1]//2),clip_limit =0.008)
-                      
-                      
+                        
+                        # calculate averages of background
+                        
+                        original_rect = Rectangle(int(math.ceil(delta_w/2)),int(math.ceil(delta_h/2)),region.width,region.height)
+                        thermal_border = original_rect.get_border(region,cropped_frame.thermal,2,crop_rectangle)
+                        filtered_border = original_rect.get_border(region,cropped_frame.filtered,2,crop_rectangle)
+                        thermal_norm_border = original_rect.get_border(region,cropped_frame.thermal_norm,2,crop_rectangle)
+
+                        if len(thermal_border) ==0:
+                            # probably doesn't matter to just ignore these clips
+                            logging.error("%s Empty border for clip: %s track: %s frame %s region %s original %s",thermal_border,clip_meta.clip_id,track.track_id, frame_number,enlarged_region,region)
+                            1/0
+                        else:
+                            border_pixels[0].extend(thermal_border)
+                            border_pixels[1].extend(filtered_border)
+                            border_pixels[2].extend(thermal_norm_border)
                         if cropped_frame.region.width > resize_dim or cropped_frame.region.height >resize_dim:
 
                             # downsize
@@ -380,26 +395,25 @@ def get_data(source_file,excluded_tags, extra_args):
                         cropped_frame,_ = by_frame_number[frame_number]
                         
                        
-                        
-                   
+
                     assert cropped_frame.thermal.shape == (resize_dim,resize_dim), f"SHape is wrong {cropped_frame.region}"
                     # GP could handle each type separately, may be instances where one is valid
                     if cropped_frame.filtered is not None and cropped_frame.thermal is not None and cropped_frame.thermal_norm is not None:
                         filtered.append(cropped_frame.filtered)
                         thermalRaw.append(cropped_frame.thermal)
                         thermalNorm.append(cropped_frame.thermal_norm)
-
+                        frame_indices.append(frame_number)
                 thermalRaw = np.array(thermalRaw)
                 filtered = np.array(filtered)
                 thermalNorm = np.array(thermalNorm)
 
-                data.append((sample, (thermalRaw, filtered,thermalNorm), features))
+                data.append((sample, (thermalRaw, filtered,thermalNorm,frame_indices), features))
     except:
         logging.error(
             "Cant get Samples for %s", source_file, exc_info=True
         )
         return None
-    return (data, clip_meta.country_code)
+    return (data, clip_meta.country_code,np.array(border_pixels))
 
 
 def feature_stuff():

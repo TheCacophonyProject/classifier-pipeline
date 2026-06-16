@@ -100,8 +100,34 @@ class Rectangle:
         :param image mumpy array of dims [height, width]
         """
         return image[
-            self.top : self.top + self.height, self.left : self.left + self.width
+            max(0, self.top) : self.top + self.height,
+            max(0, self.left) : self.left + self.width,
         ]
+
+    def get_border(self, original_region,input_img, border, crop_rectangle):
+        """Returns pixels forming a border-wide frame around the image,
+        excluding any side where the rectangle extends outside the image bounds."""
+        sub_img = self.subimage(input_img)
+        
+        h, w = sub_img.shape[:2]
+
+        strips = []
+        if original_region.top > crop_rectangle.top:
+            strips.append(sub_img[:border, :].ravel())
+
+        if original_region.bottom < crop_rectangle.bottom:
+            strips.append(sub_img[h - border :, :].ravel())
+
+        if original_region.left > crop_rectangle.left:
+            strips.append(sub_img[border : h - border, :border].ravel())
+
+        if original_region.right < crop_rectangle.right:
+            strips.append(sub_img[border : h - border, w - border :].ravel())
+        # if len(strips)<4:
+        #     import logging
+        #     concatted = np.concatenate(strips) if strips else np.array([])
+        #     logging.info("Ignored some %s region %s orig %s %s in img %s - %s, %s",len(strips),self,original_region,sub_img.shape, input_img.shape,concatted,strips)
+        return np.concatenate(strips) if strips else np.array([])
 
     # enlarge rectangle such equal pixels are added to width and height  with respect to the crop rectangle
     def enlarge_even(self, width_enlarge, height_enlarge, crop, even_enlarge = False):
@@ -222,8 +248,8 @@ class Rectangle:
         # extra_pixels = extra_needed * self.width / final_dim
         # (final_dim / self.width)
         dim = max(self.width,self.height)
-        self.enlarge_to(dim +extra_pixels )
-
+        return self.enlarge_to(dim +extra_pixels )
+        
 
 
 
@@ -231,12 +257,13 @@ class Rectangle:
         delta_w = max_dim - self.width
         delta_h = max_dim - self.height
         if delta_w >0:
-            self.x -= delta_w // 2
+            self.x -= math.ceil(delta_w / 2)
             self.width = max_dim
         if delta_h > 0:
-            self.y -= delta_h // 2
+            self.y -= math.ceil(delta_h / 2)
             self.height = max_dim
-
+        return (delta_w,delta_h)
+    
     def enlarge_with_aspect(self, max_dim):
         scale = max_dim / max(self.width, self.height)
         new_width = math.floor(self.width * scale)
@@ -250,3 +277,5 @@ class Rectangle:
         # logging.info("Adjusted w with %s",delta_w//2)
         self.y -= delta_h // 2
         self.height = new_height
+
+

@@ -165,7 +165,7 @@ class TrackingConfig(DefaultConfig):
             type="thermal",
             params={
                 "base_distance_change": 450,
-                "min_mass_change": 20,
+                "min_mass_change": 25,
                 "restrict_mass_after": 1.5,
                 "mass_change_percent": 0.55,
                 "max_distance": 2000,

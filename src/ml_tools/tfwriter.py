@@ -20,8 +20,7 @@ from absl import logging
 import numpy as np
 import psutil
 
-
-def process_job(queue, labels, base_dir, save_data_name, writer_i,excluded_tags, extra_args):
+def process_job(queue, results_queue, labels, base_dir, save_data_name, writer_i,excluded_tags, extra_args):
     import gc
     import tensorflow as tf
     from ml_tools.logs import init_logging
@@ -44,6 +43,8 @@ def process_job(queue, labels, base_dir, save_data_name, writer_i,excluded_tags,
     saved = 0
     files = 0
     num_frames = extra_args.get("num_frames", 25)
+    border_sum = np.zeros(3)
+    total_border_frames = 0
     while True:
         source_file = queue.get()
         try:
@@ -53,13 +54,18 @@ def process_job(queue, labels, base_dir, save_data_name, writer_i,excluded_tags,
                     mem_mb = psutil.Process().memory_info().rss / 1024**2
                     logging.info("Worker %s done, processed %s files memory %s", name,files,mem_mb)
                     writer.close()
+                    results_queue.put((border_sum, total_border_frames))
                     break
                 else:
                     logging.error("Unknown string %s",source_file)
             else:
-                saved += save_data(source_file, excluded_tags,writer, labels, extra_args)
-                files += 1
+                saved_samples, border_data,border_frames = save_data(source_file, excluded_tags,writer, labels, extra_args)
 
+                saved += saved_samples
+                files += 1
+                if border_frames>0:
+                    border_sum += border_data * border_frames
+                    total_border_frames += border_frames
                 if files % int(2500 / num_frames) == 0:
                     mem_mb = psutil.Process().memory_info().rss / 1024**2
                     logging.info("Saved %s to %s  mem %.1f MB", files, name, mem_mb)
@@ -95,20 +101,25 @@ def create_tf_records(
         "writing to output path: %s for %s recordings", output_path, len(source_files))
 
     num_processes = psutil.cpu_count(logical=False)
+    num_processes = 1
     logging.info("Using %s processes",num_processes)
     writer_i = 0
     index = 0
     jobs_per_process = 600 * num_processes
     logging.info("Writing samples")
+    border_sum = np.zeros(3)
+    total_border_frames = 0
     try:
         while index < len(source_files):
             job_queue = _spawn_ctx.Queue()
+            results_queue = _spawn_ctx.Queue()
             processes = []
             for i in range(num_processes):
                 p = _spawn_ctx.Process(
                     target=process_job,
                     args=(
                         job_queue,
+                        results_queue,
                         labels,
                         output_path,
                         save_data_name,
@@ -133,6 +144,9 @@ def create_tf_records(
             for process in processes:
                 try:
                     process.join()
+                    worker_border_sum, worker_total_border_frames = results_queue.get()
+                    border_sum += worker_border_sum
+                    total_border_frames += worker_total_border_frames
                 except KeyboardInterrupt:
                     logging.info("KeyboardInterrupt, terminating.")
                     for process in processes:
@@ -141,5 +155,12 @@ def create_tf_records(
             mem_mb = psutil.Process().memory_info().rss / 1024**2
             logging.info("Saved %s mem %.1f MB", len(dataset.samples_by_id), mem_mb)
 
+        if total_border_frames > 0:
+            logging.info(
+                "Mean border values %s over %s frames",
+                border_sum / total_border_frames,
+                total_border_frames,
+            )
     except:
         logging.error("Error saving track info", exc_info=True)
+    return               (  border_sum , total_border_frames)

@@ -351,19 +351,10 @@ class Previewer:
             mask = np.repeat(mask, 3, axis=2)
             mask = Image.fromarray(mask)
 
-        flow_h, flow_v = frame.get_flow_split(clip_flow=True)
-        if flow_h is None and flow_v is None:
-            flow_magnitude = Image.fromarray(
-                np.zeros((np.array(thermal).shape), dtype=np.uint8)
-            )
-        else:
-            flow_magnitude = (
-                np.linalg.norm(np.float32([flow_h, flow_v]), ord=2, axis=0) / 4.0
-                + min_temp
-            )
-            flow_magnitude = tools.convert_heat_to_img(
-                flow_magnitude, self.colourmap, min_temp, max_temp
-            )
+        flow_magnitude = Image.fromarray(
+            np.zeros((np.array(thermal).shape), dtype=np.uint8)
+        )
+      
 
         image = np.hstack(
             (np.vstack((thermal, mask)), np.vstack((filtered, flow_magnitude)))
