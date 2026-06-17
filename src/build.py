@@ -84,7 +84,7 @@ def parse_args():
         "pad_values",
         type=float,
         nargs=3,
-        help="Values to use to pad difference channels of our image, these are based of calculating the mean border pixel values of all our data",
+        help="Values to use to pad difference channels of our image, these are based of calculating the mean border pixel values of all our data (thermal, thermal_norm,filtered)",
     )
     args = parser.parse_args()
     if args.date:
