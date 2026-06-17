@@ -1319,11 +1319,14 @@ def optimizer(params,steps_per_epoch,epochs,fine_tune=False):
         )
     else:
 
-        lr_schedule = tf.keras.optimizers.schedules.ExponentialDecay(
-            params.learning_rate,
-            decay_steps=int(steps_per_epoch* epochs),
-            decay_rate=params.learning_rate_decay,
-        )
+        # lr_schedule = tf.keras.optimizers.schedules.ExponentialDecay(
+        #     params.learning_rate,
+        #     decay_steps=int(steps_per_epoch* epochs),
+        #     decay_rate=params.learning_rate_decay,
+        # )
+        # using ReduceLROnPlateau instead
+        lr_schedule = params.learning_rate,
+
     optimizer = tf.keras.optimizers.Adam(learning_rate=lr_schedule)
     return optimizer
 
