@@ -140,8 +140,8 @@ def create_tf_example(sample, data, features, labels, country_code):
     return example
 
 
-def save_data(source_file,excluded_tags, writer, labels, extra_args):
-    sample_data = get_data(source_file, excluded_tags,extra_args)
+def save_data(source_file,excluded_tags, writer, labels,pad_values, extra_args):
+    sample_data = get_data(source_file, excluded_tags,pad_values,extra_args)
     if sample_data is None:
         return 0
     saved = 0
@@ -166,7 +166,7 @@ def save_data(source_file,excluded_tags, writer, labels, extra_args):
 
 
 
-def get_data(source_file,excluded_tags, extra_args):
+def get_data(source_file,excluded_tags,pad_values, extra_args):
     from skimage import exposure
     import cv2
     import math
@@ -294,9 +294,21 @@ def get_data(source_file,excluded_tags, extra_args):
                                 delta_w,delta_h = enlarged_region.enlarge_to(resize_dim)
 
                        
-                        cropped_frame = frame.crop_by_region_with_padding(enlarged_region,crop_rectangle,resize_dim)
+                        # compute padding offsets now so calculations run on content only
+                        pad_top = 0
+                        pad_left = 0
+                        if enlarged_region.width < crop_rectangle.width and crop_rectangle.left > enlarged_region.left:
+                            pad_left = crop_rectangle.left - enlarged_region.left
+                        if enlarged_region.height < crop_rectangle.height and crop_rectangle.top > enlarged_region.top:
+                            pad_top = crop_rectangle.top - enlarged_region.top
+                        new_width = max(resize_dim, min(crop_rectangle.width, enlarged_region.width))
+                        new_height = max(resize_dim, min(crop_rectangle.height, enlarged_region.height))
+                        content_region = enlarged_region.copy()
+                        content_region.crop(crop_rectangle)
+                        cropped_frame = frame.crop_by_region(content_region)
                         cropped_frame.float_arrays()
                         by_frame_number[frame_number] = (cropped_frame, median_temp)
+                        # logging.info("OG region %s Enlarge region %s content_region %s  padding (%s %s)",region, enlarged_region,content_region,pad_left,pad_top)
                         if (
                             np.amax(cropped_frame.thermal) > 50000
                             or np.amin(cropped_frame.thermal) < 1000
@@ -365,11 +377,9 @@ def get_data(source_file,excluded_tags, extra_args):
                         cropped_frame.filtered =exposure.equalize_adapthist(cropped_frame.filtered,     kernel_size=(cropped_frame.filtered.shape[0] // 2, cropped_frame.filtered.shape[1]//2),clip_limit =0.008)
                         
                         # calculate averages of background
-                        
-                        original_rect = Rectangle(int(math.ceil(delta_w/2)),int(math.ceil(delta_h/2)),region.width,region.height)
-                        thermal_border = original_rect.get_border(region,cropped_frame.thermal,2,crop_rectangle)
-                        filtered_border = original_rect.get_border(region,cropped_frame.filtered,2,crop_rectangle)
-                        thermal_norm_border = original_rect.get_border(region,cropped_frame.thermal_norm,2,crop_rectangle)
+                        thermal_border = content_region.get_border(cropped_frame.thermal,2,crop_rectangle)
+                        filtered_border = content_region.get_border(cropped_frame.filtered,2,crop_rectangle)
+                        thermal_norm_border = content_region.get_border(cropped_frame.thermal_norm,2,crop_rectangle)
 
                         if len(thermal_border) ==0:
                             # probably doesn't matter to just ignore these clips
@@ -379,17 +389,24 @@ def get_data(source_file,excluded_tags, extra_args):
                             border_pixels[0].extend(thermal_border)
                             border_pixels[1].extend(filtered_border)
                             border_pixels[2].extend(thermal_norm_border)
-                        if cropped_frame.region.width > resize_dim or cropped_frame.region.height >resize_dim:
-
-                            # downsize
+                        
+                        
+                        # apply paddings
+                        if pad_top > 0 or pad_left > 0 or content_region.width < new_width or content_region.height < new_height:
+                            # pad processed content to final size with the animal centred
+                            pad_frame(cropped_frame,new_height, new_width, pad_top, pad_left,pad_values)
+                            # logging.info("Padded is now %s",cropped_frame.thermal.shape)
+                        if cropped_frame.region.width > resize_dim or cropped_frame.region.height > resize_dim:
+                            # downsize (resize_and_pad handles centering to resize_dim)
                             cropped_frame.resize_with_aspect(
                                 (resize_dim, resize_dim),
                                 crop_rectangle,
                                 keep_edge=False,
                                 edge_offset=(7, 7, 6, 6),
                                 original_region=region,
-                                interpolation = cv2.INTER_AREA
+                                interpolation=cv2.INTER_AREA
                             )
+                
                     else:                       
                         cropped_frame,_ = by_frame_number[frame_number]
                         
@@ -415,6 +432,25 @@ def get_data(source_file,excluded_tags, extra_args):
     return (data, clip_meta.country_code,np.array(border_pixels))
 
 
+
+def pad_frame(frame, new_height, new_width, top, left,pad_values):
+    """Pad channels to (new_height, new_width), placing existing content at (top, left)."""
+    padded = np.full((new_height, new_width), pad_values[0], dtype=frame.thermal.dtype)
+    h, w = frame.thermal.shape[:2]
+    padded[top:top + h, left:left + w] = frame.thermal
+    frame.thermal = padded
+
+    padded = np.full((new_height, new_width),pad_values[1], dtype=frame.thermal_norm.dtype)
+    h, w = frame.thermal_norm.shape[:2]
+    padded[top:top + h, left:left + w] = frame.thermal_norm
+    frame.thermal_norm = padded
+
+    padded = np.full((new_height, new_width), pad_values[2], dtype=frame.filtered.dtype)
+    h, w = frame.filtered.shape[:2]
+    padded[top:top + h, left:left + w] = frame.filtered
+    frame.filtered = padded
+
+    
 def feature_stuff():
     #TODO if we ever want  random forest features needs to be sorted
         frame_temp_median = {}

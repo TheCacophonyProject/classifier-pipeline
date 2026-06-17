@@ -144,6 +144,7 @@ def get_extra_mappings(labels):
         logging.info("Extra label mapping is %s to %s ", labels[key], labels[value])
     return extra_label_map
 
+rotation_augmentation = None
 
 def load_dataset(filenames, remap_lookup, labels, args):
     deterministic = args.get("deterministic", False)
@@ -164,6 +165,8 @@ def load_dataset(filenames, remap_lookup, labels, args):
     include_features = args.get("include_features", False)
     only_features = args.get("only_features", False)
     one_hot = args.get("one_hot", True)
+    pads = args["pads"]
+    logging.info("Ussing paddings %s",255.0*pads)
     dataset = dataset.apply(tf.data.experimental.ignore_errors())
     extra_label_map = None
     if args.get("multi_label"):
@@ -185,6 +188,12 @@ def load_dataset(filenames, remap_lookup, labels, args):
 
     # Cast everything to int32 at the end
     padding = tf.cast(padding, dtype=tf.int32)
+    global rotation_augmentation
+    rotation_augmentation = RandomRotationPerChannelFill(
+        # Tested at 0.5 and 0.1 seems to work best
+        factor=0.1,
+        fill_values = 255.0*pads,
+    )
     dataset = dataset.map(
         partial(
             read_tfrecord,
@@ -205,6 +214,7 @@ def load_dataset(filenames, remap_lookup, labels, args):
             channels=args.get(
                 "channels", [TrackChannels.raw.name, TrackChannels.thermal.name, TrackChannels.filtered.name]
             ),
+            pad_values = 255.0*pads,
         ),
         num_parallel_calls=AUTOTUNE,
         deterministic=deterministic,
@@ -212,7 +222,7 @@ def load_dataset(filenames, remap_lookup, labels, args):
     if only_features:
         filter_nan = lambda x, y: not tf.reduce_any(tf.math.is_nan(x))
     else:
-        filter_nan = lambda x, y: not tf.reduce_any(tf.math.is_nan(x[0]))
+        filter_nan = lambda x, y: not tf.reduce_any(tf.math.is_nan(x["input_image"][0]))
 
     dataset = dataset.filter(filter_nan)
 
@@ -227,16 +237,24 @@ def load_dataset(filenames, remap_lookup, labels, args):
         dataset = prepare_cutmix_dataset(dataset, img_size=image_size[0])
     else:
         # remove num_frames_used from y
-        dataset = dataset.map(lambda x, y:  (x,y[0]),                      num_parallel_calls=tf.data.AUTOTUNE)
+        dataset = dataset.map(lambda x, y:  (x,y["label"]),                      num_parallel_calls=tf.data.AUTOTUNE)
     return dataset
 
 
-rotation_augmentation = tf.keras.Sequential(
-    [
-        # Tested at 0.5 and 0.1 seems to work best
-        tf.keras.layers.RandomRotation(0.1, fill_mode="nearest", fill_value=0),
-    ]
-)
+class RandomRotationPerChannelFill(tf.keras.layers.Layer):
+    def __init__(self, factor, fill_values, **kwargs):
+        super().__init__(**kwargs)
+        self._fill_tensor = tf.constant(fill_values, dtype=tf.float32)
+        self._rotation = tf.keras.layers.RandomRotation(
+            factor, fill_mode="constant", fill_value=0
+        )
+
+    def call(self, inputs, training=False):
+        rotated = self._rotation(inputs - self._fill_tensor, training=training)
+        return rotated + self._fill_tensor
+
+
+
 data_augmentation = tf.keras.Sequential(
     [
         tf.keras.layers.RandomBrightness(0.2),  # better per frame or per sequence??
@@ -338,7 +356,7 @@ def read_tfrecord(
         # rotation augmentation before tiling
         if augment:
             logging.info("Augmenting")
-            rgb_image = rotation_augmentation(rgb_image)
+            rgb_image = rotation_augmentation(rgb_image, training=True)
             random_value = tf.random.uniform(
                 shape=[], minval=0.0, maxval=1.0, dtype=tf.float32
             )
@@ -396,7 +414,7 @@ def read_tfrecord(
         avg_mass = tf.cast(example["image/avg_mass"], tf.int32)
         label = (label, track_id, avg_mass)
     if not include_features and not only_features:
-        return (rgb_image,mask), (label,record_frames)
+        return {"input_image":rgb_image,"input_mask":mask}, {"label":label,"num_frames":record_frames}
 
     if include_features or only_features:
         # TODO this has not been updated to work with cut mix
@@ -429,13 +447,19 @@ def prepare_cutmix_dataset(dataset_original, img_size):
     return cutmix_dataset
 
 def video_mosaic_cutmix(data1, data2, img_size, grid_rows=5, grid_cols=5, alpha=1.0):
+    x1, y1 = data1
+    print(x1,y1)
+    image1 = x1["input_image"]
+    mask1 = x1["input_mask"]
+    label1 = y1["label"]
+    frames_used1 = y1["num_frames"]
 
-    image1, label1 = data1
-    image2, label2 = data2
-    label1,frames_used1 =   label1
-    label2,frames_used2 =   label2
-    image1,mask1 =   image1
-    image2,mask2 =   image2
+    x2, y2 = data2
+    image2 = x2["input_image"]
+    mask2 = x2["input_mask"]
+
+    label2 = y2["label"]
+    frames_used2 = y2["num_frames"]
     num_frames = tf.math.minimum(frames_used1,frames_used2)
     # 1. Define dimensions of an individual sub-frame
     sub_h = img_size // grid_rows
@@ -487,7 +511,7 @@ def video_mosaic_cutmix(data1, data2, img_size, grid_rows=5, grid_cols=5, alpha=
     # Blend the one-hot labels
     mixed_label = label1 * adjusted_lam + label2 * (1.0 - adjusted_lam)
     # not sure how the mask will work with this
-    return (mixed_image,mask1), mixed_label
+    return {"input_image":mixed_image,"input_mask":mask1}, mixed_label
 
 
 def tile_images(images):
@@ -513,7 +537,8 @@ def main():
     with open(meta_f, "r") as f:
         meta = json.load(f)
     labels = meta.get("labels", [])
-    datasets = []
+    pads = meta.get("background_average",[0,0,0])
+    pads = np.float32(pads)    
     excluded_labels = get_excluded()
     # for l in labels:
     #     if l not in ["mustelid", "deer", "sheep"]:
@@ -536,6 +561,7 @@ def main():
         include_track=include_track,
         num_frames=25,
         deterministic=True,
+        pads = pads
     )
     print("Epoch size is", epoch_size)
     # print(get_distribution(resampled_ds, len(labels), extra_meta=False))
@@ -558,8 +584,8 @@ save_index = 0
 
 def save_batch(image_batch, label_batch, labels, save_dir, tracks=False):
     global save_index
-    image_batch,masks = image_batch
-    masks,frame_indices = masks
+    masks = image_batch["input_mask"]
+    image_batch = image_batch["input_image"]
     
     # for m in masks:
         # print("masks are ",m[0].shape,m.shape,m[1].shape)
@@ -567,12 +593,7 @@ def save_batch(image_batch, label_batch, labels, save_dir, tracks=False):
         track_batch = label_batch[1]
         label_batch = label_batch[0]
     for n, img in enumerate(image_batch):
-        img = np.uint8(img)
-        if masks[n] is None:
-            logging.info("Mask is none %s track %s",frame_indices[n],track_batch[n])
-        else:
-            continue
-        print("Mask is ",masks[n],frame_indices[n])
+        # print("Mask is ",masks[n],frame_indices[n])
         if tracks:
             file_title = (
                 f"{labels[np.argmax(label_batch[n])]}-{track_batch[n]}-{save_index}.png"

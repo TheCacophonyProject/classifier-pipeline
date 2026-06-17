@@ -104,25 +104,23 @@ class Rectangle:
             max(0, self.left) : self.left + self.width,
         ]
 
-    def get_border(self, original_region,input_img, border, crop_rectangle):
+    def get_border(self,input_img, border, crop_rectangle):
         """Returns pixels forming a border-wide frame around the image,
-        excluding any side where the rectangle extends outside the image bounds."""
-        sub_img = self.subimage(input_img)
-        
-        h, w = sub_img.shape[:2]
+        excluding any side where the rectangle extends outside the image bounds."""        
+        h, w = input_img.shape[:2]
 
         strips = []
-        if original_region.top > crop_rectangle.top:
-            strips.append(sub_img[:border, :].ravel())
+        if self.top > crop_rectangle.top:
+            strips.append(input_img[:border, :].ravel())
 
-        if original_region.bottom < crop_rectangle.bottom:
-            strips.append(sub_img[h - border :, :].ravel())
+        if self.bottom < crop_rectangle.bottom:
+            strips.append(input_img[h - border :, :].ravel())
 
-        if original_region.left > crop_rectangle.left:
-            strips.append(sub_img[border : h - border, :border].ravel())
+        if self.left > crop_rectangle.left:
+            strips.append(input_img[border : h - border, :border].ravel())
 
-        if original_region.right < crop_rectangle.right:
-            strips.append(sub_img[border : h - border, w - border :].ravel())
+        if self.right < crop_rectangle.right:
+            strips.append(input_img[border : h - border, w - border :].ravel())
         # if len(strips)<4:
         #     import logging
         #     concatted = np.concatenate(strips) if strips else np.array([])
@@ -277,5 +275,3 @@ class Rectangle:
         # logging.info("Adjusted w with %s",delta_w//2)
         self.y -= delta_h // 2
         self.height = new_height
-
-

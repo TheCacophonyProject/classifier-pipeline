@@ -20,7 +20,7 @@ from absl import logging
 import numpy as np
 import psutil
 
-def process_job(queue, results_queue, labels, base_dir, save_data_name, writer_i,excluded_tags, extra_args):
+def process_job(queue, results_queue, labels, base_dir, save_data_name, writer_i,excluded_tags, pad_values,extra_args):
     import gc
     import tensorflow as tf
     from ml_tools.logs import init_logging
@@ -59,7 +59,7 @@ def process_job(queue, results_queue, labels, base_dir, save_data_name, writer_i
                 else:
                     logging.error("Unknown string %s",source_file)
             else:
-                saved_samples, border_data,border_frames = save_data(source_file, excluded_tags,writer, labels, extra_args)
+                saved_samples, border_data,border_frames = save_data(source_file, excluded_tags,writer, labels,pad_values, extra_args)
 
                 saved += saved_samples
                 files += 1
@@ -82,6 +82,7 @@ def create_tf_records(
     labels,
     save_data_name,
     excluded_tags,
+    pad_values,
     num_shards=1,
     augment=False,
     **extra_args,
@@ -124,6 +125,7 @@ def create_tf_records(
                         save_data_name,
                         writer_i,
                         excluded_tags,
+                        pad_values,
                         extra_args,
                     ),
                 )

@@ -84,7 +84,9 @@ class KerasModel(Interpreter):
         self.params.set_use_segments(
             meta.get("config", {}).get("build", {}).get("use_segments", True)
         )
-
+        self.pads = meta.get("background_average",[0,0,0])
+        self.pads = np.float32(self.pads)
+        
     def shape(self):
         if self.model is None:
             return None
@@ -239,7 +241,7 @@ class KerasModel(Interpreter):
         train, remapped, _, _ = get_dataset(
             train_files,
             self.data_type,
-            self.orig_labels,
+            self.orig_labels,get_dataset
             batch_size=self.params.batch_size,
             image_size=self.params.output_dim[:2],
             preprocess_fn=self.preprocess_fn,
@@ -266,7 +268,7 @@ class KerasModel(Interpreter):
         # width = self.params.frame_size
         width = self.params.output_dim[0]
         input = tf.keras.Input(
-            shape=(width, width, len(self.params.channels)), name="input"
+            shape=(width, width, len(self.params.channels)), name="input_image"
         )
         weights = None if self.params.base_training else "imagenet"
         base_model, preprocess = self.get_base_model(input, weights=weights)
@@ -313,7 +315,7 @@ class KerasModel(Interpreter):
             multi_input=True
             if multi_input:
                 # --- Input 2: The Timeline Mask Layer (5x5x1) ---
-                mask_input = layers.Input(shape=(5, 5, 1), name="timeline_mask")
+                mask_input = layers.Input(shape=(5, 5, 1), name="input_mask")
                 input = [input, mask_input]
 
                 # Generate temporal feature maps matching the spatial dimensions
@@ -613,6 +615,7 @@ class KerasModel(Interpreter):
             multi_label=self.params.multi_label,
             num_frames=self.params.square_width**2,
             channels=self.params.channels,
+            pads = self.pads
         )
         self.labels = new_labels
         self.steps = epoch_size // self.params.batch_size
@@ -657,6 +660,7 @@ class KerasModel(Interpreter):
             multi_label=self.params.multi_label,
             num_frames=self.params.square_width**2,
             channels=self.params.channels,
+            pads = self.pads
         )
         if rebalance:
             self.class_weights = get_weighting(self.train, self.labels)
@@ -704,6 +708,7 @@ class KerasModel(Interpreter):
                 multi_label=self.params.multi_label,
                 num_frames=self.params.square_width**2,
                 channels=self.params.channels,
+                pads = self.pads
             )
             if self.test:
                 test_accuracy = self.model.evaluate(self.test)

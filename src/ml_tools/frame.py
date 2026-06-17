@@ -123,10 +123,12 @@ class Frame:
     def crop_by_region_with_padding(self, region, crop_rectangle, resize_dim):
         top = 0
         left = 0
+        # if our region has becomes out of bounds i.e. negative x or y we need to calculated the top offset
         if region.width < crop_rectangle.width and crop_rectangle.left > region.left:
             left = crop_rectangle.left - region.left
 
-        if region.height < crop_rectangle.height and crop_rectangle.top > region.top:
+        # 
+        if region.height < crop_rectangle.height and crop_rectangle.top > region.top:            
             top = crop_rectangle.top - region.top
 
         new_width = min(crop_rectangle.width, region.width)
@@ -258,6 +260,7 @@ class Frame:
             self.mask = rotate(self.mask, degrees)
         if self.filtered is not None:
             self.filtered = rotate(self.filtered, degrees)
+
 
     def float_arrays(self):
         if self.thermal is not None:

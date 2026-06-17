@@ -78,6 +78,13 @@ def parse_args():
         default=None,
         help="Seed to use for randomness, this will make predictions the same every run on a file",
     )
+
+    parser.add_argument(
+        "pad_values",
+        type=float,
+        nargs=3,
+        help="Values to use to pad difference channels of our image, these are based of calculating the mean border pixel values of all our data",
+    )
     args = parser.parse_args()
     if args.date:
         # if args.date == "None":
@@ -103,6 +110,7 @@ def parse_args():
         import time
 
         args.seed = int(time.time())
+    args.pad_values = np.float32(args.pad_values)
     logging.info("Loading training set up to %s", args.date)
     return args
 
@@ -717,6 +725,7 @@ def main():
     logging.info("# of test clips are %s", len(test_clips))
     label_mapping = get_mappings()
     logging.info("Using mappings %s", label_mapping)
+    logging.info("Using pad values %s", args.pad_values)
     master_dataset = Dataset(
         args.data_dir,
         "dataset",
@@ -869,6 +878,7 @@ def main():
             datasets[0].labels,
             "thermal",
             master_dataset.excluded_tags,
+            args.pad_values,
             num_shards=100,
             num_frames=dataset.segment_length,
             **extra_args,
