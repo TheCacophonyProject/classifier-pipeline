@@ -17,6 +17,7 @@ from config.config import Config
 from ml_tools.dataset import Dataset
 from ml_tools.datasetstructures import Camera
 from ml_tools.tfwriter import create_tf_records
+from ml_tools.thermalwriter import MeanData
 from ml_tools.tools import CustomJSONEncoder
 import attrs
 import numpy as np
@@ -856,8 +857,7 @@ def main():
 
     for dataset in datasets:
         dataset.clear()
-    border_sum = np.zeros(3)
-    total_border_frames = 0
+    border_sum = MeanData(thermal=0.0, filtered=0.0, thermal_norm=0.0)
     meta_data = {
         "labels": datasets[0].labels,
         "type": config.train.type,
@@ -872,7 +872,7 @@ def main():
         dir = os.path.join(record_dir, dataset.name)
         # dont filter the test set,
         extra_args["filter_by_fp"] = dataset.name != "test"
-        dataset_border_sum, dataset_border_frames = create_tf_records(
+        dataset_border_sum = create_tf_records(
             dataset,
             dir,
             datasets[0].labels,
@@ -883,23 +883,19 @@ def main():
             num_frames=dataset.segment_length,
             **extra_args,
         )
+        logging.info("Adding dataset sum %s ", dataset_border_sum)
+        border_sum.add_means(dataset_border_sum)
 
-        if dataset_border_frames > 0:
-            border_sum += dataset_border_sum
-            total_border_frames += dataset_border_frames
-            meta_data["dataset_backgrounds"][dataset.name] = (
-                dataset_border_sum / dataset_border_frames
-            )
-        else:
-            meta_data["dataset_backgrounds"][dataset.name] = np.zeros(3)
+        dataset_border_sum = dataset_border_sum.mean()
+        meta_data["dataset_backgrounds"][dataset.name] = dataset_border_sum.to_dict()
         logging.info(
             "Averages for %s is %s ",
             dataset.name,
             meta_data["dataset_backgrounds"][dataset.name],
         )
-
-    logging.info("Averages for total dataset is %s ", border_sum / total_border_frames)
-    meta_data["background_average"] = border_sum / total_border_frames
+    border_sum = border_sum.mean()
+    logging.info("Averages for total dataset is %s ", border_sum)
+    meta_data["background_average"] = border_sum.to_dict()
     # dont need dataset anymore just need some meta
     meta_filename = f"{record_dir}/training-meta.json"
 

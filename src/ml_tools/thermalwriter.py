@@ -25,14 +25,89 @@ Example usage:
 """
 
 import hashlib
+from dataclasses import dataclass, field
 
 from absl import logging
 import numpy as np
 
 from . import tfrecord_util
+from ml_tools.frame import TrackChannels
 from ml_tools.imageprocessing import normalize
 from ml_tools.rawdb import RawDatabase
 from ml_tools.rectangle import Rectangle
+
+
+
+
+@dataclass
+class MeanData:
+    """Holds per-channel border pixel lists (during collection) or mean values (after aggregation)."""
+    thermal: float = 0
+    filtered:float = 0
+    thermal_norm: float = 0
+    frames_used: int = 0
+
+
+    def add_means(self,other):
+        self.thermal += other.thermal 
+        self.filtered += other.filtered 
+        self.thermal_norm += other.thermal_norm   
+        self.frames_used += other.frames_used
+        
+    def mean(self):
+        if self.frames_used > 0:
+            return self / self.frames_used
+        else:
+            return self / 1
+        
+    def __truediv__(self, scalar):
+        return BorderData(self.thermal / scalar, self.filtered / scalar, self.thermal_norm / scalar)
+
+    def to_dict(self):
+        return {
+            TrackChannels.thermal.name: self.thermal,
+            TrackChannels.filtered.name: self.filtered,
+            TrackChannels.thermal_norm.name: self.thermal_norm,
+        }
+
+    def __len__(self):
+        return self.frames_used
+
+@dataclass
+class BorderData:
+    """Holds per-channel border pixel lists (during collection) or mean values (after aggregation)."""
+    thermal: list = field(default_factory=list)
+    filtered: list = field(default_factory=list)
+    thermal_norm: list = field(default_factory=list)
+
+    def __len__(self):
+        return len(self.thermal)
+
+    def mean(self):
+        n = len(self)
+        return MeanData(n* float(np.mean(self.thermal)) if n > 0 else 0.0, n * float(np.mean(self.filtered)) if n > 0 else 0.0,n* float(np.mean(self.thermal_norm)) if n > 0 else 0.0,n)
+    
+
+    # def __iadd__(self, other):
+    #     self.thermal += other.thermal
+    #     self.filtered += other.filtered
+    #     self.thermal_norm += other.thermal_norm
+    #     return self
+
+    # def __mul__(self, scalar):
+    #     return BorderData(self.thermal * scalar, self.filtered * scalar, self.thermal_norm * scalar)
+
+    # __rmul__ = __mul__
+
+    def __truediv__(self, scalar):
+        return BorderData(self.thermal / scalar, self.filtered / scalar, self.thermal_norm / scalar,frames_used=scalar)
+
+    def to_dict(self):
+        return {
+            TrackChannels.thermal.name: self.thermal,
+            TrackChannels.filtered.name: self.filtered,
+            TrackChannels.thermal_norm.name: self.thermal_norm,
+        }
 
 crop_rectangle = Rectangle(0, 0, 640, 480)
 
@@ -159,10 +234,9 @@ def save_data(source_file,excluded_tags, writer, labels,pad_values, extra_args):
         logging.error(
             "Could not save data for %s", source_file, exc_info=True
         )
-    num_frames = len(border_data[0])
-    if num_frames > 0:
-        border_data = np.mean(border_data,axis=1)
-    return (saved,border_data,num_frames)
+   
+    mean_data = border_data.mean()
+    return (saved, mean_data)
 
 
 
@@ -177,7 +251,7 @@ def get_data(source_file,excluded_tags,pad_values, extra_args):
     THERMAL_MIN_KV =  27315 
     THERMAL_MAX_KV = 31515 #42 celcius
     mosaic_dim = extra_args.get("mosaic_dim")
-    border_pixels = [[],[],[]]
+    border_pixels = BorderData()
     data = []
     crop_rectangle = Rectangle(1, 1, 160 - 2, 120 - 2)
     resize_dim = mosaic_dim
@@ -384,11 +458,10 @@ def get_data(source_file,excluded_tags,pad_values, extra_args):
                         if len(thermal_border) ==0:
                             # probably doesn't matter to just ignore these clips
                             logging.error("%s Empty border for clip: %s track: %s frame %s region %s original %s",thermal_border,clip_meta.clip_id,track.track_id, frame_number,enlarged_region,region)
-                            1/0
                         else:
-                            border_pixels[0].extend(thermal_border)
-                            border_pixels[1].extend(filtered_border)
-                            border_pixels[2].extend(thermal_norm_border)
+                            border_pixels.thermal.extend(thermal_border)
+                            border_pixels.thermal_norm.extend(thermal_norm_border)
+                            border_pixels.filtered.extend(filtered_border)
                         
                         
                         # apply paddings
@@ -429,7 +502,7 @@ def get_data(source_file,excluded_tags,pad_values, extra_args):
             "Cant get Samples for %s", source_file, exc_info=True
         )
         return None
-    return (data, clip_meta.country_code,np.array(border_pixels))
+    return (data, clip_meta.country_code, border_pixels)
 
 
 
