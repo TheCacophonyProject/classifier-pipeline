@@ -622,7 +622,7 @@ class KerasModel(Interpreter):
             channels=self.params.channels,
             pads = self.pads
         )
-        
+
         self.labels = new_labels
         self.steps = epoch_size // self.params.batch_size
         self.log_dir = self.log_base / run_name
@@ -764,12 +764,15 @@ class KerasModel(Interpreter):
         )
         earlyStopping = tf.keras.callbacks.EarlyStopping(
             patience=11,
-            monitor=(
-                "val_binary_accuracy"
-                if self.params.multi_label
-                else "val_categorical_accuracy"
-            ),
-            mode="max",
+            monitor='val_loss',
+
+            # monitor=(
+            #     "val_binary_accuracy"
+            #     if self.params.multi_label
+            #     else "val_categorical_accuracy"
+            # ),
+            mode="min",
+            restore_best_weights=True,
         )
         # havent found much use in this just takes training time
         # file_writer_cm = tf.summary.create_file_writer(
@@ -788,15 +791,24 @@ class KerasModel(Interpreter):
         #   "min_lr": 0.00002,
         #   "verbose": 1
         # },
+        # reduce_lr_callback = tf.keras.callbacks.ReduceLROnPlateau(
+        #     monitor=(
+        #         "val_binary_accuracy"
+        #         if self.params.multi_label
+        #         else "val_categorical_accuracy"
+        #     ),
+        #     mode="max",
+        #     verbose=1,
+        # )
         reduce_lr_callback = tf.keras.callbacks.ReduceLROnPlateau(
-            monitor=(
-                "val_binary_accuracy"
-                if self.params.multi_label
-                else "val_categorical_accuracy"
-            ),
-            mode="max",
-            verbose=1,
+            monitor='val_loss',
+            factor=0.2,       # Gentler drop: Reduces learning rate by 80% (e.g., 0.001 -> 0.0002)
+            patience=3,       # Faster response: Triggers after 3 epochs of stagnation
+            min_delta=0.0001, # The minimum change to qualify as an improvement
+            cooldown=1,       # Wait 1 epoch after a drop before monitoring patience again
+            min_lr=0.00001    # Safety floor: Never drops lower than 10% of standard fine-tuning speed
         )
+
         return [
             earlyStopping,
             checkpoint_acc,
@@ -1293,24 +1305,24 @@ def loss(params):
     )
 
 
-def optimizer(params,total_steps,epochs,fine_tune=False):
+def optimizer(params,steps_per_epoch,epochs,fine_tune=False):
     if fine_tune:
         logging.info("Using fine tune cosine optimizer with warm of 2 epochs and final rate %s",params.fine_tune_learning_rate)
         # 3 epochs
-        warmup_steps = total_steps * 2
+        warmup_steps = steps_per_epoch * 2
         # 2. Configure the built-in schedule
         lr_schedule = tf.keras.optimizers.schedules.CosineDecay(
             initial_learning_rate=0.0,      # Step 0 start rate
-            decay_steps=int(total_steps),        # Point where decay finishes
+            decay_steps=int(steps_per_epoch),        # Point where decay finishes
             warmup_target=params.fine_tune_learning_rate,             # Peak fine-tuning learning rate
             warmup_steps=warmup_steps       # Steps to transition from initial to target
         )
     else:
+
         lr_schedule = tf.keras.optimizers.schedules.ExponentialDecay(
             params.learning_rate,
-            decay_steps=int(total_steps* 5),
+            decay_steps=int(steps_per_epoch* epochs),
             decay_rate=params.learning_rate_decay,
-            # staircase=True,
         )
     optimizer = tf.keras.optimizers.Adam(learning_rate=lr_schedule)
     return optimizer

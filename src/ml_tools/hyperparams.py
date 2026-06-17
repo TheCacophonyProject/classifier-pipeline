@@ -143,7 +143,7 @@ class HyperParams(dict):
 
     @property
     def learning_rate_decay(self):
-        return self.get("learning_rate_decay", 0.96)
+        return self.get("learning_rate_decay", 0.1)
 
     # Datageneration parameters
     @property
