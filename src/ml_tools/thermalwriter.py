@@ -59,9 +59,12 @@ class MeanData:
             return self / self.frames_used
         else:
             return self / 1
-        
+     
+    def __mul__(self, scalar):
+        return MeanData(self.thermal * scalar, self.filtered * scalar, self.thermal_norm * scalar)
+   
     def __truediv__(self, scalar):
-        return BorderData(self.thermal / scalar, self.filtered / scalar, self.thermal_norm / scalar)
+        return MeanData(self.thermal / scalar, self.filtered / scalar, self.thermal_norm / scalar)
 
     def to_dict(self):
         return {

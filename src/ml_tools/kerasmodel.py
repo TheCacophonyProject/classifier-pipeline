@@ -28,7 +28,7 @@ from ml_tools.resnet.wr_resnet import WRResNet
 from ml_tools import irdataset
 from ml_tools.tfdataset import get_weighting, get_dataset as get_tf
 from ml_tools.preprocess import FrameTypes
-
+from ml_tools.thermalwriter import MeanData
 classify_i = 0
 
 
@@ -84,9 +84,13 @@ class KerasModel(Interpreter):
         self.params.set_use_segments(
             meta.get("config", {}).get("build", {}).get("use_segments", True)
         )
-        self.pads = meta.get("background_average",[0,0,0])
-        self.pads = np.float32(self.pads)
-        
+        pads = meta.get("background_average")
+        if pads is None:
+            self.pads = MeanData()
+        else:
+            self.pads = MeanData(thermal = pads["thermal"],filtered = pads["filtered"],thermal_norm= pads["thermal_norm"],frames_used=1)
+            self.pads = self.pads * 255
+        logging.info("Pads are %s",self.pads)
     def shape(self):
         if self.model is None:
             return None
@@ -241,7 +245,7 @@ class KerasModel(Interpreter):
         train, remapped, _, _ = get_dataset(
             train_files,
             self.data_type,
-            self.orig_labels,get_dataset
+            self.orig_labels,
             batch_size=self.params.batch_size,
             image_size=self.params.output_dim[:2],
             preprocess_fn=self.preprocess_fn,
@@ -263,7 +267,6 @@ class KerasModel(Interpreter):
     def build_model(
         self, dense_sizes=None, retrain_from=None, dropout=None, run_name=None
     ):
-        
         from tensorflow.keras import layers
         # width = self.params.frame_size
         width = self.params.output_dim[0]
@@ -316,7 +319,7 @@ class KerasModel(Interpreter):
             if multi_input:
                 # --- Input 2: The Timeline Mask Layer (5x5x1) ---
                 mask_input = layers.Input(shape=(5, 5, 1), name="input_mask")
-                input = [input, mask_input]
+                input = {"input_image":input, "input_mask":mask_input}
 
                 # Generate temporal feature maps matching the spatial dimensions
                 t = layers.Conv2D(64, (1, 1), activation='relu', padding='same')(mask_input)
@@ -394,12 +397,14 @@ class KerasModel(Interpreter):
         self.model.compile(
             optimizer=optimizer(self.params,self.steps,self.epochs),
             loss=loss(self.params),
-            metrics=[
-                acc,
-                tf.keras.metrics.AUC(),
-                tf.keras.metrics.Recall(),
-                tf.keras.metrics.Precision(),
-            ],
+             metrics={
+                "prediction": [
+                    acc,
+                    tf.keras.metrics.AUC(multi_label= self.params.multi_label),
+                    tf.keras.metrics.Recall(),
+                    tf.keras.metrics.Precision(),
+                ]
+            },
         )
 
     def adjust_final_layer(self):
@@ -617,6 +622,7 @@ class KerasModel(Interpreter):
             channels=self.params.channels,
             pads = self.pads
         )
+        
         self.labels = new_labels
         self.steps = epoch_size // self.params.batch_size
         self.log_dir = self.log_base / run_name
@@ -673,7 +679,7 @@ class KerasModel(Interpreter):
         self.save_metadata(run_name)
         self.save(run_name)
         checkpoints = self.checkpoints(run_name)
-
+        
         history = self.model.fit(
             self.train,
             validation_data=self.validate,
@@ -1295,16 +1301,16 @@ def optimizer(params,total_steps,epochs,fine_tune=False):
         # 2. Configure the built-in schedule
         lr_schedule = tf.keras.optimizers.schedules.CosineDecay(
             initial_learning_rate=0.0,      # Step 0 start rate
-            decay_steps=total_steps,        # Point where decay finishes
+            decay_steps=int(total_steps),        # Point where decay finishes
             warmup_target=params.fine_tune_learning_rate,             # Peak fine-tuning learning rate
             warmup_steps=warmup_steps       # Steps to transition from initial to target
         )
     else:
         lr_schedule = tf.keras.optimizers.schedules.ExponentialDecay(
             params.learning_rate,
-            decay_steps=total_steps* epochs,
+            decay_steps=int(total_steps* 5),
             decay_rate=params.learning_rate_decay,
-            staircase=True,
+            # staircase=True,
         )
     optimizer = tf.keras.optimizers.Adam(learning_rate=lr_schedule)
     return optimizer

@@ -166,7 +166,7 @@ def load_dataset(filenames, remap_lookup, labels, args):
     only_features = args.get("only_features", False)
     one_hot = args.get("one_hot", True)
     pads = args["pads"]
-    logging.info("Ussing paddings %s",255.0*pads)
+    logging.info("Using mean paddings %s",pads)
     dataset = dataset.apply(tf.data.experimental.ignore_errors())
     extra_label_map = None
     if args.get("multi_label"):
@@ -188,11 +188,21 @@ def load_dataset(filenames, remap_lookup, labels, args):
 
     # Cast everything to int32 at the end
     padding = tf.cast(padding, dtype=tf.int32)
+    channels=args.get(
+                "channels", [TrackChannels.thermal.name, TrackChannels.thermal_norm.name, TrackChannels.filtered.name]
+            )
+    mean_pad_values = []
+    pads = pads.to_dict()
+    for channel in channels:
+        mean_pad_values.append(pads[channel])
+
+    mean_pad_values = tf.constant(mean_pad_values,dtype = tf.float32)
+    logging.info("Mean pad values become %s",mean_pad_values)
     global rotation_augmentation
     rotation_augmentation = RandomRotationPerChannelFill(
         # Tested at 0.5 and 0.1 seems to work best
         factor=0.1,
-        fill_values = 255.0*pads,
+        fill_values = mean_pad_values,
     )
     dataset = dataset.map(
         partial(
@@ -203,6 +213,7 @@ def load_dataset(filenames, remap_lookup, labels, args):
             mosaic_size = mosaic_size,
             mosaic_larger_size = mosaic_larger_size,
             padding = padding,
+            mean_pad_values = mean_pad_values,
             augment=augment,
             preprocess_fn=preprocess_fn,
             include_features=include_features,
@@ -214,7 +225,6 @@ def load_dataset(filenames, remap_lookup, labels, args):
             channels=args.get(
                 "channels", [TrackChannels.raw.name, TrackChannels.thermal.name, TrackChannels.filtered.name]
             ),
-            pad_values = 255.0*pads,
         ),
         num_parallel_calls=AUTOTUNE,
         deterministic=deterministic,
@@ -271,6 +281,8 @@ def read_tfrecord(
     mosaic_size,
     mosaic_larger_size,
     padding,
+    mean_pad_values,
+
     augment=False,
     preprocess_fn=None,
     only_features=False,
@@ -279,8 +291,7 @@ def read_tfrecord(
     extra_label_map=None,
     include_track=False,
     num_frames=25,
-    channels=[TrackChannels.raw.name,TrackChannels.thermal.name, TrackChannels.filtered.name],
-    pad_values = [0,0,0]
+    channels=[TrackChannels.thermal.name,TrackChannels.thermal_norm.name, TrackChannels.filtered.name],
 ):
     logging.info(
         "Read tf record with image %s lbls %s aug  %s  prepr %s only features %s one hot %s include fetures %s num frames %s mosaic_size %s mosaic_enalrged %s padding %s",
@@ -310,11 +321,11 @@ def read_tfrecord(
             tfrecord_format["image/filtered_encoded"] = tf.io.FixedLenSequenceFeature(
                 [], dtype=tf.float32, allow_missing=True
             )
-        if TrackChannels.thermal.name in channels:
+        if TrackChannels.thermal_norm.name in channels:
             tfrecord_format["image/thermal_norm_encoded"] = tf.io.FixedLenSequenceFeature(
                 [], dtype=tf.float32, allow_missing=True
             )
-        if TrackChannels.raw.name in channels:
+        if TrackChannels.thermal.name in channels:
             tfrecord_format["image/thermal_raw_encoded"] = tf.io.FixedLenSequenceFeature(
                 [], dtype=tf.float32, allow_missing=True
             )
@@ -380,9 +391,9 @@ def read_tfrecord(
 
         if num_frames > 1 and zero_pad:
             pad_size = num_frames - tf.shape(rgb_image)[0]
-            ch_r = tf.pad(rgb_image[..., 0:1], [[0, pad_size], [0, 0], [0, 0], [0, 0]], constant_values=pad_values[0])
-            ch_g = tf.pad(rgb_image[..., 1:2], [[0, pad_size], [0, 0], [0, 0], [0, 0]], constant_values=pad_values[1])
-            ch_b = tf.pad(rgb_image[..., 2:3], [[0, pad_size], [0, 0], [0, 0], [0, 0]], constant_values=pad_values[2])
+            ch_r = tf.pad(rgb_image[..., 0:1], [[0, pad_size], [0, 0], [0, 0], [0, 0]], constant_values=mean_pad_values[0])
+            ch_g = tf.pad(rgb_image[..., 1:2], [[0, pad_size], [0, 0], [0, 0], [0, 0]], constant_values=mean_pad_values[1])
+            ch_b = tf.pad(rgb_image[..., 2:3], [[0, pad_size], [0, 0], [0, 0], [0, 0]], constant_values=mean_pad_values[2])
             rgb_image = tf.concat([ch_r, ch_g, ch_b], axis=-1)
             rgb_image = tf.ensure_shape(rgb_image,[num_frames,mosaic_size,mosaic_size, 3])
 
