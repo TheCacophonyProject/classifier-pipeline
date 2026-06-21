@@ -223,7 +223,7 @@ def load_dataset(filenames, remap_lookup, labels, args):
             include_track=args.get("include_track", False),
             num_frames=args.get("num_frames", 25),
             channels=args.get(
-                "channels", [TrackChannels.raw.name, TrackChannels.thermal.name, TrackChannels.filtered.name]
+                "channels", [TrackChannels.thermal.name, TrackChannels.thermal_norm.name, TrackChannels.filtered.name]
             ),
         ),
         num_parallel_calls=AUTOTUNE,
@@ -341,24 +341,24 @@ def read_tfrecord(
     frame_indices = example["image/frame_numbers"]
     record_frames = tf.cast(record_frames,tf.int32)
     if load_images:
-        if TrackChannels.thermal.name in channels:
+        if TrackChannels.thermal_norm.name in channels:
             thermalnorm = 255.0*example["image/thermal_norm_encoded"]
             thermals = tf.reshape(thermalnorm, [record_frames, mosaic_larger_size, mosaic_larger_size, 1])
         if TrackChannels.filtered.name in channels:
             filteredencoded = 255.0*example["image/filtered_encoded"]
             filtered = tf.reshape(filteredencoded, [record_frames, mosaic_larger_size, mosaic_larger_size, 1])
-        if TrackChannels.raw.name in channels:
-
+        if TrackChannels.thermal.name in channels:
             rawthermal = 255.0*example["image/thermal_raw_encoded"]
             rawthermal = tf.reshape(rawthermal, [record_frames, mosaic_larger_size, mosaic_larger_size, 1])
 
         rgb_image = None
+
         for type in channels:
-            if type == TrackChannels.thermal.name:
+            if type == TrackChannels.thermal_norm.name:
                 image = thermals
             elif type == TrackChannels.filtered.name:
                 image = filtered
-            elif type == TrackChannels.raw.name:
+            elif type == TrackChannels.thermal.name:
                 image = rawthermal
             if rgb_image is None:
                 rgb_image = image
@@ -548,8 +548,14 @@ def main():
     with open(meta_f, "r") as f:
         meta = json.load(f)
     labels = meta.get("labels", [])
-    pads = meta.get("background_average",[0,0,0])
-    pads = np.float32(pads)    
+    pads = meta.get("background_average")
+    from ml_tools.thermalwriter import MeanData
+    if pads is None:
+        pads = MeanData()
+    else:
+        pads = MeanData(thermal = pads["thermal"],filtered = pads["filtered"],thermal_norm= pads["thermal_norm"],frames_used=1)
+        pads = pads * 255
+
     excluded_labels = get_excluded()
     # for l in labels:
     #     if l not in ["mustelid", "deer", "sheep"]:

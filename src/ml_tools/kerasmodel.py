@@ -1325,7 +1325,7 @@ def optimizer(params,steps_per_epoch,epochs,fine_tune=False):
         #     decay_rate=params.learning_rate_decay,
         # )
         # using ReduceLROnPlateau instead
-        lr_schedule = params.learning_rate,
+        lr_schedule = params.learning_rate
 
     optimizer = tf.keras.optimizers.Adam(learning_rate=lr_schedule)
     return optimizer

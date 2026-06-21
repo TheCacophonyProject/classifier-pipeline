@@ -976,6 +976,7 @@ def main():
                 cache=True,
                 channels=model.params.channels,
                 num_frames=model.params.square_width**2,
+                pads = model.pads
             )
             model.labels = new_labels
             logging.info(

@@ -35,7 +35,7 @@ class HyperParams(dict):
     @property
     def channels(self):
         return self.get(
-            "channels", [TrackChannels.thermal.name, TrackChannels.filtered.name]
+            "channels", [TrackChannels.thermal.name, TrackChannels.thermal_norm.name, TrackChannels.filtered.name]
         )
 
     @property
@@ -133,6 +133,17 @@ class HyperParams(dict):
         return self.get("dropout", 0.3)
 
 
+
+    @property
+    def mean_padding(self):
+        from thermalwriter import MeanData
+        mean_padding =  self.get("mean_padding")
+        if mean_padding is not None:
+            pads = MeanData(thermal = pads["thermal"],filtered = pads["filtered"],thermal_norm= pads["thermal_norm"],frames_used=1)
+        else:
+            pads = MeanData()
+        return self.pads * 255
+    
     @property
     def fine_tune_learning_rate(self):
         return self.get("fine_tune_learning_rate", 0.00001)
