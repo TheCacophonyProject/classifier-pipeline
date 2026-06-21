@@ -367,25 +367,26 @@ def read_tfrecord(
         # rotation augmentation before tiling
         if augment:
             logging.info("Augmenting")
+
             rgb_image = rotation_augmentation(rgb_image, training=True)
             random_value = tf.random.uniform(
                 shape=[], minval=0.0, maxval=1.0, dtype=tf.float32
             )
-            
+
             if tf.greater(random_value, 0.5):
                 rgb_image = tf.image.flip_left_right(rgb_image)
-        # rgb_image = tf.ensure_shape(
-        #     rgb_image, [num_frames, mosaic_size, mosaic_size, len(channels)]
-        # )
-        if augment:
+
             rgb_image =  tf.image.random_crop(rgb_image, size=[record_frames,mosaic_size, mosaic_size, 3])
+            rgb_image, frame_indices = mask_random_frames(rgb_image, frame_indices, record_frames)
+            record_frames = tf.shape(frame_indices)[0]
         else:
             rgb_image = tf.image.crop_to_bounding_box(rgb_image, padding,padding, mosaic_size, mosaic_size)
+
+        mask = get_frame_mask(record_frames, frame_indices)
 
         zero_pad = True
         # times = tf.concat([tf.cast(frame_indices,tf.float32), tf.fill([25 - record_frames], -1.0)], axis=0)
 
-        mask = get_frame_mask(record_frames,frame_indices)
         # ',times)
             
 
@@ -669,6 +670,21 @@ def show_batch(image_batch, label_batch, labels, save=None, tracks=False):
     plt.show()
 
 
+
+
+@tf.function
+def mask_random_frames(rgb_image, frame_indices, record_frames, min_frames=15):
+    """
+    Drops a random number of frames from the end of rgb_image, removing up to
+    (record_frames - min_frames) frames so that at least min_frames remain.
+    Returns the matching frame_indices so the frame mask can be recomputed
+    against the surviving frames.
+    """
+    max_drop = tf.maximum(record_frames - min_frames, 0)
+    num_drop = tf.random.uniform(shape=[], minval=0, maxval=max_drop + 1, dtype=tf.int32)
+
+    keep = record_frames - num_drop
+    return rgb_image[:keep], frame_indices[:keep]
 
 
 @tf.function
