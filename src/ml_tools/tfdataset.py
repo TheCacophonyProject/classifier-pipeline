@@ -179,6 +179,9 @@ def get_dataset(load_function, base_dir, labels, **args):
         dataset = dataset.shuffle(
             shuffle_size, reshuffle_each_iteration=args.get("reshuffle", True)
         )
+    
+    batch_size = args.get("batch_size", None)
+
     # tf refuses to run if epoch sizes change so we must decide a costant epoch size even though with reject res
     # it will chang eeach epoch, to ensure this take this repeat data and always take epoch_size elements
     if not args.get("only_features"):
@@ -195,6 +198,9 @@ def get_dataset(load_function, base_dir, labels, **args):
         logging.info("Setting dataset size to %s", epoch_size)
         if not args.get("only_features", False):
             dataset = dataset.repeat(2)
+        if batch_size is not None:
+            epoch_size = tf.math.ceil(epoch_size / batch_size)
+            epoch_size = tf.cast(epoch_size * batch_size,tf.int32)
         dataset = dataset.take(epoch_size)
         scale_epoch = args.get("scale_epoch", None)
         if scale_epoch:
@@ -202,7 +208,6 @@ def get_dataset(load_function, base_dir, labels, **args):
             dataset = dataset.take(epoch_size)
     else:
         epoch_size = 1
-    batch_size = args.get("batch_size", None)
     if batch_size is not None:
         dataset = dataset.batch(batch_size)
     
