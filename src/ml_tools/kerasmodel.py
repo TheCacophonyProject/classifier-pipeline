@@ -722,10 +722,14 @@ class KerasModel(Interpreter):
         self.save(run_name, history=history, test_results=test_accuracy)
 
         fine_tune_name = f"{run_name}-finetune"
-        self.fine_tune(fine_tune_name)
-        
-    def fine_tune(self,run_name,epochs=5):
-        logging.info("Fine tuning for 5 epochs")
+        weights =   self.checkpoint_folder / run_name / "val_acc.weights.h5"
+
+        self.fine_tune(fine_tune_name,weights)
+
+    def fine_tune(self,run_name,weights,epochs=5):
+        logging.info("Fine tuning for 5 epochs with weights %s",weights)
+
+        self.model.load_weights(weights)
         log_dir = self.log_base / run_name
         log_dir.mkdir(parents=True, exist_ok=True)
         train_files = self.data_dir / "train"
@@ -771,6 +775,7 @@ class KerasModel(Interpreter):
                 ]
             },
         )
+
         
         history = self.model.fit(
             self.train,
