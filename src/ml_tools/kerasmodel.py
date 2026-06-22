@@ -866,9 +866,9 @@ class KerasModel(Interpreter):
             reduce_lr_callback = tf.keras.callbacks.ReduceLROnPlateau(
                 monitor='val_loss',
                 factor=0.5,       # Gentler drop: Reduces learning rate by 80% (e.g., 0.001 -> 0.0002)
-                patience=3,       # Faster response: Triggers after 3 epochs of stagnation
+                patience=8,       # Faster response: Triggers after 3 epochs of stagnation
                 min_delta=0.0001, # The minimum change to qualify as an improvement
-                cooldown=1,       # Wait 1 epoch after a drop before monitoring patience again
+                cooldown=3,       # Wait 1 epoch after a drop before monitoring patience again
                 min_lr=0.00001    # Safety floor: Never drops lower than 10% of standard fine-tuning speed
             )
             checkpoints.append(reduce_lr_callback)
