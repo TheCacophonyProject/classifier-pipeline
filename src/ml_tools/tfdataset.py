@@ -4,7 +4,7 @@ from functools import partial
 import numpy as np
 import logging
 import random
-
+import math
 AUTOTUNE = tf.data.AUTOTUNE
 
 
@@ -199,8 +199,8 @@ def get_dataset(load_function, base_dir, labels, **args):
         if not args.get("only_features", False):
             dataset = dataset.repeat(2)
         if batch_size is not None:
-            epoch_size = tf.math.ceil(epoch_size / batch_size)
-            epoch_size = tf.cast(epoch_size * batch_size,tf.int32)
+            epoch_size = math.ceil(epoch_size / batch_size)
+            epoch_size = int(epoch_size * batch_size)
         dataset = dataset.take(epoch_size)
         scale_epoch = args.get("scale_epoch", None)
         if scale_epoch:

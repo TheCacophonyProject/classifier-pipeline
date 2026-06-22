@@ -244,7 +244,9 @@ def load_dataset(filenames, remap_lookup, labels, args):
         filter_none = lambda x, y: tf.size(x[1]) > 0
         dataset = dataset.filter(filter_none)
     if augment:
-        dataset = prepare_cutmix_dataset(dataset, img_size=image_size[0])
+        dataset = prepare_cutmix_dataset(
+            dataset, img_size=image_size[0], prob=args.get("cutmix_prob", 0.4)
+        )
     else:
         # remove num_frames_used from y
         dataset = dataset.map(lambda x, y:  (x,y["label"]),                      num_parallel_calls=tf.data.AUTOTUNE)
@@ -443,7 +445,7 @@ def read_tfrecord(
     # return rgb_image
 
 
-def prepare_cutmix_dataset(dataset_original, img_size):
+def prepare_cutmix_dataset(dataset_original, img_size, prob):
     # 1. Create a second dataset and shuffle it to mix different images together
     dataset_shuffled = dataset_original.shuffle(buffer_size=4096)
 
@@ -452,78 +454,87 @@ def prepare_cutmix_dataset(dataset_original, img_size):
 
     # 3. Map the CutMix function (passed via lambda to include parameters)
     cutmix_dataset = zipped_dataset.map(
-        lambda d1, d2: video_mosaic_cutmix(d1, d2, img_size),
+        lambda d1, d2: video_mosaic_cutmix(d1, d2, img_size, prob),
         num_parallel_calls=tf.data.AUTOTUNE
     )
 
     return cutmix_dataset
 
-def video_mosaic_cutmix(data1, data2, img_size, grid_rows=5, grid_cols=5, alpha=1.0):
+def video_mosaic_cutmix(data1, data2, img_size, prob,grid_rows=5, grid_cols=5, alpha=0.3 ):
     x1, y1 = data1
-    print(x1,y1)
     image1 = x1["input_image"]
     mask1 = x1["input_mask"]
     label1 = y1["label"]
-    frames_used1 = y1["num_frames"]
+    logging.info("Chance of a cut mix on an input is %s and alpha %s",prob,alpha)
+    def no_mix():
+        return {"input_image": image1, "input_mask": mask1}, label1
 
-    x2, y2 = data2
-    image2 = x2["input_image"]
-    mask2 = x2["input_mask"]
+    def mix():
+        frames_used1 = y1["num_frames"]
 
-    label2 = y2["label"]
-    frames_used2 = y2["num_frames"]
-    num_frames = tf.math.minimum(frames_used1,frames_used2)
-    # 1. Define dimensions of an individual sub-frame
-    sub_h = img_size // grid_rows
-    sub_w = img_size // grid_cols
-    total_cells = grid_rows * grid_cols
+        x2, y2 = data2
+        image2 = x2["input_image"]
 
-    # 2. Sample how many sub-frames to replace (from Beta distribution)
-    beta_dist = tf.compat.v1.distributions.Beta(alpha, alpha)
-    lam = beta_dist.sample([])
+        label2 = y2["label"]
+        mask2 = x2["input_mask"]
+        frames_used2 = y2["num_frames"]
+        num_frames = tf.math.minimum(frames_used1,frames_used2)
+        # 1. Define dimensions of an individual sub-frame
+        sub_h = img_size // grid_rows
+        sub_w = img_size // grid_cols
+        total_cells = grid_rows * grid_cols
 
-    # Convert lambda to a discrete number of blocks to swap (at least 1, at most num_frames-1)
-    # Only swap within the real frames to avoid cutmixing empty/tiled cells
-    num_blocks_to_swap = tf.cast(
-        tf.math.round((1.0 - lam) * tf.cast(num_frames, tf.float32)),
-        tf.int32
-    )
-    num_blocks_to_swap = tf.clip_by_value(num_blocks_to_swap, 1, num_frames - 1)
+        # 2. Sample how many sub-frames to replace (from Beta distribution)
+        beta_dist = tf.compat.v1.distributions.Beta(alpha, alpha)
+        lam = beta_dist.sample([])
 
-    # 3. Create a random binary mask for the grid cells
-    # Only shuffle within the real frame indices to avoid empty cells
-    real_indices = tf.random.shuffle(tf.range(num_frames))
-    swap_indices = real_indices[:num_blocks_to_swap]
+        # Convert lambda to a discrete number of blocks to swap (at least 1, at most num_frames-1)
+        # Only swap within the real frames to avoid cutmixing empty/tiled cells
+        num_blocks_to_swap = tf.cast(
+            tf.math.round((1.0 - lam) * tf.cast(num_frames, tf.float32)),
+            tf.int32
+        )
+        num_blocks_to_swap = tf.clip_by_value(num_blocks_to_swap, 1, num_frames - 1)
 
-    all_indices = tf.range(total_cells)
-    # Build a 1D boolean mask for the cells
-    cell_mask_1d = tf.reduce_any(
-        tf.equal(tf.expand_dims(all_indices, 0), tf.expand_dims(swap_indices, 1)),
-        axis=0
-    )
-    
-    # Reshape the 1D mask back into the 2D grid shape (e.g., 2x2)
-    grid_mask = tf.reshape(cell_mask_1d, [grid_rows, grid_cols])
-    
-    # 4. Upsample the grid mask to full image resolution using block repeats
-    # This stretches a 2x2 mask out to a 224x224 mask perfectly aligned to sub-frames
-    mask_expanded = tf.repeat(grid_mask, repeats=sub_h, axis=0)
-    mask_expanded = tf.repeat(mask_expanded, repeats=sub_w, axis=1)
-    
-    # Add a channel dimension and cast to float
-    mask_expanded = tf.cast(mask_expanded[:, :, tf.newaxis], tf.float32)
-    
-    # 5. Blend the two mosaic images using our clean grid-aligned mask
-    mixed_image = image1 * (1.0 - mask_expanded) + image2 * mask_expanded
-    
-    # 6. Compute exact adjusted lambda based on how many cells were swapped
-    actual_swap_ratio = tf.cast(num_blocks_to_swap, tf.float32) / tf.cast(total_cells, tf.float32)
-    adjusted_lam = 1.0 - actual_swap_ratio
-    
-    # Blend the one-hot labels
-    mixed_label = label1 * adjusted_lam + label2 * (1.0 - adjusted_lam)
-    # not sure how the mask will work with this
-    return {"input_image":mixed_image,"input_mask":mask1}, mixed_label
+        # 3. Create a random binary mask for the grid cells
+        # Only shuffle within the real frame indices to avoid empty cells
+        real_indices = tf.random.shuffle(tf.range(num_frames))
+        swap_indices = real_indices[:num_blocks_to_swap]
+
+        all_indices = tf.range(total_cells)
+        # Build a 1D boolean mask for the cells
+        cell_mask_1d = tf.reduce_any(
+            tf.equal(tf.expand_dims(all_indices, 0), tf.expand_dims(swap_indices, 1)),
+            axis=0
+        )
+
+        # Reshape the 1D mask back into the 2D grid shape (e.g., 2x2)
+        grid_mask = tf.reshape(cell_mask_1d, [grid_rows, grid_cols])
+
+        # 4. Upsample the grid mask to full image resolution using block repeats
+        mask_expanded = tf.repeat(grid_mask, repeats=sub_h, axis=0)
+        mask_expanded = tf.repeat(mask_expanded, repeats=sub_w, axis=1)
+
+        # Add a channel dimension and cast to float
+        mask_expanded = tf.cast(mask_expanded[:, :, tf.newaxis], tf.float32)
+
+        # 5. Blend the two mosaic images using our clean grid-aligned mask
+        mixed_image = image1 * (1.0 - mask_expanded) + image2 * mask_expanded
+
+
+        # 6. Compute exact adjusted lambda based on how many cells were swapped
+        actual_swap_ratio = tf.cast(num_blocks_to_swap, tf.float32) / tf.cast(total_cells, tf.float32)
+        adjusted_lam = 1.0 - actual_swap_ratio
+
+        # Blend the one-hot labels
+        mixed_label = label1 * adjusted_lam + label2 * (1.0 - adjusted_lam)
+
+        # Globally smooth the time steps to match the soft target label blend
+        mixed_mask = mask1 * adjusted_lam + mask2 * (1.0 - adjusted_lam)
+        # not sure how the mask will work with this
+        return {"input_image":mixed_image,"input_mask":mask1}, mixed_label
+
+    return tf.cond(tf.random.uniform([]) < prob, mix, no_mix)
 
 
 def tile_images(images):
