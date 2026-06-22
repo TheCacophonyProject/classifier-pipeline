@@ -776,7 +776,7 @@ class KerasModel(Interpreter):
         fine_tune_name = f"{run_name}-finetune"
         weights =   self.checkpoint_folder / run_name / "val_loss.weights.h5"
 
-        self.fine_tune(fine_tune_name,weights)
+        self.fine_tune(fine_tune_name,weights,tf_mappings)
 
     def fine_tune(self,run_name,weights,tf_mappings,epochs=5):
         logging.info("Fine tuning for 5 epochs with weights %s",weights)
@@ -786,10 +786,10 @@ class KerasModel(Interpreter):
         log_dir.mkdir(parents=True, exist_ok=True)
         train_files = self.data_dir / "train"
         # reload train dataset with augment false
-        train, remapped, new_labels, epoch_size = get_dataset(
+        self.train, epoch_size = get_dataset(
             train_files,
             self.data_type,
-            self.orig_labels,
+            self.labels,
             batch_size=self.params.batch_size,
             image_size=self.params.output_dim[:2],
             preprocess_fn=self.preprocess_fn,
@@ -812,12 +812,12 @@ class KerasModel(Interpreter):
         self.save_metadata(run_name)
         self.save(run_name)
         checkpoints = self.checkpoints(run_name,True)
-        
+        logging.info("Fine tuning with adam and a learning rate of %s",self.params.fine_tune_learning_rate)
         self.model.compile(
-            optimizer=tf.keras.optimizers.Adam(learning_rate=0.00001),
+            optimizer=tf.keras.optimizers.Adam(learning_rate=self.params.fine_tune_learning_rate),
             loss=loss(self.params),
             metrics={
-                "prediction": metrics(self.params.multi_labels) 
+                "prediction": metrics(self.params.multi_label) 
             },
         )
 
