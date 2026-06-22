@@ -572,7 +572,7 @@ class KerasModel(Interpreter):
         logging.info("Applied label remapping from %s have model labels of %s",self.orig_labels,self.labels)
         self.remapped = {}
         for k,v in tf_mappings.items():
-            self.remapped[self.orig_labels[k]] = self.labels[k] if k !=-1 else "Nothing"
+            self.remapped[self.orig_labels[k]] = self.labels[v] if v !=-1 else "Nothing"
             logging.info("Original %s is mapped to %s",self.orig_labels[k], "Nothing" if v==-1 else self.labels[v] )
         logging.info("Remapped is %s",self.remapped)
         return tf_mappings

@@ -113,7 +113,7 @@ def apply_label_mapping(labels,excluded_labels,label_mapping,model_labels = None
         if k in labels and v in filtered_labels:
             # remapped[v].append(k)
             # values[labels.index(k)] = filtered_labels.index(v)
-            filtered_labels[labels.index(k)] =filtered_labels.index(v)
+            tf_mappings[labels.index(k)] =filtered_labels.index(v)
             # del remapped[k]
     return filtered_labels,tf_mappings
 

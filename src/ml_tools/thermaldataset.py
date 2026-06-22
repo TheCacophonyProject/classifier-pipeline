@@ -282,7 +282,7 @@ CLASS_TOTALS = {
     'bird': 193240, 'false-positive': 161566, 'rodent': 98814, 'leporidae': 49048,
     'human': 33906, 'possum': 16746, 'chicken': 15782, 'vehicle': 14155,
     'mustelid': 12843, 'hedgehog': 10061, 'kiwi': 9281, 'cat': 7828,
-    'dog': 3862, 'penguin': 3797, 'wallaby': 2816
+    'dog': 3862, 'penguin': 3797, 'wallaby': 2816, 'weka':348,'deer':586,'sheep':1417
 }
 TARGET = 2000.0
 
