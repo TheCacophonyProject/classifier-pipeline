@@ -45,6 +45,7 @@ def train_model(
     ignore=None,
     epochs=None,
     fine_tune=None,
+    rebalance = False
 ):
     init_logging()
     """Trains a model with the given hyper parameters."""
@@ -77,7 +78,7 @@ def train_model(
             run_name=run_name,
             weights=weights,
             resample=False,
-            rebalance=False,
+            rebalance=rebalance,
             fine_tune=fine_tune,
         )
     except KeyboardInterrupt:

@@ -60,72 +60,76 @@ def get_distribution(dataset, num_labels, batched=True, one_hot=True, extra_meta
     return dist
 
 
-def get_dataset(load_function, base_dir, labels, **args):
-    model_labels = args.get("model_labels")
 
-    excluded_labels = args.get("excluded_labels", [])
-    to_remap = args.get("remapped_labels", {})
-    remapped = {}
-    keys = []
-    values = []
-    shuffle_size = 4096
-    if args.get("num_frames", 25) == 1:
-        shuffle_size *= 20
+def apply_label_mapping(labels,excluded_labels,label_mapping,model_labels = None):
+    logging.info("Excluding %s", excluded_labels)
     if model_labels is not None:
-        new_labels = model_labels
+        tf_mappings = {}
+        filtered_labels = model_labels
 
         logging.info("Mapping DS labels %s to model labels %s", labels, model_labels)
         # if we are loading a model with different labels we need to map the dataset labels
         # to the equivalent model labels
         for l_i, og_lbl in enumerate(labels):
-            keys.append(l_i)
+            # keys.append(l_i)
             try:
                 lbl = og_lbl
                 if lbl in to_remap:
                     lbl = to_remap[lbl]
 
                 mdl_i = model_labels.index(lbl)
-                if lbl not in remapped:
-                    remapped[lbl] = []
-                remapped[lbl].append(og_lbl)
-                values.append(mdl_i)
+                # if lbl not in remapped:
+                    # remapped[lbl] = []
+                # remapped[lbl].append(og_lbl)
+                # values.append(mdl_i)
+                tf_mappings[l_i] = mdl_i
             except:
-                remapped[og_lbl] = -1
-                values.append(-1)
+                # remapped[og_lbl] = -1
+                # values.append(-1)
+                tf_mappings[l_i] = -1
+        return model_labels.tf_mappings
+    # get new labels after excluding and removing remapped labels
+    filtered_labels = labels.copy()
+    for excluded in excluded_labels:
+        if excluded in filtered_labels:
+            filtered_labels.remove(excluded)
+    for remapped_lbl in label_mapping.keys():
+        if remapped_lbl in filtered_labels:
+            filtered_labels.remove(remapped_lbl)
 
-    else:
+    tf_mappings = {}
+    # label indexes in tf records are hard coded base of labels at the time of writing so need to make sure we use those indexes
+    for l in labels:
+        if l not in filtered_labels:
+            tf_mappings[labels.index(l)] = -1
+            logging.info("Excluding %s", l)
+        else:
+            tf_mappings[labels.index(l)] = filtered_labels.index(l)
 
-        logging.info("Excluding %s", excluded_labels)
+    # add the remapped labels to the correct place
+    for k, v in label_mapping.items():
+        if k in excluded_labels:
+            continue
+        if k in labels and v in filtered_labels:
+            # remapped[v].append(k)
+            # values[labels.index(k)] = filtered_labels.index(v)
+            filtered_labels[labels.index(k)] =filtered_labels.index(v)
+            # del remapped[k]
+    return filtered_labels,tf_mappings
 
-        # get new labels after excluding and removing remapped labels
-        new_labels = labels.copy()
-        for excluded in excluded_labels:
-            if excluded in new_labels:
-                new_labels.remove(excluded)
-        for remapped_lbl in to_remap.keys():
-            if remapped_lbl in new_labels:
-                new_labels.remove(remapped_lbl)
+def get_dataset(load_function, base_dir, labels, **args):
+    model_labels = args.get("model_labels")
 
-        # initialize remapped dictionary, setting labels that have been removed to -1, these values will be filtered later
-        for l in labels:
-            keys.append(labels.index(l))
-            if l not in new_labels:
-                remapped[l] = [-1]
-                values.append(-1)
-                logging.info("Excluding %s", l)
-            else:
-                remapped[l] = [l]
-                values.append(new_labels.index(l))
+    excluded_labels = args.get("excluded_labels", [])
+    to_remap = args.get("remapped_labels", {})
+    tf_mappings = args.get("tf_mappings")
+    shuffle_size = 4096
+    if args.get("num_frames", 25) == 1:
+        shuffle_size *= 20
+    
 
-        # add the remapped labels to the correct place
-        for k, v in to_remap.items():
-            if k in excluded_labels:
-                continue
-            if k in labels and v in new_labels:
-                remapped[v].append(k)
-                values[labels.index(k)] = new_labels.index(v)
-                del remapped[k]
-
+    keys = list(tf_mappings.keys())
+    values = list(tf_mappings.values())
     remap_lookup = tf.lookup.StaticHashTable(
         initializer=tf.lookup.KeyValueTensorInitializer(
             keys=tf.constant(keys),
@@ -134,20 +138,20 @@ def get_dataset(load_function, base_dir, labels, **args):
         default_value=tf.constant(-1),
         name="remapped_y",
     )
-    num_labels = len(new_labels)
-    logging.info("New labels are %s from original %s", new_labels, labels)
-    for k, v in zip(keys, values):
-        if labels[k]!= new_labels[v]:
-            logging.info(
-                "Mapping %s to %s", labels[k], new_labels[v] if v >= 0 else "nothing"
-            )
+    num_labels = len(labels)
+    # logging.info("New labels are %s from original %s", filtered_labels, labels)
+    # for k, v in zip(keys, values):
+    #     if labels[k]!= filtered_labels[v]:
+    #         logging.info(
+    #             "Mapping %s to %s", labels[k], filtered_labels[v] if v >= 0 else "nothing"
+    #         )
 
     # 1 / 0
     filenames = tf.io.gfile.glob(f"{base_dir}/*.tfrecord")
     if not args.get("deterministic"):
         random.shuffle(filenames)
 
-    dataset = load_function(filenames, remap_lookup, new_labels, args)
+    dataset = load_function(filenames, remap_lookup, labels, args)
     if not args.get("one_hot", True):
         filter_excluded = lambda x, y: not tf.math.less(y, 0)
     else:
@@ -192,7 +196,7 @@ def get_dataset(load_function, base_dir, labels, **args):
             one_hot=args.get("one_hot", True),
             extra_meta=args.get("include_track", False),
         )
-        for label, d in zip(new_labels, dist):
+        for label, d in zip(labels, dist):
             logging.info("Have %s: %s", label, d)
         epoch_size = np.sum(dist)
         logging.info("Setting dataset size to %s", epoch_size)
@@ -229,7 +233,7 @@ def get_dataset(load_function, base_dir, labels, **args):
 
     dataset = dataset.prefetch(buffer_size=AUTOTUNE)
 
-    return dataset, remapped, new_labels, epoch_size
+    return dataset, epoch_size
 brightness_contrast_aug = tf.keras.Sequential(
     [
         tf.keras.layers.RandomBrightness(0.2),  # better per frame or per sequence??

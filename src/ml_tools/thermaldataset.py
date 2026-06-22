@@ -243,6 +243,27 @@ def load_dataset(filenames, remap_lookup, labels, args):
     elif args.get("include_features"):
         filter_none = lambda x, y: tf.size(x[1]) > 0
         dataset = dataset.filter(filter_none)
+
+
+    rebalance = args.get("rebalance",False)
+    # rebalance
+    if rebalance:
+        target = 2000
+        logging.info("Rebalancing to target %s",target)
+        keep_probs = [min(1.0, target / CLASS_TOTALS[k]) if k=="false-positive" else 1.0 for v,k in CLASS_TOTALS.items()]
+        keep_probs = tf.constant(keep_probs)
+       
+        dataset = dataset.filter(lambda img, lbl: randomized_balance_filter(img, lbl, keep_probs                          ))
+    elif args.get("downsize_fp",False):
+        # down size false-positive class
+        fp_target = int(CLASS_TOTALS["false-positive"] * 0.1856)
+        logging.info("Downsizing false positives to %s",fp_target)
+        keep_probs = [0.1856 if k=="false-positive" else 1.0 for k,v in CLASS_TOTALS.items()]
+        # keep_probs=keep_probs[:10]
+        keep_probs = tf.constant(keep_probs)
+        logging.info("Keep probs are %s",keep_probs)
+        dataset = dataset.filter(lambda img, lbl: randomized_balance_filter(img, lbl, keep_probs                          ))
+
     if augment:
         dataset = prepare_cutmix_dataset(
             dataset, img_size=image_size[0], prob=args.get("cutmix_prob", 0.4)
@@ -251,6 +272,42 @@ def load_dataset(filenames, remap_lookup, labels, args):
         # remove num_frames_used from y
         dataset = dataset.map(lambda x, y:  (x,y["label"]),                      num_parallel_calls=tf.data.AUTOTUNE)
     return dataset
+
+
+import tensorflow as tf
+
+# hard coded for 22nd May
+# 1. Define your original class totals to calculate downsampling rates
+CLASS_TOTALS = {
+    'bird': 193240, 'false-positive': 161566, 'rodent': 98814, 'leporidae': 49048,
+    'human': 33906, 'possum': 16746, 'chicken': 15782, 'vehicle': 14155,
+    'mustelid': 12843, 'hedgehog': 10061, 'kiwi': 9281, 'cat': 7828,
+    'dog': 3862, 'penguin': 3797, 'wallaby': 2816
+}
+TARGET = 2000.0
+
+# Pre-calculate keeping probabilities (e.g., bird = 0.0103, wallaby = 1.0)
+KEEP_PROBS = [min(1.0, TARGET / CLASS_TOTALS[k]) for k in CLASS_TOTALS.keys()]
+KEEP_PROBS_TF = tf.constant(KEEP_PROBS, dtype=tf.float32)
+
+
+# 3. Randomized rejection filter (Handles multi-label logic)
+def randomized_balance_filter(image, label,keep_probs):
+    # Multiply the image's multi-label tags by their respective downsample probabilities
+    # e.g., if it's a chicken: label=[1,0,0,...,1,...], probs=[0.01, ..., 0.12, ...]
+    print(label)
+    active_probs = label["label"] * keep_probs
+    
+    # Find the maximum probability among the labels present in this image.
+    # This ensures a chicken or a rare bird isn't accidentally rejected by the bird tag!
+    max_keep_prob = tf.reduce_max(active_probs)
+    
+    # Generate a random uniform number between 0 and 1
+    random_roll = tf.random.uniform([], minval=0.0, maxval=1.0, dtype=tf.float32)
+    
+    # Keep the image if the random roll falls under its maximum target probability
+    return random_roll < max_keep_prob
+
 
 
 class RandomRotationPerChannelFill(tf.keras.layers.Layer):
