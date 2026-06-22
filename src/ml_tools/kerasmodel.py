@@ -721,7 +721,75 @@ class KerasModel(Interpreter):
 
         self.save(run_name, history=history, test_results=test_accuracy)
 
-    def checkpoints(self, run_name):
+        fine_tune_name = f"{run_name}-finetune"
+        self.fine_tune(fine_tune_name)
+        
+    def fine_tune(self,run_name,epochs=5):
+        logging.info("Fine tuning for 5 epochs")
+        log_dir = self.log_base / run_name
+        log_dir.mkdir(parents=True, exist_ok=True)
+        train_files = self.data_dir / "train"
+        # reload train dataset with augment false
+        train, remapped, new_labels, epoch_size = get_dataset(
+            train_files,
+            self.data_type,
+            self.orig_labels,
+            batch_size=self.params.batch_size,
+            image_size=self.params.output_dim[:2],
+            preprocess_fn=self.preprocess_fn,
+            stop_on_empty_dataset=False,
+            include_features=self.params.mvm,
+            augment=False,
+            excluded_labels=self.excluded_labels,
+            remapped_labels=self.remapped_labels,
+            # dist=self.dataset_counts["train"],
+            multi_label=self.params.multi_label,
+            num_frames=self.params.square_width**2,
+            channels=self.params.channels,
+            pads = self.pads
+        )
+
+
+        self.save_metadata(run_name)
+        self.save(run_name)
+        checkpoints = self.checkpoints(run_name,True)
+        
+        if self.params.multi_label:
+            acc = tf.metrics.binary_accuracy
+        else:
+            acc = tf.metrics.categorical_accuracy
+
+        self.model.compile(
+            optimizer=tf.keras.optimizers.Adam(learning_rate=0.00001),
+            loss=loss(self.params),
+            metrics={
+                "prediction": [
+                    acc,
+                    tf.keras.metrics.AUC(multi_label= self.params.multi_label),
+                    tf.keras.metrics.Recall(),
+                    tf.keras.metrics.Precision(),
+                ]
+            },
+        )
+        
+        history = self.model.fit(
+            self.train,
+            validation_data=self.validate,
+            epochs=epochs,
+            shuffle=False,
+            callbacks=[
+
+                *checkpoints,
+            ],  # log metricslast_stats
+        )
+        history = history.history
+    
+        if self.test:
+            test_accuracy = self.model.evaluate(self.test)
+
+        self.save(run_name, history=history, test_results=test_accuracy)
+
+    def checkpoints(self, run_name,fine_tuning=False):
         checkpoint_file = self.checkpoint_folder / run_name / "cp.weights.h5"
 
         cp_callback = tf.keras.callbacks.ModelCheckpoint(
@@ -762,18 +830,37 @@ class KerasModel(Interpreter):
             save_weights_only=True,
             mode="max",
         )
-        earlyStopping = tf.keras.callbacks.EarlyStopping(
-            patience=11,
-            monitor='val_loss',
+        checkpoints = [
+            checkpoint_acc,
+            checkpoint_loss,
+            reduce_lr_callback,
+            cp_callback]
+        if not  fine_tuning:
+            earlyStopping = tf.keras.callbacks.EarlyStopping(
+                patience=11,
+                monitor='val_loss',
 
-            # monitor=(
-            #     "val_binary_accuracy"
-            #     if self.params.multi_label
-            #     else "val_categorical_accuracy"
-            # ),
-            mode="min",
-            restore_best_weights=True,
-        )
+                # monitor=(
+                #     "val_binary_accuracy"
+                #     if self.params.multi_label
+                #     else "val_categorical_accuracy"
+                # ),
+                mode="min",
+                restore_best_weights=True,
+            )
+            checkpoints.append(earlyStopping)
+                
+            reduce_lr_callback = tf.keras.callbacks.ReduceLROnPlateau(
+                monitor='val_loss',
+                factor=0.5,       # Gentler drop: Reduces learning rate by 80% (e.g., 0.001 -> 0.0002)
+                patience=3,       # Faster response: Triggers after 3 epochs of stagnation
+                min_delta=0.0001, # The minimum change to qualify as an improvement
+                cooldown=1,       # Wait 1 epoch after a drop before monitoring patience again
+                min_lr=0.00001    # Safety floor: Never drops lower than 10% of standard fine-tuning speed
+            )
+            checkpoints.append(reduce_lr_callback)
+        return checkpoints
+    
         # havent found much use in this just takes training time
         # file_writer_cm = tf.summary.create_file_writer(
         #     self.log_base + "/{}/cm".format(run_name)
@@ -800,22 +887,7 @@ class KerasModel(Interpreter):
         #     mode="max",
         #     verbose=1,
         # )
-        reduce_lr_callback = tf.keras.callbacks.ReduceLROnPlateau(
-            monitor='val_loss',
-            factor=0.5,       # Gentler drop: Reduces learning rate by 80% (e.g., 0.001 -> 0.0002)
-            patience=3,       # Faster response: Triggers after 3 epochs of stagnation
-            min_delta=0.0001, # The minimum change to qualify as an improvement
-            cooldown=1,       # Wait 1 epoch after a drop before monitoring patience again
-            min_lr=0.00001    # Safety floor: Never drops lower than 10% of standard fine-tuning speed
-        )
-
-        return [
-            earlyStopping,
-            checkpoint_acc,
-            checkpoint_loss,
-            reduce_lr_callback,
-            cp_callback,
-        ]
+        
 
     @property
     def hyperparams_string(self):

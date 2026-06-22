@@ -230,12 +230,20 @@ def get_dataset(load_function, base_dir, labels, **args):
     dataset = dataset.prefetch(buffer_size=AUTOTUNE)
 
     return dataset, remapped, new_labels, epoch_size
-data_augmentation = tf.keras.Sequential(
+brightness_contrast_aug = tf.keras.Sequential(
     [
         tf.keras.layers.RandomBrightness(0.2),  # better per frame or per sequence??
         tf.keras.layers.RandomContrast(0.5),
     ]
 )
+
+
+def data_augmentation(image, training=True):
+    # only apply brightness/contrast to channels 2,3 (thermal_norm, filtered),
+    # leave channel 1 (raw thermal) untouched
+    raw = image[..., :1]
+    augmented = brightness_contrast_aug(image[..., 1:], training=training)
+    return tf.concat([raw, augmented], axis=-1)
 
 def resample(dataset, labels):
     excluded_labels = ["sheep"]
