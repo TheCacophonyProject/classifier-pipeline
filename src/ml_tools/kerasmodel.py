@@ -269,14 +269,24 @@ class KerasModel(Interpreter):
         from tensorflow.keras import layers
         # width = self.params.frame_size
         width = self.params.output_dim[0]
-        input = tf.keras.Input(
+        input_image = tf.keras.Input(
             shape=(width, width, len(self.params.channels)), name="input_image"
         )
         weights = None if self.params.base_training else "imagenet"
-        base_model, preprocess = self.get_base_model(input, weights=weights)
+        base_model, preprocess = self.get_base_model(input_image, weights=weights)
         self.preprocess_fn = preprocess
         # inputs = base_model.input
-        x = base_model(input)
+        
+                
+        # Step A: Standardise channel means (92.96, 47.33, 30.62) & variances automatically
+        x = layers.BatchNormalization(axis=-1, name='channel_standardizer')(input_image)
+
+        # 2. Trainable 1x1 conv with 3 filters to re-weight and re-bias the RGB channels 
+        # This lets the network automatically discover the optimal math to align your normalisations
+        x = tf.keras.layers.Conv2D(3, (1, 1), activation=None, name='channel_aligner')(x)
+
+
+        x = base_model(x)
         # x = base_model(inputs, training=self.params.base_training)
         if self.params.get("model_merge"):
             logging.info(
@@ -291,7 +301,7 @@ class KerasModel(Interpreter):
             feature_input = tf.keras.Input(shape=(188), name="feature_input")
             model_rf = tf.keras.models.load_model(self.params.get("model_rf"))
             rf = model_rf(feature_input)
-            input = [cnn.input, feature_input]
+            input_image = [cnn.input, feature_input]
             cnn.summary()
             model_rf.summary()
             print("Outputs", cnn.outputs, rf)
@@ -303,13 +313,13 @@ class KerasModel(Interpreter):
             preds = tf.keras.layers.Dense(
                 len(self.labels), activation=activation, name="merged-prediction"
             )(x)
-            self.model = tf.keras.models.Model(input, outputs=preds)
+            self.model = tf.keras.models.Model(input_image, outputs=preds)
         elif self.params.lstm:
             x = tf.keras.layers.GlobalAveragePooling2D()(x)
             for i in dense_sizes:
                 x = tf.keras.layers.Dense(i, activation="relu")(x)
             # gp not sure how many should be pre lstm, and how many post
-            cnn = tf.keras.models.Model(input, outputs=x)
+            cnn = tf.keras.models.Model(input_image, outputs=x)
 
             self.model = self.add_lstm(cnn)
         else:
@@ -318,24 +328,41 @@ class KerasModel(Interpreter):
             if multi_input:
                 # --- Input 2: The Timeline Mask Layer (5x5x1) ---
                 mask_input = layers.Input(shape=(5, 5, 1), name="input_mask")
-                input = {"input_image":input, "input_mask":mask_input}
+                input_image = {"input_image":input_image, "input_mask":mask_input}
 
                 # Generate temporal feature maps matching the spatial dimensions
-                t = layers.Conv2D(64, (1, 1), activation='relu', padding='same')(mask_input)
-                t = layers.Conv2D(128, (3, 3), activation='relu', padding='same')(t)
+                # AI was insistent on this being the way to go until i questioned it and then it said Dense was obviously better
+                # t = layers.Conv2D(64, (1, 1), activation='relu', padding='same')(mask_input)
+                # t = layers.Conv2D(128, (3, 3), activation='relu', padding='same')(t)
+
+                # input_mask = Input(shape=(5, 5, 1), name='input_mask')
+
+                # Step 1: Project the single timestamp into a 64-dimensional time embedding vector per cell
+                # A Dense layer applied to a 3D tensor operates independently on every single (5,5) cell!
+                time_embedding = layers.Dense(64, activation='relu', name='time_feature_projection')(mask_input) # Shape: (None, 5, 5, 64)
+                time_embedding = layers.Dense(128, activation='relu', name='time_feature_expansion')(time_embedding) # Shape: (None, 5, 5, 128)
+
                 
                 # --- Feature Fusion ---
                 # Concatenate visual maps (5x5x1536) and time maps (5x5x128) along the channels
                 image_features = x
-                combined = layers.Concatenate(axis=-1)([image_features, t])  # Shape: (None, 5, 5, 1664)
+                # maybe add
+                image_features = tf.keras.layers.SpatialDropout2D(dropout)(image_features)
+
+                combined = layers.Concatenate(name="input_concat")([image_features, time_embedding])  # Shape: (None, 5, 5, 1664)
                 
+
+                # 1. Compress channel depth from 1664 to 256 using 1x1 convolution
+                x = layers.Conv2D(256, (1, 1), activation='swish', padding='same')(x) # ~426K params
+
+
                 # Mix the combined space-time features together
-                combined = layers.Conv2D(256, (3, 3), activation='relu', padding='same')(combined)
+                combined = layers.Conv2D(256, (3, 3), activation='swish', padding='same')(combined)
             
             x = tf.keras.layers.GlobalAveragePooling2D()(combined)
             if self.params.mvm:
                 mvm_inputs = tf.keras.layers.Input((188))
-                input = [input, mvm_inputs]
+                input_image = [input_image, mvm_inputs]
                 # mvm_features = tf.keras.layers.Flatten()(mvm_inputs)
                 #
                 # if self.params["hq_mvm"]:
@@ -363,7 +390,7 @@ class KerasModel(Interpreter):
                 # x = tf.keras.layers.Dense(1028, activation="relu")(x)
             if dense_sizes is not None:
                 for i in dense_sizes:
-                    x = tf.keras.layers.Dense(i, activation="relu")(x)
+                    x = tf.keras.layers.Dense(i, activation="swish")(x)
             if dropout:
                 x = tf.keras.layers.Dropout(dropout)(x)
 
@@ -374,7 +401,7 @@ class KerasModel(Interpreter):
             preds = tf.keras.layers.Dense(
                 len(self.labels), activation=activation, name="prediction"
             )(x)
-            self.model = tf.keras.models.Model(input, outputs=preds)
+            self.model = tf.keras.models.Model(input_image, outputs=preds)
         if retrain_from is None:
             retrain_from = self.params.retrain_layer
         if retrain_from:
@@ -686,7 +713,12 @@ class KerasModel(Interpreter):
         )
 
         self.save(run_name,fine_tune = fine_tune,rebalance = rebalance)
-        checkpoints = self.checkpoints(run_name)
+        warmup_callback = StepWarmupCallback(
+            target_lr=self.params.learning_rate, 
+            warmup_epochs=2, 
+            steps_per_epoch=steps
+        )
+        checkpoints = self.checkpoints(run_name,warmup_epochs = 2)
 
         self.model.compile(
             optimizer=optimizer(self.params,steps,self.epochs,fine_tune = fine_tune is not None),
@@ -696,6 +728,7 @@ class KerasModel(Interpreter):
             },
         )
 
+        
         history = self.model.fit(
             self.train,
             validation_data=self.validate,
@@ -706,6 +739,7 @@ class KerasModel(Interpreter):
                 tf.keras.callbacks.TensorBoard(
                     self.log_dir, write_graph=True, write_images=True
                 ),
+                warmup_callback,
                 *checkpoints,
             ], 
         )
@@ -744,7 +778,7 @@ class KerasModel(Interpreter):
 
         self.fine_tune(fine_tune_name,weights)
 
-    def fine_tune(self,run_name,weights,epochs=5):
+    def fine_tune(self,run_name,weights,tf_mappings,epochs=5):
         logging.info("Fine tuning for 5 epochs with weights %s",weights)
 
         self.model.load_weights(weights)
@@ -769,7 +803,9 @@ class KerasModel(Interpreter):
             num_frames=self.params.square_width**2,
             channels=self.params.channels,
             pads = self.pads,
-            downsize_fp = True
+            downsize_fp = True,
+            tf_mappings = tf_mappings,
+
         )
 
 
@@ -784,6 +820,7 @@ class KerasModel(Interpreter):
                 "prediction": metrics(self.params.multi_labels) 
             },
         )
+
 
         
         history = self.model.fit(
@@ -803,12 +840,23 @@ class KerasModel(Interpreter):
 
         self.save(run_name, history=history, test_results=test_accuracy)
 
-    def checkpoints(self, run_name,fine_tuning=False):
+    def checkpoints(self, run_name,fine_tuning=False,stop_on = ("val_macro_f1","max"),warmup_epochs = 2):
         checkpoint_file = self.checkpoint_folder / run_name / "cp.weights.h5"
 
         cp_callback = tf.keras.callbacks.ModelCheckpoint(
             filepath=checkpoint_file, save_weights_only=True, verbose=1
         )
+        val_f1 = self.checkpoint_folder / run_name / "val_macro_f1.weights.h5"
+
+        f1_loss = tf.keras.callbacks.ModelCheckpoint(
+            val_f1,
+            monitor="val_macro_f1",
+            verbose=1,
+            save_best_only=True,
+            save_weights_only=True,
+            mode="max",
+        )
+
         val_loss = self.checkpoint_folder / run_name / "val_loss.weights.h5"
 
         checkpoint_loss = tf.keras.callbacks.ModelCheckpoint(
@@ -845,31 +893,34 @@ class KerasModel(Interpreter):
             mode="max",
         )
         checkpoints = [
+            f1_loss,
             checkpoint_acc,
             checkpoint_loss,
             cp_callback]
         if not  fine_tuning:
             earlyStopping = tf.keras.callbacks.EarlyStopping(
                 patience=11,
-                monitor='val_loss',
+                monitor=stop_on[0],
 
                 # monitor=(
                 #     "val_binary_accuracy"
                 #     if self.params.multi_label
                 #     else "val_categorical_accuracy"
                 # ),
-                mode="min",
+                mode=stop_on[1],
                 restore_best_weights=True,
             )
             checkpoints.append(earlyStopping)
                 
             reduce_lr_callback = tf.keras.callbacks.ReduceLROnPlateau(
-                monitor='val_loss',
+                monitor='val_macro_f1',
+                varbose=1,
+                mode='max',
                 factor=0.5,       # Gentler drop: Reduces learning rate by 80% (e.g., 0.001 -> 0.0002)
                 patience=8,       # Faster response: Triggers after 3 epochs of stagnation
                 min_delta=0.0001, # The minimum change to qualify as an improvement
-                cooldown=3,       # Wait 1 epoch after a drop before monitoring patience again
-                min_lr=0.00001    # Safety floor: Never drops lower than 10% of standard fine-tuning speed
+                cooldown=max(warmup_epochs,3),       # Wait 1 epoch after a drop before monitoring patience again
+                min_lr=0.000001    # Safety floor: Never drops lower than 10% of standard fine-tuning speed
             )
             checkpoints.append(reduce_lr_callback)
         return checkpoints
@@ -1382,9 +1433,10 @@ def plot_to_image(figure):
 
 def loss(params):
     if params.multi_label:
-        return tf.keras.losses.BinaryCrossentropy(
-            label_smoothing=params.label_smoothing,
-        )
+        return tf.keras.losses.BinaryFocalCrossentropy(gamma=2.0, alpha=0.25),
+        # return tf.keras.losses.BinaryCrossentropy(
+        #     label_smoothing=params.label_smoothing,
+        # )
     return tf.keras.losses.CategoricalCrossentropy(
         label_smoothing=params.label_smoothing,
     )
@@ -1410,7 +1462,9 @@ def optimizer(params,steps_per_epoch,epochs,fine_tune=False):
         #     decay_rate=params.learning_rate_decay,
         # )
         # using ReduceLROnPlateau instead
-        lr_schedule = params.learning_rate
+        lr_schedule =0.0
+        # using warmup to set lr
+        # params.learning_rate
 
     optimizer = tf.keras.optimizers.Adam(learning_rate=lr_schedule)
     return optimizer
@@ -1673,3 +1727,39 @@ def metrics(multi_label):
                     tf.keras.metrics.Precision(),
                     tf.keras.metrics.F1Score(average="macro", name="macro_f1")
                 ]
+
+
+from tensorflow.keras.callbacks import Callback
+
+class StepWarmupCallback(Callback):
+    def __init__(self, target_lr, warmup_epochs, steps_per_epoch):
+        super(StepWarmupCallback, self).__init__()
+        self.target_lr = target_lr
+        self.warmup_epochs = warmup_epochs
+        self.steps_per_epoch = steps_per_epoch
+        # Calculate the total linear steps for the warmup phase
+        self.total_warmup_steps = warmup_epochs * steps_per_epoch
+        self.global_step = 0
+
+    def on_train_batch_begin(self, batch, logs=None):
+        # Only run adjustments during the warmup phase
+        if self.global_step < self.total_warmup_steps:
+            # Linear scaling formula
+            lr = (self.global_step / self.total_warmup_steps) * self.target_lr
+            
+            # Dynamically update the backend float value (safe for ReduceLROnPlateau)
+            self.model.optimizer.learning_rate = lr
+        self.global_step += 1
+
+    def on_epoch_begin(self, epoch, logs=None):
+        if epoch < self.warmup_epochs:
+            current_epoch_start_lr = (self.global_step / self.total_warmup_steps) * self.target_lr
+            msg = f"[Warmup Phase] Epoch {epoch + 1}/{self.warmup_epochs}: Starting learning rate set to {current_epoch_start_lr:.4e}"
+            
+            # 1. Use PRINT with a newline to break past the Keras progress bar cleanly
+            print(f"\n🔥 {msg}")
+            
+            # 2. Use LOGGING to write a clean, timestamped record into your log file backup
+            logging.info(msg)
+
+        self.global_step += 1

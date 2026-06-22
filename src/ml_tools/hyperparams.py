@@ -150,7 +150,7 @@ class HyperParams(dict):
     
     @property
     def learning_rate(self):
-        return self.get("learning_rate", 0.001)
+        return self.get("learning_rate", 0.0002)
 
     @property
     def learning_rate_decay(self):
