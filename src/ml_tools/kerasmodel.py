@@ -722,7 +722,7 @@ class KerasModel(Interpreter):
         self.save(run_name, history=history, test_results=test_accuracy)
 
         fine_tune_name = f"{run_name}-finetune"
-        weights =   self.checkpoint_folder / run_name / "val_acc.weights.h5"
+        weights =   self.checkpoint_folder / run_name / "val_loss.weights.h5"
 
         self.fine_tune(fine_tune_name,weights)
 
