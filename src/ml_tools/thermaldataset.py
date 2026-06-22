@@ -250,7 +250,7 @@ def load_dataset(filenames, remap_lookup, labels, args):
     if rebalance:
         target = 2000
         logging.info("Rebalancing to target %s",target)
-        keep_probs = [min(1.0, target / CLASS_TOTALS[k]) if k=="false-positive" else 1.0 for v,k in CLASS_TOTALS.items()]
+        keep_probs = [min(1.0, target / CLASS_TOTALS[lbl]) if lbl=="false-positive" else 1.0 for lbl in labels]
         keep_probs = tf.constant(keep_probs)
        
         dataset = dataset.filter(lambda img, lbl: randomized_balance_filter(img, lbl, keep_probs                          ))
@@ -258,7 +258,7 @@ def load_dataset(filenames, remap_lookup, labels, args):
         # down size false-positive class
         fp_target = int(CLASS_TOTALS["false-positive"] * 0.1856)
         logging.info("Downsizing false positives to %s",fp_target)
-        keep_probs = [0.1856 if k=="false-positive" else 1.0 for k,v in CLASS_TOTALS.items()]
+        keep_probs = [0.1856 if lbl=="false-positive" else 1.0 for lbl in labels]
         # keep_probs=keep_probs[:10]
         keep_probs = tf.constant(keep_probs)
         logging.info("Keep probs are %s",keep_probs)
