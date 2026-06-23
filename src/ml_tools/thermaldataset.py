@@ -609,7 +609,7 @@ def main():
     init_logging()
     logging.info("Loading %s", "classifier.yaml")
     config = Config.load_from_file("classifier.yaml")
-    from .tfdataset import get_dataset, get_distribution
+    from .tfdataset import get_dataset, get_distribution,apply_label_mapping
 
     # file = "/home/gp/cacophony/classifier-data/thermal-training/cp-training/training-meta.json"
     training_folder = Path(config.base_folder) / "training-data"
@@ -629,7 +629,10 @@ def main():
     # for l in labels:
     #     if l not in ["mustelid", "deer", "sheep"]:
     #         excluded_labels.append(l)
+
     include_track = False
+
+    labels,tf_mappings = apply_label_mapping(labels,excluded_labels, get_remapped())
     resampled_ds, remapped, labels, epoch_size = get_dataset(
         # dir,
         load_dataset,
@@ -647,7 +650,8 @@ def main():
         include_track=include_track,
         num_frames=25,
         deterministic=True,
-        pads = pads
+        pads = pads,
+        tf_mappings= tf_mappings
     )
     print("Epoch size is", epoch_size)
     # print(get_distribution(resampled_ds, len(labels), extra_meta=False))
