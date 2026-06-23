@@ -1433,10 +1433,10 @@ def plot_to_image(figure):
 
 def loss(params):
     if params.multi_label:
-        return tf.keras.losses.BinaryFocalCrossentropy(gamma=2.0, alpha=0.25),
-        # return tf.keras.losses.BinaryCrossentropy(
-        #     label_smoothing=params.label_smoothing,
-        # )
+        # return tf.keras.losses.BinaryFocalCrossentropy(gamma=2.0, alpha=0.25),
+        return tf.keras.losses.BinaryCrossentropy(from_logits=False,
+            label_smoothing=params.label_smoothing,
+        )
     return tf.keras.losses.CategoricalCrossentropy(
         label_smoothing=params.label_smoothing,
     )
@@ -1763,3 +1763,4 @@ class StepWarmupCallback(Callback):
             logging.info(msg)
 
         self.global_step += 1
+
