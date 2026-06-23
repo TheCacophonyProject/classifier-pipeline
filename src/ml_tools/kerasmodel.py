@@ -397,6 +397,8 @@ class KerasModel(Interpreter):
             activation = "softmax"
             if self.params.multi_label:
                 activation = "sigmoid"
+                # will need to add this in after training
+                activation = None
             logging.info("Using %s activation", activation)
             preds = tf.keras.layers.Dense(
                 len(self.labels), activation=activation, name="prediction"
@@ -1434,7 +1436,7 @@ def plot_to_image(figure):
 def loss(params):
     if params.multi_label:
         # return tf.keras.losses.BinaryFocalCrossentropy(gamma=2.0, alpha=0.25),
-        return tf.keras.losses.BinaryCrossentropy(from_logits=False,
+        return tf.keras.losses.BinaryCrossentropy(from_logits=True,
             label_smoothing=params.label_smoothing,
         )
     return tf.keras.losses.CategoricalCrossentropy(
