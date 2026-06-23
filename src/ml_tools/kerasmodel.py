@@ -1716,19 +1716,66 @@ class MetaJSONEncoder(json.JSONEncoder):
             return obj.name
         return json.JSONEncoder.default(self, obj)
 
-def metrics(multi_label):
+
+def metrics(multi_label=True, from_logits=True):
+    # 1. Base Accuracy Definition
     if multi_label:
-        acc = tf.metrics.binary_accuracy
+        # If inputs are logits, the threshold is 0.0 (positive vs negative numbers)
+        # If inputs are probabilities, the threshold is 0.5
+        thresh = 0.0 if from_logits else 0.5
+        acc = lambda y_true, y_pred: tf.metrics.binary_accuracy(y_true, y_pred, threshold=thresh)
     else:
         acc = tf.metrics.categorical_accuracy
 
-    return [
-                    acc,
-                    tf.keras.metrics.AUC(multi_label= multi_label),
-                    tf.keras.metrics.Recall(),
-                    tf.keras.metrics.Precision(),
-                    tf.keras.metrics.F1Score(average="macro", name="macro_f1")
-                ]
+    # 2. Build the output list
+    metrics_list = [acc]
+    
+    # 3. Handle AUC (It has native logit support)
+    metrics_list.append(tf.keras.metrics.AUC(multi_label=multi_label, from_logits=from_logits, name="auc"))
+
+    # 4. Handle Precision, Recall, and F1Score
+    if from_logits:
+        # Create custom wrappers that apply sigmoid before calculation
+        class LogitPrecision(tf.keras.metrics.Precision):
+            def update_state(self, y_true, y_pred, sample_weight=None):
+                return super().update_state(y_true, tf.sigmoid(y_pred), sample_weight)
+                
+        class LogitRecall(tf.keras.metrics.Recall):
+            def update_state(self, y_true, y_pred, sample_weight=None):
+                return super().update_state(y_true, tf.sigmoid(y_pred), sample_weight)
+                
+        class LogitMacroF1(tf.keras.metrics.F1Score):
+            def update_state(self, y_true, y_pred, sample_weight=None):
+                return super().update_state(y_true, tf.sigmoid(y_pred), sample_weight)
+
+        metrics_list.extend([
+            LogitRecall(name="recall"),
+            LogitPrecision(name="precision"),
+            LogitMacroF1(average="macro", name="macro_f1")
+        ])
+    else:
+        # Fallback to your original code if from_logits=False
+        metrics_list.extend([
+            tf.keras.metrics.Recall(name="recall"),
+            tf.keras.metrics.Precision(name="precision"),
+            tf.keras.metrics.F1Score(average="macro", name="macro_f1")
+        ])
+
+    return metrics_list
+
+# def metrics(multi_label):
+#     if multi_label:
+#         acc = tf.metrics.binary_accuracy
+#     else:
+#         acc = tf.metrics.categorical_accuracy
+
+#     return [
+#                     acc,
+#                     tf.keras.metrics.AUC(multi_label= multi_label),
+#                     tf.keras.metrics.Recall(),
+#                     tf.keras.metrics.Precision(),
+#                     tf.keras.metrics.F1Score(average="macro", name="macro_f1")
+#                 ]
 
 
 from tensorflow.keras.callbacks import Callback
