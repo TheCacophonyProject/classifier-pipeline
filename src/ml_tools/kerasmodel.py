@@ -614,6 +614,7 @@ class KerasModel(Interpreter):
         rebalance=False,
         resample=False,
         fine_tune=None,
+        warm_down = False,
     ):
         logging.info(
             "%s Training model for %s epochs with weights %s", run_name, epochs, weights
@@ -663,7 +664,8 @@ class KerasModel(Interpreter):
 
         train_files = self.data_dir / "train"
         validate_files = self.data_dir / "validation"
-        
+        augment = not warm_down
+
         self.train, epoch_size = get_dataset(
             train_files,
             self.data_type,
@@ -674,7 +676,7 @@ class KerasModel(Interpreter):
             resample=resample,
             stop_on_empty_dataset=False,
             include_features=self.params.mvm,
-            augment=True,
+            augment=augment,
             excluded_labels=self.excluded_labels,
             remapped_labels=self.remapped_labels,
             # dist=self.dataset_counts["train"],
@@ -715,15 +717,21 @@ class KerasModel(Interpreter):
         )
 
         self.save(run_name,fine_tune = fine_tune,rebalance = rebalance)
-        warmup_callback = StepWarmupCallback(
-            target_lr=self.params.learning_rate, 
-            warmup_epochs=2, 
-            steps_per_epoch=steps
-        )
-        checkpoints = self.checkpoints(run_name,warmup_epochs = 2)
-
+       
+        checkpoints = self.checkpoints(run_name,warmup_epochs = 2,fine_tuning =warm_down )
+        if warm_down:
+            optimizer_fn =tf.keras.optimizers.Adam(learning_rate=self.params.fine_tune_learning_rate)
+            logging.info("Warming down with adam and augment %s and learning rate %s",augment, self.params.fine_tune_learning_rate)
+        else:
+            warmup_callback = StepWarmupCallback(
+                target_lr=self.params.learning_rate, 
+                warmup_epochs=2, 
+                steps_per_epoch=steps
+            )
+            optimizer_fn=optimizer(self.params,steps,self.epochs,fine_tune = fine_tune is not None)
+            checkpoints.append(warmup_callback)
         self.model.compile(
-            optimizer=optimizer(self.params,steps,self.epochs,fine_tune = fine_tune is not None),
+            optimizer=optimizer_fn,
             loss=loss(self.params),
              metrics={
                 "prediction": metrics(self.params.multi_label)
@@ -741,7 +749,6 @@ class KerasModel(Interpreter):
                 tf.keras.callbacks.TensorBoard(
                     self.log_dir, write_graph=True, write_images=True
                 ),
-                warmup_callback,
                 *checkpoints,
             ], 
         )
@@ -775,13 +782,14 @@ class KerasModel(Interpreter):
 
         self.save(run_name, history=history, test_results=test_accuracy,rebalance= rebalance, fine_tune = fine_tune)
 
-        fine_tune_name = f"{run_name}-finetune"
-        weights =   self.checkpoint_folder / run_name / "val_loss.weights.h5"
+        if not warm_down:
+            fine_tune_name = f"{run_name}-finetune"
+            weights =   self.checkpoint_folder / run_name / "val_loss.weights.h5"
 
-        self.fine_tune(fine_tune_name,weights,tf_mappings)
+            self.warm_down(fine_tune_name,weights,tf_mappings)
 
-    def fine_tune(self,run_name,weights,tf_mappings,epochs=5):
-        logging.info("Fine tuning for 5 epochs with weights %s",weights)
+    def warm_down(self,run_name,weights,tf_mappings,epochs=5):
+        logging.info("Warming down for 5 epochs with weights %s without augmentation",weights)
 
         self.model.load_weights(weights)
         log_dir = self.log_base / run_name
@@ -842,7 +850,7 @@ class KerasModel(Interpreter):
 
         self.save(run_name, history=history, test_results=test_accuracy)
 
-    def checkpoints(self, run_name,fine_tuning=False,stop_on = ("val_macro_f1","max"),warmup_epochs = 2):
+    def checkpoints(self, run_name,fine_tuning=False,stop_on = ("val_loss","min"),warmup_epochs = 2):
         checkpoint_file = self.checkpoint_folder / run_name / "cp.weights.h5"
 
         cp_callback = tf.keras.callbacks.ModelCheckpoint(
@@ -915,9 +923,9 @@ class KerasModel(Interpreter):
             checkpoints.append(earlyStopping)
                 
             reduce_lr_callback = tf.keras.callbacks.ReduceLROnPlateau(
-                monitor='val_macro_f1',
+                monitor=stop_on[0],
                 varbose=1,
-                mode='max',
+                mode=stop_on[1],
                 factor=0.5,       # Gentler drop: Reduces learning rate by 80% (e.g., 0.001 -> 0.0002)
                 patience=8,       # Faster response: Triggers after 3 epochs of stagnation
                 min_delta=0.0001, # The minimum change to qualify as an improvement
@@ -1716,6 +1724,10 @@ class MetaJSONEncoder(json.JSONEncoder):
             return obj.name
         return json.JSONEncoder.default(self, obj)
 
+@tf.function
+def acc_thresh(y_true, y_pred):
+    thresh = 0.0 if from_logits else 0.5
+    return tf.metrics.binary_accuracy(y_true, y_pred, threshold=thresh)
 
 def metrics(multi_label=True, from_logits=True):
     # 1. Base Accuracy Definition
@@ -1723,7 +1735,7 @@ def metrics(multi_label=True, from_logits=True):
         # If inputs are logits, the threshold is 0.0 (positive vs negative numbers)
         # If inputs are probabilities, the threshold is 0.5
         thresh = 0.0 if from_logits else 0.5
-        acc = lambda y_true, y_pred: tf.metrics.binary_accuracy(y_true, y_pred, threshold=thresh)
+        acc = acc_thresh
     else:
         acc = tf.metrics.categorical_accuracy
 

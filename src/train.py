@@ -49,7 +49,11 @@ def load_config():
     parser.add_argument(
         "-r", "--rebalance", action="store_true", help="Rebalance training set"
     )
-
+    parser.add_argument(
+        "--warm-down",
+        action="store_true",
+        help="Warming down, running without training augment on a low learning rate",
+    )
     parser.add_argument(
         "name",
         default="unnammed",
@@ -73,6 +77,7 @@ def main():
         epochs=args.epochs,
         fine_tune=args.fine_tune,
         rebalance=args.rebalance,
+        warm_down=args.warm_down,
     )
 
 
