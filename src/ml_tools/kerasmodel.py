@@ -353,13 +353,13 @@ class KerasModel(Interpreter):
                 
 
                 # 1. Compress channel depth from 1664 to 256 using 1x1 convolution
-                x = layers.Conv2D(256, (1, 1), activation='swish', padding='same')(x) # ~426K params
+                x = layers.Conv2D(256, (1, 1), activation='swish', padding='same')(combined) # ~426K params
 
 
                 # Mix the combined space-time features together
-                combined = layers.Conv2D(256, (3, 3), activation='swish', padding='same')(combined)
-            
-            x = tf.keras.layers.GlobalAveragePooling2D()(combined)
+                x = layers.Conv2D(256, (3, 3), activation='swish', padding='same')(x)
+                
+            x = tf.keras.layers.GlobalAveragePooling2D()(x)
             if self.params.mvm:
                 mvm_inputs = tf.keras.layers.Input((188))
                 input_image = [input_image, mvm_inputs]
@@ -664,8 +664,7 @@ class KerasModel(Interpreter):
 
         train_files = self.data_dir / "train"
         validate_files = self.data_dir / "validation"
-        augment = not warm_down
-
+        augment =fine_tune is None
         self.train, epoch_size = get_dataset(
             train_files,
             self.data_type,
@@ -1726,20 +1725,13 @@ class MetaJSONEncoder(json.JSONEncoder):
             return obj.name
         return json.JSONEncoder.default(self, obj)
 
-@tf.function
-def acc_thresh(y_true, y_pred,thresh = 0.0):
-    return tf.metrics.binary_accuracy(y_true, y_pred, threshold=thresh)
-
 def metrics(multi_label=True, from_logits=True):
-    from functools import partial
     # 1. Base Accuracy Definition
     if multi_label:
         # If inputs are logits, the threshold is 0.0 (positive vs negative numbers)
         # If inputs are probabilities, the threshold is 0.5
         thresh = 0.0 if from_logits else 0.5
-        partial_acc = partial(acc_thresh, thresh=thresh)
-
-        acc = partial_acc
+        acc = tf.keras.metrics.BinaryAccuracy(threshold=thresh, name="acc_thresh")
     else:
         acc = tf.metrics.categorical_accuracy
 
