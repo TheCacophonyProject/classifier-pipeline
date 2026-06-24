@@ -250,7 +250,7 @@ def load_dataset(filenames, remap_lookup, labels, args):
     if rebalance:
         target = 2000
         logging.info("Rebalancing to target %s",target)
-        keep_probs = [min(1.0, target / CLASS_TOTALS[lbl]) if lbl=="false-positive" else 1.0 for lbl in labels]
+        keep_probs = [min(1.0, target / CLASS_TOTALS[lbl]) for lbl in labels]
         keep_probs = tf.constant(keep_probs)
        
         dataset = dataset.filter(lambda img, lbl: randomized_balance_filter(img, lbl, keep_probs                          ))
@@ -276,13 +276,12 @@ def load_dataset(filenames, remap_lookup, labels, args):
 
 import tensorflow as tf
 
-# hard coded for 22nd May
 # 1. Define your original class totals to calculate downsampling rates
 CLASS_TOTALS = {
-    'bird': 193240, 'false-positive': 161566, 'rodent': 98814, 'leporidae': 49048,
-    'human': 33906, 'possum': 16746, 'chicken': 15782, 'vehicle': 14155,
-    'mustelid': 12843, 'hedgehog': 10061, 'kiwi': 9281, 'cat': 7828,
-    'dog': 3862, 'penguin': 3797, 'wallaby': 2816, 'weka':348,'deer':586,'sheep':1417
+    'bird': 107746, 'false-positive': 93317, 'rodent': 53460, 'leporidae': 25454,
+    'human': 17397, 'possum': 8487, 'chicken': 7988, 'vehicle': 7150,
+    'mustelid': 6483, 'hedgehog': 5066, 'kiwi': 4679, 'cat': 3944,
+    'dog': 1938, 'penguin': 1903, 'wallaby': 1410, 'weka': 174, 'deer': 293, 'sheep': 709
 }
 TARGET = 2000.0
 
@@ -631,27 +630,34 @@ def main():
     #         excluded_labels.append(l)
 
     include_track = False
+    if "weka" not in labels:
+        labels.append("weka")
+    if "chicken" not in labels:
+        labels.append("chicken")
+    orig_labels = labels.copy()
+    labels,tf_mappings = apply_label_mapping(labels,excluded_labels, get_remapped(True))
+    logging.info("Labels are now %s",labels)
+    for k,v in tf_mappings.items():
+        logging.info("Original %s is mapped to %s",orig_labels[k], "Nothing" if v==-1 else labels[v] )
 
-    labels,tf_mappings = apply_label_mapping(labels,excluded_labels, get_remapped())
-    resampled_ds, remapped, labels, epoch_size = get_dataset(
-        # dir,
+    labels,tf_mappings = apply_label_mapping(labels,excluded_labels, get_remapped(multi_label = True))
+    resampled_ds,  epoch_size = get_dataset(
         load_dataset,
         training_folder / "test",
         labels,
         batch_size=32,
         image_size=(160, 160),
         augment=True,
-        # preprocess_fn=tf.keras.applications.inception_v3.preprocess_input,
-        resample=False,
         shuffle=False,
         include_features=False,
-        remapped_labels=get_remapped(),
+        remapped_labels=get_remapped(multi_label = True),
         excluded_labels=excluded_labels,
         include_track=include_track,
         num_frames=25,
         deterministic=True,
         pads = pads,
-        tf_mappings= tf_mappings
+        tf_mappings= tf_mappings,
+        rebalance=False,
     )
     print("Epoch size is", epoch_size)
     # print(get_distribution(resampled_ds, len(labels), extra_meta=False))

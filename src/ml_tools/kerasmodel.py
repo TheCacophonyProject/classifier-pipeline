@@ -723,13 +723,15 @@ class KerasModel(Interpreter):
             optimizer_fn =tf.keras.optimizers.Adam(learning_rate=self.params.fine_tune_learning_rate)
             logging.info("Warming down with adam and augment %s and learning rate %s",augment, self.params.fine_tune_learning_rate)
         else:
-            warmup_callback = StepWarmupCallback(
-                target_lr=self.params.learning_rate, 
-                warmup_epochs=2, 
-                steps_per_epoch=steps
-            )
+            if fine_tune is None:
+                warmup_callback = StepWarmupCallback(
+                    target_lr=self.params.learning_rate, 
+                    warmup_epochs=2, 
+                    steps_per_epoch=steps
+                )
+                checkpoints.append(warmup_callback)
+
             optimizer_fn=optimizer(self.params,steps,self.epochs,fine_tune = fine_tune is not None)
-            checkpoints.append(warmup_callback)
         self.model.compile(
             optimizer=optimizer_fn,
             loss=loss(self.params),
@@ -1725,17 +1727,19 @@ class MetaJSONEncoder(json.JSONEncoder):
         return json.JSONEncoder.default(self, obj)
 
 @tf.function
-def acc_thresh(y_true, y_pred):
-    thresh = 0.0 if from_logits else 0.5
+def acc_thresh(y_true, y_pred,thresh = 0.0):
     return tf.metrics.binary_accuracy(y_true, y_pred, threshold=thresh)
 
 def metrics(multi_label=True, from_logits=True):
+    from functools import partial
     # 1. Base Accuracy Definition
     if multi_label:
         # If inputs are logits, the threshold is 0.0 (positive vs negative numbers)
         # If inputs are probabilities, the threshold is 0.5
         thresh = 0.0 if from_logits else 0.5
-        acc = acc_thresh
+        partial_acc = partial(acc_thresh, thresh=thresh)
+
+        acc = partial_acc
     else:
         acc = tf.metrics.categorical_accuracy
 
