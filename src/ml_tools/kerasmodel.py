@@ -280,7 +280,7 @@ class KerasModel(Interpreter):
         input_image = tf.keras.Input(
             shape=(width, width, len(self.params.channels)), name="input_image"
         )
-        weights = None if self.params.base_training else "imagenet"
+        weights = "imagenet"
         base_model, preprocess = self.get_base_model(input_image, weights=weights)
         self.preprocess_fn = preprocess
         # inputs = base_model.input
@@ -941,7 +941,7 @@ class KerasModel(Interpreter):
         checkpoint_acc = tf.keras.callbacks.ModelCheckpoint(
             val_acc,
             monitor=(
-                "val_binary_accuracy"
+                "val_acc_thresh"
                 if self.params.multi_label
                 else "val_categorical_accuracy"
             ),
