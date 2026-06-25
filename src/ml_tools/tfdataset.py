@@ -99,7 +99,7 @@ def apply_label_mapping(labels, excluded_labels, label_mapping, model_labels=Non
                 # remapped[og_lbl] = -1
                 # values.append(-1)
                 tf_mappings[l_i] = -1
-        return model_labels.tf_mappings
+        return model_labels, tf_mappings
     # get new labels after excluding and removing remapped labels
     filtered_labels = labels.copy()
     for excluded in excluded_labels:

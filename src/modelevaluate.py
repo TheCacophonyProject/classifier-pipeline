@@ -295,7 +295,7 @@ def metadata_confusion(dir, confusion_file, after_date=None, model_metadata=None
             labels.append("unidentified")
     else:
         labels = [
-            "bird",thermal
+            "bird",
             "cat",
             "deer",
             "dog",
@@ -947,7 +947,8 @@ def main():
             )
 
             from ml_tools.tfdataset import apply_label_mapping
-            excluded, remapped = get_excluded(model.data_type,model.params.multi_label)
+
+            excluded, remapped = get_excluded(model.data_type, model.params.multi_label)
 
             if model.params.excluded_labels is not None:
                 excluded = model.params.excluded_labels
@@ -956,7 +957,9 @@ def main():
                 remapped = model.params.remapped_labels
 
             files = base_dir / args.dataset
-            labels,tf_mappings = apply_label_mapping(model.labels,excluded,remapped,model_labels)
+            labels, tf_mappings = apply_label_mapping(
+                model.labels, excluded, remapped, model_labels
+            )
             dataset, _, new_labels, _ = get_dataset(
                 files,
                 model.data_type,
@@ -978,7 +981,7 @@ def main():
                 channels=model.params.channels,
                 num_frames=model.params.square_width**2,
                 pads=model.pads,
-                tf_mappings = tf_mappings,
+                tf_mappings=tf_mappings,
             )
             model.labels = new_labels
             logging.info(
@@ -986,6 +989,20 @@ def main():
                 args.dataset,
                 model.labels,
             )
+
+            import tensorflow as tf
+
+            logging.info("Applying sigmoid")
+            # 4. Apply the Sigmoid activation layer
+            probabilities = tf.keras.layers.Activation(
+                "sigmoid", name="sigmoid_output"
+            )(model.model.output)
+
+            # 5. Construct the final inference model
+            model.model = tf.keras.Model(
+                inputs=model.model.inputs, outputs=probabilities
+            )
+            model.summary()
             base_confusion_file = Path(args.confusion)
             base_confusion_file = base_confusion_file.parent / base_confusion_file.stem
             for weight in weights:
