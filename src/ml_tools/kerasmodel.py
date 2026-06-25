@@ -837,7 +837,7 @@ class KerasModel(Interpreter):
             fine_tune=fine_tune,
         )
 
-        if not warm_down:
+        if not warm_down and not fine_tune:
             fine_tune_name = f"{run_name}-finetune"
             weights = self.checkpoint_folder / run_name / "val_loss.weights.h5"
 
@@ -1109,7 +1109,9 @@ class KerasModel(Interpreter):
             return self.predict_over_network(frames)
         return self.model.predict(frames)
 
-    def confusion_tracks(self, dataset, filename, threshold=0.8):
+    def confusion_tracks(
+        self, dataset, filename, threshold=0.8, thresholds_per_label=None
+    ):
         logging.info(
             "Calculating confusion with threshold %s saving to %s", threshold, filename
         )
@@ -1235,21 +1237,21 @@ class KerasModel(Interpreter):
         #     0.98753905,
         #     0.987157,
         # ]
-        # thresholds_per_label = np.array(thresholds_per_label)
-        # thresholds_per_label[thresholds_per_label < 0.5] = 0.5
+        thresholds_per_label = np.array(thresholds_per_label)
+        thresholds_per_label[thresholds_per_label < 0.5] = 0.5
 
-        # preds = results.copy()
-        # for i, threshold in enumerate(thresholds_per_label):
-        #     pred_mask = preds == i
-        #     # set these to None
-        #     conf_mask = confidences < threshold
-        #     preds[pred_mask & conf_mask] = len(labels) - 1
-        # cm = confusion_matrix(true_categories, preds, labels=np.arange(len(labels)))
-        # # Log the confusion matrix as an image summary.
-        # figure = plot_confusion_matrix(cm, class_names=labels)
-        # smoothing_file = filename.parent / f"{filename.stem}-fscore"
-        # plt.savefig(smoothing_file.with_suffix(".png"), format="png")
-        # np.save(smoothing_file.with_suffix(".npy"), cm)
+        preds = results.copy()
+        for i, threshold in enumerate(thresholds_per_label):
+            pred_mask = preds == i
+            # set these to None
+            conf_mask = confidences < threshold
+            preds[pred_mask & conf_mask] = len(labels) - 1
+        cm = confusion_matrix(true_categories, preds, labels=np.arange(len(labels)))
+        # Log the confusion matrix as an image summary.
+        figure = plot_confusion_matrix(cm, class_names=labels)
+        fscore_file = filename.parent / f"{filename.stem}-fscore"
+        plt.savefig(fscore_file.with_suffix(".png"), format="png")
+        np.save(fscore_file.with_suffix(".npy"), cm)
 
         thresholds = [threshold]
         for threshold in thresholds:

@@ -956,11 +956,29 @@ def main():
             if model.params.remapped_labels is not None:
                 remapped = model.params.remapped_labels
 
-            files = base_dir / args.dataset
             labels, tf_mappings = apply_label_mapping(
                 model.labels, excluded, remapped, model_labels
             )
-            dataset, _, new_labels, _ = get_dataset(
+
+            model.labels = labels
+
+            import tensorflow as tf
+
+            logging.info("Applying sigmoid")
+            # 4. Apply the Sigmoid activation layer
+            probabilities = tf.keras.layers.Activation(
+                "sigmoid", name="sigmoid_output"
+            )(model.model.output)
+
+            # 5. Construct the final inference model
+            model.model = tf.keras.Model(
+                inputs=model.model.inputs, outputs=probabilities
+            )
+            model.model.summary()
+            logging.info("Loading val files to get best thresholds")
+            files = base_dir / "validation"
+
+            val_dataset, _ = get_dataset(
                 files,
                 model.data_type,
                 labels,
@@ -983,26 +1001,53 @@ def main():
                 pads=model.pads,
                 tf_mappings=tf_mappings,
             )
-            model.labels = new_labels
+            confusion_final = (
+                base_confusion_file.parent / f"{base_confusion_file.stem}-thresholds"
+            )
+            thresholds = best_threshold_for_ds(
+                model.model, model.labels, val_dataset, confusion_final
+            )
+            threshold_out = (
+                base_confusion_file.parent
+                / f"{base_confusion_file.stem}-val-thresholds.json"
+            )
+            thresh_dict = {}
+            for label, thresh in zip(model.labels, thresholds):
+                thresh_dict[label] = float(thresh)
+            logging.info("Writing best val thresholds to %s", threshold_out)
+            with threshold_out.open("w") as f:
+                json.dump(thresh_dict)
+
+            files = base_dir / args.dataset
+            dataset, _ = get_dataset(
+                files,
+                model.data_type,
+                labels,
+                batch_size=64,
+                image_size=model.params.output_dim[:2],
+                preprocess_fn=model.preprocess_fn,
+                augment=False,
+                resample=False,
+                include_features=model.params.mvm,
+                one_hot=True,
+                deterministic=True,
+                shuffle=False,
+                excluded_labels=excluded,
+                remapped_labels=remapped,
+                multi_label=model.params.multi_label,
+                include_track=True,
+                cache=True,
+                channels=model.params.channels,
+                num_frames=model.params.square_width**2,
+                pads=model.pads,
+                tf_mappings=tf_mappings,
+            )
             logging.info(
                 "Dataset loaded %s, using labels %s",
                 args.dataset,
                 model.labels,
             )
 
-            import tensorflow as tf
-
-            logging.info("Applying sigmoid")
-            # 4. Apply the Sigmoid activation layer
-            probabilities = tf.keras.layers.Activation(
-                "sigmoid", name="sigmoid_output"
-            )(model.model.output)
-
-            # 5. Construct the final inference model
-            model.model = tf.keras.Model(
-                inputs=model.model.inputs, outputs=probabilities
-            )
-            model.summary()
             base_confusion_file = Path(args.confusion)
             base_confusion_file = base_confusion_file.parent / base_confusion_file.stem
             for weight in weights:
@@ -1027,7 +1072,10 @@ def main():
                     )
                 else:
                     model.confusion_tracks(
-                        dataset, confusion_final, threshold=args.threshold
+                        dataset,
+                        confusion_final,
+                        threshold=args.threshold,
+                        thresholds=thresholds,
                     )
 
 
@@ -1150,7 +1198,7 @@ def best_threshold_for_ds(model, labels, dataset, filename):
 
     confidences = np.array(confidences)
     true_categories = np.array(flat_y)
-    best_threshold(labels, true_categories, y_pred, confidences, filename)
+    return best_threshold(labels, true_categories, y_pred, confidences, filename)
 
 
 def confusion_for_thresholds(
