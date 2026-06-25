@@ -274,7 +274,7 @@ class SnapshotService:
             self.service.ServiceStarted()
             self.loop.run()
         except:
-            logging.error("Couldn't run dbus server at %s %s",DBUS_NAME,session_bus)
+            logging.error("Couldn't run dbus server at %s %s", DBUS_NAME, session_bus)
 
     def tracking(
         self,

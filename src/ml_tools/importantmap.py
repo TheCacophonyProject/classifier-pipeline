@@ -10,9 +10,9 @@ import logging
 
 def parse_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--weights",type=Path, help="model file")
+    parser.add_argument("--weights", type=Path, help="model file")
 
-    parser.add_argument("model",type=Path, help="model file")
+    parser.add_argument("model", type=Path, help="model file")
     parser.add_argument("source", type=Path, help="cptv file with txt")
     args = parser.parse_args()
     args.model = Path(args.model)
@@ -37,7 +37,9 @@ def build_model(metadata, weights_model):
     return model
 
 
-def make_gradcam_heatmap(model, img_array, class_index, last_conv_layer_name="top_conv"):
+def make_gradcam_heatmap(
+    model, img_array, class_index, last_conv_layer_name="top_conv"
+):
     """Returns (H, W) float32 heatmap in [0, 1]."""
     grad_model = tf.keras.models.Model(
         model.inputs,
@@ -75,8 +77,7 @@ def overlay_heatmap_on_channel(channel, heatmap, alpha=0.4):
     return (np.clip(blended, 0, 1) * 255).astype(np.uint8)
 
 
-
-def preprocess_file(classifier,filename):
+def preprocess_file(classifier, filename):
     from track.cliptrackextractor import ClipTrackExtractor, is_affected_by_ffc
     from track.clip import Clip
     from ml_tools.tools import load_clip_metadata, clear_session, CustomJSONEncoder
@@ -89,6 +90,7 @@ def preprocess_file(classifier,filename):
     from ml_tools.preprocess import preprocess_frame_v2, preprocess_movement
     from datetime import datetime
     from config.trackingconfig import TrackingConfig
+
     filename = Path(filename)
     meta_file = filename.with_suffix(".txt")
     has_metadata = meta_file.exists()
@@ -104,9 +106,10 @@ def preprocess_file(classifier,filename):
     # get segments here, or frames
     # only extra data for segments
     track_extractor = ClipTrackExtractor(
-        {"thermal":TrackingConfig.get_type_defaults("thermal")},
+        {"thermal": TrackingConfig.get_type_defaults("thermal")},
         None,
-        True,False,
+        True,
+        False,
         calculate_filtered=True,
     )
 
@@ -119,8 +122,7 @@ def preprocess_file(classifier,filename):
         meta_data,
     )
     track_extractor.init_clip(clip)
-        
-   
+
     track_samples = {}
     track_data = {}
 
@@ -158,15 +160,21 @@ def preprocess_file(classifier,filename):
 
         if current_frame_num in track_samples:
             thermal_median = np.median(frame.pix)
-            filtered = frame.pix -track_extractor.background_alg.background
+            filtered = frame.pix - track_extractor.background_alg.background
 
             f = Frame(frame.pix, filtered, current_frame_num)
             f.float_arrays()
-            for track_id, region in track_samples[current_frame_num].items():               
+            for track_id, region in track_samples[current_frame_num].items():
                 f.region = region
-                pre_f = preprocess_frame_v2(f, classifier.params.frame_size,region,clip.crop_rectangle,thermal_median)
+                pre_f = preprocess_frame_v2(
+                    f,
+                    classifier.params.frame_size,
+                    region,
+                    clip.crop_rectangle,
+                    thermal_median,
+                )
                 track_data[track_id]["frames"][region.frame_number] = pre_f
-               
+
         # track_extractor.process_frame(clip, frame)
         is_ffc = is_affected_by_ffc(frame)
         oldest_thermal = thermal_window.oldest
@@ -200,7 +208,7 @@ def preprocess_file(classifier,filename):
                 classifier.preprocess_fn,
                 sample=f"{clip.get_id()}-{track_id}",
             )
-            logging.info("Frame indices are %s",segment.frame_indices)
+            logging.info("Frame indices are %s", segment.frame_indices)
             preprocessed.append(frames)
             masses.append(segment.mass)
             pred_frame_numbers.append(segment.frame_indices)
@@ -211,13 +219,16 @@ def preprocess_file(classifier,filename):
         preprocessed = np.array(preprocessed)
     return preprocessed
 
+
 def init_logging():
     import sys
+
     fmt = "%(asctime)s %(process)d %(thread)s:%(levelname)7s %(message)s"
 
     logging.basicConfig(
         stream=sys.stderr, level=logging.INFO, format=fmt, datefmt="%Y-%m-%d %H:%M:%S"
     )
+
 
 def main():
     args = parse_args()
@@ -226,10 +237,10 @@ def main():
     with meta_f.open("r") as f:
         metadata = json.load(f)
 
-
     from ml_tools.interpreter import get_interpreter_from_path
+
     classifier = get_interpreter_from_path(args.model)
-    data = preprocess_file(classifier,args.source)
+    data = preprocess_file(classifier, args.source)
 
     labels = metadata["labels"]
     channel_names = ["Red", "Green", "Blue"]
@@ -240,14 +251,13 @@ def main():
         old_model.load_weights(args.weights)
     model = build_model(metadata, old_model)
 
-
     # source = np.load(args.source)          # expected (H, W, 3) or (1, H, W, 3)
     # if source.ndim == 3:
     #     source = source[np.newaxis]        # → (1, H, W, 3)
     # img = source[0]                        # (H, W, 3) for display
 
     preds = model.predict(data)
-    for pred, data in zip(preds,data):
+    for pred, data in zip(preds, data):
         print("Predictions:")
         for i, label in enumerate(labels):
             print(f"  {label}: {pred[i]*100:.1f}%")
@@ -255,10 +265,14 @@ def main():
         top_i = int(np.argmax(pred))
         top_label = labels[top_i]
 
-        heatmap = make_gradcam_heatmap(model, np.expand_dims(data,axis=0), class_index=top_i)
+        heatmap = make_gradcam_heatmap(
+            model, np.expand_dims(data, axis=0), class_index=top_i
+        )
 
         fig, axes = plt.subplots(1, 3, figsize=(12, 4), squeeze=False)
-        fig.suptitle(f"{top_label} ({pred[top_i]*100:.1f}%) — {args.source.name}", fontsize=12)
+        fig.suptitle(
+            f"{top_label} ({pred[top_i]*100:.1f}%) — {args.source.name}", fontsize=12
+        )
 
         for ci, ch_name in enumerate(channel_names):
             vis = overlay_heatmap_on_channel(data[..., ci], heatmap)

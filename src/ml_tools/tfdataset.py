@@ -5,6 +5,7 @@ import numpy as np
 import logging
 import random
 import math
+
 AUTOTUNE = tf.data.AUTOTUNE
 
 
@@ -32,12 +33,14 @@ def get_weighting(
     return weights
 
 
-def get_distribution(dataset, num_labels, batched=True, one_hot=True, extra_meta=False):
+def get_distribution(
+    labels, dataset, num_labels, batched=True, one_hot=True, extra_meta=False
+):
     if extra_meta:
         true_categories = [y[0] for x, y in dataset]
     else:
         true_categories = [y for x, y in dataset]
-
+    bird_index = labels.index("bird")
     dist = np.zeros((num_labels), dtype=np.float32)
     if len(true_categories) == 0:
         return dist
@@ -48,8 +51,18 @@ def get_distribution(dataset, num_labels, batched=True, one_hot=True, extra_meta
     classes = []
     if one_hot:
         for y in true_categories:
-            non_zero = tf.where(y).numpy()
-            classes.extend(non_zero.flatten())
+            y_np = y.numpy()
+            non_zero = np.flatnonzero(y_np)
+            if len(non_zero) > 1:
+                if np.any(y_np[non_zero] != 1):
+                    # fractional/soft labels e.g. 0.9 bird, 0.1 deer - just take the majority label
+                    non_zero = [np.argmax(y_np)]
+                elif bird_index in non_zero:
+                    # bird tag
+                    # just choose the more specific tag
+                    non_zero = non_zero[non_zero != bird_index]
+
+            classes.extend(non_zero)
     else:
         classes = true_categories.flatten()
     classes = np.array(classes)
@@ -60,8 +73,7 @@ def get_distribution(dataset, num_labels, batched=True, one_hot=True, extra_meta
     return dist
 
 
-
-def apply_label_mapping(labels,excluded_labels,label_mapping,model_labels = None):
+def apply_label_mapping(labels, excluded_labels, label_mapping, model_labels=None):
     logging.info("Excluding %s", excluded_labels)
     if model_labels is not None:
         tf_mappings = {}
@@ -74,12 +86,12 @@ def apply_label_mapping(labels,excluded_labels,label_mapping,model_labels = None
             # keys.append(l_i)
             try:
                 lbl = og_lbl
-                if lbl in to_remap:
-                    lbl = to_remap[lbl]
+                if lbl in label_mapping:
+                    lbl = label_mapping[lbl]
 
                 mdl_i = model_labels.index(lbl)
                 # if lbl not in remapped:
-                    # remapped[lbl] = []
+                # remapped[lbl] = []
                 # remapped[lbl].append(og_lbl)
                 # values.append(mdl_i)
                 tf_mappings[l_i] = mdl_i
@@ -113,9 +125,10 @@ def apply_label_mapping(labels,excluded_labels,label_mapping,model_labels = None
         if k in labels and v in filtered_labels:
             # remapped[v].append(k)
             # values[labels.index(k)] = filtered_labels.index(v)
-            tf_mappings[labels.index(k)] =filtered_labels.index(v)
+            tf_mappings[labels.index(k)] = filtered_labels.index(v)
             # del remapped[k]
-    return filtered_labels,tf_mappings
+    return filtered_labels, tf_mappings
+
 
 def get_dataset(load_function, base_dir, labels, **args):
     model_labels = args.get("model_labels")
@@ -126,7 +139,6 @@ def get_dataset(load_function, base_dir, labels, **args):
     shuffle_size = 4096
     if args.get("num_frames", 25) == 1:
         shuffle_size *= 20
-    
 
     keys = list(tf_mappings.keys())
     values = list(tf_mappings.values())
@@ -183,13 +195,14 @@ def get_dataset(load_function, base_dir, labels, **args):
         dataset = dataset.shuffle(
             shuffle_size, reshuffle_each_iteration=args.get("reshuffle", True)
         )
-    
+
     batch_size = args.get("batch_size", None)
 
     # tf refuses to run if epoch sizes change so we must decide a costant epoch size even though with reject res
     # it will chang eeach epoch, to ensure this take this repeat data and always take epoch_size elements
     if not args.get("only_features"):
         dist = get_distribution(
+            labels,
             dataset,
             num_labels,
             batched=False,
@@ -214,13 +227,21 @@ def get_dataset(load_function, base_dir, labels, **args):
         epoch_size = 1
     if batch_size is not None:
         dataset = dataset.batch(batch_size)
-    
+
     augment = args.get("augment", False)
     if augment:
         logging.info("Augmenting on batches")
-        dataset = dataset.map(lambda x, y: ({"input_image":data_augmentation(x["input_image"], training=True),"input_mask":x["input_mask"]}, y),
-                      num_parallel_calls=tf.data.AUTOTUNE)
-     
+        dataset = dataset.map(
+            lambda x, y: (
+                {
+                    "input_image": data_augmentation(x["input_image"], training=True),
+                    "input_mask": x["input_mask"],
+                },
+                y,
+            ),
+            num_parallel_calls=tf.data.AUTOTUNE,
+        )
+
     preprocess_fn = args.get("preprocess_fn")
     if preprocess_fn is not None:
         logging.info(
@@ -228,12 +249,22 @@ def get_dataset(load_function, base_dir, labels, **args):
             preprocess_fn.__module__,
             preprocess_fn.__name__,
         )
-        dataset = dataset.map(lambda x, y: ({"input_image":preprocess_fn(x["input_image"], training=True),"input_mask":x["input_mask"]}, y),
-                      num_parallel_calls=tf.data.AUTOTUNE)
+        dataset = dataset.map(
+            lambda x, y: (
+                {
+                    "input_image": preprocess_fn(x["input_image"], training=True),
+                    "input_mask": x["input_mask"],
+                },
+                y,
+            ),
+            num_parallel_calls=tf.data.AUTOTUNE,
+        )
 
     dataset = dataset.prefetch(buffer_size=AUTOTUNE)
 
     return dataset, epoch_size
+
+
 brightness_contrast_aug = tf.keras.Sequential(
     [
         tf.keras.layers.RandomBrightness(0.2),  # better per frame or per sequence??
@@ -248,6 +279,7 @@ def data_augmentation(image, training=True):
     raw = image[..., :1]
     augmented = brightness_contrast_aug(image[..., 1:], training=training)
     return tf.concat([raw, augmented], axis=-1)
+
 
 def resample(dataset, labels):
     excluded_labels = ["sheep"]

@@ -51,6 +51,7 @@ class RawDatabase:
         self.model = None
         self.crop_rectangle = Rectangle(1, 1, 160 - 2, 120 - 2)
         self.clip_id = None
+
     def frames_kept(self):
         return None
 
@@ -64,19 +65,20 @@ class RawDatabase:
 
     def get_clip_background(self):
         return self.background
-    
+
     def check_model(self):
         try:
             metadata = self.meta_data
-            self.model =  self.meta_data.get("model") 
-            if self.model is None or self.model not in ["lepton3","lepton3.5"]:
+            self.model = self.meta_data.get("model")
+            if self.model is None or self.model not in ["lepton3", "lepton3.5"]:
                 self.load_model()
-                self._meta_data["model"]= self.model
+                self._meta_data["model"] = self.model
                 # logging.info("Saving model metadata %s",self.model)
                 with self.meta_data_file.open("w") as f:
-                    json.dump(self._meta_data, f,indent=4)
+                    json.dump(self._meta_data, f, indent=4)
         except:
             pass
+
     def load_model(self):
         reader = CptvReader(str(self.file))
         while True:
@@ -84,11 +86,12 @@ class RawDatabase:
             if frame is None:
                 break
             average = np.mean(frame.pix)
-            if average > 10000: 
+            if average > 10000:
                 self.model = "lepton3.5"
             else:
-                self.model  = "lepton3"
+                self.model = "lepton3"
             break
+
     def load_frames(self):
         ffc_frames = []
         cptv_frames = []

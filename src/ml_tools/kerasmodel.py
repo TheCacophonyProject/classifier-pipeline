@@ -26,9 +26,10 @@ from ml_tools import thermaldataset
 from ml_tools.resnet.wr_resnet import WRResNet
 
 from ml_tools import irdataset
-from ml_tools.tfdataset import get_weighting, get_dataset as get_tf,apply_label_mapping
+from ml_tools.tfdataset import get_weighting, get_dataset as get_tf, apply_label_mapping
 from ml_tools.preprocess import FrameTypes
 from ml_tools.thermalwriter import MeanData
+
 classify_i = 0
 
 
@@ -87,9 +88,15 @@ class KerasModel(Interpreter):
         if pads is None:
             self.pads = MeanData()
         else:
-            self.pads = MeanData(thermal = pads["thermal"],filtered = pads["filtered"],thermal_norm= pads["thermal_norm"],frames_used=1)
+            self.pads = MeanData(
+                thermal=pads["thermal"],
+                filtered=pads["filtered"],
+                thermal_norm=pads["thermal_norm"],
+                frames_used=1,
+            )
             self.pads = self.pads * 255
-        logging.info("Pads are %s",self.pads)
+        logging.info("Pads are %s", self.pads)
+
     def shape(self):
         if self.model is None:
             return None
@@ -267,6 +274,7 @@ class KerasModel(Interpreter):
         self, dense_sizes=None, retrain_from=None, dropout=None, run_name=None
     ):
         from tensorflow.keras import layers
+
         # width = self.params.frame_size
         width = self.params.output_dim[0]
         input_image = tf.keras.Input(
@@ -276,15 +284,15 @@ class KerasModel(Interpreter):
         base_model, preprocess = self.get_base_model(input_image, weights=weights)
         self.preprocess_fn = preprocess
         # inputs = base_model.input
-        
-                
+
         # Step A: Standardise channel means (92.96, 47.33, 30.62) & variances automatically
-        x = layers.BatchNormalization(axis=-1, name='channel_standardizer')(input_image)
+        x = layers.BatchNormalization(axis=-1, name="channel_standardizer")(input_image)
 
-        # 2. Trainable 1x1 conv with 3 filters to re-weight and re-bias the RGB channels 
+        # 2. Trainable 1x1 conv with 3 filters to re-weight and re-bias the RGB channels
         # This lets the network automatically discover the optimal math to align your normalisations
-        x = tf.keras.layers.Conv2D(3, (1, 1), activation=None, name='channel_aligner')(x)
-
+        x = tf.keras.layers.Conv2D(3, (1, 1), activation=None, name="channel_aligner")(
+            x
+        )
 
         x = base_model(x)
         # x = base_model(inputs, training=self.params.base_training)
@@ -323,12 +331,12 @@ class KerasModel(Interpreter):
 
             self.model = self.add_lstm(cnn)
         else:
-            #Multi input adding information about the frame number used
-            multi_input=True
+            # Multi input adding information about the frame number used
+            multi_input = True
             if multi_input:
                 # --- Input 2: The Timeline Mask Layer (5x5x1) ---
                 mask_input = layers.Input(shape=(5, 5, 1), name="input_mask")
-                input_image = {"input_image":input_image, "input_mask":mask_input}
+                input_image = {"input_image": input_image, "input_mask": mask_input}
 
                 # Generate temporal feature maps matching the spatial dimensions
                 # AI was insistent on this being the way to go until i questioned it and then it said Dense was obviously better
@@ -339,26 +347,37 @@ class KerasModel(Interpreter):
 
                 # Step 1: Project the single timestamp into a 64-dimensional time embedding vector per cell
                 # A Dense layer applied to a 3D tensor operates independently on every single (5,5) cell!
-                time_embedding = layers.Dense(64, activation='relu', name='time_feature_projection')(mask_input) # Shape: (None, 5, 5, 64)
-                time_embedding = layers.Dense(128, activation='relu', name='time_feature_expansion')(time_embedding) # Shape: (None, 5, 5, 128)
+                time_embedding = layers.Dense(
+                    64, activation="relu", name="time_feature_projection"
+                )(
+                    mask_input
+                )  # Shape: (None, 5, 5, 64)
+                time_embedding = layers.Dense(
+                    128, activation="relu", name="time_feature_expansion"
+                )(
+                    time_embedding
+                )  # Shape: (None, 5, 5, 128)
 
-                
                 # --- Feature Fusion ---
                 # Concatenate visual maps (5x5x1536) and time maps (5x5x128) along the channels
                 image_features = x
                 # maybe add
-                image_features = tf.keras.layers.SpatialDropout2D(dropout)(image_features)
+                image_features = tf.keras.layers.SpatialDropout2D(dropout)(
+                    image_features
+                )
 
-                combined = layers.Concatenate(name="input_concat")([image_features, time_embedding])  # Shape: (None, 5, 5, 1664)
-                
+                combined = layers.Concatenate(name="input_concat")(
+                    [image_features, time_embedding]
+                )  # Shape: (None, 5, 5, 1664)
 
                 # 1. Compress channel depth from 1664 to 256 using 1x1 convolution
-                x = layers.Conv2D(256, (1, 1), activation='swish', padding='same')(combined) # ~426K params
-
+                x = layers.Conv2D(256, (1, 1), activation="swish", padding="same")(
+                    combined
+                )  # ~426K params
 
                 # Mix the combined space-time features together
-                x = layers.Conv2D(256, (3, 3), activation='swish', padding='same')(x)
-                
+                x = layers.Conv2D(256, (3, 3), activation="swish", padding="same")(x)
+
             x = tf.keras.layers.GlobalAveragePooling2D()(x)
             if self.params.mvm:
                 mvm_inputs = tf.keras.layers.Input((188))
@@ -416,9 +435,6 @@ class KerasModel(Interpreter):
                     layer.trainable = i >= retrain_from
         else:
             base_model.trainable = self.params.base_training
-
-        
-
 
     def adjust_final_layer(self):
         # Adjust final layer to a new set of labels, by removing it and re adding
@@ -481,18 +497,32 @@ class KerasModel(Interpreter):
             self.model.load_weights(self.weights)
             logging.info("Loaded weight %s", self.weights)
 
-    def save(self, run_name=None, history=None, test_results=None,rebalance = False, fine_tune=None):
+    def save(
+        self,
+        run_name=None,
+        history=None,
+        test_results=None,
+        rebalance=False,
+        fine_tune=None,
+    ):
         # create a save point
         if run_name is None:
             run_name = self.params.model_name
 
         run_dir = self.checkpoint_folder / run_name
         run_dir.mkdir(parents=True, exist_ok=True)
-        
-        self.model.save(str(self.checkpoint_folder / run_name / f"{run_name}.keras"))
-        self.save_metadata(run_name, history, test_results,rebalance,fine_tune)
 
-    def save_metadata(self, run_name=None, history=None, test_results=None,rebalance=False,fine_tune=None):
+        self.model.save(str(self.checkpoint_folder / run_name / f"{run_name}.keras"))
+        self.save_metadata(run_name, history, test_results, rebalance, fine_tune)
+
+    def save_metadata(
+        self,
+        run_name=None,
+        history=None,
+        test_results=None,
+        rebalance=False,
+        fine_tune=None,
+    ):
         #  save metadata
         if run_name is None:
             run_name = self.params.model_name
@@ -514,7 +544,7 @@ class KerasModel(Interpreter):
         if fine_tune is not None:
             model_stats["fine_tune"] = str(fine_tune)
         if rebalance:
-            model_stats["rebalance"]= rebalance
+            model_stats["rebalance"] = rebalance
         model_stats["pads"] = self.pads.to_dict()
         if history:
             json_history = {}
@@ -527,7 +557,7 @@ class KerasModel(Interpreter):
         if test_results:
             model_stats["test_loss"] = test_results[0]
             model_stats["test_acc"] = test_results[1]
-        
+
         run_dir = self.checkpoint_folder / run_name
         run_dir.mkdir(parents=True, exist_ok=True)
 
@@ -558,16 +588,14 @@ class KerasModel(Interpreter):
         del self.test
         gc.collect()
 
-
-    def init_train(self,epochs):
-        self.epochs =epochs
+    def init_train(self, epochs):
+        self.epochs = epochs
         if self.params.excluded_labels is not None:
             self.excluded_labels = self.params.excluded_labels
         else:
             self.excluded_labels, self.remapped_labels = get_excluded(
                 self.data_type, self.params.multi_label
             )
-            
 
         if self.params.remapped_labels is not None:
             self.remapped_labels = self.params.remapped_labels
@@ -575,7 +603,7 @@ class KerasModel(Interpreter):
             self.remapped_labels, self.remapped_labels = get_excluded(
                 self.data_type, self.params.multi_label
             )
-        acceptable_types = get_acceptable_labels(self.data_type,self.remapped_labels)
+        acceptable_types = get_acceptable_labels(self.data_type, self.remapped_labels)
         if acceptable_types is not None:
             for lbl in self.labels:
                 if lbl not in acceptable_types and lbl not in self.excluded_labels:
@@ -584,9 +612,12 @@ class KerasModel(Interpreter):
                         lbl,
                     )
                     self.excluded_labels.append(lbl)
-        
+
         logging.info(
-            "Excluding %s remapping %s accepted labels %s", self.excluded_labels, self.remapped_labels,acceptable_types
+            "Excluding %s remapping %s accepted labels %s",
+            self.excluded_labels,
+            self.remapped_labels,
+            acceptable_types,
         )
         if self.params.multi_label:
             if "weka" not in self.labels:
@@ -597,15 +628,27 @@ class KerasModel(Interpreter):
         self.orig_labels = self.labels.copy()
         self.preprocess_fn = self.get_preprocess_fn()
 
-        self.labels,tf_mappings = apply_label_mapping(self.labels,self.excluded_labels,self.remapped_labels)
-        logging.info("Applied label remapping from %s have model labels of %s",self.orig_labels,self.labels)
+        self.labels, tf_mappings = apply_label_mapping(
+            self.labels, self.excluded_labels, self.remapped_labels
+        )
+        logging.info(
+            "Applied label remapping from %s have model labels of %s",
+            self.orig_labels,
+            self.labels,
+        )
         self.remapped = {}
-        for k,v in tf_mappings.items():
-            self.remapped[self.orig_labels[k]] = self.labels[v] if v !=-1 else "Nothing"
-            logging.info("Original %s is mapped to %s",self.orig_labels[k], "Nothing" if v==-1 else self.labels[v] )
-        logging.info("Remapped is %s",self.remapped)
+        for k, v in tf_mappings.items():
+            self.remapped[self.orig_labels[k]] = (
+                self.labels[v] if v != -1 else "Nothing"
+            )
+            logging.info(
+                "Original %s is mapped to %s",
+                self.orig_labels[k],
+                "Nothing" if v == -1 else self.labels[v],
+            )
+        logging.info("Remapped is %s", self.remapped)
         return tf_mappings
-    
+
     def train_model(
         self,
         epochs,
@@ -614,14 +657,12 @@ class KerasModel(Interpreter):
         rebalance=False,
         resample=False,
         fine_tune=None,
-        warm_down = False,
+        warm_down=False,
     ):
         logging.info(
             "%s Training model for %s epochs with weights %s", run_name, epochs, weights
         )
         tf_mappings = self.init_train(epochs)
-        
-        
 
         self.log_dir = self.log_base / run_name
         self.log_dir.mkdir(parents=True, exist_ok=True)
@@ -633,7 +674,9 @@ class KerasModel(Interpreter):
             # for multi input model this needs to be adjusted
             # self.adjust_final_layer()
             if rebalance:
-                logging.info("Fine tuning on a balanced dataset, setting all layers before the concatenate to not be trainable")
+                logging.info(
+                    "Fine tuning on a balanced dataset, setting all layers before the concatenate to not be trainable"
+                )
                 found_concat = False
                 for layer in self.model.layers:
 
@@ -641,12 +684,14 @@ class KerasModel(Interpreter):
                         found_concat = True
                         layer.trainable = False
                         continue
-                        
+
                     # Everything up to and including concat stays False; everything after becomes True
                     layer.trainable = found_concat
                     if layer.trainable and isinstance(layer, tf.keras.layers.Dropout):
                         layer.rate = 0.5  # Update the rate directly
-                        logging.info(f"Successfully updated {layer.name} rate to {layer.rate}")
+                        logging.info(
+                            f"Successfully updated {layer.name} rate to {layer.rate}"
+                        )
             self.model.summary()
         else:
 
@@ -664,7 +709,7 @@ class KerasModel(Interpreter):
 
         train_files = self.data_dir / "train"
         validate_files = self.data_dir / "validation"
-        augment =fine_tune is None
+        augment = fine_tune is None
         self.train, epoch_size = get_dataset(
             train_files,
             self.data_type,
@@ -682,15 +727,15 @@ class KerasModel(Interpreter):
             multi_label=self.params.multi_label,
             num_frames=self.params.square_width**2,
             channels=self.params.channels,
-            pads = self.pads,
-            tf_mappings = tf_mappings,
+            pads=self.pads,
+            tf_mappings=tf_mappings,
             downsize_fp=True,
-            rebalance = rebalance,
+            rebalance=rebalance,
         )
         steps = epoch_size // self.params.batch_size
 
         # self.remapped = remapped
-        self.validate, _= get_dataset(
+        self.validate, _ = get_dataset(
             validate_files,
             self.data_type,
             self.labels,
@@ -705,9 +750,8 @@ class KerasModel(Interpreter):
             multi_label=self.params.multi_label,
             num_frames=self.params.square_width**2,
             channels=self.params.channels,
-            pads = self.pads,
-            tf_mappings = tf_mappings,
-
+            pads=self.pads,
+            tf_mappings=tf_mappings,
         )
         logging.info(
             "Training on %s  with class weights %s",
@@ -715,31 +759,36 @@ class KerasModel(Interpreter):
             self.class_weights,
         )
 
-        self.save(run_name,fine_tune = fine_tune,rebalance = rebalance)
-       
-        checkpoints = self.checkpoints(run_name,warmup_epochs = 2,fine_tuning =warm_down )
+        self.save(run_name, fine_tune=fine_tune, rebalance=rebalance)
+
+        checkpoints = self.checkpoints(run_name, warmup_epochs=2, fine_tuning=warm_down)
         if warm_down:
-            optimizer_fn =tf.keras.optimizers.Adam(learning_rate=self.params.fine_tune_learning_rate)
-            logging.info("Warming down with adam and augment %s and learning rate %s",augment, self.params.fine_tune_learning_rate)
+            optimizer_fn = tf.keras.optimizers.Adam(
+                learning_rate=self.params.fine_tune_learning_rate
+            )
+            logging.info(
+                "Warming down with adam and augment %s and learning rate %s",
+                augment,
+                self.params.fine_tune_learning_rate,
+            )
         else:
             if fine_tune is None:
                 warmup_callback = StepWarmupCallback(
-                    target_lr=self.params.learning_rate, 
-                    warmup_epochs=2, 
-                    steps_per_epoch=steps
+                    target_lr=self.params.learning_rate,
+                    warmup_epochs=2,
+                    steps_per_epoch=steps,
                 )
                 checkpoints.append(warmup_callback)
 
-            optimizer_fn=optimizer(self.params,steps,self.epochs,fine_tune = fine_tune is not None)
+            optimizer_fn = optimizer(
+                self.params, steps, self.epochs, fine_tune=fine_tune is not None
+            )
         self.model.compile(
             optimizer=optimizer_fn,
             loss=loss(self.params),
-             metrics={
-                "prediction": metrics(self.params.multi_label)
-            },
+            metrics={"prediction": metrics(self.params.multi_label)},
         )
 
-        
         history = self.model.fit(
             self.train,
             validation_data=self.validate,
@@ -751,7 +800,7 @@ class KerasModel(Interpreter):
                     self.log_dir, write_graph=True, write_images=True
                 ),
                 *checkpoints,
-            ], 
+            ],
         )
         history = history.history
         test_accuracy = None
@@ -774,23 +823,30 @@ class KerasModel(Interpreter):
                 multi_label=self.params.multi_label,
                 num_frames=self.params.square_width**2,
                 channels=self.params.channels,
-                pads = self.pads,
-                tf_mappings = tf_mappings,
-
+                pads=self.pads,
+                tf_mappings=tf_mappings,
             )
             if self.test:
                 test_accuracy = self.model.evaluate(self.test)
 
-        self.save(run_name, history=history, test_results=test_accuracy,rebalance= rebalance, fine_tune = fine_tune)
+        self.save(
+            run_name,
+            history=history,
+            test_results=test_accuracy,
+            rebalance=rebalance,
+            fine_tune=fine_tune,
+        )
 
         if not warm_down:
             fine_tune_name = f"{run_name}-finetune"
-            weights =   self.checkpoint_folder / run_name / "val_loss.weights.h5"
+            weights = self.checkpoint_folder / run_name / "val_loss.weights.h5"
 
-            self.warm_down(fine_tune_name,weights,tf_mappings)
+            self.warm_down(fine_tune_name, weights, tf_mappings)
 
-    def warm_down(self,run_name,weights,tf_mappings,epochs=5):
-        logging.info("Warming down for 5 epochs with weights %s without augmentation",weights)
+    def warm_down(self, run_name, weights, tf_mappings, epochs=5):
+        logging.info(
+            "Warming down for 5 epochs with weights %s without augmentation", weights
+        )
 
         self.model.load_weights(weights)
         log_dir = self.log_base / run_name
@@ -813,45 +869,45 @@ class KerasModel(Interpreter):
             multi_label=self.params.multi_label,
             num_frames=self.params.square_width**2,
             channels=self.params.channels,
-            pads = self.pads,
-            downsize_fp = True,
-            tf_mappings = tf_mappings,
-
+            pads=self.pads,
+            downsize_fp=True,
+            tf_mappings=tf_mappings,
         )
-
 
         self.save_metadata(run_name)
         self.save(run_name)
-        checkpoints = self.checkpoints(run_name,True)
-        logging.info("Fine tuning with adam and a learning rate of %s",self.params.fine_tune_learning_rate)
+        checkpoints = self.checkpoints(run_name, True)
+        logging.info(
+            "Fine tuning with adam and a learning rate of %s",
+            self.params.fine_tune_learning_rate,
+        )
         self.model.compile(
-            optimizer=tf.keras.optimizers.Adam(learning_rate=self.params.fine_tune_learning_rate),
+            optimizer=tf.keras.optimizers.Adam(
+                learning_rate=self.params.fine_tune_learning_rate
+            ),
             loss=loss(self.params),
-            metrics={
-                "prediction": metrics(self.params.multi_label) 
-            },
+            metrics={"prediction": metrics(self.params.multi_label)},
         )
 
-
-        
         history = self.model.fit(
             self.train,
             validation_data=self.validate,
             epochs=epochs,
             shuffle=False,
             callbacks=[
-
                 *checkpoints,
-            ], 
+            ],
         )
         history = history.history
-    
+
         if self.test:
             test_accuracy = self.model.evaluate(self.test)
 
         self.save(run_name, history=history, test_results=test_accuracy)
 
-    def checkpoints(self, run_name,fine_tuning=False,stop_on = ("val_loss","min"),warmup_epochs = 2):
+    def checkpoints(
+        self, run_name, fine_tuning=False, stop_on=("val_loss", "min"), warmup_epochs=2
+    ):
         checkpoint_file = self.checkpoint_folder / run_name / "cp.weights.h5"
 
         cp_callback = tf.keras.callbacks.ModelCheckpoint(
@@ -903,16 +959,11 @@ class KerasModel(Interpreter):
             save_weights_only=True,
             mode="max",
         )
-        checkpoints = [
-            f1_loss,
-            checkpoint_acc,
-            checkpoint_loss,
-            cp_callback]
-        if not  fine_tuning:
+        checkpoints = [f1_loss, checkpoint_acc, checkpoint_loss, cp_callback]
+        if not fine_tuning:
             earlyStopping = tf.keras.callbacks.EarlyStopping(
                 patience=11,
                 monitor=stop_on[0],
-
                 # monitor=(
                 #     "val_binary_accuracy"
                 #     if self.params.multi_label
@@ -922,20 +973,22 @@ class KerasModel(Interpreter):
                 restore_best_weights=True,
             )
             checkpoints.append(earlyStopping)
-                
+
             reduce_lr_callback = tf.keras.callbacks.ReduceLROnPlateau(
                 monitor=stop_on[0],
                 varbose=1,
                 mode=stop_on[1],
-                factor=0.5,       # Gentler drop: Reduces learning rate by 80% (e.g., 0.001 -> 0.0002)
-                patience=8,       # Faster response: Triggers after 3 epochs of stagnation
-                min_delta=0.0001, # The minimum change to qualify as an improvement
-                cooldown=max(warmup_epochs,3),       # Wait 1 epoch after a drop before monitoring patience again
-                min_lr=0.000001    # Safety floor: Never drops lower than 10% of standard fine-tuning speed
+                factor=0.5,  # Gentler drop: Reduces learning rate by 80% (e.g., 0.001 -> 0.0002)
+                patience=8,  # Faster response: Triggers after 3 epochs of stagnation
+                min_delta=0.0001,  # The minimum change to qualify as an improvement
+                cooldown=max(
+                    warmup_epochs, 3
+                ),  # Wait 1 epoch after a drop before monitoring patience again
+                min_lr=0.000001,  # Safety floor: Never drops lower than 10% of standard fine-tuning speed
             )
             checkpoints.append(reduce_lr_callback)
         return checkpoints
-    
+
         # havent found much use in this just takes training time
         # file_writer_cm = tf.summary.create_file_writer(
         #     self.log_base + "/{}/cm".format(run_name)
@@ -962,7 +1015,6 @@ class KerasModel(Interpreter):
         #     mode="max",
         #     verbose=1,
         # )
-        
 
     @property
     def hyperparams_string(self):
@@ -1093,7 +1145,7 @@ class KerasModel(Interpreter):
             # else:
             #     y_max = y
             track_pred = pred_per_track.setdefault(
-                track_id, (np.nonzero(y)[0],TrackPrediction(track_id, self.labels))
+                track_id, (np.nonzero(y)[0], TrackPrediction(track_id, self.labels))
             )
             track_pred[1].classified_frame(None, p, mass)
         flat_y = []
@@ -1110,13 +1162,13 @@ class KerasModel(Interpreter):
             # otherwise this will calculate the same as before
             no_smoothing = np.mean(preds, axis=0)
             preds = np.where(no_smoothing >= 0.5)[0]
-            if len(preds)==0:
+            if len(preds) == 0:
                 preds = [np.argmax(no_smoothing)]
-            if len(y_true)>1:
-                ll  = []
+            if len(y_true) > 1:
+                ll = []
                 for y in y_true:
                     ll.append(labels[y])
-                logging.info("Have multiple labels %s",ll)
+                logging.info("Have multiple labels %s", ll)
             for y in y_true:
                 if y in preds:
                     idx = y
@@ -1124,8 +1176,13 @@ class KerasModel(Interpreter):
                     confidences.append(no_smoothing[y])
                     raw_class_confidences.append(no_smoothing)
                     flat_y.append(y)
-                    if len(y_true)>1:
-                        logging.info("Pred %s for %s confs %s",labels[idx], labels[y], np.round(100*no_smoothing))
+                    if len(y_true) > 1:
+                        logging.info(
+                            "Pred %s for %s confs %s",
+                            labels[idx],
+                            labels[y],
+                            np.round(100 * no_smoothing),
+                        )
 
                 else:
                     for idx in preds:
@@ -1133,14 +1190,19 @@ class KerasModel(Interpreter):
                         confidences.append(no_smoothing[idx])
                         flat_y.append(y)
                         raw_class_confidences.append(no_smoothing)
-                        if len(y_true)>1:
-                            logging.info("Wrong Pred %s for %s confs %s",labels[idx], labels[y], np.round(100*no_smoothing))
+                        if len(y_true) > 1:
+                            logging.info(
+                                "Wrong Pred %s for %s confs %s",
+                                labels[idx],
+                                labels[y],
+                                np.round(100 * no_smoothing),
+                            )
 
             assert len(results) == len(flat_y)
         true_categories = np.int64(flat_y)
         # else:
         #     predicted_categories = np.int64(tf.argmax(y_pred, axis=1))
-        
+
         results = np.int64(results)
         confidences = np.array(confidences)
 
@@ -1153,43 +1215,43 @@ class KerasModel(Interpreter):
             np.save(f, results)
             np.save(f, raw_class_confidences)
 
-        # thresholds found from best_score for the year of 2025
-        # new models may require different thresholds
-        thresholds_per_label = [
-            0.46797615,
-            0.70631117,
-            0.2496017,
-            0.96398157,
-            0.33895272,
-            0.9697655,
-            0.35740834,
-            0.60906386,
-            0.88741493,
-            0.02124451,
-            0.9998618,
-            0.6102594,
-            0.5604206,
-            0.9881419,
-            0.98753905,
-            0.987157,
-        ]
-        thresholds_per_label = np.array(thresholds_per_label)
-        thresholds_per_label[thresholds_per_label < 0.5] = 0.5
+        # # thresholds found from best_score for the year of 2025
+        # # new models may require different thresholds
+        # thresholds_per_label = [
+        #     0.46797615,
+        #     0.70631117,
+        #     0.2496017,
+        #     0.96398157,
+        #     0.33895272,
+        #     0.9697655,
+        #     0.35740834,
+        #     0.60906386,
+        #     0.88741493,
+        #     0.02124451,
+        #     0.9998618,
+        #     0.6102594,
+        #     0.5604206,
+        #     0.9881419,
+        #     0.98753905,
+        #     0.987157,
+        # ]
+        # thresholds_per_label = np.array(thresholds_per_label)
+        # thresholds_per_label[thresholds_per_label < 0.5] = 0.5
 
-        preds = results.copy()
-        for i, threshold in enumerate(thresholds_per_label):
-            pred_mask = preds == i
-            # set these to None
-            conf_mask = confidences < threshold
-            preds[pred_mask & conf_mask] = len(labels) - 1
-        cm = confusion_matrix(true_categories, preds, labels=np.arange(len(labels)))
-        # Log the confusion matrix as an image summary.
-        figure = plot_confusion_matrix(cm, class_names=labels)
-        smoothing_file = filename.parent / f"{filename.stem}-fscore"
-        plt.savefig(smoothing_file.with_suffix(".png"), format="png")
-        np.save(smoothing_file.with_suffix(".npy"), cm)
+        # preds = results.copy()
+        # for i, threshold in enumerate(thresholds_per_label):
+        #     pred_mask = preds == i
+        #     # set these to None
+        #     conf_mask = confidences < threshold
+        #     preds[pred_mask & conf_mask] = len(labels) - 1
+        # cm = confusion_matrix(true_categories, preds, labels=np.arange(len(labels)))
+        # # Log the confusion matrix as an image summary.
+        # figure = plot_confusion_matrix(cm, class_names=labels)
+        # smoothing_file = filename.parent / f"{filename.stem}-fscore"
+        # plt.savefig(smoothing_file.with_suffix(".png"), format="png")
+        # np.save(smoothing_file.with_suffix(".npy"), cm)
 
-        thresholds = [0.8]
+        thresholds = [threshold]
         for threshold in thresholds:
             preds = results.copy()
 
@@ -1198,11 +1260,9 @@ class KerasModel(Interpreter):
             cm = confusion_matrix(true_categories, preds, labels=np.arange(len(labels)))
             # Log the confusion matrix as an image summary.
             figure = plot_confusion_matrix(cm, class_names=labels)
-            smoothing_file = (
-                filename.parent / f"{filename.stem}-{round(100*threshold)}%"
-            )
-            plt.savefig(smoothing_file.with_suffix(".png"), format="png")
-            np.save(smoothing_file.with_suffix(".npy"), cm)
+            out_file = filename.parent / f"{filename.stem}-{round(100*threshold)}%"
+            plt.savefig(out_file.with_suffix(".png"), format="png")
+            np.save(out_file.with_suffix(".npy"), cm)
 
     def confusion_tfrecords(self, dataset, filename):
         true_categories = tf.concat([y for x, y in dataset], axis=0)
@@ -1445,7 +1505,8 @@ def plot_to_image(figure):
 def loss(params):
     if params.multi_label:
         # return tf.keras.losses.BinaryFocalCrossentropy(gamma=2.0, alpha=0.25),
-        return tf.keras.losses.BinaryCrossentropy(from_logits=True,
+        return tf.keras.losses.BinaryCrossentropy(
+            from_logits=True,
             label_smoothing=params.label_smoothing,
         )
     return tf.keras.losses.CategoricalCrossentropy(
@@ -1453,17 +1514,20 @@ def loss(params):
     )
 
 
-def optimizer(params,steps_per_epoch,epochs,fine_tune=False):
+def optimizer(params, steps_per_epoch, epochs, fine_tune=False):
     if fine_tune:
-        logging.info("Using fine tune cosine optimizer with warm of 2 epochs and final rate %s",params.fine_tune_learning_rate)
+        logging.info(
+            "Using fine tune cosine optimizer with warm of 2 epochs and final rate %s",
+            params.fine_tune_learning_rate,
+        )
         # 3 epochs
         warmup_steps = steps_per_epoch * 2
         # 2. Configure the built-in schedule
         lr_schedule = tf.keras.optimizers.schedules.CosineDecay(
-            initial_learning_rate=0.0,      # Step 0 start rate
-            decay_steps=epochs*int(steps_per_epoch),        # Point where decay finishes
-            warmup_target=params.fine_tune_learning_rate,             # Peak fine-tuning learning rate
-            warmup_steps=warmup_steps       # Steps to transition from initial to target
+            initial_learning_rate=0.0,  # Step 0 start rate
+            decay_steps=epochs * int(steps_per_epoch),  # Point where decay finishes
+            warmup_target=params.fine_tune_learning_rate,  # Peak fine-tuning learning rate
+            warmup_steps=warmup_steps,  # Steps to transition from initial to target
         )
     else:
 
@@ -1473,7 +1537,7 @@ def optimizer(params,steps_per_epoch,epochs,fine_tune=False):
         #     decay_rate=params.learning_rate_decay,
         # )
         # using ReduceLROnPlateau instead
-        lr_schedule =0.0
+        lr_schedule = 0.0
         # using warmup to set lr
         # params.learning_rate
 
@@ -1694,7 +1758,7 @@ class ClearMemory(Callback):
         tf.keras.backend.clear_session()
 
 
-def get_acceptable_labels(type,remapped_labels):
+def get_acceptable_labels(type, remapped_labels):
     if type == "thermal":
         return thermaldataset.get_acceptable_labels(remapped_labels)
     return irdataset.get_acceptable_labels(remapped_labels)
@@ -1725,6 +1789,7 @@ class MetaJSONEncoder(json.JSONEncoder):
             return obj.name
         return json.JSONEncoder.default(self, obj)
 
+
 def metrics(multi_label=True, from_logits=True):
     # 1. Base Accuracy Definition
     if multi_label:
@@ -1737,9 +1802,13 @@ def metrics(multi_label=True, from_logits=True):
 
     # 2. Build the output list
     metrics_list = [acc]
-    
+
     # 3. Handle AUC (It has native logit support)
-    metrics_list.append(tf.keras.metrics.AUC(multi_label=multi_label, from_logits=from_logits, name="auc"))
+    metrics_list.append(
+        tf.keras.metrics.AUC(
+            multi_label=multi_label, from_logits=from_logits, name="auc"
+        )
+    )
 
     # 4. Handle Precision, Recall, and F1Score
     if from_logits:
@@ -1747,29 +1816,34 @@ def metrics(multi_label=True, from_logits=True):
         class LogitPrecision(tf.keras.metrics.Precision):
             def update_state(self, y_true, y_pred, sample_weight=None):
                 return super().update_state(y_true, tf.sigmoid(y_pred), sample_weight)
-                
+
         class LogitRecall(tf.keras.metrics.Recall):
             def update_state(self, y_true, y_pred, sample_weight=None):
                 return super().update_state(y_true, tf.sigmoid(y_pred), sample_weight)
-                
+
         class LogitMacroF1(tf.keras.metrics.F1Score):
             def update_state(self, y_true, y_pred, sample_weight=None):
                 return super().update_state(y_true, tf.sigmoid(y_pred), sample_weight)
 
-        metrics_list.extend([
-            LogitRecall(name="recall"),
-            LogitPrecision(name="precision"),
-            LogitMacroF1(average="macro", name="macro_f1")
-        ])
+        metrics_list.extend(
+            [
+                LogitRecall(name="recall"),
+                LogitPrecision(name="precision"),
+                LogitMacroF1(average="macro", name="macro_f1"),
+            ]
+        )
     else:
         # Fallback to your original code if from_logits=False
-        metrics_list.extend([
-            tf.keras.metrics.Recall(name="recall"),
-            tf.keras.metrics.Precision(name="precision"),
-            tf.keras.metrics.F1Score(average="macro", name="macro_f1")
-        ])
+        metrics_list.extend(
+            [
+                tf.keras.metrics.Recall(name="recall"),
+                tf.keras.metrics.Precision(name="precision"),
+                tf.keras.metrics.F1Score(average="macro", name="macro_f1"),
+            ]
+        )
 
     return metrics_list
+
 
 # def metrics(multi_label):
 #     if multi_label:
@@ -1788,6 +1862,7 @@ def metrics(multi_label=True, from_logits=True):
 
 from tensorflow.keras.callbacks import Callback
 
+
 class StepWarmupCallback(Callback):
     def __init__(self, target_lr, warmup_epochs, steps_per_epoch):
         super(StepWarmupCallback, self).__init__()
@@ -1803,21 +1878,22 @@ class StepWarmupCallback(Callback):
         if self.global_step < self.total_warmup_steps:
             # Linear scaling formula
             lr = (self.global_step / self.total_warmup_steps) * self.target_lr
-            
+
             # Dynamically update the backend float value (safe for ReduceLROnPlateau)
             self.model.optimizer.learning_rate = lr
         self.global_step += 1
 
     def on_epoch_begin(self, epoch, logs=None):
         if epoch < self.warmup_epochs:
-            current_epoch_start_lr = (self.global_step / self.total_warmup_steps) * self.target_lr
+            current_epoch_start_lr = (
+                self.global_step / self.total_warmup_steps
+            ) * self.target_lr
             msg = f"[Warmup Phase] Epoch {epoch + 1}/{self.warmup_epochs}: Starting learning rate set to {current_epoch_start_lr:.4e}"
-            
+
             # 1. Use PRINT with a newline to break past the Keras progress bar cleanly
             print(f"\n🔥 {msg}")
-            
+
             # 2. Use LOGGING to write a clean, timestamped record into your log file backup
             logging.info(msg)
 
         self.global_step += 1
-

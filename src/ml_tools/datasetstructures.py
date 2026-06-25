@@ -218,6 +218,7 @@ class TrackHeader:
     @property
     def id(self):
         return self.track_id
+
     @property
     def label(self):
         return (
@@ -390,7 +391,7 @@ class TrackHeader:
         frame_min_mass=None,
         filter_by_fp=True,
         min_segments=None,
-        seed = None
+        seed=None,
     ):
         if segment_frames is not None:
             raise Exception("Have not implement this path")
@@ -426,7 +427,7 @@ class TrackHeader:
             fp_frames=self.fp_frames if filter_by_fp else None,
             rec_time=self.start_time,
             min_segments=min_segments,
-            seed = seed
+            seed=seed,
         )
         self.filtered_stats.update(filtered_stats)
         # GP could get this from the tracks when writing
@@ -998,7 +999,7 @@ def get_segments(
     fp_frames=None,
     repeat_frame_indices=False,
     min_segments=None,
-    seed = None,
+    seed=None,
 ):
     if min_frames is None:
         min_frames = segment_width / 4.0
@@ -1027,7 +1028,8 @@ def get_segments(
             and (
                 (has_no_mass or frame_min_mass is None) or region.mass >= frame_min_mass
             )
-            and region.width < 158 and region.height < 118 #dont want full size regions
+            and region.width < 158
+            and region.height < 118  # dont want full size regions
         ]
         if fp_frames is not None and label not in FP_LABELS:
             frame_indices = [f for f in frame_indices if f not in fp_frames]
@@ -1045,9 +1047,7 @@ def get_segments(
             # remove blank frames
         frame_indices = np.array(frame_indices)
 
-
         rng = np.random.default_rng(seed=seed)
-
 
         if segment_type == SegmentType.ELONGATION:
             crop_rectangle = tools.Rectangle(1, 1, 160 - 2, 120 - 2)
@@ -1267,7 +1267,7 @@ def get_segments(
                     # i think this can be default, means we dont need to handle
                     # short segments elsewhere
                     if len(frames) < segment_width:
-                        extra_samples = rng.choice(frames,segment_width - len(frames))
+                        extra_samples = rng.choice(frames, segment_width - len(frames))
 
                         frames = list(frames)
                         frames.extend(extra_samples)

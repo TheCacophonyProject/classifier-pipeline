@@ -14,6 +14,7 @@
 # ==============================================================================
 from pathlib import Path
 import multiprocessing
+
 _spawn_ctx = multiprocessing.get_context("spawn")
 import os
 from absl import logging
@@ -21,12 +22,24 @@ from ml_tools.thermalwriter import MeanData
 import numpy as np
 import psutil
 
-def process_job(queue, results_queue, labels, base_dir, save_data_name, writer_i,excluded_tags, pad_values,extra_args):
+
+def process_job(
+    queue,
+    results_queue,
+    labels,
+    base_dir,
+    save_data_name,
+    writer_i,
+    excluded_tags,
+    pad_values,
+    extra_args,
+):
     import gc
     import tensorflow as tf
     from ml_tools.logs import init_logging
+
     init_logging()
-    
+
     if save_data_name == "thermal":
         from ml_tools.thermalwriter import save_data
     elif save_data_name == "ir":
@@ -38,7 +51,7 @@ def process_job(queue, results_queue, labels, base_dir, save_data_name, writer_i
 
     name = f"{writer_i}-{pid}.tfrecord"
     mem_mb = psutil.Process().memory_info().rss / 1024**2
-    logging.info("Writing to %s mem usage %s", name,mem_mb)
+    logging.info("Writing to %s mem usage %s", name, mem_mb)
     options = tf.io.TFRecordOptions(compression_type="GZIP")
     writer = tf.io.TFRecordWriter(str(base_dir / name), options=options)
     saved = 0
@@ -52,14 +65,21 @@ def process_job(queue, results_queue, labels, base_dir, save_data_name, writer_i
                 if source_file == "DONE":
 
                     mem_mb = psutil.Process().memory_info().rss / 1024**2
-                    logging.info("Worker %s done, processed %s files memory %s", name,files,mem_mb)
+                    logging.info(
+                        "Worker %s done, processed %s files memory %s",
+                        name,
+                        files,
+                        mem_mb,
+                    )
                     writer.close()
                     results_queue.put((border_sum))
                     break
                 else:
-                    logging.error("Unknown string %s",source_file)
+                    logging.error("Unknown string %s", source_file)
             else:
-                saved_samples, border_data = save_data(source_file, excluded_tags,writer, labels,pad_values, extra_args)
+                saved_samples, border_data = save_data(
+                    source_file, excluded_tags, writer, labels, pad_values, extra_args
+                )
 
                 saved += saved_samples
                 files += 1
@@ -92,15 +112,16 @@ def create_tf_records(
             if child.is_file():
                 child.unlink()
     output_path.mkdir(parents=True, exist_ok=True)
-    source_files =list(dataset.source_files)
+    source_files = list(dataset.source_files)
     dataset.clear()
 
     np.random.shuffle(source_files)
     logging.info(
-        "writing to output path: %s for %s recordings", output_path, len(source_files))
+        "writing to output path: %s for %s recordings", output_path, len(source_files)
+    )
 
     num_processes = psutil.cpu_count(logical=False)
-    logging.info("Using %s processes",num_processes)
+    logging.info("Using %s processes", num_processes)
     writer_i = 0
     index = 0
     jobs_per_process = 600 * num_processes
@@ -144,7 +165,7 @@ def create_tf_records(
                     process.join()
                     worker_border_sum = results_queue.get()
                     border_sum.add_means(worker_border_sum)
-                    logging.info("Added %s to %s",worker_border_sum, border_sum)
+                    logging.info("Added %s to %s", worker_border_sum, border_sum)
                 except KeyboardInterrupt:
                     logging.info("KeyboardInterrupt, terminating.")
                     for process in processes:
@@ -160,4 +181,4 @@ def create_tf_records(
             )
     except:
         logging.error("Error saving track info", exc_info=True)
-    return               border_sum 
+    return border_sum

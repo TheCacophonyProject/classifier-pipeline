@@ -189,7 +189,7 @@ class Dataset:
         after_date=None,
         label=None,
         dont_filter_segment=False,
-        seed = None,
+        seed=None,
     ):
         """
         Loads track headers from track database with optional filter
@@ -219,10 +219,11 @@ class Dataset:
             max_frame_mass=self.max_frame_mass,
             filter_by_lq=self.filter_by_lq,
             is_ir=self.type == "IR",
-            seed = seed
+            seed=seed,
         )
         sample_id = 1
         import psutil
+
         num_processes = psutil.cpu_count(logical=False)
 
         with Pool(processes=num_processes) as pool:
@@ -252,7 +253,7 @@ class Dataset:
                 self.filtered_stats.setdefault(reason, 0)
                 self.filtered_stats[reason] += count
 
-    def load_clip(self, db_clip, dont_filter_segment=False,seed =None):
+    def load_clip(self, db_clip, dont_filter_segment=False, seed=None):
         if self.raw:
             db = RawDatabase(db_clip)
         else:
@@ -297,7 +298,7 @@ class Dataset:
                     dont_filter=dont_filter_segment,
                     skip_ffc=self.skip_ffc,
                     ffc_frames=clip_header.ffc_frames,
-                    seed = seed + track_header.clip_id + track_header.track_id
+                    seed=seed + track_header.clip_id + track_header.track_id,
                 )
                 self.filtered_stats["segment_mass"] += track_header.filtered_stats[
                     "segment_mass"
@@ -712,7 +713,7 @@ def load_clip_multi(
     max_frame_mass=None,
     filter_by_lq=False,
     is_ir=False,
-    seed = None,
+    seed=None,
 ):
     filtered_stats = {}
     if raw:
@@ -723,7 +724,7 @@ def load_clip_multi(
     db.check_model()
     if db.model != "lepton3.5":
         # logging.warn("Ignoring lepton3 data")
-        filtered_stats["model"]=1
+        filtered_stats["model"] = 1
         return None, filtered_stats
     try:
         clip_header = db.get_clip_tracks(tag_precedence)
@@ -759,14 +760,17 @@ def load_clip_multi(
             track_header.get_segments(
                 segment_width,
                 segment_frame_spacing,
-
                 segment_types,
                 segment_min_avg_mass,
                 max_segments=max_segments,
                 dont_filter=dont_filter_segment,
                 skip_ffc=skip_ffc,
                 ffc_frames=clip_header.ffc_frames,
-                seed = None if seed is None else seed + track_header.clip_id + track_header.track_id
+                seed=(
+                    None
+                    if seed is None
+                    else seed + track_header.clip_id + track_header.track_id
+                ),
             )
             filtered_stats.setdefault("segment_mass", 0)
             filtered_stats["segment_mass"] += track_header.filtered_stats[

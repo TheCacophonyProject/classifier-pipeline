@@ -26,12 +26,11 @@ insect = None
 fp = None
 
 
-
 # labels can be any subset of this, prevents new labels being trained on until we explicitly add them to here
 def get_acceptable_labels(remapped_labels):
     # logging.warning("Need to add remapped labels into acceptable labels")
 
-    accepted_labels =  [
+    accepted_labels = [
         "bird",
         "cat",
         "deer",
@@ -50,12 +49,12 @@ def get_acceptable_labels(remapped_labels):
         "wallaby",
         "weka",
         "chicken",
-  
     ]
     for k, v in remapped_labels.items():
         if v in accepted_labels and k not in accepted_labels:
             accepted_labels.append(k)
     return accepted_labels
+
 
 def get_excluded():
     return [
@@ -78,7 +77,7 @@ def get_excluded():
         "horse",
         "otter",
         "pig",
-        "cow"
+        "cow",
         # "gray kangaroo",
         # "echidna",
         # "fox",
@@ -91,7 +90,7 @@ def get_excluded():
 def get_remapped(multi_label=False):
     land_bird = "bird"
 
-    mappings  ={
+    mappings = {
         "brushtail possum": "possum",
         "fox": "dog",
         "echidna": "hedgehog",
@@ -113,12 +112,13 @@ def get_remapped(multi_label=False):
         "quail": land_bird,
     }
     if not multi_label:
-        mappings["chicken"]= "bird"
-        mappings["weka"]= "bird"
+        mappings["chicken"] = "bird"
+        mappings["weka"] = "bird"
     return mappings
 
+
 def get_extra_mappings(labels):
-    land_birds = ["chicken","weka"]
+    land_birds = ["chicken", "weka"]
     if "bird" not in labels:
         logging.info("Extra mappings none")
         return None
@@ -130,7 +130,7 @@ def get_extra_mappings(labels):
             l_i = labels.index(l)
             keys.append(l_i)
             values.append(bird_index)
-    if len(keys)==0:
+    if len(keys) == 0:
         return None
     extra_label_map = tf.lookup.StaticHashTable(
         initializer=tf.lookup.KeyValueTensorInitializer(
@@ -140,11 +140,13 @@ def get_extra_mappings(labels):
         default_value=tf.constant(-1),
         name="extra_label_map",
     )
-    for key,value in zip(keys,values):
+    for key, value in zip(keys, values):
         logging.info("Extra label mapping is %s to %s ", labels[key], labels[value])
     return extra_label_map
 
+
 rotation_augmentation = None
+
 
 def load_dataset(filenames, remap_lookup, labels, args):
     deterministic = args.get("deterministic", False)
@@ -166,7 +168,7 @@ def load_dataset(filenames, remap_lookup, labels, args):
     only_features = args.get("only_features", False)
     one_hot = args.get("one_hot", True)
     pads = args["pads"]
-    logging.info("Using mean paddings %s",pads)
+    logging.info("Using mean paddings %s", pads)
     dataset = dataset.apply(tf.data.experimental.ignore_errors())
     extra_label_map = None
     if args.get("multi_label"):
@@ -183,26 +185,31 @@ def load_dataset(filenames, remap_lookup, labels, args):
     mosaic_larger_size = tf.cast(mosaic_larger_size, dtype=tf.int32)
     # larger images are taken for rotating and random cropping augmentation
     # TODO could take small ones for datasets other than test
-    difference = tf.math.subtract(mosaic_larger_size , mosaic_size)
-    padding = tf.math.ceil(tf.cast(difference,dtype=tf.float32) / 2.0)
+    difference = tf.math.subtract(mosaic_larger_size, mosaic_size)
+    padding = tf.math.ceil(tf.cast(difference, dtype=tf.float32) / 2.0)
 
     # Cast everything to int32 at the end
     padding = tf.cast(padding, dtype=tf.int32)
-    channels=args.get(
-                "channels", [TrackChannels.thermal.name, TrackChannels.thermal_norm.name, TrackChannels.filtered.name]
-            )
+    channels = args.get(
+        "channels",
+        [
+            TrackChannels.thermal.name,
+            TrackChannels.thermal_norm.name,
+            TrackChannels.filtered.name,
+        ],
+    )
     mean_pad_values = []
     pads = pads.to_dict()
     for channel in channels:
         mean_pad_values.append(pads[channel])
 
-    mean_pad_values = tf.constant(mean_pad_values,dtype = tf.float32)
-    logging.info("Mean pad values become %s",mean_pad_values)
+    mean_pad_values = tf.constant(mean_pad_values, dtype=tf.float32)
+    logging.info("Mean pad values become %s", mean_pad_values)
     global rotation_augmentation
     rotation_augmentation = RandomRotationPerChannelFill(
         # Tested at 0.5 and 0.1 seems to work best
         factor=0.1,
-        fill_values = mean_pad_values,
+        fill_values=mean_pad_values,
     )
     dataset = dataset.map(
         partial(
@@ -210,10 +217,10 @@ def load_dataset(filenames, remap_lookup, labels, args):
             image_size=image_size,
             remap_lookup=remap_lookup,
             num_labels=len(labels),
-            mosaic_size = mosaic_size,
-            mosaic_larger_size = mosaic_larger_size,
-            padding = padding,
-            mean_pad_values = mean_pad_values,
+            mosaic_size=mosaic_size,
+            mosaic_larger_size=mosaic_larger_size,
+            padding=padding,
+            mean_pad_values=mean_pad_values,
             augment=augment,
             preprocess_fn=preprocess_fn,
             include_features=include_features,
@@ -223,7 +230,12 @@ def load_dataset(filenames, remap_lookup, labels, args):
             include_track=args.get("include_track", False),
             num_frames=args.get("num_frames", 25),
             channels=args.get(
-                "channels", [TrackChannels.thermal.name, TrackChannels.thermal_norm.name, TrackChannels.filtered.name]
+                "channels",
+                [
+                    TrackChannels.thermal.name,
+                    TrackChannels.thermal_norm.name,
+                    TrackChannels.filtered.name,
+                ],
             ),
         ),
         num_parallel_calls=AUTOTUNE,
@@ -244,25 +256,28 @@ def load_dataset(filenames, remap_lookup, labels, args):
         filter_none = lambda x, y: tf.size(x[1]) > 0
         dataset = dataset.filter(filter_none)
 
-
-    rebalance = args.get("rebalance",False)
+    rebalance = args.get("rebalance", False)
     # rebalance
     if rebalance:
         target = 2000
-        logging.info("Rebalancing to target %s",target)
+        logging.info("Rebalancing to target %s", target)
         keep_probs = [min(1.0, target / CLASS_TOTALS[lbl]) for lbl in labels]
         keep_probs = tf.constant(keep_probs)
-       
-        dataset = dataset.filter(lambda img, lbl: randomized_balance_filter(img, lbl, keep_probs                          ))
-    elif args.get("downsize_fp",False):
+
+        dataset = dataset.filter(
+            lambda img, lbl: randomized_balance_filter(img, lbl, keep_probs)
+        )
+    elif args.get("downsize_fp", False):
         # down size false-positive class
         fp_target = int(CLASS_TOTALS["false-positive"] * 0.1856)
-        logging.info("Downsizing false positives to %s",fp_target)
-        keep_probs = [0.1856 if lbl=="false-positive" else 1.0 for lbl in labels]
+        logging.info("Downsizing false positives to %s", fp_target)
+        keep_probs = [0.1856 if lbl == "false-positive" else 1.0 for lbl in labels]
         # keep_probs=keep_probs[:10]
         keep_probs = tf.constant(keep_probs)
-        logging.info("Keep probs are %s",keep_probs)
-        dataset = dataset.filter(lambda img, lbl: randomized_balance_filter(img, lbl, keep_probs                          ))
+        logging.info("Keep probs are %s", keep_probs)
+        dataset = dataset.filter(
+            lambda img, lbl: randomized_balance_filter(img, lbl, keep_probs)
+        )
 
     if augment:
         dataset = prepare_cutmix_dataset(
@@ -270,7 +285,9 @@ def load_dataset(filenames, remap_lookup, labels, args):
         )
     else:
         # remove num_frames_used from y
-        dataset = dataset.map(lambda x, y:  (x,y["label"]),                      num_parallel_calls=tf.data.AUTOTUNE)
+        dataset = dataset.map(
+            lambda x, y: (x, y["label"]), num_parallel_calls=tf.data.AUTOTUNE
+        )
     return dataset
 
 
@@ -278,10 +295,24 @@ import tensorflow as tf
 
 # 1. Define your original class totals to calculate downsampling rates
 CLASS_TOTALS = {
-    'bird': 107746, 'false-positive': 93317, 'rodent': 53460, 'leporidae': 25454,
-    'human': 17397, 'possum': 8487, 'chicken': 7988, 'vehicle': 7150,
-    'mustelid': 6483, 'hedgehog': 5066, 'kiwi': 4679, 'cat': 3944,
-    'dog': 1938, 'penguin': 1903, 'wallaby': 1410, 'weka': 174, 'deer': 293, 'sheep': 709
+    "bird": 107746,
+    "false-positive": 93317,
+    "rodent": 53460,
+    "leporidae": 25454,
+    "human": 17397,
+    "possum": 8487,
+    "chicken": 7988,
+    "vehicle": 7150,
+    "mustelid": 6483,
+    "hedgehog": 5066,
+    "kiwi": 4679,
+    "cat": 3944,
+    "dog": 1938,
+    "penguin": 1903,
+    "wallaby": 1410,
+    "weka": 174,
+    "deer": 293,
+    "sheep": 709,
 }
 TARGET = 2000.0
 
@@ -291,22 +322,21 @@ KEEP_PROBS_TF = tf.constant(KEEP_PROBS, dtype=tf.float32)
 
 
 # 3. Randomized rejection filter (Handles multi-label logic)
-def randomized_balance_filter(image, label,keep_probs):
+def randomized_balance_filter(image, label, keep_probs):
     # Multiply the image's multi-label tags by their respective downsample probabilities
     # e.g., if it's a chicken: label=[1,0,0,...,1,...], probs=[0.01, ..., 0.12, ...]
     print(label)
     active_probs = label["label"] * keep_probs
-    
+
     # Find the maximum probability among the labels present in this image.
     # This ensures a chicken or a rare bird isn't accidentally rejected by the bird tag!
     max_keep_prob = tf.reduce_max(active_probs)
-    
+
     # Generate a random uniform number between 0 and 1
     random_roll = tf.random.uniform([], minval=0.0, maxval=1.0, dtype=tf.float32)
-    
+
     # Keep the image if the random roll falls under its maximum target probability
     return random_roll < max_keep_prob
-
 
 
 class RandomRotationPerChannelFill(tf.keras.layers.Layer):
@@ -320,7 +350,6 @@ class RandomRotationPerChannelFill(tf.keras.layers.Layer):
     def call(self, inputs, training=False):
         rotated = self._rotation(inputs - self._fill_tensor, training=training)
         return rotated + self._fill_tensor
-
 
 
 data_augmentation = tf.keras.Sequential(
@@ -340,7 +369,6 @@ def read_tfrecord(
     mosaic_larger_size,
     padding,
     mean_pad_values,
-
     augment=False,
     preprocess_fn=None,
     only_features=False,
@@ -349,7 +377,11 @@ def read_tfrecord(
     extra_label_map=None,
     include_track=False,
     num_frames=25,
-    channels=[TrackChannels.thermal.name,TrackChannels.thermal_norm.name, TrackChannels.filtered.name],
+    channels=[
+        TrackChannels.thermal.name,
+        TrackChannels.thermal_norm.name,
+        TrackChannels.filtered.name,
+    ],
 ):
     logging.info(
         "Read tf record with image %s lbls %s aug  %s  prepr %s only features %s one hot %s include fetures %s num frames %s mosaic_size %s mosaic_enalrged %s padding %s",
@@ -365,14 +397,15 @@ def read_tfrecord(
         mosaic_larger_size,
         padding,
     )
-    logging.info("Channels are %s",channels)
+    logging.info("Channels are %s", channels)
     load_images = not only_features
     tfrecord_format = {
         "image/class/label": tf.io.FixedLenFeature((), tf.int64, -1),
-        "image/num_frames":tf.io.FixedLenFeature((), tf.int64, 25),
-        "image/frame_numbers":tf.io.FixedLenSequenceFeature([],tf.int64,allow_missing=True)
+        "image/num_frames": tf.io.FixedLenFeature((), tf.int64, 25),
+        "image/frame_numbers": tf.io.FixedLenSequenceFeature(
+            [], tf.int64, allow_missing=True
+        ),
     }
-  
 
     if load_images:
         if TrackChannels.filtered.name in channels:
@@ -380,12 +413,12 @@ def read_tfrecord(
                 [], dtype=tf.float32, allow_missing=True
             )
         if TrackChannels.thermal_norm.name in channels:
-            tfrecord_format["image/thermal_norm_encoded"] = tf.io.FixedLenSequenceFeature(
-                [], dtype=tf.float32, allow_missing=True
+            tfrecord_format["image/thermal_norm_encoded"] = (
+                tf.io.FixedLenSequenceFeature([], dtype=tf.float32, allow_missing=True)
             )
         if TrackChannels.thermal.name in channels:
-            tfrecord_format["image/thermal_raw_encoded"] = tf.io.FixedLenSequenceFeature(
-                [], dtype=tf.float32, allow_missing=True
+            tfrecord_format["image/thermal_raw_encoded"] = (
+                tf.io.FixedLenSequenceFeature([], dtype=tf.float32, allow_missing=True)
             )
     if include_track:
         tfrecord_format["image/track_id"] = tf.io.FixedLenFeature((), tf.int64, -1)
@@ -397,17 +430,24 @@ def read_tfrecord(
     example = tf.io.parse_single_example(example, tfrecord_format)
     record_frames = example["image/num_frames"]
     frame_indices = example["image/frame_numbers"]
-    record_frames = tf.cast(record_frames,tf.int32)
+    record_frames = tf.cast(record_frames, tf.int32)
     if load_images:
         if TrackChannels.thermal_norm.name in channels:
-            thermalnorm = 255.0*example["image/thermal_norm_encoded"]
-            thermals = tf.reshape(thermalnorm, [record_frames, mosaic_larger_size, mosaic_larger_size, 1])
+            thermalnorm = 255.0 * example["image/thermal_norm_encoded"]
+            thermals = tf.reshape(
+                thermalnorm, [record_frames, mosaic_larger_size, mosaic_larger_size, 1]
+            )
         if TrackChannels.filtered.name in channels:
-            filteredencoded = 255.0*example["image/filtered_encoded"]
-            filtered = tf.reshape(filteredencoded, [record_frames, mosaic_larger_size, mosaic_larger_size, 1])
+            filteredencoded = 255.0 * example["image/filtered_encoded"]
+            filtered = tf.reshape(
+                filteredencoded,
+                [record_frames, mosaic_larger_size, mosaic_larger_size, 1],
+            )
         if TrackChannels.thermal.name in channels:
-            rawthermal = 255.0*example["image/thermal_raw_encoded"]
-            rawthermal = tf.reshape(rawthermal, [record_frames, mosaic_larger_size, mosaic_larger_size, 1])
+            rawthermal = 255.0 * example["image/thermal_raw_encoded"]
+            rawthermal = tf.reshape(
+                rawthermal, [record_frames, mosaic_larger_size, mosaic_larger_size, 1]
+            )
 
         rgb_image = None
 
@@ -434,11 +474,17 @@ def read_tfrecord(
             if tf.greater(random_value, 0.5):
                 rgb_image = tf.image.flip_left_right(rgb_image)
 
-            rgb_image =  tf.image.random_crop(rgb_image, size=[record_frames,mosaic_size, mosaic_size, 3])
-            rgb_image, frame_indices = mask_random_frames(rgb_image, frame_indices, record_frames)
+            rgb_image = tf.image.random_crop(
+                rgb_image, size=[record_frames, mosaic_size, mosaic_size, 3]
+            )
+            rgb_image, frame_indices = mask_random_frames(
+                rgb_image, frame_indices, record_frames
+            )
             record_frames = tf.shape(frame_indices)[0]
         else:
-            rgb_image = tf.image.crop_to_bounding_box(rgb_image, padding,padding, mosaic_size, mosaic_size)
+            rgb_image = tf.image.crop_to_bounding_box(
+                rgb_image, padding, padding, mosaic_size, mosaic_size
+            )
 
         mask = get_frame_mask(record_frames, frame_indices)
 
@@ -446,27 +492,44 @@ def read_tfrecord(
         # times = tf.concat([tf.cast(frame_indices,tf.float32), tf.fill([25 - record_frames], -1.0)], axis=0)
 
         # ',times)
-            
 
         if num_frames > 1 and zero_pad:
             pad_size = num_frames - tf.shape(rgb_image)[0]
-            ch_r = tf.pad(rgb_image[..., 0:1], [[0, pad_size], [0, 0], [0, 0], [0, 0]], constant_values=mean_pad_values[0])
-            ch_g = tf.pad(rgb_image[..., 1:2], [[0, pad_size], [0, 0], [0, 0], [0, 0]], constant_values=mean_pad_values[1])
-            ch_b = tf.pad(rgb_image[..., 2:3], [[0, pad_size], [0, 0], [0, 0], [0, 0]], constant_values=mean_pad_values[2])
+            ch_r = tf.pad(
+                rgb_image[..., 0:1],
+                [[0, pad_size], [0, 0], [0, 0], [0, 0]],
+                constant_values=mean_pad_values[0],
+            )
+            ch_g = tf.pad(
+                rgb_image[..., 1:2],
+                [[0, pad_size], [0, 0], [0, 0], [0, 0]],
+                constant_values=mean_pad_values[1],
+            )
+            ch_b = tf.pad(
+                rgb_image[..., 2:3],
+                [[0, pad_size], [0, 0], [0, 0], [0, 0]],
+                constant_values=mean_pad_values[2],
+            )
             rgb_image = tf.concat([ch_r, ch_g, ch_b], axis=-1)
-            rgb_image = tf.ensure_shape(rgb_image,[num_frames,mosaic_size,mosaic_size, 3])
+            rgb_image = tf.ensure_shape(
+                rgb_image, [num_frames, mosaic_size, mosaic_size, 3]
+            )
 
         elif num_frames > 1:
             # this repeats frames to make 25
             actual_frames = tf.shape(rgb_image)[0]
-            repeat_indices = tf.random.shuffle(tf.tile(tf.range(actual_frames), [num_frames // actual_frames + 1]))[:num_frames]
+            repeat_indices = tf.random.shuffle(
+                tf.tile(tf.range(actual_frames), [num_frames // actual_frames + 1])
+            )[:num_frames]
             repeat_indices = tf.sort(repeat_indices)
             rgb_image = tf.gather(rgb_image, repeat_indices)
-            rgb_image = tf.ensure_shape(rgb_image,[num_frames,mosaic_size,mosaic_size, 3])
+            rgb_image = tf.ensure_shape(
+                rgb_image, [num_frames, mosaic_size, mosaic_size, 3]
+            )
             record_frames = 25
         rgb_image = tile_images(rgb_image)
 
-        rgb_image = tf.ensure_shape(rgb_image,[*image_size, 3])
+        rgb_image = tf.ensure_shape(rgb_image, [*image_size, 3])
 
     label = tf.cast(example["image/class/label"], tf.int32)
     label = remap_lookup.lookup(label)
@@ -477,21 +540,24 @@ def read_tfrecord(
         label = tf.one_hot(label, num_labels)
         if extra_label_map is not None:
             label = tf.reduce_max(label, axis=0)
-    label = tf.cast(label,dtype=tf.float32)
+    label = tf.cast(label, dtype=tf.float32)
     if include_track:
 
         track_id = tf.cast(example["image/track_id"], tf.int32)
         avg_mass = tf.cast(example["image/avg_mass"], tf.int32)
         label = (label, track_id, avg_mass)
     if not include_features and not only_features:
-        return {"input_image":rgb_image,"input_mask":mask}, {"label":label,"num_frames":record_frames}
+        return {"input_image": rgb_image, "input_mask": mask}, {
+            "label": label,
+            "num_frames": record_frames,
+        }
 
     if include_features or only_features:
         # TODO this has not been updated to work with cut mix
         features = tf.squeeze(example["image/features"])
         if only_features:
             return features, label
-            
+
         return (rgb_image, features), label
     # TODO this has not been updated to work with cut mix
     # if only_features:
@@ -511,17 +577,21 @@ def prepare_cutmix_dataset(dataset_original, img_size, prob):
     # 3. Map the CutMix function (passed via lambda to include parameters)
     cutmix_dataset = zipped_dataset.map(
         lambda d1, d2: video_mosaic_cutmix(d1, d2, img_size, prob),
-        num_parallel_calls=tf.data.AUTOTUNE
+        num_parallel_calls=tf.data.AUTOTUNE,
     )
 
     return cutmix_dataset
 
-def video_mosaic_cutmix(data1, data2, img_size, prob,grid_rows=5, grid_cols=5, alpha=0.3 ):
+
+def video_mosaic_cutmix(
+    data1, data2, img_size, prob, grid_rows=5, grid_cols=5, alpha=0.3
+):
     x1, y1 = data1
     image1 = x1["input_image"]
     mask1 = x1["input_mask"]
     label1 = y1["label"]
-    logging.info("Chance of a cut mix on an input is %s and alpha %s",prob,alpha)
+    logging.info("Chance of a cut mix on an input is %s and alpha %s", prob, alpha)
+
     def no_mix():
         return {"input_image": image1, "input_mask": mask1}, label1
 
@@ -534,7 +604,7 @@ def video_mosaic_cutmix(data1, data2, img_size, prob,grid_rows=5, grid_cols=5, a
         label2 = y2["label"]
         mask2 = x2["input_mask"]
         frames_used2 = y2["num_frames"]
-        num_frames = tf.math.minimum(frames_used1,frames_used2)
+        num_frames = tf.math.minimum(frames_used1, frames_used2)
         # 1. Define dimensions of an individual sub-frame
         sub_h = img_size // grid_rows
         sub_w = img_size // grid_cols
@@ -547,8 +617,7 @@ def video_mosaic_cutmix(data1, data2, img_size, prob,grid_rows=5, grid_cols=5, a
         # Convert lambda to a discrete number of blocks to swap (at least 1, at most num_frames-1)
         # Only swap within the real frames to avoid cutmixing empty/tiled cells
         num_blocks_to_swap = tf.cast(
-            tf.math.round((1.0 - lam) * tf.cast(num_frames, tf.float32)),
-            tf.int32
+            tf.math.round((1.0 - lam) * tf.cast(num_frames, tf.float32)), tf.int32
         )
         num_blocks_to_swap = tf.clip_by_value(num_blocks_to_swap, 1, num_frames - 1)
 
@@ -561,7 +630,7 @@ def video_mosaic_cutmix(data1, data2, img_size, prob,grid_rows=5, grid_cols=5, a
         # Build a 1D boolean mask for the cells
         cell_mask_1d = tf.reduce_any(
             tf.equal(tf.expand_dims(all_indices, 0), tf.expand_dims(swap_indices, 1)),
-            axis=0
+            axis=0,
         )
 
         # Reshape the 1D mask back into the 2D grid shape (e.g., 2x2)
@@ -577,9 +646,10 @@ def video_mosaic_cutmix(data1, data2, img_size, prob,grid_rows=5, grid_cols=5, a
         # 5. Blend the two mosaic images using our clean grid-aligned mask
         mixed_image = image1 * (1.0 - mask_expanded) + image2 * mask_expanded
 
-
         # 6. Compute exact adjusted lambda based on how many cells were swapped
-        actual_swap_ratio = tf.cast(num_blocks_to_swap, tf.float32) / tf.cast(total_cells, tf.float32)
+        actual_swap_ratio = tf.cast(num_blocks_to_swap, tf.float32) / tf.cast(
+            total_cells, tf.float32
+        )
         adjusted_lam = 1.0 - actual_swap_ratio
 
         # Blend the one-hot labels
@@ -588,7 +658,7 @@ def video_mosaic_cutmix(data1, data2, img_size, prob,grid_rows=5, grid_cols=5, a
         # Globally smooth the time steps to match the soft target label blend
         mixed_mask = mask1 * adjusted_lam + mask2 * (1.0 - adjusted_lam)
         # not sure how the mask will work with this
-        return {"input_image":mixed_image,"input_mask":mask1}, mixed_label
+        return {"input_image": mixed_image, "input_mask": mask1}, mixed_label
 
     return tf.cond(tf.random.uniform([]) < prob, mix, no_mix)
 
@@ -608,7 +678,7 @@ def main():
     init_logging()
     logging.info("Loading %s", "classifier.yaml")
     config = Config.load_from_file("classifier.yaml")
-    from .tfdataset import get_dataset, get_distribution,apply_label_mapping
+    from .tfdataset import get_dataset, get_distribution, apply_label_mapping
 
     # file = "/home/gp/cacophony/classifier-data/thermal-training/cp-training/training-meta.json"
     training_folder = Path(config.base_folder) / "training-data"
@@ -618,10 +688,16 @@ def main():
     labels = meta.get("labels", [])
     pads = meta.get("background_average")
     from ml_tools.thermalwriter import MeanData
+
     if pads is None:
         pads = MeanData()
     else:
-        pads = MeanData(thermal = pads["thermal"],filtered = pads["filtered"],thermal_norm= pads["thermal_norm"],frames_used=1)
+        pads = MeanData(
+            thermal=pads["thermal"],
+            filtered=pads["filtered"],
+            thermal_norm=pads["thermal_norm"],
+            frames_used=1,
+        )
         pads = pads * 255
 
     excluded_labels = get_excluded()
@@ -635,13 +711,21 @@ def main():
     if "chicken" not in labels:
         labels.append("chicken")
     orig_labels = labels.copy()
-    labels,tf_mappings = apply_label_mapping(labels,excluded_labels, get_remapped(True))
-    logging.info("Labels are now %s",labels)
-    for k,v in tf_mappings.items():
-        logging.info("Original %s is mapped to %s",orig_labels[k], "Nothing" if v==-1 else labels[v] )
+    labels, tf_mappings = apply_label_mapping(
+        labels, excluded_labels, get_remapped(True)
+    )
+    logging.info("Labels are now %s", labels)
+    for k, v in tf_mappings.items():
+        logging.info(
+            "Original %s is mapped to %s",
+            orig_labels[k],
+            "Nothing" if v == -1 else labels[v],
+        )
 
-    labels,tf_mappings = apply_label_mapping(labels,excluded_labels, get_remapped(multi_label = True))
-    resampled_ds,  epoch_size = get_dataset(
+    labels, tf_mappings = apply_label_mapping(
+        labels, excluded_labels, get_remapped(multi_label=True)
+    )
+    resampled_ds, epoch_size = get_dataset(
         load_dataset,
         training_folder / "test",
         labels,
@@ -650,13 +734,13 @@ def main():
         augment=True,
         shuffle=False,
         include_features=False,
-        remapped_labels=get_remapped(multi_label = True),
+        remapped_labels=get_remapped(multi_label=True),
         excluded_labels=excluded_labels,
         include_track=include_track,
         num_frames=25,
         deterministic=True,
-        pads = pads,
-        tf_mappings= tf_mappings,
+        pads=pads,
+        tf_mappings=tf_mappings,
         rebalance=False,
     )
     print("Epoch size is", epoch_size)
@@ -682,9 +766,9 @@ def save_batch(image_batch, label_batch, labels, save_dir, tracks=False):
     global save_index
     masks = image_batch["input_mask"]
     image_batch = image_batch["input_image"]
-    
+
     # for m in masks:
-        # print("masks are ",m[0].shape,m.shape,m[1].shape)
+    # print("masks are ",m[0].shape,m.shape,m[1].shape)
     if tracks:
         track_batch = label_batch[1]
         label_batch = label_batch[0]
@@ -695,9 +779,7 @@ def save_batch(image_batch, label_batch, labels, save_dir, tracks=False):
                 f"{labels[np.argmax(label_batch[n])]}-{track_batch[n]}-{save_index}.png"
             )
         else:
-            file_title = (
-                f"{labels[np.argmax(label_batch[n])]}-{save_index}.png"
-            )
+            file_title = f"{labels[np.argmax(label_batch[n])]}-{save_index}.png"
         save_index += 1
         file_name = save_dir / file_title
         saveclassify_image(img, file_name)
@@ -748,8 +830,6 @@ def show_batch(image_batch, label_batch, labels, save=None, tracks=False):
     plt.show()
 
 
-
-
 @tf.function
 def mask_random_frames(rgb_image, frame_indices, record_frames, min_frames=15):
     """
@@ -759,7 +839,9 @@ def mask_random_frames(rgb_image, frame_indices, record_frames, min_frames=15):
     against the surviving frames.
     """
     max_drop = tf.maximum(record_frames - min_frames, 0)
-    num_drop = tf.random.uniform(shape=[], minval=0, maxval=max_drop + 1, dtype=tf.int32)
+    num_drop = tf.random.uniform(
+        shape=[], minval=0, maxval=max_drop + 1, dtype=tf.int32
+    )
 
     keep = record_frames - num_drop
     return rgb_image[:keep], frame_indices[:keep]
@@ -775,7 +857,6 @@ def get_frame_mask(num_valid, frame_indices, camera_fps=9):
     # Establish our fixed 5-minute logarithmic divider ceiling
     LOG_5MIN_CEILING = tf.math.log1p(300.0)  # log1p(300) equals roughly 5.7071
 
-
     # Elapsed seconds between consecutive frames at the given camera FPS
     indices = tf.cast(frame_indices, tf.float32)
     indices = indices - indices[0]
@@ -783,12 +864,13 @@ def get_frame_mask(num_valid, frame_indices, camera_fps=9):
     # Apply log1p transformation to handle variation stably, then clip to [0.0, 1.0]
     normalised_delta = tf.minimum(tf.math.log1p(seconds_delta) / LOG_5MIN_CEILING, 1.0)
     # Use -1.0 as a strict geometric flag for empty padding slots
-    mask_flat = tf.concat([[0.0], normalised_delta, tf.fill([25 - num_valid], -1.0)], axis=0)
+    mask_flat = tf.concat(
+        [[0.0], normalised_delta, tf.fill([25 - num_valid], -1.0)], axis=0
+    )
 
     mask = tf.reshape(mask_flat, (5, 5, 1))
     return mask
 
+
 if __name__ == "__main__":
     main()
-
-

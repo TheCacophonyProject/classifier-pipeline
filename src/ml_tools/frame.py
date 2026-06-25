@@ -5,6 +5,7 @@ from ml_tools.imageprocessing import resize_cv, rotate, normalize, resize_and_pa
 import enum
 import logging
 
+
 class TrackChannels(enum.Enum):
     """Indexes to channels in track."""
 
@@ -13,7 +14,6 @@ class TrackChannels(enum.Enum):
     mask = 4
     raw = 6
     thermal_norm = 7
-
 
 
 @attr.s(slots=True, eq=False)
@@ -118,8 +118,6 @@ class Frame:
         if self.filtered is not None:
             self.filtered *= adjust
 
-
-
     def crop_by_region_with_padding(self, region, crop_rectangle, resize_dim):
         top = 0
         left = 0
@@ -127,8 +125,8 @@ class Frame:
         if region.width < crop_rectangle.width and crop_rectangle.left > region.left:
             left = crop_rectangle.left - region.left
 
-        # 
-        if region.height < crop_rectangle.height and crop_rectangle.top > region.top:            
+        #
+        if region.height < crop_rectangle.height and crop_rectangle.top > region.top:
             top = crop_rectangle.top - region.top
 
         new_width = min(crop_rectangle.width, region.width)
@@ -143,18 +141,28 @@ class Frame:
         mask = None
         if self.thermal is not None:
             sub_thermal = cropped_region.subimage(self.thermal)
-            thermal = np.full((new_height, new_width), np.amin(sub_thermal), dtype=np.float32)
-            thermal[top:cropped_region.height + top, left:cropped_region.width + left] = sub_thermal
+            thermal = np.full(
+                (new_height, new_width), np.amin(sub_thermal), dtype=np.float32
+            )
+            thermal[
+                top : cropped_region.height + top, left : cropped_region.width + left
+            ] = sub_thermal
 
         if self.filtered is not None:
             sub_filtered = cropped_region.subimage(self.filtered)
-            filtered = np.full((new_height, new_width), np.amin(sub_filtered), dtype=np.float32)
-            filtered[top:cropped_region.height + top, left:cropped_region.width + left] = sub_filtered
+            filtered = np.full(
+                (new_height, new_width), np.amin(sub_filtered), dtype=np.float32
+            )
+            filtered[
+                top : cropped_region.height + top, left : cropped_region.width + left
+            ] = sub_filtered
 
         if self.mask is not None:
             sub_mask = cropped_region.subimage(self.mask)
             mask = np.zeros((new_height, new_width), dtype=sub_mask.dtype)
-            mask[top:cropped_region.height + top, left:cropped_region.width + left] = sub_mask
+            mask[
+                top : cropped_region.height + top, left : cropped_region.width + left
+            ] = sub_mask
 
         return Frame(
             thermal,
@@ -162,9 +170,8 @@ class Frame:
             self.frame_number,
             mask=mask,
             ffc_affected=self.ffc_affected,
-            region = cropped_region,
+            region=cropped_region,
         )
-
 
     def crop_by_region(self, region, only_thermal=False, out=None):
         thermal = None
@@ -260,7 +267,6 @@ class Frame:
             self.mask = rotate(self.mask, degrees)
         if self.filtered is not None:
             self.filtered = rotate(self.filtered, degrees)
-
 
     def float_arrays(self):
         if self.thermal is not None:

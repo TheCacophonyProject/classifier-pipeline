@@ -354,7 +354,6 @@ class Previewer:
         flow_magnitude = Image.fromarray(
             np.zeros((np.array(thermal).shape), dtype=np.uint8)
         )
-      
 
         image = np.hstack(
             (np.vstack((thermal, mask)), np.vstack((filtered, flow_magnitude)))

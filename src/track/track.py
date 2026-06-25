@@ -125,7 +125,7 @@ class RegionTracker(Tracker):
 
             max_size_change = get_max_size_change(track, region)
             max_mass_change = self.get_max_mass_change_percent(track, avg_mass)
-        
+
             logging.debug(
                 "Track %s %s has max size change %s, distances %s to region %s size change %s max distance %s",
                 track,
@@ -302,7 +302,12 @@ class RegionTracker(Tracker):
             if np.sum(np.abs(vel)) > 5:
                 # faster tracks can be a bit more deviant
                 mass_percent = mass_percent + 0.1
-            logging.info("Restricting mass %s avg %s percent %s",self.min_mass_change,average_mass,mass_percent)
+            logging.info(
+                "Restricting mass %s avg %s percent %s",
+                self.min_mass_change,
+                average_mass,
+                mass_percent,
+            )
 
             return max(
                 self.min_mass_change,
@@ -495,7 +500,7 @@ class Track:
         dont_filter=False,
         filter_by_fp=False,
         min_segments=1,
-        seed = None,
+        seed=None,
     ):
         if from_last is not None:
             if from_last == 0:
@@ -542,7 +547,7 @@ class Track:
                 max_segments=max_segments,
                 dont_filter=dont_filter,
                 min_segments=min_segments,
-                seed = seed,
+                seed=seed,
             )
 
         return segments
