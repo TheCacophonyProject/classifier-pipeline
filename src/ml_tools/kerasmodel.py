@@ -377,7 +377,9 @@ class KerasModel(Interpreter):
 
                 # Mix the combined space-time features together
                 x = layers.Conv2D(256, (3, 3), activation="swish", padding="same")(x)
-
+            else:
+                input_image = {"input_image": input_image}
+                
             x = tf.keras.layers.GlobalAveragePooling2D()(x)
             if self.params.mvm:
                 mvm_inputs = tf.keras.layers.Input((188))

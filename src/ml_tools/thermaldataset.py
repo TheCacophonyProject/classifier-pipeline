@@ -343,8 +343,8 @@ class RandomRotationPerChannelFill(tf.keras.layers.Layer):
     def __init__(self, factor, fill_values, **kwargs):
         super().__init__(**kwargs)
         self._fill_tensor = tf.constant(fill_values, dtype=tf.float32)
-        self._rotation = tf.keras.layers.RandomRotation(
-            factor, fill_mode="constant", fill_value=0
+        self._rotation = SequenceRotation(
+            factor
         )
 
     def call(self, inputs, training=False):
@@ -359,6 +359,60 @@ data_augmentation = tf.keras.Sequential(
     ]
 )
 
+import math
+
+class SequenceRotation(tf.keras.layers.Layer):
+    def __init__(self, factor, **kwargs):
+        super().__init__(**kwargs)
+        self.factor = factor
+
+    def call(self, inputs, training=None):
+        # Expected unbatched input shape: (25, 32, 32, channels)
+        if not training:
+            return inputs
+
+        # 1. Capture spatial dimensions dynamically
+        num_frames = tf.shape(inputs)[0]
+        height = tf.cast(tf.shape(inputs)[1], tf.float32)
+        width = tf.cast(tf.shape(inputs)[2], tf.float32)
+
+        # 2. Generate exactly ONE random angle for this single sequence
+        # factor * 2pi determines the max rotation range
+        max_angle = self.factor * 2.0 * math.pi
+        angle = tf.random.uniform([], -max_angle, max_angle)
+
+        # 3. Duplicate this single scalar angle across all 25 frames
+        flat_angles = tf.repeat(angle, num_frames)
+
+        # 4. Calculate the transformation matrix elements
+        cos_theta = tf.cos(flat_angles)
+        sin_theta = tf.sin(flat_angles)
+        
+        x_offset = (width - 1.0) / 2.0
+        y_offset = (height - 1.0) / 2.0
+
+        # Build the rotation matrix variables
+        a0 = cos_theta
+        a1 = -sin_theta
+        a2 = x_offset - x_offset * cos_theta + y_offset * sin_theta
+        b0 = sin_theta
+        b1 = cos_theta
+        b2 = y_offset - x_offset * sin_theta - y_offset * cos_theta
+
+        # Stack into the required 8-element projective transform vector
+        transforms = tf.stack([a0, a1, a2, b0, b1, b2, tf.zeros_like(a0), tf.zeros_like(a0)], axis=1)
+
+        # 5. Rotate all frames simultaneously using BILINEAR & REFLECT
+        rotated_sequence = tf.raw_ops.ImageProjectiveTransformV3(
+            images=inputs,  # Direct (25, 32, 32, channels) input
+            transforms=transforms,
+            output_shape=tf.cast([height, width], tf.int32),
+            interpolation="BILINEAR", # Perfect for smooth 8-bit thermal gradients
+            fill_mode="CONSTANT" ,      # Eliminates the artificial black corner artifacts
+            fill_value = 0.0
+        )
+
+        return rotated_sequence
 
 def read_tfrecord(
     example,
