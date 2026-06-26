@@ -562,7 +562,7 @@ def get_data(source_file, excluded_tags, pad_values, extra_args):
                             scaled_h = max(1, round(content_region.height * scale))
                             
                             cropped_frame.resize(
-                                (scaled_h, scaled_w),                               
+                                (scaled_w, scaled_h),
                                 interpolation=cv2.INTER_AREA,
                             )
                             pad_top = max(

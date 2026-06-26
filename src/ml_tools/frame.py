@@ -259,7 +259,7 @@ class Frame:
     def resize(self, dim,interpolation = cv2.INTER_NEAREST):
         self.thermal = resize_cv(self.thermal, dim,interpolation=interpolation)
         self.filtered = resize_cv(self.filtered,dim, interpolation=interpolation)
-        self.thermal_norm = resize_cv(self.filtered,dim, interpolation=interpolation)
+        self.thermal_norm = resize_cv(self.thermal_norm,dim, interpolation=interpolation)
         if self.mask is not None:
             self.mask = resize_cv(self.mask, dim, interpolation=interpolation)
 
