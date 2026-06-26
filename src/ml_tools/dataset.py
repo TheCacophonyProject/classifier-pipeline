@@ -224,7 +224,7 @@ class Dataset:
         )
         sample_id = 1
         import psutil
-        if num_processes:
+        if num_processes is None:
             num_processes = psutil.cpu_count(logical=False)
 
         with Pool(processes=num_processes) as pool:
