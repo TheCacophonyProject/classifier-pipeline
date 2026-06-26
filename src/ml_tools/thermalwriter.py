@@ -189,7 +189,6 @@ def create_tf_example(sample, data, features, labels, country_code):
     
 
     avg_mass = int(round(sample.mass / len(sample.frame_numbers)))
-    logging.info("Saving roi %s %s",roi.ravel(), means.ravel())
     feature_dict = {
         "image/roi": tfrecord_util.bytes_feature(roi.ravel().tobytes()),
         "image/means": tfrecord_util.float_list_feature(means.ravel()),

@@ -342,17 +342,18 @@ def randomized_balance_filter(image, label, keep_probs):
 class RandomRotationPerChannelFill(tf.keras.layers.Layer):
     def __init__(self, factor, **kwargs):
         super().__init__(**kwargs)
-        # self._fill_tensor = tf.constant(fill_values, dtype=tf.float32)
         self._rotation = SequenceRotation(
             factor
         )
 
-    def call(self, inputs, training=False):
-        # rotated = self._rotation(inputs - self._fill_tensor, training=training)
-        rotated = self._rotation(inputs, training=training)
-
-        return rotated
-        # + self._fill_tensor
+    def call(self, inputs, fill_values, training=False):
+        # fill_values: [num_frames, channels] per-frame mean for each channel.
+        # ImageProjectiveTransformV3 only takes a single scalar fill_value, so
+        # shift by the mean, rotate with a CONSTANT 0 fill, then shift back -
+        # areas rotated into view land exactly on the per-frame channel mean.
+        fill = fill_values[:, tf.newaxis, tf.newaxis, :]
+        rotated = self._rotation(inputs - fill, training=training)
+        return rotated + fill
 
 
 data_augmentation = tf.keras.Sequential(
@@ -405,17 +406,26 @@ class SequenceRotation(tf.keras.layers.Layer):
         # Stack into the required 8-element projective transform vector
         transforms = tf.stack([a0, a1, a2, b0, b1, b2, tf.zeros_like(a0), tf.zeros_like(a0)], axis=1)
 
-        # 5. Rotate all frames simultaneously using BILINEAR & REFLECT
+        # 5. Rotate all frames simultaneously using BILINEAR & a CONSTANT 0 fill.
+        # The caller (RandomRotationPerChannelFill) shifts by the per-channel
+        # mean beforehand so this 0 fill lands on the right value once shifted back.
         rotated_sequence = tf.raw_ops.ImageProjectiveTransformV3(
             images=inputs,  # Direct (25, 32, 32, channels) input
             transforms=transforms,
             output_shape=tf.cast([height, width], tf.int32),
             interpolation="BILINEAR", # Perfect for smooth 8-bit thermal gradients
-            fill_mode="NEAREST" ,      # Eliminates the artificial black corner artifacts
-            fill_value = 0.0 #not used but needs to be here
+            fill_mode="CONSTANT",
+            fill_value=0.0,
         )
 
         return rotated_sequence
+
+# order the "image/means" feature is written in, see thermalwriter.py create_tf_example
+MEANS_CHANNEL_ORDER = [
+    TrackChannels.thermal.name,
+    TrackChannels.filtered.name,
+    TrackChannels.thermal_norm.name,
+]
 
 def read_tfrecord(
     example,
@@ -490,11 +500,14 @@ def read_tfrecord(
     example = tf.io.parse_single_example(example, tfrecord_format)
     record_frames = example["image/num_frames"]
     frame_indices = example["image/frame_numbers"]
-    means = example["image/frame_numbers"]
+    means = example["image/means"]
 
     regions = tf.io.decode_raw(example["image/roi"], out_type=tf.uint8)
     regions = tf.reshape(regions,[record_frames,4])
-    means = tf.reshape(means,[record_frames])
+    # written as [thermal, filtered, thermal_norm] per frame, see thermalwriter.py
+    means = tf.reshape(means, [record_frames, 3])
+    mean_indices = [MEANS_CHANNEL_ORDER.index(c) for c in channels]
+    frame_means = tf.gather(means, mean_indices, axis=1) * 255.0
 
     print("Regions are",regions)
     record_frames = tf.cast(record_frames, tf.int32)
@@ -533,13 +546,14 @@ def read_tfrecord(
         if augment:
             logging.info("Augmenting")
 
-            rgb_image = rotation_augmentation(rgb_image, training=True)
+            rgb_image = rotation_augmentation(rgb_image, frame_means, training=True)
             random_value = tf.random.uniform(
                 shape=[], minval=0.0, maxval=1.0, dtype=tf.float32
             )
 
             if tf.greater(random_value, 0.5):
                 rgb_image = tf.image.flip_left_right(rgb_image)
+
 
             rgb_image = tf.image.random_crop(
                 rgb_image, size=[record_frames, mosaic_size, mosaic_size, 3]
@@ -773,7 +787,7 @@ def main():
     #     if l not in ["mustelid", "deer", "sheep"]:
     #         excluded_labels.append(l)
 
-    include_track = True
+    include_track = False
     if "weka" not in labels:
         labels.append("weka")
     if "chicken" not in labels:
@@ -795,11 +809,11 @@ def main():
     )
     resampled_ds, epoch_size = get_dataset(
         load_dataset,
-        training_folder / "test",
+        training_folder / "validation",
         labels,
         batch_size=32,
         image_size=(160, 160),
-        augment=False,
+        augment=True,
         shuffle=False,
         include_features=False,
         remapped_labels=get_remapped(multi_label=True),
