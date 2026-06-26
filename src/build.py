@@ -79,6 +79,12 @@ def parse_args():
         default=None,
         help="Seed to use for randomness, this will make predictions the same every run on a file",
     )
+    parser.add_argument(
+        "--cores",
+        type=int,
+        default=None,
+        help="Defaults to number of cores",
+    )
 
     parser.add_argument(
         "pad_values",
@@ -87,6 +93,8 @@ def parse_args():
         help="Values to use to pad difference channels of our image, these are based of calculating the mean border pixel values of all our data (thermal, thermal_norm,filtered)",
     )
     args = parser.parse_args()
+    args.pad_values = np.float32(args.pad_values)
+    args.pad_values = MeanData(thermal = args.pad_values[0],thermal_norm = args.pad_values[1],filtered= args.pad_values[2])
     if args.date:
         # if args.date == "None":
         #     args.date = None
@@ -111,7 +119,6 @@ def parse_args():
         import time
 
         args.seed = int(time.time())
-    args.pad_values = np.float32(args.pad_values)
     logging.info("Loading training set up to %s", args.date)
     return args
 
@@ -754,7 +761,7 @@ def main():
         for dataset in datasets:
             dataset.labels = labels
     else:
-        master_dataset.load_clips(dont_filter_segment=True, seed=args.seed)
+        master_dataset.load_clips(dont_filter_segment=True, seed=args.seed,num_processes = args.cores)
 
         master_dataset.labels.sort()
 
@@ -881,6 +888,7 @@ def main():
             args.pad_values,
             num_shards=100,
             num_frames=dataset.segment_length,
+            num_processes = args.cores,
             **extra_args,
         )
         logging.info("Adding dataset sum %s ", dataset_border_sum)

@@ -77,9 +77,15 @@ def process_job(
                 else:
                     logging.error("Unknown string %s", source_file)
             else:
-                saved_samples, border_data = save_data(
+                result = save_data(
                     source_file, excluded_tags, writer, labels, pad_values, extra_args
                 )
+                if result is None:
+                    logging.error("No result returned from save data")
+                    
+                    continue
+                else:
+                    saved_samples, border_data = result
 
                 saved += saved_samples
                 files += 1
@@ -103,6 +109,7 @@ def create_tf_records(
     pad_values,
     num_shards=1,
     augment=False,
+    num_processes = None,
     **extra_args,
 ):
     output_path = Path(output_path)
@@ -119,8 +126,8 @@ def create_tf_records(
     logging.info(
         "writing to output path: %s for %s recordings", output_path, len(source_files)
     )
-
-    num_processes = psutil.cpu_count(logical=False)
+    if num_processes is None:
+        num_processes = psutil.cpu_count(logical=False)
     logging.info("Using %s processes", num_processes)
     writer_i = 0
     index = 0

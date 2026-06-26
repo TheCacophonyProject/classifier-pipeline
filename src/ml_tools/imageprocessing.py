@@ -35,8 +35,8 @@ def resize_and_pad(
     width = max(width, 1)
     height = max(height, 1)
 
-    width = min(width, new_dim[0])
-    height = min(height, new_dim[1])
+    width = min(width, new_dim[1])
+    height = min(height, new_dim[0])
 
     if len(frame.shape) == 3:
         resize_dim = (width, height, frame.shape[2])
@@ -65,7 +65,7 @@ def resize_and_pad(
         elif original_region.bottom >= crop_region.bottom:
             offset_y = new_dim[0] - frame_height - edge_offset[3]
             offset_y = max(offset_y, 0)
-
+    
     if len(resized.shape) == 3:
         resized[
             offset_y : offset_y + frame_height, offset_x : offset_x + frame_width, :

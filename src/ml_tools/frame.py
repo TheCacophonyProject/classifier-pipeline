@@ -209,6 +209,7 @@ class Frame:
         edge_offset=(0, 0, 0, 0),
         original_region=None,
         interpolation=cv2.INTER_NEAREST,
+        no_padding =False
     ):
         if self.thermal is not None:
             self.thermal = resize_and_pad(
@@ -255,10 +256,12 @@ class Frame:
                 interpolation=interpolation,
             )
 
-    def resize(self, dim):
-        self.thermal = resize_cv(self.thermal, dim)
-        self.mask = resize_cv(self.mask, dim, interpolation=cv2.INTER_NEAREST)
-        self.filtered = resize_cv(self.filtered, dim)
+    def resize(self, dim,interpolation = cv2.INTER_NEAREST):
+        self.thermal = resize_cv(self.thermal, dim,interpolation=interpolation)
+        self.filtered = resize_cv(self.filtered,dim, interpolation=interpolation)
+        self.thermal_norm = resize_cv(self.filtered,dim, interpolation=interpolation)
+        if self.mask is not None:
+            self.mask = resize_cv(self.mask, dim, interpolation=interpolation)
 
     def rotate(self, degrees):
         if self.thermal is not None:

@@ -209,7 +209,7 @@ def load_dataset(filenames, remap_lookup, labels, args):
     rotation_augmentation = RandomRotationPerChannelFill(
         # Tested at 0.5 and 0.1 seems to work best
         factor=0.1,
-        fill_values=mean_pad_values,
+        # fill_values=mean_pad_values,
     )
     dataset = dataset.map(
         partial(
@@ -340,16 +340,19 @@ def randomized_balance_filter(image, label, keep_probs):
 
 
 class RandomRotationPerChannelFill(tf.keras.layers.Layer):
-    def __init__(self, factor, fill_values, **kwargs):
+    def __init__(self, factor, **kwargs):
         super().__init__(**kwargs)
-        self._fill_tensor = tf.constant(fill_values, dtype=tf.float32)
+        # self._fill_tensor = tf.constant(fill_values, dtype=tf.float32)
         self._rotation = SequenceRotation(
             factor
         )
 
     def call(self, inputs, training=False):
-        rotated = self._rotation(inputs - self._fill_tensor, training=training)
-        return rotated + self._fill_tensor
+        # rotated = self._rotation(inputs - self._fill_tensor, training=training)
+        rotated = self._rotation(inputs, training=training)
+
+        return rotated
+        # + self._fill_tensor
 
 
 data_augmentation = tf.keras.Sequential(
@@ -408,8 +411,8 @@ class SequenceRotation(tf.keras.layers.Layer):
             transforms=transforms,
             output_shape=tf.cast([height, width], tf.int32),
             interpolation="BILINEAR", # Perfect for smooth 8-bit thermal gradients
-            fill_mode="CONSTANT" ,      # Eliminates the artificial black corner artifacts
-            fill_value = 0.0
+            fill_mode="NEAREST" ,      # Eliminates the artificial black corner artifacts
+            fill_value = 0.0 #not used but needs to be here
         )
 
         return rotated_sequence
@@ -459,6 +462,9 @@ def read_tfrecord(
         "image/frame_numbers": tf.io.FixedLenSequenceFeature(
             [], tf.int64, allow_missing=True
         ),
+        "image/roi":  tf.io.FixedLenFeature([], tf.string),
+        "image/means":  tf.io.FixedLenSequenceFeature([], tf.float32,allow_missing=True)
+
     }
 
     if load_images:
@@ -484,6 +490,13 @@ def read_tfrecord(
     example = tf.io.parse_single_example(example, tfrecord_format)
     record_frames = example["image/num_frames"]
     frame_indices = example["image/frame_numbers"]
+    means = example["image/frame_numbers"]
+
+    regions = tf.io.decode_raw(example["image/roi"], out_type=tf.uint8)
+    regions = tf.reshape(regions,[record_frames,4])
+    means = tf.reshape(means,[record_frames])
+
+    print("Regions are",regions)
     record_frames = tf.cast(record_frames, tf.int32)
     if load_images:
         if TrackChannels.thermal_norm.name in channels:
@@ -546,23 +559,24 @@ def read_tfrecord(
         # times = tf.concat([tf.cast(frame_indices,tf.float32), tf.fill([25 - record_frames], -1.0)], axis=0)
 
         # ',times)
-
+        
         if num_frames > 1 and zero_pad:
             pad_size = num_frames - tf.shape(rgb_image)[0]
             ch_r = tf.pad(
                 rgb_image[..., 0:1],
                 [[0, pad_size], [0, 0], [0, 0], [0, 0]],
-                constant_values=mean_pad_values[0],
+                constant_values=0,
+                # mean_pad_values[0],
             )
             ch_g = tf.pad(
                 rgb_image[..., 1:2],
                 [[0, pad_size], [0, 0], [0, 0], [0, 0]],
-                constant_values=mean_pad_values[1],
+                constant_values=0,
             )
             ch_b = tf.pad(
                 rgb_image[..., 2:3],
                 [[0, pad_size], [0, 0], [0, 0], [0, 0]],
-                constant_values=mean_pad_values[2],
+                constant_values=0,
             )
             rgb_image = tf.concat([ch_r, ch_g, ch_b], axis=-1)
             rgb_image = tf.ensure_shape(
@@ -759,7 +773,7 @@ def main():
     #     if l not in ["mustelid", "deer", "sheep"]:
     #         excluded_labels.append(l)
 
-    include_track = False
+    include_track = True
     if "weka" not in labels:
         labels.append("weka")
     if "chicken" not in labels:
@@ -785,7 +799,7 @@ def main():
         labels,
         batch_size=32,
         image_size=(160, 160),
-        augment=True,
+        augment=False,
         shuffle=False,
         include_features=False,
         remapped_labels=get_remapped(multi_label=True),

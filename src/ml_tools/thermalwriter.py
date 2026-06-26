@@ -165,7 +165,7 @@ def create_tf_example(sample, data, features, labels, country_code):
 
     average_dim = [r.area for r in sample.track_bounds]
     average_dim = int(round(np.mean(average_dim) ** 0.5))
-    thermal_raw, filtered, thermal_norm, frame_indices = data
+    thermal_raw, filtered, thermal_norm, frame_indices,roi,means = data
     if len(thermal_raw) == 0:
         return None
     image_id = sample.unique_id
@@ -180,13 +180,20 @@ def create_tf_example(sample, data, features, labels, country_code):
     filtered = np.array(filtered)
     thermal_norm = np.array(thermal_norm)
     frame_indices = np.array(frame_indices)
+    means = np.float32(means)
+
+    roi = np.uint8(roi)
     thermal_key = hashlib.sha256(thermal_raw).hexdigest()
     filtered_key = hashlib.sha256(filtered).hexdigest()
     mask_key = hashlib.sha256(thermal_norm).hexdigest()
+    
 
     avg_mass = int(round(sample.mass / len(sample.frame_numbers)))
-
+    logging.info("Saving roi %s %s",roi.ravel(), means.ravel())
     feature_dict = {
+        "image/roi": tfrecord_util.bytes_feature(roi.ravel().tobytes()),
+        "image/means": tfrecord_util.float_list_feature(means.ravel()),
+
         "image/frame_numbers": tfrecord_util.int64_list_feature(frame_indices),
         "image/filtered": tfrecord_util.int64_feature(1 if sample.filtered else 0),
         "image/avg_mass": tfrecord_util.int64_feature(avg_mass),
@@ -260,12 +267,14 @@ def get_data(source_file, excluded_tags, pad_values, extra_args):
     import cv2
     import math
     from ml_tools.dataset import filter_track
+    pad_values = None
 
     # prepare the sample data for saving
     ENLARGE_FOR_AUGMENT = True
     ADD_FEATURES = False
     THERMAL_MIN_KV = 27315
     THERMAL_MAX_KV = 31515  # 42 celcius
+    BACKGROUND_THRESH = 150 #lepton3.5
     mosaic_dim = extra_args.get("mosaic_dim")
     border_pixels = BorderData()
     data = []
@@ -299,7 +308,6 @@ def get_data(source_file, excluded_tags, pad_values, extra_args):
             if not filter_track(track, excluded_tags)
         ]
         for track in clip_meta.tracks:
-
             thermal_min = 0
             by_frame_number = {}
             thermal_max_diff = None
@@ -359,13 +367,13 @@ def get_data(source_file, excluded_tags, pad_values, extra_args):
                 assert len(set(sample.frame_indices)) == len(
                     sample.frame_indices
                 ), "Frame indices must be unique"
-
                 thermalNorm = []
                 thermalRaw = []  # np.empty(len(frames), dtype=object)
                 filtered = []  # np.empty(len(frames), dtype=object)
                 frame_indices = []
+                roi = []
+                means = []
                 for frame_number in sample.frame_indices:
-
                     # no need to do work twice
                     if frame_number not in used_frames:
                         frame = db.frames[frame_number]
@@ -485,12 +493,14 @@ def get_data(source_file, excluded_tags, pad_values, extra_args):
                                 a_max=None,
                                 out=cropped_frame.filtered,
                             )
+                        
                         cropped_frame.filtered, stats = normalize(
                             cropped_frame.filtered
                         )
 
                         if not stats[0]:
                             continue
+                        
 
                         cropped_frame.filtered = exposure.equalize_adapthist(
                             cropped_frame.filtered,
@@ -528,36 +538,82 @@ def get_data(source_file, excluded_tags, pad_values, extra_args):
                             border_pixels.thermal_norm.extend(thermal_norm_border)
                             border_pixels.filtered.extend(filtered_border)
 
+
+
+
                         # apply paddings
-                        if (
+                        needs_pad = (
                             pad_top > 0
                             or pad_left > 0
                             or content_region.width < new_width
                             or content_region.height < new_height
-                        ):
+                        )
+                        needs_resize = (
+                            cropped_frame.region.width > resize_dim
+                            or cropped_frame.region.height > resize_dim
+                        )
+                        if needs_resize:
+                            # resize the real content first, then pad - padding
+                            # the full (new_height, new_width) canvas before
+                            # resizing would resize the border padding along with
+                            # the real content, so shrink the canvas size and
+                            # offsets by the same scale the content is resized by
+                            scale = resize_dim / max(new_width, new_height)
+                            scaled_w = max(1, round(content_region.width * scale))
+                            scaled_h = max(1, round(content_region.height * scale))
+                            
+                            cropped_frame.resize(
+                                (scaled_h, scaled_w),                               
+                                interpolation=cv2.INTER_AREA,
+                            )
+                            pad_top = max(
+                                0, min(round(pad_top * scale), resize_dim - scaled_h)
+                            )
+                            pad_left = max(
+                                0, min(round(pad_left * scale), resize_dim - scaled_w)
+                            )
+                            new_height = resize_dim
+                            new_width = resize_dim
+                            # the resize may already have landed exactly on
+                            # (resize_dim, resize_dim) with no offset (eg. a
+                            # square content_region with no pad_top/pad_left),
+                            # in which case there's nothing left to pad
+                            needs_pad = (
+                                pad_top > 0
+                                or pad_left > 0
+                                or scaled_w < new_width
+                                or scaled_h < new_height
+                            )
+
+                        # this is the offset in the final image of our actual image
+                        h, w = cropped_frame.thermal.shape[:2]
+                        data_region = [pad_left, pad_top, w, h]
+                        mean_value = BorderData(
+                            thermal=thermal_border,
+                            thermal_norm=thermal_norm_border,
+                            filtered=filtered_border,
+                        ).mean().mean()
+                        # logging.info("Mean border data is %s from filtered %s",mean_value, filtered_border)
+
+                        # i dont think this will happen
+                        if len(thermal_border) ==0:
+                            logging.info("NO thermal border so using 10% quartile")
+                            mean_value = MeanData( np.quantile(cropped_frame.thermal,0.1), np.quantile(cropped_frame.filtered, 0.1), np.quantile(cropped_frame.thermal_norm, 0.1))
+                        
+                        if needs_pad:
+                            threshold = mean_value.filtered
                             # pad processed content to final size with the animal centred
-                            pad_frame(
+                            repeat_border(
                                 cropped_frame,
                                 new_height,
                                 new_width,
                                 pad_top,
                                 pad_left,
-                                pad_values,
+                                threshold,
+                                mean_value,
                             )
                             # logging.info("Padded is now %s",cropped_frame.thermal.shape)
-                        if (
-                            cropped_frame.region.width > resize_dim
-                            or cropped_frame.region.height > resize_dim
-                        ):
-                            # downsize (resize_and_pad handles centering to resize_dim)
-                            cropped_frame.resize_with_aspect(
-                                (resize_dim, resize_dim),
-                                crop_rectangle,
-                                keep_edge=False,
-                                edge_offset=(7, 7, 6, 6),
-                                original_region=region,
-                                interpolation=cv2.INTER_AREA,
-                            )
+
 
                     else:
                         cropped_frame, _ = by_frame_number[frame_number]
@@ -575,15 +631,18 @@ def get_data(source_file, excluded_tags, pad_values, extra_args):
                         filtered.append(cropped_frame.filtered)
                         thermalRaw.append(cropped_frame.thermal)
                         thermalNorm.append(cropped_frame.thermal_norm)
+                        roi.append(data_region)
+                        means.append([mean_value.thermal,mean_value.filtered,mean_value.thermal_norm])
                         frame_indices.append(frame_number)
                 thermalRaw = np.array(thermalRaw)
                 filtered = np.array(filtered)
                 thermalNorm = np.array(thermalNorm)
+                roi = np.array(roi)
 
                 data.append(
                     (
                         sample,
-                        (thermalRaw, filtered, thermalNorm, frame_indices),
+                        (thermalRaw, filtered, thermalNorm, frame_indices,roi,means),
                         features,
                     )
                 )
@@ -592,6 +651,112 @@ def get_data(source_file, excluded_tags, pad_values, extra_args):
         return None
     return (data, clip_meta.country_code, border_pixels)
 
+
+
+def repeat_with_thresh(border, filtered_thresh):
+    """For each position in border, find the index of the pixel that should be
+    repeated into it, skipping over runs where the value is over filtered_thresh
+    (possible animal on border). -1 means no valid pixel was found to use."""
+    indices = np.full(len(border), -1, dtype=int)
+    prev_idx = None
+    fill_from = None
+    # logging.info("Repeat with thresh %s border %s",filtered_thresh, border)
+    for i, val in enumerate(border):
+        if val > filtered_thresh or val ==-1:
+            if prev_idx is not None:
+                indices[i] = prev_idx
+            elif fill_from is None:
+                fill_from = i
+        else:
+            if fill_from is not None:
+                indices[fill_from:i] = i
+                # logging.info("Filling border %s with values %s",fill_from,val)
+
+                fill_from = None
+            indices[i] = i
+            prev_idx = i
+            # logging.info("Filling border %s with %s",i,val)
+    return indices
+
+
+def gather_border(values, indices, default_val):
+    """Builds a border using indices (as returned by repeat_with_thresh),
+    falling back to default_val wherever indices is -1."""
+    border_fill = np.full_like(values, default_val)
+    valid = indices >= 0
+    border_fill[valid] = values[indices[valid]]
+    return border_fill
+
+def repeat_border(frame, new_height, new_width, top, left, filtered_thresh, pad_values):
+    """Pad channels to (new_height, new_width), placing existing content at (top, left)."""
+    h, w = frame.thermal.shape[:2]
+
+    padded_thermal = np.full(
+        (new_height, new_width), -1, dtype=frame.thermal.dtype
+    )
+    padded_thermal[top : top + h, left : left + w] = frame.thermal
+
+    padded_thermal_norm = np.full(
+        (new_height, new_width), -1, dtype=frame.thermal_norm.dtype
+    )
+    padded_thermal_norm[top : top + h, left : left + w] = frame.thermal_norm
+
+    padded_filtered = np.full((new_height, new_width), -1, dtype=frame.filtered.dtype)
+    padded_filtered[top : top + h, left : left + w] = frame.filtered
+
+    channels = (
+        (padded_thermal, pad_values.thermal),
+        (padded_thermal_norm, pad_values.thermal_norm),
+        (padded_filtered, pad_values.filtered),
+    )
+    # pad each side with its repeated border instead of the flat pad value, unless
+    # the border itself contains an animal there. Which pixel index to repeat is
+    # always decided from the filtered channel; thermal and thermal_norm reuse
+    # those same indices against their own values. Processed left, top, right,
+    # bottom in that order so each side's full-length fill picks up the previous
+    # sides' fills already sitting in its corners.
+    pad_left = left > 0
+    if pad_left:
+        indices = repeat_with_thresh(padded_filtered[:, left], filtered_thresh)
+        for padded, default_val in channels:
+            border_fill = gather_border(padded[:, left], indices, default_val)
+            padded[:, :left] = border_fill[:, np.newaxis]
+
+    pad_top = top > 0
+    if pad_top:
+        indices = repeat_with_thresh(padded_filtered[top, :], filtered_thresh)
+        for padded, default_val in channels:
+            border_fill = gather_border(padded[top, :], indices, default_val)
+            padded[:top, :] = border_fill[np.newaxis, :]
+
+    pad_right = left + w < new_width
+    if pad_right:
+        indices = repeat_with_thresh(padded_filtered[:, left + w - 1], filtered_thresh)
+        for padded, default_val in channels:
+            border_fill = gather_border(padded[:, left + w - 1], indices, default_val)
+            padded[:, left + w :] = border_fill[:, np.newaxis]
+
+    pad_bottom = top + h < new_height
+    if pad_bottom:
+        indices = repeat_with_thresh(padded_filtered[top + h - 1, :], filtered_thresh)
+        for padded, default_val in channels:
+            border_fill = gather_border(padded[top + h - 1, :], indices, default_val)
+            padded[top + h :, :] = border_fill[np.newaxis, :]
+
+    frame.thermal = padded_thermal
+    frame.thermal_norm = padded_thermal_norm
+    frame.filtered = padded_filtered
+
+    # if np.any(frame.filtered==0):
+    #     import cv2
+    #     image = np.uint8(frame.filtered *255)
+    #     cv2.imshow("f",image)
+    #     cv2.waitKey()
+    assert np.all(frame.thermal >-1)
+    assert np.all(frame.filtered >-1)
+    assert np.all(frame.thermal_norm >-1)
+    assert np.amax(frame.filtered)<1.1,"filtered is normalized 0-1"
+    assert filtered_thresh < 1, " thresh should be less than 1 too"
 
 def pad_frame(frame, new_height, new_width, top, left, pad_values):
     """Pad channels to (new_height, new_width), placing existing content at (top, left)."""

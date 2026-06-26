@@ -189,6 +189,7 @@ class Dataset:
         after_date=None,
         label=None,
         dont_filter_segment=False,
+        num_processes = None,
         seed=None,
     ):
         """
@@ -223,8 +224,8 @@ class Dataset:
         )
         sample_id = 1
         import psutil
-
-        num_processes = psutil.cpu_count(logical=False)
+        if num_processes:
+            num_processes = psutil.cpu_count(logical=False)
 
         with Pool(processes=num_processes) as pool:
             for clip_header, filtered_stats in pool.imap_unordered(
