@@ -94,7 +94,11 @@ def parse_args():
     )
     args = parser.parse_args()
     args.pad_values = np.float32(args.pad_values)
-    args.pad_values = MeanData(thermal = args.pad_values[0],thermal_norm = args.pad_values[1],filtered= args.pad_values[2])
+    args.pad_values = MeanData(
+        thermal=args.pad_values[0],
+        thermal_norm=args.pad_values[1],
+        filtered=args.pad_values[2],
+    )
     if args.date:
         # if args.date == "None":
         #     args.date = None
@@ -761,7 +765,9 @@ def main():
         for dataset in datasets:
             dataset.labels = labels
     else:
-        master_dataset.load_clips(dont_filter_segment=True, seed=args.seed,num_processes = args.cores)
+        master_dataset.load_clips(
+            dont_filter_segment=True, seed=args.seed, num_processes=args.cores
+        )
 
         master_dataset.labels.sort()
 
@@ -888,7 +894,7 @@ def main():
             args.pad_values,
             num_shards=100,
             num_frames=dataset.segment_length,
-            num_processes = args.cores,
+            num_processes=args.cores,
             **extra_args,
         )
         logging.info("Adding dataset sum %s ", dataset_border_sum)

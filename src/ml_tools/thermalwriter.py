@@ -165,7 +165,7 @@ def create_tf_example(sample, data, features, labels, country_code):
 
     average_dim = [r.area for r in sample.track_bounds]
     average_dim = int(round(np.mean(average_dim) ** 0.5))
-    thermal_raw, filtered, thermal_norm, frame_indices,roi,means = data
+    thermal_raw, filtered, thermal_norm, frame_indices, roi, means = data
     if len(thermal_raw) == 0:
         return None
     image_id = sample.unique_id
@@ -186,13 +186,11 @@ def create_tf_example(sample, data, features, labels, country_code):
     thermal_key = hashlib.sha256(thermal_raw).hexdigest()
     filtered_key = hashlib.sha256(filtered).hexdigest()
     mask_key = hashlib.sha256(thermal_norm).hexdigest()
-    
 
     avg_mass = int(round(sample.mass / len(sample.frame_numbers)))
     feature_dict = {
         "image/roi": tfrecord_util.bytes_feature(roi.ravel().tobytes()),
         "image/means": tfrecord_util.float_list_feature(means.ravel()),
-
         "image/frame_numbers": tfrecord_util.int64_list_feature(frame_indices),
         "image/filtered": tfrecord_util.int64_feature(1 if sample.filtered else 0),
         "image/avg_mass": tfrecord_util.int64_feature(avg_mass),
@@ -266,6 +264,7 @@ def get_data(source_file, excluded_tags, pad_values, extra_args):
     import cv2
     import math
     from ml_tools.dataset import filter_track
+
     pad_values = None
 
     # prepare the sample data for saving
@@ -273,7 +272,7 @@ def get_data(source_file, excluded_tags, pad_values, extra_args):
     ADD_FEATURES = False
     THERMAL_MIN_KV = 27315
     THERMAL_MAX_KV = 31515  # 42 celcius
-    BACKGROUND_THRESH = 150 #lepton3.5
+    BACKGROUND_THRESH = 150  # lepton3.5
     mosaic_dim = extra_args.get("mosaic_dim")
     border_pixels = BorderData()
     data = []
@@ -492,14 +491,13 @@ def get_data(source_file, excluded_tags, pad_values, extra_args):
                                 a_max=None,
                                 out=cropped_frame.filtered,
                             )
-                        
+
                         cropped_frame.filtered, stats = normalize(
                             cropped_frame.filtered
                         )
 
                         if not stats[0]:
                             continue
-                        
 
                         cropped_frame.filtered = exposure.equalize_adapthist(
                             cropped_frame.filtered,
@@ -537,9 +535,6 @@ def get_data(source_file, excluded_tags, pad_values, extra_args):
                             border_pixels.thermal_norm.extend(thermal_norm_border)
                             border_pixels.filtered.extend(filtered_border)
 
-
-
-
                         # apply paddings
                         needs_pad = (
                             pad_top > 0
@@ -560,7 +555,7 @@ def get_data(source_file, excluded_tags, pad_values, extra_args):
                             scale = resize_dim / max(new_width, new_height)
                             scaled_w = max(1, round(content_region.width * scale))
                             scaled_h = max(1, round(content_region.height * scale))
-                            
+
                             cropped_frame.resize(
                                 (scaled_w, scaled_h),
                                 interpolation=cv2.INTER_AREA,
@@ -587,18 +582,26 @@ def get_data(source_file, excluded_tags, pad_values, extra_args):
                         # this is the offset in the final image of our actual image
                         h, w = cropped_frame.thermal.shape[:2]
                         data_region = [pad_left, pad_top, w, h]
-                        mean_value = BorderData(
-                            thermal=thermal_border,
-                            thermal_norm=thermal_norm_border,
-                            filtered=filtered_border,
-                        ).mean().mean()
+                        mean_value = (
+                            BorderData(
+                                thermal=thermal_border,
+                                thermal_norm=thermal_norm_border,
+                                filtered=filtered_border,
+                            )
+                            .mean()
+                            .mean()
+                        )
                         # logging.info("Mean border data is %s from filtered %s",mean_value, filtered_border)
 
                         # i dont think this will happen
-                        if len(thermal_border) ==0:
+                        if len(thermal_border) == 0:
                             logging.info("NO thermal border so using 10% quartile")
-                            mean_value = MeanData( np.quantile(cropped_frame.thermal,0.1), np.quantile(cropped_frame.filtered, 0.1), np.quantile(cropped_frame.thermal_norm, 0.1))
-                        
+                            mean_value = MeanData(
+                                np.quantile(cropped_frame.thermal, 0.1),
+                                np.quantile(cropped_frame.filtered, 0.1),
+                                np.quantile(cropped_frame.thermal_norm, 0.1),
+                            )
+
                         if needs_pad:
                             threshold = mean_value.filtered
                             # pad processed content to final size with the animal centred
@@ -612,7 +615,6 @@ def get_data(source_file, excluded_tags, pad_values, extra_args):
                                 mean_value,
                             )
                             # logging.info("Padded is now %s",cropped_frame.thermal.shape)
-
 
                     else:
                         cropped_frame, _ = by_frame_number[frame_number]
@@ -631,7 +633,13 @@ def get_data(source_file, excluded_tags, pad_values, extra_args):
                         thermalRaw.append(cropped_frame.thermal)
                         thermalNorm.append(cropped_frame.thermal_norm)
                         roi.append(data_region)
-                        means.append([mean_value.thermal,mean_value.filtered,mean_value.thermal_norm])
+                        means.append(
+                            [
+                                mean_value.thermal,
+                                mean_value.filtered,
+                                mean_value.thermal_norm,
+                            ]
+                        )
                         frame_indices.append(frame_number)
                 thermalRaw = np.array(thermalRaw)
                 filtered = np.array(filtered)
@@ -641,7 +649,7 @@ def get_data(source_file, excluded_tags, pad_values, extra_args):
                 data.append(
                     (
                         sample,
-                        (thermalRaw, filtered, thermalNorm, frame_indices,roi,means),
+                        (thermalRaw, filtered, thermalNorm, frame_indices, roi, means),
                         features,
                     )
                 )
@@ -649,7 +657,6 @@ def get_data(source_file, excluded_tags, pad_values, extra_args):
         logging.error("Cant get Samples for %s", source_file, exc_info=True)
         return None
     return (data, clip_meta.country_code, border_pixels)
-
 
 
 def repeat_with_thresh(border, filtered_thresh):
@@ -661,7 +668,7 @@ def repeat_with_thresh(border, filtered_thresh):
     fill_from = None
     # logging.info("Repeat with thresh %s border %s",filtered_thresh, border)
     for i, val in enumerate(border):
-        if val > filtered_thresh or val ==-1:
+        if val > filtered_thresh or val == -1:
             if prev_idx is not None:
                 indices[i] = prev_idx
             elif fill_from is None:
@@ -686,13 +693,12 @@ def gather_border(values, indices, default_val):
     border_fill[valid] = values[indices[valid]]
     return border_fill
 
+
 def repeat_border(frame, new_height, new_width, top, left, filtered_thresh, pad_values):
     """Pad channels to (new_height, new_width), placing existing content at (top, left)."""
     h, w = frame.thermal.shape[:2]
 
-    padded_thermal = np.full(
-        (new_height, new_width), -1, dtype=frame.thermal.dtype
-    )
+    padded_thermal = np.full((new_height, new_width), -1, dtype=frame.thermal.dtype)
     padded_thermal[top : top + h, left : left + w] = frame.thermal
 
     padded_thermal_norm = np.full(
@@ -751,11 +757,12 @@ def repeat_border(frame, new_height, new_width, top, left, filtered_thresh, pad_
     #     image = np.uint8(frame.filtered *255)
     #     cv2.imshow("f",image)
     #     cv2.waitKey()
-    assert np.all(frame.thermal >-1)
-    assert np.all(frame.filtered >-1)
-    assert np.all(frame.thermal_norm >-1)
-    assert np.amax(frame.filtered)<1.1,"filtered is normalized 0-1"
+    assert np.all(frame.thermal > -1)
+    assert np.all(frame.filtered > -1)
+    assert np.all(frame.thermal_norm > -1)
+    assert np.amax(frame.filtered) < 1.1, "filtered is normalized 0-1"
     assert filtered_thresh < 1, " thresh should be less than 1 too"
+
 
 def pad_frame(frame, new_height, new_width, top, left, pad_values):
     """Pad channels to (new_height, new_width), placing existing content at (top, left)."""

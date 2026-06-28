@@ -928,7 +928,7 @@ def main():
                     else "val_acc.weights.h5"
                 )
                 weights = [
-                    "final",
+                    model_file,  # that will be final
                     model_file.parent / "val_loss.weights.h5",
                     model_file.parent / acc,
                 ]
@@ -1001,9 +1001,24 @@ def main():
                 pads=model.pads,
                 tf_mappings=tf_mappings,
             )
+
+            base_confusion_file = Path(args.confusion)
+            base_confusion_file = base_confusion_file.parent / base_confusion_file.stem
             confusion_final = (
                 base_confusion_file.parent / f"{base_confusion_file.stem}-thresholds"
             )
+            if weights is None:
+                logging.info("Using loss weights for thresholds on validation set")
+
+                loss_weights = (model_file.parent / "val_loss.weights.h5",)
+                model.model.load_weights(loss_weights)
+            else:
+                logging.info(
+                    "Using %s weights for thresholds on validation set", weights
+                )
+
+                model.model.load_weights(weights)
+
             thresholds = best_threshold_for_ds(
                 model.model, model.labels, val_dataset, confusion_final
             )
@@ -1014,9 +1029,9 @@ def main():
             thresh_dict = {}
             for label, thresh in zip(model.labels, thresholds):
                 thresh_dict[label] = float(thresh)
-            logging.info("Writing best val thresholds to %s", threshold_out)
+            logging.info("Writing best val thresholds to %s", thresh_dict)
             with threshold_out.open("w") as f:
-                json.dump(thresh_dict)
+                json.dump(thresh_dict, f)
 
             files = base_dir / args.dataset
             dataset, _ = get_dataset(
@@ -1051,9 +1066,13 @@ def main():
             base_confusion_file = Path(args.confusion)
             base_confusion_file = base_confusion_file.parent / base_confusion_file.stem
             for weight in weights:
-                if weight != "final":
-                    logging.info("Loading weights %s", weight)
-                    model.model.load_weights(weight)
+                logging.info("Loading weights %s", weight)
+                model.model.load_weights(weight)
+                if weight.suffix == ".keras":
+                    confusion_final = (
+                        base_confusion_file.parent / f"{base_confusion_file.stem}-final"
+                    )
+                else:
                     weight_name = weight.stem
                     suffix_start = weight_name.index(".weights")
                     weight_name = weight_name[:suffix_start]
@@ -1061,22 +1080,12 @@ def main():
                         base_confusion_file.parent
                         / f"{base_confusion_file.stem}-{weight_name}"
                     )
-                else:
-                    logging.info("Using final weights")
-                    confusion_final = (
-                        base_confusion_file.parent / f"{base_confusion_file.stem}-final"
-                    )
-                if args.best_threshold:
-                    best_threshold_for_ds(
-                        model.model, model.labels, dataset, confusion_final
-                    )
-                else:
-                    model.confusion_tracks(
-                        dataset,
-                        confusion_final,
-                        threshold=args.threshold,
-                        thresholds=thresholds,
-                    )
+                model.confusion_tracks(
+                    dataset,
+                    confusion_final,
+                    threshold=args.threshold,
+                    thresholds_per_label=thresholds,
+                )
 
 
 class LabelGraph:
@@ -1190,7 +1199,7 @@ def best_threshold_for_ds(model, labels, dataset, filename):
     y_pred = []
     for y, pred in pred_per_track.values():
         pred.normalize_score()
-        y_pred.append(pred.class_best_score)
+        confidences.append(pred.class_best_score)
         flat_y.append(y)
         y_pred.append(pred.best_label_index)
     flat_y = np.array(flat_y)

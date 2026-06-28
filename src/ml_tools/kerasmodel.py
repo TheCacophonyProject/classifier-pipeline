@@ -379,7 +379,7 @@ class KerasModel(Interpreter):
                 x = layers.Conv2D(256, (3, 3), activation="swish", padding="same")(x)
             else:
                 input_image = {"input_image": input_image}
-                
+
             x = tf.keras.layers.GlobalAveragePooling2D()(x)
             if self.params.mvm:
                 mvm_inputs = tf.keras.layers.Input((188))
@@ -1219,54 +1219,33 @@ class KerasModel(Interpreter):
             np.save(f, results)
             np.save(f, raw_class_confidences)
 
-        # # thresholds found from best_score for the year of 2025
-        # # new models may require different thresholds
-        # thresholds_per_label = [
-        #     0.46797615,
-        #     0.70631117,
-        #     0.2496017,
-        #     0.96398157,
-        #     0.33895272,
-        #     0.9697655,
-        #     0.35740834,
-        #     0.60906386,
-        #     0.88741493,
-        #     0.02124451,
-        #     0.9998618,
-        #     0.6102594,
-        #     0.5604206,
-        #     0.9881419,
-        #     0.98753905,
-        #     0.987157,
-        # ]
-        thresholds_per_label = np.array(thresholds_per_label)
-        thresholds_per_label[thresholds_per_label < 0.5] = 0.5
+        if thresholds_per_label is not None:
+            thresholds_per_label = np.array(thresholds_per_label)
+            thresholds_per_label[thresholds_per_label < 0.5] = 0.5
 
-        preds = results.copy()
-        for i, threshold in enumerate(thresholds_per_label):
-            pred_mask = preds == i
-            # set these to None
-            conf_mask = confidences < threshold
-            preds[pred_mask & conf_mask] = len(labels) - 1
-        cm = confusion_matrix(true_categories, preds, labels=np.arange(len(labels)))
-        # Log the confusion matrix as an image summary.
-        figure = plot_confusion_matrix(cm, class_names=labels)
-        fscore_file = filename.parent / f"{filename.stem}-fscore"
-        plt.savefig(fscore_file.with_suffix(".png"), format="png")
-        np.save(fscore_file.with_suffix(".npy"), cm)
-
-        thresholds = [threshold]
-        for threshold in thresholds:
             preds = results.copy()
-
-            # set these to None
-            preds[confidences < threshold] = len(labels) - 1
+            for i, lbl_thresh in enumerate(thresholds_per_label):
+                pred_mask = preds == i
+                # set these to None
+                conf_mask = confidences < lbl_thresh
+                preds[pred_mask & conf_mask] = len(labels) - 1
             cm = confusion_matrix(true_categories, preds, labels=np.arange(len(labels)))
             # Log the confusion matrix as an image summary.
             figure = plot_confusion_matrix(cm, class_names=labels)
-            out_file = filename.parent / f"{filename.stem}-{round(100*threshold)}%"
-            plt.savefig(out_file.with_suffix(".png"), format="png")
-            np.save(out_file.with_suffix(".npy"), cm)
+            fscore_file = filename.parent / f"{filename.stem}-fscore"
+            plt.savefig(fscore_file.with_suffix(".png"), format="png")
+            np.save(fscore_file.with_suffix(".npy"), cm)
+
+        preds = results.copy()
+
+        # set these to None
+        preds[confidences < threshold] = len(labels) - 1
+        cm = confusion_matrix(true_categories, preds, labels=np.arange(len(labels)))
+        # Log the confusion matrix as an image summary.
+        figure = plot_confusion_matrix(cm, class_names=labels)
+        out_file = filename.parent / f"{filename.stem}-{round(100*threshold)}%"
+        plt.savefig(out_file.with_suffix(".png"), format="png")
+        np.save(out_file.with_suffix(".npy"), cm)
 
     def confusion_tfrecords(self, dataset, filename):
         true_categories = tf.concat([y for x, y in dataset], axis=0)
@@ -1794,6 +1773,26 @@ class MetaJSONEncoder(json.JSONEncoder):
         return json.JSONEncoder.default(self, obj)
 
 
+# Registered at module level (rather than nested in metrics()) so Keras can
+# resolve them by name when loading a saved model.
+@tf.keras.utils.register_keras_serializable(package="Custom")
+class LogitPrecision(tf.keras.metrics.Precision):
+    def update_state(self, y_true, y_pred, sample_weight=None):
+        return super().update_state(y_true, tf.sigmoid(y_pred), sample_weight)
+
+
+@tf.keras.utils.register_keras_serializable(package="Custom")
+class LogitRecall(tf.keras.metrics.Recall):
+    def update_state(self, y_true, y_pred, sample_weight=None):
+        return super().update_state(y_true, tf.sigmoid(y_pred), sample_weight)
+
+
+@tf.keras.utils.register_keras_serializable(package="Custom")
+class LogitMacroF1(tf.keras.metrics.F1Score):
+    def update_state(self, y_true, y_pred, sample_weight=None):
+        return super().update_state(y_true, tf.sigmoid(y_pred), sample_weight)
+
+
 def metrics(multi_label=True, from_logits=True):
     # 1. Base Accuracy Definition
     if multi_label:
@@ -1816,19 +1815,8 @@ def metrics(multi_label=True, from_logits=True):
 
     # 4. Handle Precision, Recall, and F1Score
     if from_logits:
-        # Create custom wrappers that apply sigmoid before calculation
-        class LogitPrecision(tf.keras.metrics.Precision):
-            def update_state(self, y_true, y_pred, sample_weight=None):
-                return super().update_state(y_true, tf.sigmoid(y_pred), sample_weight)
-
-        class LogitRecall(tf.keras.metrics.Recall):
-            def update_state(self, y_true, y_pred, sample_weight=None):
-                return super().update_state(y_true, tf.sigmoid(y_pred), sample_weight)
-
-        class LogitMacroF1(tf.keras.metrics.F1Score):
-            def update_state(self, y_true, y_pred, sample_weight=None):
-                return super().update_state(y_true, tf.sigmoid(y_pred), sample_weight)
-
+        # Use the module-level Logit* wrappers (apply sigmoid before calculation)
+        # so they remain resolvable when the model is saved/loaded.
         metrics_list.extend(
             [
                 LogitRecall(name="recall"),
@@ -1880,7 +1868,7 @@ class StepWarmupCallback(Callback):
     def on_train_batch_begin(self, batch, logs=None):
         # Only run adjustments during the warmup phase
         if self.global_step < self.total_warmup_steps:
-            # Linear scaling formula
+            # Linear scaling formula2
             lr = (self.global_step / self.total_warmup_steps) * self.target_lr
 
             # Dynamically update the backend float value (safe for ReduceLROnPlateau)

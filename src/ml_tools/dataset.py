@@ -189,7 +189,7 @@ class Dataset:
         after_date=None,
         label=None,
         dont_filter_segment=False,
-        num_processes = None,
+        num_processes=None,
         seed=None,
     ):
         """
@@ -224,6 +224,7 @@ class Dataset:
         )
         sample_id = 1
         import psutil
+
         if num_processes is None:
             num_processes = psutil.cpu_count(logical=False)
 

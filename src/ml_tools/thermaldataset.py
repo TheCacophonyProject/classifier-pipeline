@@ -342,9 +342,7 @@ def randomized_balance_filter(image, label, keep_probs):
 class RandomRotationPerChannelFill(tf.keras.layers.Layer):
     def __init__(self, factor, **kwargs):
         super().__init__(**kwargs)
-        self._rotation = SequenceRotation(
-            factor
-        )
+        self._rotation = SequenceRotation(factor)
 
     def call(self, inputs, fill_values, training=False):
         # fill_values: [num_frames, channels] per-frame mean for each channel.
@@ -364,6 +362,7 @@ data_augmentation = tf.keras.Sequential(
 )
 
 import math
+
 
 class SequenceRotation(tf.keras.layers.Layer):
     def __init__(self, factor, **kwargs):
@@ -391,7 +390,7 @@ class SequenceRotation(tf.keras.layers.Layer):
         # 4. Calculate the transformation matrix elements
         cos_theta = tf.cos(flat_angles)
         sin_theta = tf.sin(flat_angles)
-        
+
         x_offset = (width - 1.0) / 2.0
         y_offset = (height - 1.0) / 2.0
 
@@ -404,7 +403,9 @@ class SequenceRotation(tf.keras.layers.Layer):
         b2 = y_offset - x_offset * sin_theta - y_offset * cos_theta
 
         # Stack into the required 8-element projective transform vector
-        transforms = tf.stack([a0, a1, a2, b0, b1, b2, tf.zeros_like(a0), tf.zeros_like(a0)], axis=1)
+        transforms = tf.stack(
+            [a0, a1, a2, b0, b1, b2, tf.zeros_like(a0), tf.zeros_like(a0)], axis=1
+        )
 
         # 5. Rotate all frames simultaneously using BILINEAR & a CONSTANT 0 fill.
         # The caller (RandomRotationPerChannelFill) shifts by the per-channel
@@ -413,12 +414,13 @@ class SequenceRotation(tf.keras.layers.Layer):
             images=inputs,  # Direct (25, 32, 32, channels) input
             transforms=transforms,
             output_shape=tf.cast([height, width], tf.int32),
-            interpolation="BILINEAR", # Perfect for smooth 8-bit thermal gradients
+            interpolation="BILINEAR",  # Perfect for smooth 8-bit thermal gradients
             fill_mode="CONSTANT",
             fill_value=0.0,
         )
 
         return rotated_sequence
+
 
 # order the "image/means" feature is written in, see thermalwriter.py create_tf_example
 MEANS_CHANNEL_ORDER = [
@@ -426,6 +428,7 @@ MEANS_CHANNEL_ORDER = [
     TrackChannels.filtered.name,
     TrackChannels.thermal_norm.name,
 ]
+
 
 def read_tfrecord(
     example,
@@ -472,9 +475,10 @@ def read_tfrecord(
         "image/frame_numbers": tf.io.FixedLenSequenceFeature(
             [], tf.int64, allow_missing=True
         ),
-        "image/roi":  tf.io.FixedLenFeature([], tf.string),
-        "image/means":  tf.io.FixedLenSequenceFeature([], tf.float32,allow_missing=True)
-
+        "image/roi": tf.io.FixedLenFeature([], tf.string),
+        "image/means": tf.io.FixedLenSequenceFeature(
+            [], tf.float32, allow_missing=True
+        ),
     }
 
     if load_images:
@@ -503,13 +507,13 @@ def read_tfrecord(
     means = example["image/means"]
 
     regions = tf.io.decode_raw(example["image/roi"], out_type=tf.uint8)
-    regions = tf.reshape(regions,[record_frames,4])
+    regions = tf.reshape(regions, [record_frames, 4])
     # written as [thermal, filtered, thermal_norm] per frame, see thermalwriter.py
     means = tf.reshape(means, [record_frames, 3])
     mean_indices = [MEANS_CHANNEL_ORDER.index(c) for c in channels]
     frame_means = tf.gather(means, mean_indices, axis=1) * 255.0
 
-    print("Regions are",regions)
+    print("Regions are", regions)
     record_frames = tf.cast(record_frames, tf.int32)
     if load_images:
         if TrackChannels.thermal_norm.name in channels:
@@ -554,7 +558,6 @@ def read_tfrecord(
             if tf.greater(random_value, 0.5):
                 rgb_image = tf.image.flip_left_right(rgb_image)
 
-
             rgb_image = tf.image.random_crop(
                 rgb_image, size=[record_frames, mosaic_size, mosaic_size, 3]
             )
@@ -573,7 +576,7 @@ def read_tfrecord(
         # times = tf.concat([tf.cast(frame_indices,tf.float32), tf.fill([25 - record_frames], -1.0)], axis=0)
 
         # ',times)
-        
+
         if num_frames > 1 and zero_pad:
             pad_size = num_frames - tf.shape(rgb_image)[0]
             ch_r = tf.pad(

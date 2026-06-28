@@ -82,7 +82,7 @@ def process_job(
                 )
                 if result is None:
                     logging.error("No result returned from save data")
-                    
+
                     continue
                 else:
                     saved_samples, border_data = result
@@ -109,7 +109,7 @@ def create_tf_records(
     pad_values,
     num_shards=1,
     augment=False,
-    num_processes = None,
+    num_processes=None,
     **extra_args,
 ):
     output_path = Path(output_path)
