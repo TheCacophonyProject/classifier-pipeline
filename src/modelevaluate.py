@@ -862,11 +862,11 @@ def main():
         cm = np.load(args.model_score)
         model_score(cm, model_meta["labels"])
         return
-    weights = None
+    weight = None
     if args.model_file:
         model_file = Path(args.model_file)
     if args.weights and args.weights != "final":
-        weights = model_file / args.weights
+        weight = model_file / args.weights
     base_dir = Path(config.base_folder) / "training-data"
     # shredhold from res
     threshold_from_res = True
@@ -921,7 +921,7 @@ def main():
         elif args.dataset:
             model = get_interpreter_from_path(model_file)
 
-            if weights is None:
+            if weight is None:
                 acc = (
                     "val_acc.weights.h5"
                     if model.params.multi_label
@@ -933,7 +933,7 @@ def main():
                     model_file.parent / acc,
                 ]
             else:
-                weights = [weights]
+                weights = [weight]
             model_labels = model.labels.copy()
             model.load_training_meta(base_dir)
             # # model.labels = model_labels
@@ -1007,17 +1007,17 @@ def main():
             confusion_final = (
                 base_confusion_file.parent / f"{base_confusion_file.stem}-thresholds"
             )
-            if weights is None:
+            if weight is None:
                 logging.info("Using loss weights for thresholds on validation set")
 
-                loss_weights = (model_file.parent / "val_loss.weights.h5",)
+                loss_weights = model_file.parent / "val_loss.weights.h5"
                 model.model.load_weights(loss_weights)
             else:
                 logging.info(
                     "Using %s weights for thresholds on validation set", weights
                 )
 
-                model.model.load_weights(weights)
+                model.model.load_weights(weight)
 
             thresholds = best_threshold_for_ds(
                 model.model, model.labels, val_dataset, confusion_final
