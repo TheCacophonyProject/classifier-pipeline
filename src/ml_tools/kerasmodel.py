@@ -271,7 +271,12 @@ class KerasModel(Interpreter):
         return rf
 
     def build_model(
-        self, dense_sizes=None, retrain_from=None, dropout=None, run_name=None
+        self,
+        dense_sizes=None,
+        retrain_from=None,
+        dropout=None,
+        run_name=None,
+        single_input=True,
     ):
         from tensorflow.keras import layers
 
@@ -332,8 +337,7 @@ class KerasModel(Interpreter):
             self.model = self.add_lstm(cnn)
         else:
             # Multi input adding information about the frame number used
-            multi_input = True
-            if multi_input:
+            if not single_input:
                 # --- Input 2: The Timeline Mask Layer (5x5x1) ---
                 mask_input = layers.Input(shape=(5, 5, 1), name="input_mask")
                 input_image = {"input_image": input_image, "input_mask": mask_input}
@@ -377,8 +381,8 @@ class KerasModel(Interpreter):
 
                 # Mix the combined space-time features together
                 x = layers.Conv2D(256, (3, 3), activation="swish", padding="same")(x)
-            else:
-                input_image = {"input_image": input_image}
+            # else:
+            # input_image = {"input_image": input_image}
 
             x = tf.keras.layers.GlobalAveragePooling2D()(x)
             if self.params.mvm:
@@ -487,11 +491,17 @@ class KerasModel(Interpreter):
     def load_model(self):
         if self.run_over_network:
             return
-        logging.info("Loading %s with model weights %s", self.model_file, self.weights)
+        logging.info(
+            "Loading %s with model weights %s without compiling",
+            self.model_file,
+            self.weights,
+        )
         if self.model_file.suffix == ".pb":
-            self.model = tf.keras.models.load_model(self.model_file.parent)
+            self.model = tf.keras.models.load_model(
+                self.model_file.parent, compile=False
+            )
         else:
-            self.model = tf.keras.models.load_model(self.model_file)
+            self.model = tf.keras.models.load_model(self.model_file, compile=False)
 
         self.model.trainable = False
 
@@ -506,6 +516,7 @@ class KerasModel(Interpreter):
         test_results=None,
         rebalance=False,
         fine_tune=None,
+        single_input=False,
     ):
         # create a save point
         if run_name is None:
@@ -515,7 +526,9 @@ class KerasModel(Interpreter):
         run_dir.mkdir(parents=True, exist_ok=True)
 
         self.model.save(str(self.checkpoint_folder / run_name / f"{run_name}.keras"))
-        self.save_metadata(run_name, history, test_results, rebalance, fine_tune)
+        self.save_metadata(
+            run_name, history, test_results, rebalance, fine_tune, single_input
+        )
 
     def save_metadata(
         self,
@@ -524,6 +537,7 @@ class KerasModel(Interpreter):
         test_results=None,
         rebalance=False,
         fine_tune=None,
+        single_input=False,
     ):
         #  save metadata
         if run_name is None:
@@ -531,6 +545,7 @@ class KerasModel(Interpreter):
         model_stats = {}
         model_stats["name"] = self.params.model_name
         model_stats["labels"] = self.labels
+        model_stats["single_input"] = single_input
         model_stats["hyperparams"] = self.params
         model_stats["training_date"] = str(time.time())
         model_stats["version"] = self.VERSION
@@ -660,9 +675,14 @@ class KerasModel(Interpreter):
         resample=False,
         fine_tune=None,
         warm_down=False,
+        single_input=True,
     ):
         logging.info(
-            "%s Training model for %s epochs with weights %s", run_name, epochs, weights
+            "%s Training model for %s epochs with weights %s with single input as: %s",
+            run_name,
+            epochs,
+            weights,
+            single_input,
         )
         tf_mappings = self.init_train(epochs)
 
@@ -702,6 +722,7 @@ class KerasModel(Interpreter):
                 retrain_from=self.params.retrain_layer,
                 dropout=self.params.dropout,
                 run_name=run_name,
+                single_input=single_input,
             )
 
             if weights is not None:
@@ -733,6 +754,7 @@ class KerasModel(Interpreter):
             tf_mappings=tf_mappings,
             downsize_fp=True,
             rebalance=rebalance,
+            single_input=single_input,
         )
         steps = epoch_size // self.params.batch_size
 
@@ -754,6 +776,7 @@ class KerasModel(Interpreter):
             channels=self.params.channels,
             pads=self.pads,
             tf_mappings=tf_mappings,
+            single_input=single_input,
         )
         logging.info(
             "Training on %s  with class weights %s",
@@ -827,6 +850,7 @@ class KerasModel(Interpreter):
                 channels=self.params.channels,
                 pads=self.pads,
                 tf_mappings=tf_mappings,
+                single_input=single_input,
             )
             if self.test:
                 test_accuracy = self.model.evaluate(self.test)
@@ -837,15 +861,18 @@ class KerasModel(Interpreter):
             test_results=test_accuracy,
             rebalance=rebalance,
             fine_tune=fine_tune,
+            single_input=single_input,
         )
 
         if not warm_down and not fine_tune:
             fine_tune_name = f"{run_name}-finetune"
             weights = self.checkpoint_folder / run_name / "val_loss.weights.h5"
 
-            self.warm_down(fine_tune_name, weights, tf_mappings)
+            self.warm_down(
+                fine_tune_name, weights, tf_mappings, single_input=single_input
+            )
 
-    def warm_down(self, run_name, weights, tf_mappings, epochs=5):
+    def warm_down(self, run_name, weights, tf_mappings, epochs=5, single_input=False):
         logging.info(
             "Warming down for 5 epochs with weights %s without augmentation", weights
         )
@@ -874,6 +901,7 @@ class KerasModel(Interpreter):
             pads=self.pads,
             downsize_fp=True,
             tf_mappings=tf_mappings,
+            single_input=single_input,
         )
 
         self.save_metadata(run_name)

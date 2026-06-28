@@ -47,6 +47,7 @@ def train_model(
     fine_tune=None,
     rebalance=False,
     warm_down=False,
+    single_input=False,
 ):
     init_logging()
     """Trains a model with the given hyper parameters."""
@@ -82,6 +83,7 @@ def train_model(
             rebalance=rebalance,
             fine_tune=fine_tune,
             warm_down=warm_down,
+            single_input=single_input,
         )
     except KeyboardInterrupt:
         pass

@@ -40,7 +40,9 @@ def get_distribution(
         true_categories = [y[0] for x, y in dataset]
     else:
         true_categories = [y for x, y in dataset]
-    bird_index = labels.index("bird")
+    bird_index = -1
+    if "bird" in labels:
+        bird_index = labels.index("bird")
     dist = np.zeros((num_labels), dtype=np.float32)
     if len(true_categories) == 0:
         return dist
@@ -258,6 +260,13 @@ def get_dataset(load_function, base_dir, labels, **args):
                 y,
             ),
             num_parallel_calls=tf.data.AUTOTUNE,
+        )
+
+    # doing this early would speed things up but for testing it best performance it wont matter too much
+    if args.get("single_input", False):
+        logging.info("Loading single input")
+        dataset = dataset.map(
+            lambda x, y: (x["input_image"], y), num_parallel_calls=tf.data.AUTOTUNE
         )
 
     dataset = dataset.prefetch(buffer_size=AUTOTUNE)
