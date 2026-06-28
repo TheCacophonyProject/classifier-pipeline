@@ -237,6 +237,7 @@ def load_dataset(filenames, remap_lookup, labels, args):
                     TrackChannels.filtered.name,
                 ],
             ),
+            repeat_frames=args.get("single_input", False),
         ),
         num_parallel_calls=AUTOTUNE,
         deterministic=deterministic,
@@ -452,6 +453,7 @@ def read_tfrecord(
         TrackChannels.thermal_norm.name,
         TrackChannels.filtered.name,
     ],
+    repeat_frames=False,
 ):
     logging.info(
         "Read tf record with image %s lbls %s aug  %s  prepr %s only features %s one hot %s include fetures %s num frames %s mosaic_size %s mosaic_enalrged %s padding %s",
@@ -577,7 +579,7 @@ def read_tfrecord(
 
         # ',times)
 
-        if num_frames > 1 and zero_pad:
+        if num_frames > 1 and not repeat_frames:
             pad_size = num_frames - tf.shape(rgb_image)[0]
             ch_r = tf.pad(
                 rgb_image[..., 0:1],
@@ -601,6 +603,7 @@ def read_tfrecord(
             )
 
         elif num_frames > 1:
+            logging.info("Repeating frames to make 25")
             # this repeats frames to make 25
             actual_frames = tf.shape(rgb_image)[0]
             repeat_indices = tf.random.shuffle(
