@@ -59,6 +59,7 @@ class Dataset:
         # self.samples = []
         self.samples_by_id = {}
         self.clips = []
+        self.tracks = []
 
         # list of label names
         self.labels = labels
@@ -245,6 +246,7 @@ class Dataset:
                         self.add_clip_sample_mappings(sample)
                         if track_header.label not in self.labels:
                             self.labels.append(track_header.label)
+                    self.tracks.append(track_header)
 
     def merge_filtered(self, filtered_stats):
         for reason, count in filtered_stats.items():

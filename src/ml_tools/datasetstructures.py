@@ -216,6 +216,10 @@ class TrackHeader:
         self.samples = []
 
     @property
+    def length_in_seconds(self):
+        return self.num_frames / 9.0
+
+    @property
     def id(self):
         return self.track_id
 

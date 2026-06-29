@@ -89,6 +89,7 @@ def parse_args():
     parser.add_argument(
         "pad_values",
         type=float,
+        default=[0, 0, 0],
         nargs=3,
         help="Values to use to pad difference channels of our image, these are based of calculating the mean border pixel values of all our data (thermal, thermal_norm,filtered)",
     )
@@ -725,6 +726,25 @@ def rough_balance(datasets):
     print_counts(*datasets)
 
 
+def average_track_length(dataset):
+    track_lengths = []
+    length_per_labels = {}
+    for label in dataset.labels:
+        length_per_labels[label] = []
+    for sample in dataset.tracks:
+        if sample.label != "false-positive":
+            track_lengths.append(sample.length_in_seconds)
+        if sample.remapped_label not in length_per_labels:
+            length_per_labels[sample.remapped_label] = []
+        length_per_labels[sample.remapped_label].append(sample.length_in_seconds)
+
+    logging.info(
+        "Track lengths are %s %s ", np.median(track_lengths), np.mean(track_lengths)
+    )
+    for k, v in length_per_labels.items():
+        logging.info("%s lengths are %s %s ", k, np.median(v), np.mean(v))
+
+
 def main():
     init_logging()
     args = parse_args()
@@ -768,7 +788,8 @@ def main():
         master_dataset.load_clips(
             dont_filter_segment=True, seed=args.seed, num_processes=args.cores
         )
-
+        average_track_length(master_dataset)
+        return
         master_dataset.labels.sort()
 
         print("Loaded  found {:.1f}k samples".format(len(master_dataset.clips) / 1000))
@@ -790,7 +811,6 @@ def main():
         print("Splitting data set into train / validation")
 
         datasets = split_randomly(master_dataset, config, args.date, test_clips)
-
         rough_balance(datasets)
         validate_datasets(datasets, test_clips, args.date)
         dump_split_ids(
