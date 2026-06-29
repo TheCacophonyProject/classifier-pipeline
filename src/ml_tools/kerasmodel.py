@@ -279,6 +279,7 @@ class KerasModel(Interpreter):
         single_input=True,
     ):
         from tensorflow.keras import layers
+        from tensorflow import keras
 
         # width = self.params.frame_size
         width = self.params.output_dim[0]
@@ -369,6 +370,19 @@ class KerasModel(Interpreter):
                 image_features = tf.keras.layers.SpatialDropout2D(dropout)(
                     image_features
                 )
+
+                # shifted_mask = mask_input + 1.0
+                # relu_mask = tf.nn.relu(shifted_mask)
+                # binary_presence_gate = tf.math.ceil(relu_mask)
+
+                # 1. Shift the mask natively
+                shifted_mask = mask_input + 1.0
+
+                # 2. Use Keras operations instead of tf.nn / tf.math
+                relu_mask = keras.ops.relu(shifted_mask)
+                binary_presence_gate = keras.ops.ceil(relu_mask)
+
+                image_features = image_features * binary_presence_gate
 
                 combined = layers.Concatenate(name="input_concat")(
                     [image_features, time_embedding]
