@@ -815,11 +815,11 @@ def main():
     )
     resampled_ds, epoch_size = get_dataset(
         load_dataset,
-        training_folder / "validation",
+        training_folder / "test",
         labels,
         batch_size=32,
         image_size=(160, 160),
-        augment=True,
+        augment=False,
         shuffle=False,
         include_features=False,
         remapped_labels=get_remapped(multi_label=True),
@@ -861,7 +861,8 @@ def save_batch(image_batch, label_batch, labels, save_dir, tracks=False):
         track_batch = label_batch[1]
         label_batch = label_batch[0]
     for n, img in enumerate(image_batch):
-        # print("Mask is ",masks[n],frame_indices[n])
+        print("Mask is ",np.mean(masks[n]))
+        # ,frame_indices[n])
         if tracks:
             file_title = (
                 f"{labels[np.argmax(label_batch[n])]}-{track_batch[n]}-{save_index}.png"
@@ -936,21 +937,17 @@ def mask_random_frames(rgb_image, frame_indices, record_frames, min_frames=15):
 
 
 @tf.function
-def get_frame_mask(num_valid, frame_indices, camera_fps=9):
+def get_frame_mask(num_valid, frame_indices):
     """
-    Normalises frame intervals with a fixed 5-minute (300 seconds) ceiling
-    using logarithmic compression. Camera speed is set to 9 FPS.
+    Normalises frame intervals uniformly against a maximum inter-frame distance of 9 frames.
     """
+    # this comes from the random section logic where frames are selected at intervals of 4.32 frames apart
+    #  allowing for a possible missed chunk  double this
+    MAX_FRAME_DIST = 9
 
-    # Establish our fixed 5-minute logarithmic divider ceiling
-    LOG_5MIN_CEILING = tf.math.log1p(300.0)  # log1p(300) equals roughly 5.7071
-
-    # Elapsed seconds between consecutive frames at the given camera FPS
     indices = tf.cast(frame_indices, tf.float32)
-    indices = indices - indices[0]
-    seconds_delta = (indices[1:] - indices[:-1]) / tf.cast(camera_fps, tf.float32)
-    # Apply log1p transformation to handle variation stably, then clip to [0.0, 1.0]
-    normalised_delta = tf.minimum(tf.math.log1p(seconds_delta) / LOG_5MIN_CEILING, 1.0)
+    frame_delta = indices[1:] - indices[:-1]
+    normalised_delta = tf.minimum(frame_delta / MAX_FRAME_DIST, 1.0)
     # Use -1.0 as a strict geometric flag for empty padding slots
     mask_flat = tf.concat(
         [[0.0], normalised_delta, tf.fill([25 - num_valid], -1.0)], axis=0
