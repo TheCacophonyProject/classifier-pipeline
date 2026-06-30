@@ -238,7 +238,7 @@ def print_counts(train, validation, test):
     # display the dataset summary
     for label in train.labels:
         logging.info(
-            "{:<20} {:<20} {:<20}".format(
+            "{:<20} {:<20} {:<20}  {:<20}".format(
                 label,
                 "{}/{}/{}".format(*train.get_counts(label)),
                 "{}/{}/{}".format(*validation.get_counts(label)),
@@ -779,9 +779,10 @@ def main():
         master_dataset.load_clips(
             dont_filter_segment=True, seed=args.seed, num_processes=args.cores
         )
+        
         average_track_length(master_dataset)
         master_dataset.labels.sort()
-
+ 
         print("Loaded  found {:.1f}k samples".format(len(master_dataset.clips) / 1000))
         for key, value in master_dataset.filtered_stats.items():
             if value != 0:

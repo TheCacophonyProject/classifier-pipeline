@@ -1034,8 +1034,8 @@ def get_samples_by_label_urgency(
         ) + 1
         num_windows = min(int(windows_float), max_samples)
         samples_to_take = num_windows
-        stride_offset = windows_float = num_windows
-
+        # the left over frames
+        stride_offset = total_frames % (fps*window_length_seconds/2)
     if label in MODERATE_RARE_LABELS or label in CRITICALLY_RARE_LABELS:
         # no point repeating the same image even if we want more samples
         # taking 25 samples per frame want maybe 1/3 (3 frames) second difference between images
@@ -1070,6 +1070,7 @@ def get_segment_indices(
     mass = 0
     skipped_chunks = 0
     max_chunk_gap = 2
+    stopped_early = False
 
     for chunk in range(chunks):
         start = window_start + int(chunk * chunk_size) + filtered_start
@@ -1106,14 +1107,16 @@ def get_segment_indices(
                 track_id,
             )
             skipped_chunks += 1
-            if skipped_chunks > max_chunk_gap:
+            if skipped_chunks >= max_chunk_gap:
                 logging.warning(
-                    "Could not find  frames that are close enough together for source %s track %s with window start %s for chunk size %s",
+                    "Could not find frames that are close enough together for source %s track %s with window start %s for chunk size %s consecutive skipped chunks %s",
                     source_file,
                     track_id,
                     window_start + start_frame,
                     chunk_size,
+                    skipped_chunks,
                 )
+                stopped_early = True
                 break
             continue
         skipped_chunks = 0
@@ -1124,19 +1127,10 @@ def get_segment_indices(
         segment_frames.append(frame_num)
         seg_regions.append(regions[frame_num - start_frame])
         mass += mass_history[frame_num - start_frame]
+    
 
-        if len(segment_frames) > 1 and frame_num - segment_frames[-1] > chunk_size * 2:
-            logging.warning(
-                "Could not find  frames that are close enough together for source %s track %s with window start %s diff is %s for chunk size %s",
-                source_file,
-                track_id,
-                window_start + start_frame,
-                frame_num - segment_frames[-1],
-                chunk_size,
-            )
-        assert seg_regions[-1].frame_number == frame_num
 
-    return segment_frames, seg_regions, mass, last_index
+    return segment_frames, seg_regions, mass, last_index,stopped_early
 
 
 def random_sections(
@@ -1154,6 +1148,7 @@ def random_sections(
     rec_time,
     seed=None,
 ):
+    min_frames = int(25 / 4.0)
 
     rng = np.random.default_rng(seed=seed)
     chunks = 25
@@ -1169,32 +1164,44 @@ def random_sections(
         label, num_frames, window_length_seconds=12, fps=fps
     )
     window_frames = min(window_length_seconds * fps, num_frames)
-    # logging.info("Window frames are %s",window_frames)
     upsampled = False
+    windows = np.arange(
+        num_windows, num_windows * (window_frames // 2), step=window_frames // 2
+    )
+
+    chunks = min(window_frames, chunks)
+    chunk_size = window_frames / chunks
+
     if samples > num_windows:
         # this is our labels that we have low samples for
-        stride_offset = num_frames // 25
+        extra_samples = samples - num_windows
+        num_repeats =  math.ceil(extra_samples / num_windows)
+        phase_offset = chunk_size// (num_repeats+1)
 
+        # extra samples is 3 and  num windows 2
+        # we should repeat twice
+        extra_windows = np.repeat(windows,num_repeats)
+        extra_windows =extra_windows +  phase_offset
         upsampled = True
-        # 3. Create the pool of available offsets [0, 1, 2, 3, 4]
-        pool = np.arange(stride_offset)
 
-        # 4. Sample WITHOUT replacement
-        offsets = rng.choice(pool, size=samples, replace=False)
-        windows = np.zeros(samples)
-        windows += offsets
+        if stride_offset > 0:
+            choices = np.arange(stride_offset+1)
+            exclude = int(phase_offset)
+            choices = np.concatenate([choices[:exclude], choices[exclude + 1:]])
+            random_offset = rng.choice(choices)   
+
+            windows = windows + random_offset
+        windows = np.concatenate([windows,extra_windows] )
+        
         logging.info(
-            "Low sample resample windows are %s offsets %s stride_offset %s",
+            "%s Low sample resample windows are %s  stride_offset %s",
+            label,
             windows,
-            offsets,
             stride_offset,
         )
     else:
-        windows = np.arange(
-            num_windows, num_windows * (window_frames // 2), step=window_frames // 2
-        )
         if stride_offset > 0:
-            random_offset = rng.integers(low=0, high=stride_offset)
+            random_offset = rng.integers(low=0, high=stride_offset+1)
             windows += random_offset
             # could do separate offset per window but i think this is fine removes need to handle windows being closer than expected
 
@@ -1212,11 +1219,10 @@ def random_sections(
     np.sort(windows)
     chosen_windows = np.sort(chosen_windows)
     chosen_windows = np.concatenate([chosen_windows, windows])
-    chunks = min(window_frames, chunks)
-    chunk_size = window_frames / chunks
+   
 
     for window_start in chosen_windows:
-        segment_frames, seg_regions, mass, last_index = get_segment_indices(
+        segment_frames, seg_regions, mass, last_index,stopped_early = get_segment_indices(
             window_start,
             chunks,
             chunk_size,
@@ -1231,7 +1237,16 @@ def random_sections(
             last_index,
             frame_to_closest_valid,
         )
-        if len(segment_frames) < 9 and num_frames > 9:
+        if stopped_early and  (len(segment_frames) < 25// 2):
+            logging.warning(
+                "Could not find frames that are close enough together for source %s track %s with window start %s  for chunk size %s",
+                source_file,
+                track_id,
+                window_start + start_frame,
+                chunk_size,
+            )
+            continue
+        if len(segment_frames) < min_frames and num_frames > min_frames:
             logging.warning(
                 "Not enough segment frames %s for source %s track %s with window start %s already added %s",
                 len(segment_frames),
