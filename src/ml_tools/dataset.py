@@ -67,6 +67,8 @@ class Dataset:
         self.enable_augmentation = False
         self.label_caps = {}
         self.use_segments = True
+        self.segment_types = [SegmentType.RANDOM_SECTIONS]
+
         if config:
             self.tag_precedence = config.build.tag_precedence
             self.type = config.train.type
@@ -87,7 +89,6 @@ class Dataset:
             self.excluded_tags = config.build.excluded_tags
             self.min_frame_mass = config.build.min_frame_mass
             self.filter_by_lq = config.build.filter_by_lq
-            self.segment_types = [SegmentType.ALL_RANDOM_MASKED]
             self.max_segments = config.build.max_segments
             self.country = config.build.country
             self.max_frames = config.build.max_frames
@@ -104,7 +105,6 @@ class Dataset:
             self.segment_spacing = 1
             self.segment_min_avg_mass = 10
             self.min_frame_mass = 16
-            self.segment_types = [SegmentType.ALL_RANDOM_MASKED]
             self.max_frames = 75
         self.country_rectangle = BuildConfig.COUNTRY_LOCATIONS.get(self.country)
         logging.info(
@@ -178,10 +178,9 @@ class Dataset:
         samples_count = 0
         samples = self.samples_by_label.get(label, [])
         tracks = len(set([sample.track_id for sample in samples]))
-        weight = self.get_label_weight(label)
         bins = len(set([sample.bin_id for sample in samples]))
         samples_count = len(samples)
-        return samples_count, tracks, bins, weight
+        return samples_count, tracks, bins
 
     def load_clips(
         self,
@@ -531,11 +530,6 @@ class Dataset:
     #             mapped_cdf[key] = [x / total for x in cdf]
     #         self.sample_label_cdf = mapped_cdf
 
-    def get_label_weight(self, label):
-        """Returns the total weight for all segments of given label."""
-        samples = self.samples_by_label.get(label)
-        return sum(sample.weight for sample in samples) if samples else 0
-
     def regroup(
         self,
         groups,
@@ -570,6 +564,7 @@ class Dataset:
         return len(self.samples_by_id) > 0
 
     def clear(self):
+        self.tracks.clear()
         self.samples_by_id.clear()
         self.samples_by_bin.clear()
         self.clips.clear()

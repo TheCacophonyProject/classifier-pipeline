@@ -86,20 +86,8 @@ def parse_args():
         help="Defaults to number of cores",
     )
 
-    parser.add_argument(
-        "pad_values",
-        type=float,
-        default=[0, 0, 0],
-        nargs=3,
-        help="Values to use to pad difference channels of our image, these are based of calculating the mean border pixel values of all our data (thermal, thermal_norm,filtered)",
-    )
     args = parser.parse_args()
-    args.pad_values = np.float32(args.pad_values)
-    args.pad_values = MeanData(
-        thermal=args.pad_values[0],
-        thermal_norm=args.pad_values[1],
-        filtered=args.pad_values[2],
-    )
+
     if args.date:
         # if args.date == "None":
         #     args.date = None
@@ -246,15 +234,15 @@ def print_counts(train, validation, test):
         "{:<20} {:<21} {:<21} {:<21}".format("Class", "Train", "Validation", "Test")
     )
     logging.info("-" * 90)
-    logging.info("Samples / Tracks/ Bins/ weight")
+    logging.info("Samples / Tracks/ Bins")
     # display the dataset summary
     for label in train.labels:
         logging.info(
-            "{:<20} {:<20} {:<20} {:<20}".format(
+            "{:<20} {:<20} {:<20}".format(
                 label,
-                "{}/{}/{}/{:.1f}".format(*train.get_counts(label)),
-                "{}/{}/{}/{:.1f}".format(*validation.get_counts(label)),
-                "{}/{}/{}/{:.1f}".format(*test.get_counts(label)),
+                "{}/{}/{}".format(*train.get_counts(label)),
+                "{}/{}/{}".format(*validation.get_counts(label)),
+                "{}/{}/{}".format(*test.get_counts(label)),
             )
         )
     logging.info("")
@@ -664,6 +652,10 @@ def get_mappings():
                     regroup[l] = split_path[-3]
                 else:
                     regroup[l] = split_path[-1]
+    regroup["sambar deer"] = "deer"
+    regroup["grey kangaroo"] = "kangaroo"
+    regroup["brushtail possum"] = "possum"
+
     return regroup
 
 
@@ -757,7 +749,6 @@ def main():
     logging.info("# of test clips are %s", len(test_clips))
     label_mapping = get_mappings()
     logging.info("Using mappings %s", label_mapping)
-    logging.info("Using pad values %s", args.pad_values)
     master_dataset = Dataset(
         args.data_dir,
         "dataset",
@@ -789,7 +780,6 @@ def main():
             dont_filter_segment=True, seed=args.seed, num_processes=args.cores
         )
         average_track_length(master_dataset)
-        return
         master_dataset.labels.sort()
 
         print("Loaded  found {:.1f}k samples".format(len(master_dataset.clips) / 1000))
@@ -911,7 +901,6 @@ def main():
             datasets[0].labels,
             "thermal",
             master_dataset.excluded_tags,
-            args.pad_values,
             num_shards=100,
             num_frames=dataset.segment_length,
             num_processes=args.cores,

@@ -189,6 +189,7 @@ def create_tf_example(sample, data, features, labels, country_code):
 
     avg_mass = int(round(sample.mass / len(sample.frame_numbers)))
     feature_dict = {
+        "image/upsampled": tfrecord_util.int64_feature(sample.upsampled),
         "image/roi": tfrecord_util.bytes_feature(roi.ravel().tobytes()),
         "image/means": tfrecord_util.float_list_feature(means.ravel()),
         "image/frame_numbers": tfrecord_util.int64_list_feature(frame_indices),
@@ -237,8 +238,8 @@ def create_tf_example(sample, data, features, labels, country_code):
     return example
 
 
-def save_data(source_file, excluded_tags, writer, labels, pad_values, extra_args):
-    sample_data = get_data(source_file, excluded_tags, pad_values, extra_args)
+def save_data(source_file, excluded_tags, writer, labels, extra_args):
+    sample_data = get_data(source_file, excluded_tags, extra_args)
     if sample_data is None:
         return 0
     saved = 0
@@ -259,13 +260,11 @@ def save_data(source_file, excluded_tags, writer, labels, pad_values, extra_args
     return (saved, mean_data)
 
 
-def get_data(source_file, excluded_tags, pad_values, extra_args):
+def get_data(source_file, excluded_tags, extra_args):
     from skimage import exposure
     import cv2
     import math
     from ml_tools.dataset import filter_track
-
-    pad_values = None
 
     # prepare the sample data for saving
     ENLARGE_FOR_AUGMENT = True

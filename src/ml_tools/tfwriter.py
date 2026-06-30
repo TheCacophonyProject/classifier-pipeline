@@ -31,7 +31,6 @@ def process_job(
     save_data_name,
     writer_i,
     excluded_tags,
-    pad_values,
     extra_args,
 ):
     import gc
@@ -78,7 +77,7 @@ def process_job(
                     logging.error("Unknown string %s", source_file)
             else:
                 result = save_data(
-                    source_file, excluded_tags, writer, labels, pad_values, extra_args
+                    source_file, excluded_tags, writer, labels, extra_args
                 )
                 if result is None:
                     logging.error("No result returned from save data")
@@ -106,7 +105,6 @@ def create_tf_records(
     labels,
     save_data_name,
     excluded_tags,
-    pad_values,
     num_shards=1,
     augment=False,
     num_processes=None,
@@ -150,7 +148,6 @@ def create_tf_records(
                         save_data_name,
                         writer_i,
                         excluded_tags,
-                        pad_values,
                         extra_args,
                     ),
                 )

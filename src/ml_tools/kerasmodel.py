@@ -371,18 +371,16 @@ class KerasModel(Interpreter):
                     image_features
                 )
 
+                # sounds good in practice but actually gives worse results
+
+                # # 1. Shift the mask natively
                 # shifted_mask = mask_input + 1.0
-                # relu_mask = tf.nn.relu(shifted_mask)
-                # binary_presence_gate = tf.math.ceil(relu_mask)
 
-                # 1. Shift the mask natively
-                shifted_mask = mask_input + 1.0
+                # # 2. Use Keras operations instead of tf.nn / tf.math
+                # relu_mask = keras.ops.relu(shifted_mask)
+                # binary_presence_gate = keras.ops.ceil(relu_mask)
 
-                # 2. Use Keras operations instead of tf.nn / tf.math
-                relu_mask = keras.ops.relu(shifted_mask)
-                binary_presence_gate = keras.ops.ceil(relu_mask)
-
-                image_features = image_features * binary_presence_gate
+                # image_features = image_features * binary_presence_gate
 
                 combined = layers.Concatenate(name="input_concat")(
                     [image_features, time_embedding]
@@ -1203,7 +1201,6 @@ class KerasModel(Interpreter):
         for y_true, pred in pred_per_track.values():
             pred.normalize_score()
             preds = np.array([p.prediction for p in pred.predictions])
-
             # if we do multi label we may of multiple y_true and preds
             # otherwise this will calculate the same as before
             no_smoothing = np.mean(preds, axis=0)
