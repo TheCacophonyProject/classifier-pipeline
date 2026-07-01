@@ -227,23 +227,21 @@ def get_dataset(load_function, base_dir, labels, **args):
             dataset = dataset.take(epoch_size)
     else:
         epoch_size = 1
-    if batch_size is not None:
-        dataset = dataset.batch(batch_size)
 
     augment = args.get("augment", False)
+    # since in 5d apply before batch
     if augment:
         logging.info("Augmenting on batches")
         dataset = dataset.map(
             lambda x, y: (
                 {
-                    "input_image": data_augmentation(x["input_image"], training=True),
+                    "input_image": fastest_sequence_augmentation(x["input_image"]),
                     "input_mask": x["input_mask"],
                 },
                 y,
             ),
             num_parallel_calls=tf.data.AUTOTUNE,
         )
-
     preprocess_fn = args.get("preprocess_fn")
     if preprocess_fn is not None:
         logging.info(
@@ -261,6 +259,8 @@ def get_dataset(load_function, base_dir, labels, **args):
             ),
             num_parallel_calls=tf.data.AUTOTUNE,
         )
+    if batch_size is not None:
+        dataset = dataset.batch(batch_size)
 
     # doing this early would speed things up but for testing it best performance it wont matter too much
     if args.get("single_input", False):
@@ -274,20 +274,61 @@ def get_dataset(load_function, base_dir, labels, **args):
     return dataset, epoch_size
 
 
-brightness_contrast_aug = tf.keras.Sequential(
-    [
-        tf.keras.layers.RandomBrightness(0.2),  # better per frame or per sequence??
-        tf.keras.layers.RandomContrast(0.5),
-    ]
-)
+def fastest_sequence_augmentation(sequence):
+    # 1. Generate seeds unique to THIS video sequence.
+    # We need separate seeds for brightness and contrast to keep them independent,
+    # but the SAME seed will be reused for all frames inside this specific sequence.
+    bright_seed = tf.random.uniform([2], minval=0, maxval=1000, dtype=tf.int32)
+    contrast_seed = tf.random.uniform([2], minval=0, maxval=1000, dtype=tf.int32)
+
+    # 2. Chain operations inside tf.map_fn for high-speed execution
+    augmented_sequence = tf.map_fn(
+        fn=lambda frame: apply_channel_isolated_transforms(
+            frame, bright_seed, contrast_seed
+        ),
+        elems=sequence,
+        parallel_iterations=16,  # Matches your sequence length or CPU capacity
+    )
+
+    return augmented_sequence
 
 
-def data_augmentation(image, training=True):
+def apply_channel_isolated_transforms(frame, bright_seed, contrast_seed):
     # only apply brightness/contrast to channels 2,3 (thermal_norm, filtered),
     # leave channel 1 (raw thermal) untouched
-    raw = image[..., :1]
-    augmented = brightness_contrast_aug(image[..., 1:], training=training)
-    return tf.concat([raw, augmented], axis=-1)
+    channel_0 = frame[:, :, 0:1]  # Kept raw and untouched
+    channels_1_2 = frame[:, :, 1:3]  # This 2-channel tensor gets augmented
+
+    # Apply brightness only to channels 1 and 2
+    channels_1_2 = tf.image.stateless_random_brightness(
+        channels_1_2, max_delta=0.2, seed=bright_seed
+    )
+
+    # Apply contrast only to channels 1 and 2
+    channels_1_2 = tf.image.stateless_random_contrast(
+        channels_1_2, lower=0.5, upper=1.5, seed=contrast_seed
+    )
+
+    # Reconstruct the 3-channel frame by splicing the pieces back together
+    modified_frame = tf.concat([channel_0, channels_1_2], axis=-1)
+
+    return modified_frame
+
+
+# brightness_contrast_aug = tf.keras.Sequential(
+#     [
+#         tf.keras.layers.RandomBrightness(0.2),  # better per frame or per sequence??
+#         tf.keras.layers.RandomContrast(0.5),
+#     ]
+# )
+
+
+# def data_augmentation(image, training=True):
+#     # only apply brightness/contrast to channels 2,3 (thermal_norm, filtered),
+#     # leave channel 1 (raw thermal) untouched
+#     raw = image[..., :1]
+#     augmented = brightness_contrast_aug(image[..., 1:], training=training)
+#     return tf.concat([raw, augmented], axis=-1)
 
 
 def resample(dataset, labels):

@@ -1035,7 +1035,7 @@ def get_samples_by_label_urgency(
         num_windows = min(int(windows_float), max_samples)
         samples_to_take = num_windows
         # the left over frames
-        stride_offset = total_frames % (fps*window_length_seconds/2)
+        stride_offset = total_frames % (fps * window_length_seconds / 2)
     if label in MODERATE_RARE_LABELS or label in CRITICALLY_RARE_LABELS:
         # no point repeating the same image even if we want more samples
         # taking 25 samples per frame want maybe 1/3 (3 frames) second difference between images
@@ -1127,10 +1127,8 @@ def get_segment_indices(
         segment_frames.append(frame_num)
         seg_regions.append(regions[frame_num - start_frame])
         mass += mass_history[frame_num - start_frame]
-    
 
-
-    return segment_frames, seg_regions, mass, last_index,stopped_early
+    return segment_frames, seg_regions, mass, last_index, stopped_early
 
 
 def random_sections(
@@ -1175,24 +1173,24 @@ def random_sections(
     if samples > num_windows:
         # this is our labels that we have low samples for
         extra_samples = samples - num_windows
-        num_repeats =  math.ceil(extra_samples / num_windows)
-        phase_offset = chunk_size// (num_repeats+1)
+        num_repeats = math.ceil(extra_samples / num_windows)
+        phase_offset = chunk_size // (num_repeats + 1)
 
         # extra samples is 3 and  num windows 2
         # we should repeat twice
-        extra_windows = np.repeat(windows,num_repeats)
-        extra_windows =extra_windows +  phase_offset
+        extra_windows = np.repeat(windows, num_repeats)
+        extra_windows = extra_windows + phase_offset
         upsampled = True
 
         if stride_offset > 0:
-            choices = np.arange(stride_offset+1)
+            choices = np.arange(stride_offset + 1)
             exclude = int(phase_offset)
-            choices = np.concatenate([choices[:exclude], choices[exclude + 1:]])
-            random_offset = rng.choice(choices)   
+            choices = np.concatenate([choices[:exclude], choices[exclude + 1 :]])
+            random_offset = rng.choice(choices)
 
             windows = windows + random_offset
-        windows = np.concatenate([windows,extra_windows] )
-        
+        windows = np.concatenate([windows, extra_windows])
+
         logging.info(
             "%s Low sample resample windows are %s  stride_offset %s",
             label,
@@ -1201,7 +1199,7 @@ def random_sections(
         )
     else:
         if stride_offset > 0:
-            random_offset = rng.integers(low=0, high=stride_offset+1)
+            random_offset = rng.integers(low=0, high=stride_offset + 1)
             windows += random_offset
             # could do separate offset per window but i think this is fine removes need to handle windows being closer than expected
 
@@ -1219,25 +1217,26 @@ def random_sections(
     np.sort(windows)
     chosen_windows = np.sort(chosen_windows)
     chosen_windows = np.concatenate([chosen_windows, windows])
-   
 
     for window_start in chosen_windows:
-        segment_frames, seg_regions, mass, last_index,stopped_early = get_segment_indices(
-            window_start,
-            chunks,
-            chunk_size,
-            filtered_start,
-            frame_indices,
-            source_file,
-            track_id,
-            rng,
-            start_frame,
-            regions,
-            mass_history,
-            last_index,
-            frame_to_closest_valid,
+        segment_frames, seg_regions, mass, last_index, stopped_early = (
+            get_segment_indices(
+                window_start,
+                chunks,
+                chunk_size,
+                filtered_start,
+                frame_indices,
+                source_file,
+                track_id,
+                rng,
+                start_frame,
+                regions,
+                mass_history,
+                last_index,
+                frame_to_closest_valid,
+            )
         )
-        if stopped_early and  (len(segment_frames) < 25// 2):
+        if stopped_early and (len(segment_frames) < 25 // 2):
             logging.warning(
                 "Could not find frames that are close enough together for source %s track %s with window start %s  for chunk size %s",
                 source_file,

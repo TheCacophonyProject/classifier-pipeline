@@ -270,6 +270,87 @@ class KerasModel(Interpreter):
         save_metadata(self)
         return rf
 
+    def build_model_lstm(self):
+        import tensorflow as tf
+        from tensorflow.keras import layers, models
+
+        # 1. Inputs
+        tile_size = 32
+        num_tiles = 25
+        mask_input = layers.Input(shape=(num_tiles, 1), name="mask_input")
+
+        input_image = layers.Input(
+            shape=(num_tiles, tile_size, tile_size, 3), name="input_image"
+        )
+        # Shape: (Batch, 25, 1) -> Using your relative time / missing flag array
+        inputs = {"input_image": input_image, "input_mask": mask_input}
+
+        # 3. Apply the native Keras Masking Layer to the timeline data
+        # This flags the -1.0 values and propagates a hidden boolean mask to the LSTM
+        masked_timeline = layers.Masking(mask_value=-1.0, name="sequence_masking")(
+            mask_input
+        )
+        time_features = layers.Dense(64, activation="swish", name="time_projection")(
+            masked_timeline
+        )
+        time_features = layers.Dense(128, activation="swish", name="time_expansion")(
+            time_features
+        )
+
+        # 4. Lightweight Backbone Configuration
+        # We include pooling to squeeze the 32x32 spatial dimensions down into a flat vector
+        base_cnn = tf.keras.applications.EfficientNetB0(
+            include_top=False,
+            weights="imagenet",
+            pooling="avg",
+            input_shape=(tile_size, tile_size, 3),
+        )
+        base_cnn.trainable = True
+
+        x = layers.TimeDistributed(
+            layers.BatchNormalization(axis=-1), name="channel_standardizer"
+        )(input_image)
+        # 5. Extract features from each frame independently using TimeDistributed
+        # Output shape transforms from (None, 25, 32, 32, 3) to (None, 25, 1280)
+        visual_embeddings = layers.TimeDistributed(
+            base_cnn, name="cnn_feature_extractor"
+        )(x)
+
+        # 6. Merge the visual features and the masked timestamps
+        # Output shape: (None, 25, 1281)
+        combined_sequence = layers.Concatenate(axis=-1, name="merge_features")(
+            [visual_embeddings, time_features]
+        )
+
+        # 7. Recurrent Sequence Processing
+        # The LSTM automatically reads the mask and skips computing the padded slots!
+        # lstm_out = layers.LSTM(128, return_sequences=False, name="temporal_lstm")(combined_sequence)
+        gru_out = layers.Bidirectional(
+            layers.GRU(128, return_sequences=False, dropout=0.2), name="sequence_logic"
+        )(combined_sequence)
+        x = layers.BatchNormalization(name="batch_norm")(gru_out)
+
+        # 8. Classification Head
+        x = layers.Dropout(0.5)(x)
+
+        # Dense reasoning block right before the final bottleneck
+        x = layers.Dense(
+            128,
+            activation="swish",
+            kernel_regularizer=tf.keras.regularizers.l2(1e-4),
+            name="dense_header",
+        )(x)
+        x = layers.Dropout(0.4, name="head_dropout")(x)
+
+        output = tf.keras.layers.Dense(
+            len(self.labels),
+            activation=None,
+            name="prediction",
+            kernel_regularizer=tf.keras.regularizers.l2(1e-4),
+        )(x)
+        model = models.Model(inputs=inputs, outputs=output)
+        return model
+
     def build_model(
         self,
         dense_sizes=None,
@@ -278,6 +359,7 @@ class KerasModel(Interpreter):
         run_name=None,
         single_input=True,
     ):
+        return self.build_model_lstm()
         from tensorflow.keras import layers
         from tensorflow import keras
 
@@ -350,15 +432,12 @@ class KerasModel(Interpreter):
 
                 # input_mask = Input(shape=(5, 5, 1), name='input_mask')
 
-
-
                 # 1. Shift the mask natively
                 shifted_mask = mask_input + 1.0
 
                 # 2. Use Keras operations instead of tf.nn / tf.math
                 relu_mask = keras.ops.relu(shifted_mask)
                 binary_presence_gate = keras.ops.ceil(relu_mask)
-
 
                 # Step 1: Project the single timestamp into a 64-dimensional time embedding vector per cell
                 # A Dense layer applied to a 3D tensor operates independently on every single (5,5) cell!
@@ -740,7 +819,7 @@ class KerasModel(Interpreter):
             self.model.summary()
         else:
 
-            self.build_model(
+            self.model = self.build_model(
                 dense_sizes=self.params.dense_sizes,
                 retrain_from=self.params.retrain_layer,
                 dropout=self.params.dropout,
@@ -1029,14 +1108,12 @@ class KerasModel(Interpreter):
 
             reduce_lr_callback = tf.keras.callbacks.ReduceLROnPlateau(
                 monitor=stop_on[0],
-                varbose=1,
+                verbose=1,
                 mode=stop_on[1],
-                factor=0.5,  # Gentler drop: Reduces learning rate by 80% (e.g., 0.001 -> 0.0002)
-                patience=8,  # Faster response: Triggers after 3 epochs of stagnation
-                min_delta=0.0001,  # The minimum change to qualify as an improvement
-                cooldown=max(
-                    warmup_epochs, 3
-                ),  # Wait 1 epoch after a drop before monitoring patience again
+                factor=0.5,
+                patience=8,
+                min_delta=0.0001,
+                cooldown=max(warmup_epochs, 3),
                 min_lr=0.000001,  # Safety floor: Never drops lower than 10% of standard fine-tuning speed
             )
             checkpoints.append(reduce_lr_callback)
