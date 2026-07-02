@@ -326,7 +326,6 @@ KEEP_PROBS_TF = tf.constant(KEEP_PROBS, dtype=tf.float32)
 def randomized_balance_filter(image, label, keep_probs):
     # Multiply the image's multi-label tags by their respective downsample probabilities
     # e.g., if it's a chicken: label=[1,0,0,...,1,...], probs=[0.01, ..., 0.12, ...]
-    print(label)
     active_probs = label["label"] * keep_probs
 
     # Find the maximum probability among the labels present in this image.
@@ -515,7 +514,6 @@ def read_tfrecord(
     mean_indices = [MEANS_CHANNEL_ORDER.index(c) for c in channels]
     frame_means = tf.gather(means, mean_indices, axis=1) * 255.0
 
-    print("Regions are", regions)
     record_frames = tf.cast(record_frames, tf.int32)
     if load_images:
         if TrackChannels.thermal_norm.name in channels:
@@ -907,7 +905,7 @@ def main():
         labels,
         batch_size=32,
         image_size=(160, 160),
-        augment=True,
+        augment=False,
         shuffle=False,
         include_features=False,
         remapped_labels=get_remapped(multi_label=True),
@@ -952,7 +950,8 @@ def save_batch(image_batch, label_batch, labels, save_dir, tracks=False):
         track_batch = label_batch[1]
         label_batch = label_batch[0]
     for n, img in enumerate(image_batch):
-        print("Mask is ", np.mean(masks[n]))
+        print("Mask is ", masks[n].shape)
+        continue
         # ,frame_indices[n])
         if tracks:
             file_title = (
@@ -1043,9 +1042,9 @@ def get_frame_mask(num_valid, frame_indices):
     mask_flat = tf.concat(
         [[0.0], normalised_delta, tf.fill([25 - num_valid], -1.0)], axis=0
     )
+    print(mask_flat.shape)
 
     # mask = tf.reshape(mask_flat, (5, 5, 1))
-    print(mask_flat.shape)
     return mask_flat
 
 
