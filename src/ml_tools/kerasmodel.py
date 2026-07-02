@@ -973,14 +973,7 @@ class KerasModel(Interpreter):
             single_input=single_input,
         )
 
-        if not warm_down and not fine_tune:
-            fine_tune_name = f"{run_name}-finetune"
-            weights = self.checkpoint_folder / run_name / "val_loss.weights.h5"
-
-            self.warm_down(
-                fine_tune_name, weights, tf_mappings, single_input=single_input
-            )
-
+       
     def warm_down(self, run_name, weights, tf_mappings, epochs=5, single_input=False):
         logging.info(
             "Warming down for 5 epochs with weights %s without augmentation", weights
