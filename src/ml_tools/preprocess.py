@@ -62,7 +62,7 @@ def preprocess_frame_v2(
     median=None,
 ):
     from ml_tools.imageprocessing import adapt_hist, normalize
-    from ml_tools.thermalwriter import THERMAL_MAX_KV, THERMAL_MIN_KV,BorderData,MeanData
+    from ml_tools.thermalwriter import THERMAL_MAX_KV, THERMAL_MIN_KV,MeanData
     from ml_tools.frame import repeat_border
    
     # enlarge to
@@ -193,14 +193,13 @@ def preprocess_frame_v2(
     # this is the offset in the final image of our actual image
     h, w = cropped_frame.thermal.shape[:2]
     data_region = [pad_left, pad_top, w, h]
-    mean_value = (
-        BorderData(
-            thermal=thermal_border,
-            thermal_norm=thermal_norm_border,
-            filtered=filtered_border,
+    mean_value = MeanData(
+            thermal=np.mean(thermal_border),
+            thermal_norm=np.mean(thermal_norm_border),
+            filtered=np.mean(filtered_border),
+            frames_used = len(thermal_border)
         )
-        .mean()
-    )
+    
     # logging.info("Mean border data is %s from filtered %s",mean_value, filtered_border)
 
     # i dont think this will happen

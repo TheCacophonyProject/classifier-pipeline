@@ -881,7 +881,7 @@ def main():
 
     for dataset in datasets:
         dataset.clear()
-    border_sum = MeanData(thermal=0.0, filtered=0.0, thermal_norm=0.0)
+    border_sum = MeanData()
     meta_data = {
         "labels": datasets[0].labels,
         "type": config.train.type,

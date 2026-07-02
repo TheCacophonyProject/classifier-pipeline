@@ -79,51 +79,51 @@ class MeanData:
         return self.frames_used
 
 
-@dataclass
-class BorderData:
-    """Holds per-channel border pixel lists (during collection) or mean values (after aggregation)."""
+# @dataclass
+# class BorderData:
+#     """Holds per-channel border pixel lists (during collection) or mean values (after aggregation)."""
 
-    thermal: list = field(default_factory=list)
-    filtered: list = field(default_factory=list)
-    thermal_norm: list = field(default_factory=list)
+#     thermal: list = field(default_factory=list)
+#     filtered: list = field(default_factory=list)
+#     thermal_norm: list = field(default_factory=list)
 
-    def __len__(self):
-        return len(self.thermal)
+#     def __len__(self):
+#         return len(self.thermal)
 
-    def mean(self):
-        n = len(self)
-        return MeanData(
-             float(np.mean(self.thermal)) if n > 0 else 0.0,
-             float(np.mean(self.filtered)) if n > 0 else 0.0,
-             float(np.mean(self.thermal_norm)) if n > 0 else 0.0,
-            n,
-        )
+#     def mean(self):
+#         n = len(self)
+#         return MeanData(
+#              float(np.mean(self.thermal)) if n > 0 else 0.0,
+#              float(np.mean(self.filtered)) if n > 0 else 0.0,
+#              float(np.mean(self.thermal_norm)) if n > 0 else 0.0,
+#             n,
+#         )
 
-    # def __iadd__(self, other):
-    #     self.thermal += other.thermal
-    #     self.filtered += other.filtered
-    #     self.thermal_norm += other.thermal_norm
-    #     return self
+#     # def __iadd__(self, other):
+#     #     self.thermal += other.thermal
+#     #     self.filtered += other.filtered
+#     #     self.thermal_norm += other.thermal_norm
+#     #     return self
 
-    # def __mul__(self, scalar):
-    #     return BorderData(self.thermal * scalar, self.filtered * scalar, self.thermal_norm * scalar)
+#     # def __mul__(self, scalar):
+#     #     return BorderData(self.thermal * scalar, self.filtered * scalar, self.thermal_norm * scalar)
 
-    # __rmul__ = __mul__
+#     # __rmul__ = __mul__
 
-    def __truediv__(self, scalar):
-        return BorderData(
-            self.thermal / scalar,
-            self.filtered / scalar,
-            self.thermal_norm / scalar,
-            frames_used=scalar,
-        )
+#     def __truediv__(self, scalar):
+#         return BorderData(
+#             self.thermal / scalar,
+#             self.filtered / scalar,
+#             self.thermal_norm / scalar,
+#             frames_used=scalar,
+#         )
 
-    def to_dict(self):
-        return {
-            TrackChannels.thermal.name: self.thermal,
-            TrackChannels.filtered.name: self.filtered,
-            TrackChannels.thermal_norm.name: self.thermal_norm,
-        }
+#     def to_dict(self):
+#         return {
+#             TrackChannels.thermal.name: self.thermal,
+#             TrackChannels.filtered.name: self.filtered,
+#             TrackChannels.thermal_norm.name: self.thermal_norm,
+#         }
 
 
 crop_rectangle = Rectangle(0, 0, 640, 480)
@@ -256,8 +256,7 @@ def save_data(source_file, excluded_tags, writer, labels, extra_args):
     except:
         logging.error("Could not save data for %s", source_file, exc_info=True)
 
-    mean_data = border_data.mean()
-    return (saved, mean_data)
+    return (saved, border_data)
 
 
 def get_data(source_file, excluded_tags, extra_args):
@@ -272,7 +271,7 @@ def get_data(source_file, excluded_tags, extra_args):
  
     BACKGROUND_THRESH = 150  # lepton3.5
     mosaic_dim = extra_args.get("mosaic_dim")
-    border_pixels = BorderData()
+    border_pixels = MeanData()
     data = []
     crop_rectangle = Rectangle(1, 1, 160 - 2, 120 - 2)
     resize_dim = mosaic_dim
@@ -378,10 +377,30 @@ def get_data(source_file, excluded_tags, extra_args):
                         median_temp = np.median(frame.thermal)
 
 
-                        cropped_frame,mean_value,data_region = preprocess_frame_v2(frame,resize_dim,region,crop_rectangle,median_temp)
+                        result = preprocess_frame_v2(frame,resize_dim,region,crop_rectangle,median_temp)
+                        if result is None:
+                            by_frame_number[frame_number] = None
+                            continue
+
+                        cropped_frame,mean_value,data_region = result
+ 
+                        if mean_value.frames_used==0:
+                            # probably doesn't matter to just ignore these clips
+                            logging.error(
+                                "%s Empty border for clip: %s track: %s frame %s  original %s",
+                                mean_value,
+                                clip_meta.clip_id,
+                                track.track_id,
+                                frame_number,
+                                region,
+                            )
+                        else:
+                            border_pixels.add_means(mean_value)
+
                         by_frame_number[frame_number] = cropped_frame
                     else:
                         cropped_frame, _ = by_frame_number[frame_number]
+
 
                     assert cropped_frame.thermal.shape == (
                         resize_dim,
