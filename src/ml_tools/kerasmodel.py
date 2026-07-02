@@ -278,7 +278,7 @@ class KerasModel(Interpreter):
         # 1. Inputs
         tile_size = 32
         num_tiles = 25
-        mask_input = layers.Input(shape=(num_tiles, 1), name="mask_input")
+        mask_input = layers.Input(shape=(num_tiles, 1), name="input_mask")
 
         input_image = layers.Input(
             shape=(num_tiles, tile_size, tile_size, 3), name="input_image"
