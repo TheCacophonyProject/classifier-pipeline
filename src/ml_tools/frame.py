@@ -302,3 +302,110 @@ class Frame:
     @property
     def shape(self):
         return self.thermal.shape
+
+
+
+def repeat_with_thresh(border, filtered_thresh):
+    """For each position in border, find the index of the pixel that should be
+    repeated into it, skipping over runs where the value is over filtered_thresh
+    (possible animal on border). -1 means no valid pixel was found to use."""
+    indices = np.full(len(border), -1, dtype=int)
+    prev_idx = None
+    fill_from = None
+    # logging.info("Repeat with thresh %s border %s",filtered_thresh, border)
+    for i, val in enumerate(border):
+        if val > filtered_thresh or val == -1:
+            if prev_idx is not None:
+                indices[i] = prev_idx
+            elif fill_from is None:
+                fill_from = i
+        else:
+            if fill_from is not None:
+                indices[fill_from:i] = i
+                # logging.info("Filling border %s with values %s",fill_from,val)
+
+                fill_from = None
+            indices[i] = i
+            prev_idx = i
+            # logging.info("Filling border %s with %s",i,val)
+    return indices
+
+
+def gather_border(values, indices, default_val):
+    """Builds a border using indices (as returned by repeat_with_thresh),
+    falling back to default_val wherever indices is -1."""
+    border_fill = np.full_like(values, default_val)
+    valid = indices >= 0
+    border_fill[valid] = values[indices[valid]]
+    return border_fill
+
+
+def repeat_border(frame, new_height, new_width, top, left, filtered_thresh, pad_values):
+    """Pad channels to (new_height, new_width), placing existing content at (top, left)."""
+    h, w = frame.thermal.shape[:2]
+
+    padded_thermal = np.full((new_height, new_width), -1, dtype=frame.thermal.dtype)
+    padded_thermal[top : top + h, left : left + w] = frame.thermal
+
+    padded_thermal_norm = np.full(
+        (new_height, new_width), -1, dtype=frame.thermal_norm.dtype
+    )
+    padded_thermal_norm[top : top + h, left : left + w] = frame.thermal_norm
+
+    padded_filtered = np.full((new_height, new_width), -1, dtype=frame.filtered.dtype)
+    padded_filtered[top : top + h, left : left + w] = frame.filtered
+
+    channels = (
+        (padded_thermal, pad_values.thermal),
+        (padded_thermal_norm, pad_values.thermal_norm),
+        (padded_filtered, pad_values.filtered),
+    )
+    # pad each side with its repeated border instead of the flat pad value, unless
+    # the border itself contains an animal there. Which pixel index to repeat is
+    # always decided from the filtered channel; thermal and thermal_norm reuse
+    # those same indices against their own values. Processed left, top, right,
+    # bottom in that order so each side's full-length fill picks up the previous
+    # sides' fills already sitting in its corners.
+    pad_left = left > 0
+    if pad_left:
+        indices = repeat_with_thresh(padded_filtered[:, left], filtered_thresh)
+        for padded, default_val in channels:
+            border_fill = gather_border(padded[:, left], indices, default_val)
+            padded[:, :left] = border_fill[:, np.newaxis]
+
+    pad_top = top > 0
+    if pad_top:
+        indices = repeat_with_thresh(padded_filtered[top, :], filtered_thresh)
+        for padded, default_val in channels:
+            border_fill = gather_border(padded[top, :], indices, default_val)
+            padded[:top, :] = border_fill[np.newaxis, :]
+
+    pad_right = left + w < new_width
+    if pad_right:
+        indices = repeat_with_thresh(padded_filtered[:, left + w - 1], filtered_thresh)
+        for padded, default_val in channels:
+            border_fill = gather_border(padded[:, left + w - 1], indices, default_val)
+            padded[:, left + w :] = border_fill[:, np.newaxis]
+
+    pad_bottom = top + h < new_height
+    if pad_bottom:
+        indices = repeat_with_thresh(padded_filtered[top + h - 1, :], filtered_thresh)
+        for padded, default_val in channels:
+            border_fill = gather_border(padded[top + h - 1, :], indices, default_val)
+            padded[top + h :, :] = border_fill[np.newaxis, :]
+
+    frame.thermal = padded_thermal
+    frame.thermal_norm = padded_thermal_norm
+    frame.filtered = padded_filtered
+
+    # if np.any(frame.filtered==0):
+    #     import cv2
+    #     image = np.uint8(frame.filtered *255)
+    #     cv2.imshow("f",image)
+    #     cv2.waitKey()
+    assert np.all(frame.thermal > -1)
+    assert np.all(frame.filtered > -1)
+    assert np.all(frame.thermal_norm > -1)
+    assert np.amax(frame.filtered) < 1.1, "filtered is normalized 0-1"
+    assert filtered_thresh < 1, " thresh should be less than 1 too"
+

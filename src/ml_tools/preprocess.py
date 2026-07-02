@@ -62,9 +62,8 @@ def preprocess_frame_v2(
     median=None,
 ):
     from ml_tools.imageprocessing import adapt_hist, normalize
-
-    THERMAL_MIN_KV = 27315
-    THERMAL_MAX_KV = 31515  # 42 celcius
+    from ml_tools.thermalwriter import THERMAL_MAX_KV, THERMAL_MIN_KV
+   
     # enlarge to
     enlarged_region = region.copy()
 
@@ -74,44 +73,80 @@ def preprocess_frame_v2(
     else:
         enlarged_region.enlarge_to(out_dim)
 
-    # enlarged_region.enlarge_to(out_dim)
-    # logging.info("original region %s now %s",region,enlarged_region)
-    cropped_frame = frame.crop_by_region_with_padding(
-        enlarged_region, crop_rectangle, out_dim
+
+# compute padding offsets now so calculations run on content only
+    pad_top = 0
+    pad_left = 0
+    if (
+        enlarged_region.width < crop_rectangle.width
+        and crop_rectangle.left > enlarged_region.left
+    ):
+        pad_left = crop_rectangle.left - enlarged_region.left
+    if (
+        enlarged_region.height < crop_rectangle.height
+        and crop_rectangle.top > enlarged_region.top
+    ):
+        pad_top = crop_rectangle.top - enlarged_region.top
+    new_width = max(
+        resize_dim, min(crop_rectangle.width, enlarged_region.width)
     )
+    new_height = max(
+        resize_dim,
+        min(crop_rectangle.height, enlarged_region.height),
+    )
+    content_region = enlarged_region.copy()
+    content_region.crop(crop_rectangle)
+    cropped_frame = frame.crop_by_region(content_region)
     cropped_frame.float_arrays()
     # logging.info("Frame has been cropped  was %s now is %s",frame.thermal.shape,cropped_frame.thermal.shape)
     cropped_frame.thermal_norm = cropped_frame.thermal.copy()
     cropped_frame.thermal_norm -= median
     if np.median(cropped_frame.thermal_norm) >= 0:
-        np.clip(cropped_frame.thermal_norm, a_min=0, a_max=None, out=cropped_frame.mask)
-    cropped_frame.thermal_norm, _ = normalize(
+        np.clip(cropped_frame.thermal_norm, a_min=0, a_max=None, out=cropped_frame.thermal_norm)
+    cropped_frame.thermal_norm, stats = normalize(
         cropped_frame.thermal_norm,
     )
-    cropped_frame.thermal_norm = adapt_hist(cropped_frame.thermal_norm) * 255
+    if not stats[0]:
+        return None
+    cropped_frame.thermal_norm = adapt_hist(cropped_frame.thermal_norm)
 
-    cropped_frame.filtered, _ = normalize(
+
+    if np.median(cropped_frame.filtered) >= 0:
+        np.clip(
+            cropped_frame.filtered,
+            a_min=0,
+            a_max=None,
+            out=cropped_frame.filtered,
+        )
+    cropped_frame.filtered, stats = normalize(
         cropped_frame.filtered,
     )
-    cropped_frame.filtered = adapt_hist(cropped_frame.filtered) * 255
+
+    if not stats[0]:
+        return None
+    cropped_frame.filtered = adapt_hist(cropped_frame.filtered)
+
+
     np.clip(
         cropped_frame.thermal, THERMAL_MIN_KV, THERMAL_MAX_KV, out=cropped_frame.thermal
     )
 
     cropped_frame.thermal, _ = normalize(
-        cropped_frame.thermal, min=THERMAL_MIN_KV, max=THERMAL_MAX_KV, new_max=255
+        cropped_frame.thermal, min=THERMAL_MIN_KV, max=THERMAL_MAX_KV
     )
 
-    if cropped_frame.region.width > out_dim or cropped_frame.region.height > out_dim:
 
-        # downsize
-        cropped_frame.resize_with_aspect(
-            (out_dim, out_dim),
-            crop_rectangle,
-            keep_edge=False,
-            original_region=region,
-            interpolation=cv2.INTER_AREA,
-        )
+
+                        # calculate averages of background
+                        thermal_border = content_region.get_border(
+                            cropped_frame.thermal, 2, crop_rectangle
+                        )
+                        filtered_border = content_region.get_border(
+                            cropped_frame.filtered, 2, crop_rectangle
+                        )
+                        thermal_norm_border = content_region.get_border(
+                            cropped_frame.thermal_norm, 2, crop_rectangle
+                        )
     cropped_frame.preprocessed = True
     return cropped_frame
 
