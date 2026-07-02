@@ -52,9 +52,10 @@ class MeanData:
         self.filtered =other.filtered * other.frames_used + self.filtered * self.frames_used
         self.thermal_norm=other.thermal_norm * other.frames_used + self.thermal_norm * self.frames_used
         self.frames_used += other.frames_used
-        self.thermal /=self.frames_used
-        self.filtered /=self.frames_used
-        self.thermal_norm /=self.frames_used
+        if self.frames_used > 0:
+            self.thermal /=self.frames_used
+            self.filtered /=self.frames_used
+            self.thermal_norm /=self.frames_used
 
 
     def __mul__(self, scalar):
@@ -377,7 +378,7 @@ def get_data(source_file, excluded_tags, extra_args):
                         median_temp = np.median(frame.thermal)
 
 
-                        cropped_frame = preprocess_frame_v2(frame,resize_dim,region,crop_rectangle,median_temp)
+                        cropped_frame,mean_value,data_region = preprocess_frame_v2(frame,resize_dim,region,crop_rectangle,median_temp)
                         by_frame_number[frame_number] = cropped_frame
                     else:
                         cropped_frame, _ = by_frame_number[frame_number]

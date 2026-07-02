@@ -62,7 +62,8 @@ def preprocess_frame_v2(
     median=None,
 ):
     from ml_tools.imageprocessing import adapt_hist, normalize
-    from ml_tools.thermalwriter import THERMAL_MAX_KV, THERMAL_MIN_KV
+    from ml_tools.thermalwriter import THERMAL_MAX_KV, THERMAL_MIN_KV,BorderData,MeanData
+    from ml_tools.frame import repeat_border
    
     # enlarge to
     enlarged_region = region.copy()
@@ -74,7 +75,6 @@ def preprocess_frame_v2(
         enlarged_region.enlarge_to(out_dim)
 
 
-# compute padding offsets now so calculations run on content only
     pad_top = 0
     pad_left = 0
     if (
@@ -88,10 +88,10 @@ def preprocess_frame_v2(
     ):
         pad_top = crop_rectangle.top - enlarged_region.top
     new_width = max(
-        resize_dim, min(crop_rectangle.width, enlarged_region.width)
+        out_dim, min(crop_rectangle.width, enlarged_region.width)
     )
     new_height = max(
-        resize_dim,
+        out_dim,
         min(crop_rectangle.height, enlarged_region.height),
     )
     content_region = enlarged_region.copy()
@@ -135,20 +135,98 @@ def preprocess_frame_v2(
         cropped_frame.thermal, min=THERMAL_MIN_KV, max=THERMAL_MAX_KV
     )
 
+    # calculate averages of background
+    thermal_border = content_region.get_border(
+        cropped_frame.thermal, 2, crop_rectangle
+    )
+    filtered_border = content_region.get_border(
+        cropped_frame.filtered, 2, crop_rectangle
+    )
+    thermal_norm_border = content_region.get_border(
+        cropped_frame.thermal_norm, 2, crop_rectangle
+    )
 
+    # apply paddings
+    needs_pad = (
+        pad_top > 0
+        or pad_left > 0
+        or content_region.width < new_width
+        or content_region.height < new_height
+    )
+    needs_resize = (
+        cropped_frame.region.width > out_dim
+        or cropped_frame.region.height > out_dim
+    )
+    if needs_resize:
+        # resize the real content first, then pad - padding
+        # the full (new_height, new_width) canvas before
+        # resizing would resize the border padding along with
+        # the real content, so shrink the canvas size and
+        # offsets by the same scale the content is resized by
+        scale = out_dim / max(new_width, new_height)
+        scaled_w = max(1, round(content_region.width * scale))
+        scaled_h = max(1, round(content_region.height * scale))
 
-                        # calculate averages of background
-                        thermal_border = content_region.get_border(
-                            cropped_frame.thermal, 2, crop_rectangle
-                        )
-                        filtered_border = content_region.get_border(
-                            cropped_frame.filtered, 2, crop_rectangle
-                        )
-                        thermal_norm_border = content_region.get_border(
-                            cropped_frame.thermal_norm, 2, crop_rectangle
-                        )
+        cropped_frame.resize(
+            (scaled_w, scaled_h),
+            interpolation=cv2.INTER_AREA,
+        )
+        pad_top = max(
+            0, min(round(pad_top * scale), out_dim - scaled_h)
+        )
+        pad_left = max(
+            0, min(round(pad_left * scale), out_dim - scaled_w)
+        )
+        new_height = out_dim
+        new_width = out_dim
+        # the resize may already have landed exactly on
+        # (resize_dim, resize_dim) with no offset (eg. a
+        # square content_region with no pad_top/pad_left),
+        # in which case there's nothing left to pad
+        needs_pad = (
+            pad_top > 0
+            or pad_left > 0
+            or scaled_w < new_width
+            or scaled_h < new_height
+        )
+
+    # this is the offset in the final image of our actual image
+    h, w = cropped_frame.thermal.shape[:2]
+    data_region = [pad_left, pad_top, w, h]
+    mean_value = (
+        BorderData(
+            thermal=thermal_border,
+            thermal_norm=thermal_norm_border,
+            filtered=filtered_border,
+        )
+        .mean()
+    )
+    # logging.info("Mean border data is %s from filtered %s",mean_value, filtered_border)
+
+    # i dont think this will happen
+    if len(thermal_border) == 0:
+        logging.info("NO thermal border so using 10% quartile")
+        mean_value = MeanData(
+            np.quantile(cropped_frame.thermal, 0.1),
+            np.quantile(cropped_frame.filtered, 0.1),
+            np.quantile(cropped_frame.thermal_norm, 0.1),
+        )
+
+    if needs_pad:
+        threshold = mean_value.filtered
+        # pad frame by repeating the border pixels and ignoring animal content( pixels above threshold)
+        repeat_border(
+            cropped_frame,
+            new_height,
+            new_width,
+            pad_top,
+            pad_left,
+            threshold,
+            mean_value,
+        )
+
     cropped_frame.preprocessed = True
-    return cropped_frame
+    return cropped_frame,mean_value,data_region
 
 
 def preprocess_frame(

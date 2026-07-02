@@ -910,14 +910,12 @@ def main():
         logging.info("Adding dataset sum %s ", dataset_border_sum)
         border_sum.add_means(dataset_border_sum)
 
-        dataset_border_sum = dataset_border_sum.mean()
         meta_data["dataset_backgrounds"][dataset.name] = dataset_border_sum.to_dict()
         logging.info(
             "Averages for %s is %s ",
             dataset.name,
             meta_data["dataset_backgrounds"][dataset.name],
         )
-    border_sum = border_sum.mean()
     logging.info("Averages for total dataset is %s ", border_sum)
     meta_data["background_average"] = border_sum.to_dict()
     # dont need dataset anymore just need some meta
