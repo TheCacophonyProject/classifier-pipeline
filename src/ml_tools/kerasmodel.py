@@ -1052,16 +1052,16 @@ class KerasModel(Interpreter):
         cp_callback = tf.keras.callbacks.ModelCheckpoint(
             filepath=checkpoint_file, save_weights_only=True, verbose=1
         )
-        val_f1 = self.checkpoint_folder / run_name / "val_macro_f1.weights.h5"
+        # val_f1 = self.checkpoint_folder / run_name / "val_macro_f1.weights.h5"
 
-        f1_loss = tf.keras.callbacks.ModelCheckpoint(
-            val_f1,
-            monitor="val_macro_f1",
-            verbose=1,
-            save_best_only=True,
-            save_weights_only=True,
-            mode="max",
-        )
+        # f1_loss = tf.keras.callbacks.ModelCheckpoint(
+        #     val_f1,
+        #     monitor="val_macro_f1",
+        #     verbose=1,
+        #     save_best_only=True,
+        #     save_weights_only=True,
+        #     mode="max",
+        # )
 
         val_loss = self.checkpoint_folder / run_name / "val_loss.weights.h5"
 
@@ -1098,7 +1098,7 @@ class KerasModel(Interpreter):
             save_weights_only=True,
             mode="max",
         )
-        checkpoints = [f1_loss, checkpoint_acc, checkpoint_loss, cp_callback]
+        checkpoints = [checkpoint_acc, checkpoint_loss, cp_callback]
         if not fine_tuning:
             earlyStopping = tf.keras.callbacks.EarlyStopping(
                 patience=11,
