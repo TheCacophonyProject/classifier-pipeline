@@ -792,6 +792,7 @@ class KerasModel(Interpreter):
         fine_tune=None,
         warm_down=False,
         single_input=True,
+        test=False,
     ):
         logging.info(
             "%s Training model for %s epochs with weights %s with single input as: %s",
@@ -800,6 +801,8 @@ class KerasModel(Interpreter):
             weights,
             single_input,
         )
+        if test:
+            logging.info("Running in test, small datasets of 100")
         tf_mappings = self.init_train(epochs)
 
         self.log_dir = self.log_base / run_name
@@ -871,6 +874,7 @@ class KerasModel(Interpreter):
             downsize_fp=True,
             rebalance=rebalance,
             single_input=single_input,
+            epoch_size=100 if test else None,
         )
 
         steps = epoch_size // self.params.batch_size
@@ -894,6 +898,7 @@ class KerasModel(Interpreter):
             pads=self.pads,
             tf_mappings=tf_mappings,
             single_input=single_input,
+            epoch_size=100 if test else None,
         )
         logging.info(
             "Training on %s  with class weights %s",
@@ -968,6 +973,7 @@ class KerasModel(Interpreter):
                 pads=self.pads,
                 tf_mappings=tf_mappings,
                 single_input=single_input,
+                epoch_size=100 if test else None,
             )
             if self.test:
                 test_accuracy = self.model.evaluate(self.test)

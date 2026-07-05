@@ -919,7 +919,7 @@ def main():
         labels,
         batch_size=32,
         image_size=(160, 160),
-        augment=False,
+        augment=True,
         shuffle=False,
         include_features=False,
         remapped_labels=get_remapped(multi_label=True),

@@ -49,7 +49,7 @@ def load_config():
     parser.add_argument(
         "-s", "--single-input", action="store_true", help="Run on image input only"
     )
-
+    parser.add_argument("--test", action="store_true", help="Test mode")
     parser.add_argument(
         "-r", "--rebalance", action="store_true", help="Rebalance training set"
     )
@@ -83,6 +83,7 @@ def main():
         rebalance=args.rebalance,
         warm_down=args.warm_down,
         single_input=args.single_input,
+        test=args.test,
     )
 
 
