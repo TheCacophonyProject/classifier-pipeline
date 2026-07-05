@@ -58,7 +58,7 @@ def preprocess_frame_v2(
     frame,
     out_dim,
     region,
-    crop_rectangle=None,
+    crop_rectangle,
 ):
     from ml_tools.imageprocessing import adapt_hist, normalize
     from ml_tools.thermalwriter import THERMAL_MAX_KV, THERMAL_MIN_KV, MeanData

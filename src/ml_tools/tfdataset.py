@@ -229,21 +229,26 @@ def get_dataset(load_function, base_dir, labels, **args):
         epoch_size = 1
 
     augment = args.get("augment", False)
-    # if doing rnn batch after augment
-    if batch_size is not None:
-        dataset = dataset.batch(batch_size)
     if augment:
         logging.info("Augmenting on batches")
+        fp_index = labels.index("false-positive")
+        fp_index = tf.constant(fp_index)
         dataset = dataset.map(
             lambda x, y: (
                 {
-                    "input_image": fastest_sequence_augmentation(x["input_image"]),
+                    "input_image": bright_contrast_augmentation(
+                        x["input_image"], y, fp_index
+                    ),
                     "input_mask": x["input_mask"],
                 },
                 y,
             ),
             num_parallel_calls=tf.data.AUTOTUNE,
         )
+
+    # if doing rnn batch after augment
+    if batch_size is not None:
+        dataset = dataset.batch(batch_size)
     preprocess_fn = args.get("preprocess_fn")
     if preprocess_fn is not None:
         logging.info(
@@ -274,26 +279,39 @@ def get_dataset(load_function, base_dir, labels, **args):
     return dataset, epoch_size
 
 
-def fastest_sequence_augmentation(sequence):
-    # 1. Generate seeds unique to THIS video sequence.
-    # We need separate seeds for brightness and contrast to keep them independent,
-    # but the SAME seed will be reused for all frames inside this specific sequence.
-    bright_seed = tf.random.uniform([2], minval=0, maxval=1000, dtype=tf.int32)
-    contrast_seed = tf.random.uniform([2], minval=0, maxval=1000, dtype=tf.int32)
-    #     return apply_channel_isolated_transforms(
-    #         sequence, bright_seed, contrast_seed
-    #     )
-    # # RNN stuff
-    # # 2. Chain operations inside tf.map_fn for high-speed execution
-    augmented_sequence = tf.map_fn(
-        fn=lambda frame: apply_channel_isolated_transforms(
-            frame, bright_seed, contrast_seed
-        ),
-        elems=sequence,
-        parallel_iterations=16,  # Matches your sequence length or CPU capacity
+@tf.function
+def bright_contrast_augmentation(image, labels, fp_index):
+
+    # 1. Determine if this sample is a false-positive tensor
+    is_false_positive = tf.equal(labels[fp_index], 1.0)
+
+    # 2. Define what happens for a false-positive (Return the image untouched)
+    def skip_augmentation():
+        return image
+
+    # 3. Define what happens for an animal (Use official random functions)
+    def apply_official_augmentation():
+        # Generate uniform seeds required by stateless functions
+        bright_seed = tf.random.uniform([2], minval=0, maxval=1000, dtype=tf.int32)
+        contrast_seed = tf.random.uniform([2], minval=0, maxval=1000, dtype=tf.int32)
+
+        # Apply official library transformations to the whole mosaic
+        augmented = tf.image.stateless_random_brightness(
+            image, max_delta=25.0, seed=bright_seed
+        )
+        augmented = tf.image.stateless_random_contrast(
+            augmented, lower=0.8, upper=1.2, seed=contrast_seed
+        )
+
+        # Ensure pixel boundaries stay valid between 0 and 255
+        return tf.clip_by_value(augmented, 0.0, 255.0)
+
+    # Natively route the image inside the TF data pipeline graph
+    augmented_image = tf.cond(
+        is_false_positive, skip_augmentation, apply_official_augmentation
     )
 
-    return augmented_sequence
+    return augmented_image
 
 
 def apply_channel_isolated_transforms(frame, bright_seed, contrast_seed):

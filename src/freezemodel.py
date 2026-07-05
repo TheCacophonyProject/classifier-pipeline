@@ -39,7 +39,15 @@ def convert_model(args):
         # for some reason refuses to work with absolute path
         model = tf.keras.models.load_model(args.model.parent, compile=False)
     else:
-        model = tf.keras.models.load_model(args.model)
+        model = tf.keras.models.load_model(args.model, compile=False)
+
+    if args.sigmoid:
+        probabilities = tf.keras.layers.Activation("sigmoid", name="sigmoid_output")(
+            model.output
+        )
+
+        # 5. Construct the final inference model
+        model.model = tf.keras.Model(inputs=model.inputs, outputs=probabilities)
     print(time.time() - a, " to load model")
     # return
     model.trainable = False
@@ -123,6 +131,11 @@ def parse_args():
         help="freeze model with weights here",
     )
     parser.add_argument(
+        "--sigmoid",
+        action="store_true",
+        help="Add sigmoid layer",
+    )
+    parser.add_argument(
         "-e",
         "--export",
         action="store_true",
@@ -140,7 +153,6 @@ def parse_args():
     parser.add_argument(
         "-m",
         "--model",
-        default=MODEL_DIR,
         help="Directory where meta data of the model you want to convert is stored",
     )
 

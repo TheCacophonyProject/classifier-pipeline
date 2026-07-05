@@ -383,10 +383,9 @@ def get_data(source_file, excluded_tags, extra_args):
                         frame = db.frames[frame_number]
                         used_frames.append(frame_number)
                         region = track.regions_by_frame[frame_number]
-                        median_temp = np.median(frame.thermal)
 
                         result = preprocess_frame_v2(
-                            frame, resize_dim, region, crop_rectangle, median_temp
+                            frame, resize_dim, region, crop_rectangle
                         )
                         if result is None:
                             by_frame_number[frame_number] = None

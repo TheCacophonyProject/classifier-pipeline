@@ -300,7 +300,6 @@ def load_dataset(filenames, remap_lookup, labels, args):
 
 def tile_input(x):
     input_image = tile_images(x["input_image"])
-    print(input_image.shape)
     mask = tf.reshape(x["input_mask"], (5, 5, 1))
 
     return {"input_image": input_image, "input_mask": mask}
@@ -931,9 +930,6 @@ def main():
         tf_mappings=tf_mappings,
         rebalance=False,
     )
-    for x, y in resampled_ds:
-        for x2, x2m in zip(x["input_image"], x["input_mask"]):
-            print(x2.shape, x2m.shape)
     print("Epoch size is", epoch_size)
     # print(get_distribution(resampled_ds, len(labels), extra_meta=False))
     # return
@@ -964,8 +960,8 @@ def save_batch(image_batch, label_batch, labels, save_dir, tracks=False):
         track_batch = label_batch[1]
         label_batch = label_batch[0]
     for n, img in enumerate(image_batch):
-        print("Mask is ", masks[n].shape)
-        continue
+        # print("Mask is ", masks[n].shape)
+        # continue
         # ,frame_indices[n])
         if tracks:
             file_title = (
@@ -1056,7 +1052,6 @@ def get_frame_mask(num_valid, frame_indices):
     mask_flat = tf.concat(
         [[0.0], normalised_delta, tf.fill([25 - num_valid], -1.0)], axis=0
     )
-    print(mask_flat.shape)
 
     # mask = tf.reshape(mask_flat, (5, 5, 1))
     return mask_flat
