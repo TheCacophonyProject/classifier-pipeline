@@ -61,8 +61,9 @@ def preprocess_frame_v2(
     crop_rectangle=None,
 ):
     from ml_tools.imageprocessing import adapt_hist, normalize
-    from ml_tools.thermalwriter import THERMAL_MAX_KV, THERMAL_MIN_KV,MeanData
+    from ml_tools.thermalwriter import THERMAL_MAX_KV, THERMAL_MIN_KV, MeanData
     from ml_tools.frame import repeat_border
+
     median = np.median(frame.thermal)
     # enlarge to
     enlarged_region = region.copy()
@@ -72,7 +73,6 @@ def preprocess_frame_v2(
         enlarged_region.enlarge_for_rotation(final_dim=out_dim, extra_needed=0)
     else:
         enlarged_region.enlarge_to(out_dim)
-
 
     pad_top = 0
     pad_left = 0
@@ -86,9 +86,7 @@ def preprocess_frame_v2(
         and crop_rectangle.top > enlarged_region.top
     ):
         pad_top = crop_rectangle.top - enlarged_region.top
-    new_width = max(
-        out_dim, min(crop_rectangle.width, enlarged_region.width)
-    )
+    new_width = max(out_dim, min(crop_rectangle.width, enlarged_region.width))
     new_height = max(
         out_dim,
         min(crop_rectangle.height, enlarged_region.height),
@@ -96,19 +94,22 @@ def preprocess_frame_v2(
     content_region = enlarged_region.copy()
     content_region.crop(crop_rectangle)
 
-    
-    cropped_frame = frame.crop_and_copy_as_float(content_region,make_copy=True)
+    cropped_frame = frame.crop_and_copy_as_float(content_region, make_copy=True)
     cropped_frame.thermal_norm = cropped_frame.thermal.copy()
     cropped_frame.thermal_norm -= median
     if np.median(cropped_frame.thermal_norm) >= 0:
-        np.clip(cropped_frame.thermal_norm, a_min=0, a_max=None, out=cropped_frame.thermal_norm)
+        np.clip(
+            cropped_frame.thermal_norm,
+            a_min=0,
+            a_max=None,
+            out=cropped_frame.thermal_norm,
+        )
     cropped_frame.thermal_norm, stats = normalize(
         cropped_frame.thermal_norm,
     )
     if not stats[0]:
         return None
     cropped_frame.thermal_norm = adapt_hist(cropped_frame.thermal_norm)
-
 
     if np.median(cropped_frame.filtered) >= 0:
         np.clip(
@@ -125,7 +126,6 @@ def preprocess_frame_v2(
         return None
     cropped_frame.filtered = adapt_hist(cropped_frame.filtered)
 
-
     np.clip(
         cropped_frame.thermal, THERMAL_MIN_KV, THERMAL_MAX_KV, out=cropped_frame.thermal
     )
@@ -135,9 +135,7 @@ def preprocess_frame_v2(
     )
 
     # calculate averages of background
-    thermal_border = content_region.get_border(
-        cropped_frame.thermal, 2, crop_rectangle
-    )
+    thermal_border = content_region.get_border(cropped_frame.thermal, 2, crop_rectangle)
     filtered_border = content_region.get_border(
         cropped_frame.filtered, 2, crop_rectangle
     )
@@ -153,8 +151,7 @@ def preprocess_frame_v2(
         or content_region.height < new_height
     )
     needs_resize = (
-        cropped_frame.region.width > out_dim
-        or cropped_frame.region.height > out_dim
+        cropped_frame.region.width > out_dim or cropped_frame.region.height > out_dim
     )
     if needs_resize:
         # resize the real content first, then pad - padding
@@ -170,12 +167,8 @@ def preprocess_frame_v2(
             (scaled_w, scaled_h),
             interpolation=cv2.INTER_AREA,
         )
-        pad_top = max(
-            0, min(round(pad_top * scale), out_dim - scaled_h)
-        )
-        pad_left = max(
-            0, min(round(pad_left * scale), out_dim - scaled_w)
-        )
+        pad_top = max(0, min(round(pad_top * scale), out_dim - scaled_h))
+        pad_left = max(0, min(round(pad_left * scale), out_dim - scaled_w))
         new_height = out_dim
         new_width = out_dim
         # the resize may already have landed exactly on
@@ -183,22 +176,19 @@ def preprocess_frame_v2(
         # square content_region with no pad_top/pad_left),
         # in which case there's nothing left to pad
         needs_pad = (
-            pad_top > 0
-            or pad_left > 0
-            or scaled_w < new_width
-            or scaled_h < new_height
+            pad_top > 0 or pad_left > 0 or scaled_w < new_width or scaled_h < new_height
         )
 
     # this is the offset in the final image of our actual image
     h, w = cropped_frame.thermal.shape[:2]
     data_region = [pad_left, pad_top, w, h]
     mean_value = MeanData(
-            thermal=np.mean(thermal_border),
-            thermal_norm=np.mean(thermal_norm_border),
-            filtered=np.mean(filtered_border),
-            frames_used = len(thermal_border)
-        )
-    
+        thermal=np.mean(thermal_border),
+        thermal_norm=np.mean(thermal_norm_border),
+        filtered=np.mean(filtered_border),
+        frames_used=len(thermal_border),
+    )
+
     # logging.info("Mean border data is %s from filtered %s",mean_value, filtered_border)
 
     # i dont think this will happen
@@ -224,7 +214,7 @@ def preprocess_frame_v2(
         )
 
     cropped_frame.preprocessed = True
-    return cropped_frame,mean_value,data_region
+    return cropped_frame, mean_value, data_region
 
 
 def preprocess_frame(
@@ -332,7 +322,7 @@ def preprocess_movement(
     preprocess_fn=None,
     sample=None,
     seed=None,
-    pad_with = None
+    pad_with=None,
 ):
     from ml_tools.imageprocessing import square_clip
 
@@ -349,7 +339,7 @@ def preprocess_movement(
 
             frame_samples.extend(extra_samples)
             frame_samples.sort()
-        
+
     for channel in channels:
         if isinstance(channel, str):
             channel = TrackChannels[channel]
@@ -363,7 +353,7 @@ def preprocess_movement(
             frames_per_row,
             (frame_size, frame_size),
             frame_samples,
-            pad_with=pad_with
+            pad_with=pad_with,
         )
 
         data.append(channel_data)

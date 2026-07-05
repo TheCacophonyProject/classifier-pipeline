@@ -114,7 +114,7 @@ class Interpreter(ABC):
         # this might be a little slower as it checks some massess etc
         # but keeps it the same for all ways of classifying
         if frames_per_classify > 1:
-            if args.get("v2_preprocess",True):
+            if args.get("v2_preprocess", True):
                 frames, preprocessed, masses = self.preprocess_segments_v2(
                     clip,
                     track,
@@ -372,32 +372,33 @@ class Interpreter(ABC):
             filtered_norm_limits = (min_diff, max_diff)
         return thermal_norm_limits, filtered_norm_limits
 
-
-
     def preprocess_segments_v2(self, clip, track, segments, predict_from_last=None):
         from ml_tools.preprocess import preprocess_frame_v2, preprocess_movement
+
         track_data = {}
         masses = []
         preprocessed = []
         for segment in segments:
             segment_data = []
-            for region,frame_num in zip(segment.regions,segment.frame_indices):
+            for region, frame_num in zip(segment.regions, segment.frame_indices):
                 assert region.frame_number == frame_num
                 if frame_num in track_data:
                     cropped_frame = track_data[frame_num]
                 else:
                     frame = clip.get_frame(frame_num)
-                    result = preprocess_frame_v2(frame,self.params.frame_size,region,clip.crop_rectangle)
+                    result = preprocess_frame_v2(
+                        frame, self.params.frame_size, region, clip.crop_rectangle
+                    )
                     if result is None:
                         by_frame_number[frame_number] = None
                         continue
                     # comes as normalized 0-1
-                    cropped_frame.thermal *=255
-                    cropped_frame.thermal_norm *=255
-                    cropped_frame.filtered *=255
-                    cropped_frame,_,_= result
-              
-                track_data[frame_num]= cropped_frame
+                    cropped_frame.thermal *= 255
+                    cropped_frame.thermal_norm *= 255
+                    cropped_frame.filtered *= 255
+                    cropped_frame, _, _ = result
+
+                track_data[frame_num] = cropped_frame
                 segment_data.append(cropped_frame.copy())
             frames = preprocess_movement(
                 segment_data,
@@ -406,7 +407,7 @@ class Interpreter(ABC):
                 self.params.channels,
                 self.preprocess_fn,
                 sample=f"Clip-{clip.get_id()}-track-{track.get_id()}",
-                pad_with = 0 #dont repeat frames
+                pad_with=0,  # dont repeat frames
             )
             if frames is None:
                 logging.warn("No frames to predict on")
@@ -414,8 +415,9 @@ class Interpreter(ABC):
             preprocessed.append(frames)
             masses.append(segment.mass)
         preprocessed = np.array(preprocessed)
-      
+
         return [s.frame_indices for s in segments], preprocessed, masses
+
     def preprocess_segments(self, clip, track, segments, predict_from_last=None):
         from ml_tools.preprocess import preprocess_frame, preprocess_movement
 

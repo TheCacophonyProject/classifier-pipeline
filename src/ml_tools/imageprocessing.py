@@ -90,7 +90,7 @@ def resize_cv(image, dim, interpolation=cv2.INTER_LINEAR, extra_h=0, extra_v=0):
     )
 
 
-def square_clip(data, frames_per_row, tile_dim, frame_samples=None,pad_with=None):
+def square_clip(data, frames_per_row, tile_dim, frame_samples=None, pad_with=None):
     # lay each frame out side by side in rows
     n_tiles = frames_per_row * frames_per_row
 
@@ -100,10 +100,15 @@ def square_clip(data, frames_per_row, tile_dim, frame_samples=None,pad_with=None
 
     if len(frames) < n_tiles:
         if pad_with is None:
-            pad_with =0
-            logging.warning("Since there are less than %s frames padding with default of 0 since pad_with was None",n_tiles)
+            pad_with = 0
+            logging.warning(
+                "Since there are less than %s frames padding with default of 0 since pad_with was None",
+                n_tiles,
+            )
         pad = np.fill(
-            (n_tiles - len(frames), tile_dim[0], tile_dim[1]),pad_with, dtype=frames.dtype
+            (n_tiles - len(frames), tile_dim[0], tile_dim[1]),
+            pad_with,
+            dtype=frames.dtype,
         )
         frames = np.concatenate([frames, pad], axis=0)
 
@@ -112,8 +117,6 @@ def square_clip(data, frames_per_row, tile_dim, frame_samples=None,pad_with=None
         frames_per_row * tile_dim[0], frames_per_row * tile_dim[1]
     )
     return new_frame
-
-
 
 
 def normalize(data, min=None, max=None, new_max=1):

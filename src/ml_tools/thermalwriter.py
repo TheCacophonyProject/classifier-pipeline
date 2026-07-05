@@ -35,8 +35,10 @@ from ml_tools.frame import TrackChannels
 from ml_tools.imageprocessing import normalize
 from ml_tools.rawdb import RawDatabase
 from ml_tools.rectangle import Rectangle
+
 THERMAL_MIN_KV = 27315
 THERMAL_MAX_KV = 31515  # 42 celcius
+
 
 @dataclass
 class MeanData:
@@ -48,15 +50,21 @@ class MeanData:
     frames_used: int = 0
 
     def add_means(self, other):
-        self.thermal = other.thermal * other.frames_used + self.thermal * self.frames_used
-        self.filtered =other.filtered * other.frames_used + self.filtered * self.frames_used
-        self.thermal_norm=other.thermal_norm * other.frames_used + self.thermal_norm * self.frames_used
+        self.thermal = (
+            other.thermal * other.frames_used + self.thermal * self.frames_used
+        )
+        self.filtered = (
+            other.filtered * other.frames_used + self.filtered * self.frames_used
+        )
+        self.thermal_norm = (
+            other.thermal_norm * other.frames_used
+            + self.thermal_norm * self.frames_used
+        )
         self.frames_used += other.frames_used
         if self.frames_used > 0:
-            self.thermal /=self.frames_used
-            self.filtered /=self.frames_used
-            self.thermal_norm /=self.frames_used
-
+            self.thermal /= self.frames_used
+            self.filtered /= self.frames_used
+            self.thermal_norm /= self.frames_used
 
     def __mul__(self, scalar):
         return MeanData(
@@ -265,10 +273,11 @@ def get_data(source_file, excluded_tags, extra_args):
     import math
     from ml_tools.dataset import filter_track
     from ml_tools.preprocess import preprocess_frame_v2
+
     # prepare the sample data for saving
     ENLARGE_FOR_AUGMENT = True
     ADD_FEATURES = False
- 
+
     BACKGROUND_THRESH = 150  # lepton3.5
     mosaic_dim = extra_args.get("mosaic_dim")
     border_pixels = MeanData()
@@ -376,15 +385,16 @@ def get_data(source_file, excluded_tags, extra_args):
                         region = track.regions_by_frame[frame_number]
                         median_temp = np.median(frame.thermal)
 
-
-                        result = preprocess_frame_v2(frame,resize_dim,region,crop_rectangle,median_temp)
+                        result = preprocess_frame_v2(
+                            frame, resize_dim, region, crop_rectangle, median_temp
+                        )
                         if result is None:
                             by_frame_number[frame_number] = None
                             continue
 
-                        cropped_frame,mean_value,data_region = result
- 
-                        if mean_value.frames_used==0:
+                        cropped_frame, mean_value, data_region = result
+
+                        if mean_value.frames_used == 0:
                             # probably doesn't matter to just ignore these clips
                             logging.error(
                                 "%s Empty border for clip: %s track: %s frame %s  original %s",
@@ -401,14 +411,14 @@ def get_data(source_file, excluded_tags, extra_args):
                     else:
                         cropped_frame, _ = by_frame_number[frame_number]
 
-
                     assert cropped_frame.thermal.shape == (
                         resize_dim,
                         resize_dim,
                     ), f"Shape is wrong {cropped_frame.region}"
                     # GP could handle each type separately, may be instances where one is valid
-                    if (cropped_frame is not None and
-                        cropped_frame.filtered is not None
+                    if (
+                        cropped_frame is not None
+                        and cropped_frame.filtered is not None
                         and cropped_frame.thermal is not None
                         and cropped_frame.thermal_norm is not None
                     ):
@@ -440,7 +450,6 @@ def get_data(source_file, excluded_tags, extra_args):
         logging.error("Cant get Samples for %s", source_file, exc_info=True)
         return None
     return (data, clip_meta.country_code, border_pixels)
-
 
 
 def pad_frame(frame, new_height, new_width, top, left, pad_values):

@@ -289,7 +289,21 @@ def load_dataset(filenames, remap_lookup, labels, args):
         dataset = dataset.map(
             lambda x, y: (x, y["label"]), num_parallel_calls=tf.data.AUTOTUNE
         )
+    # this might be slightly slower than doing this here instead of when reading the records
+    RNN = False
+    if not RNN:
+        dataset = dataset.map(
+            lambda x, y: (tile_input(x), y), num_parallel_calls=tf.data.AUTOTUNE
+        )
     return dataset
+
+
+def tile_input(x):
+    input_image = tile_images(x["input_image"])
+    print(input_image.shape)
+    mask = tf.reshape(x["input_mask"], (5, 5, 1))
+
+    return {"input_image": input_image, "input_mask": mask}
 
 
 import tensorflow as tf

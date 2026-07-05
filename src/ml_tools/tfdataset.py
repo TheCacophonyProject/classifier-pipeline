@@ -229,7 +229,9 @@ def get_dataset(load_function, base_dir, labels, **args):
         epoch_size = 1
 
     augment = args.get("augment", False)
-    # since in 5d apply before batch
+    # if doing rnn batch after augment
+    if batch_size is not None:
+        dataset = dataset.batch(batch_size)
     if augment:
         logging.info("Augmenting on batches")
         dataset = dataset.map(
@@ -259,8 +261,6 @@ def get_dataset(load_function, base_dir, labels, **args):
             ),
             num_parallel_calls=tf.data.AUTOTUNE,
         )
-    if batch_size is not None:
-        dataset = dataset.batch(batch_size)
 
     # doing this early would speed things up but for testing it best performance it wont matter too much
     if args.get("single_input", False):
@@ -280,8 +280,11 @@ def fastest_sequence_augmentation(sequence):
     # but the SAME seed will be reused for all frames inside this specific sequence.
     bright_seed = tf.random.uniform([2], minval=0, maxval=1000, dtype=tf.int32)
     contrast_seed = tf.random.uniform([2], minval=0, maxval=1000, dtype=tf.int32)
-
-    # 2. Chain operations inside tf.map_fn for high-speed execution
+    #     return apply_channel_isolated_transforms(
+    #         sequence, bright_seed, contrast_seed
+    #     )
+    # # RNN stuff
+    # # 2. Chain operations inside tf.map_fn for high-speed execution
     augmented_sequence = tf.map_fn(
         fn=lambda frame: apply_channel_isolated_transforms(
             frame, bright_seed, contrast_seed

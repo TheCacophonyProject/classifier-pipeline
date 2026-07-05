@@ -173,8 +173,9 @@ class Frame:
             region=cropped_region,
         )
 
-
-    def crop_and_copy_as_float(self, region, only_thermal=False, out=None,make_copy = False):
+    def crop_and_copy_as_float(
+        self, region, only_thermal=False, out=None, make_copy=False
+    ):
         thermal = None
         filtered = None
         mask = None
@@ -207,8 +208,8 @@ class Frame:
                 region=region,
             )
         return frame
-    
-    def crop_by_region(self, region, only_thermal=False, out=None,make_copy = False):
+
+    def crop_by_region(self, region, only_thermal=False, out=None, make_copy=False):
         thermal = None
         filtered = None
         mask = None
@@ -345,7 +346,6 @@ class Frame:
         return self.thermal.shape
 
 
-
 def repeat_with_thresh(border, filtered_thresh):
     """For each position in border, find the index of the pixel that should be
     repeated into it, skipping over runs where the value is over filtered_thresh
@@ -449,4 +449,3 @@ def repeat_border(frame, new_height, new_width, top, left, filtered_thresh, pad_
     assert np.all(frame.thermal_norm > -1)
     assert np.amax(frame.filtered) < 1.1, "filtered is normalized 0-1"
     assert filtered_thresh < 1, " thresh should be less than 1 too"
-
