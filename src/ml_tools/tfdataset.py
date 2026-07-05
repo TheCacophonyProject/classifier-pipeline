@@ -304,13 +304,14 @@ def apply_channel_isolated_transforms(frame, bright_seed, contrast_seed):
 
     # Apply brightness only to channels 1 and 2
     channels_1_2 = tf.image.stateless_random_brightness(
-        channels_1_2, max_delta=0.2, seed=bright_seed
+        channels_1_2, max_delta=0.1, seed=bright_seed
     )
 
     # Apply contrast only to channels 1 and 2
     channels_1_2 = tf.image.stateless_random_contrast(
-        channels_1_2, lower=0.5, upper=1.5, seed=contrast_seed
+        channels_1_2, lower=0.8, upper=1.2, seed=contrast_seed
     )
+    channels_1_2 = tf.clip_by_value(channels_1_2, clip_value_min=0.0, clip_value_max=255.0) #
 
     # Reconstruct the 3-channel frame by splicing the pieces back together
     modified_frame = tf.concat([channel_0, channels_1_2], axis=-1)
