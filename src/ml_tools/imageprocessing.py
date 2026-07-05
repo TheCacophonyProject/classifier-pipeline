@@ -90,70 +90,30 @@ def resize_cv(image, dim, interpolation=cv2.INTER_LINEAR, extra_h=0, extra_v=0):
     )
 
 
-def square_clip(data, frames_per_row, tile_dim, frame_samples, normalize=True):
+def square_clip(data, frames_per_row, tile_dim, frame_samples=None,pad_with=None):
     # lay each frame out side by side in rows
-    new_frame = np.zeros((frames_per_row * tile_dim[0], frames_per_row * tile_dim[1]))
-    i = 0
-    success = False
-    for x in range(frames_per_row):
-        for y in range(frames_per_row):
-            frame = data[frame_samples[i]]
-            if normalize:
-                frame, stats = normalize(frame, new_max=255)
-                if not stats[0]:
-                    continue
-            success = True
-            new_frame[
-                x * tile_dim[0] : (x + 1) * tile_dim[0],
-                y * tile_dim[1] : (y + 1) * tile_dim[1],
-            ] = np.float32(frame)
-            i += 1
+    n_tiles = frames_per_row * frames_per_row
 
-    return new_frame, success
+    if frame_samples is not None:
+        idx = np.asarray(frame_samples[:n_tiles])
+        frames = np.float32(np.asarray(data)[idx])
 
-
-def square_clip_flow(data_flow, frames_per_row, tile_dim, use_rgb=False):
-    if use_rgb:
-        new_frame = np.zeros(
-            (frames_per_row * tile_dim[0], frames_per_row * tile_dim[1], 3)
+    if len(frames) < n_tiles:
+        if pad_with is None:
+            pad_with =0
+            logging.warning("Since there are less than %s frames padding with default of 0 since pad_with was None",n_tiles)
+        pad = np.fill(
+            (n_tiles - len(frames), tile_dim[0], tile_dim[1]),pad_with, dtype=frames.dtype
         )
-    else:
-        new_frame = np.zeros(
-            (frames_per_row * tile_dim[0], frames_per_row * tile_dim[1])
-        )
+        frames = np.concatenate([frames, pad], axis=0)
 
-    i = 0
-    success = False
-    hsv = np.zeros((tile_dim[0], tile_dim[1], 3), dtype=np.float32)
-    hsv[..., 1] = 255
-    for x in range(frames_per_row):
-        for y in range(frames_per_row):
-            if i >= len(data_flow):
-                flow = data_flow[-1]
-            else:
-                flow = data_flow[i]
-            flow_h = flow[:, :, 0]
-            flow_v = flow[:, :, 1]
+    grid = frames.reshape(frames_per_row, frames_per_row, tile_dim[0], tile_dim[1])
+    new_frame = grid.transpose(0, 2, 1, 3).reshape(
+        frames_per_row * tile_dim[0], frames_per_row * tile_dim[1]
+    )
+    return new_frame
 
-            mag, ang = cv2.cartToPolar(flow_h, flow_v)
-            hsv[..., 0] = ang * 180 / np.pi / 2
-            hsv[..., 2] = cv2.normalize(mag, None, 0, 255, cv2.NORM_MINMAX)
-            rgb = cv2.cvtColor(hsv, cv2.COLOR_HSV2BGR)
-            if use_rgb:
-                flow_magnitude = rgb
-            else:
-                flow_magnitude = cv2.cvtColor(rgb, cv2.COLOR_BGR2GRAY)
-            frame, norm_success = normalize(flow_magnitude)
 
-            if not norm_success:
-                continue
-            success = True
-            new_frame[
-                x * tile_dim[0] : (x + 1) * tile_dim[0],
-                y * tile_dim[1] : (y + 1) * tile_dim[1],
-            ] = np.float32(frame)
-            i += 1
-    return new_frame, success
 
 
 def normalize(data, min=None, max=None, new_max=1):

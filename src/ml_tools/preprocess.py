@@ -59,12 +59,11 @@ def preprocess_frame_v2(
     out_dim,
     region,
     crop_rectangle=None,
-    median=None,
 ):
     from ml_tools.imageprocessing import adapt_hist, normalize
     from ml_tools.thermalwriter import THERMAL_MAX_KV, THERMAL_MIN_KV,MeanData
     from ml_tools.frame import repeat_border
-   
+    median = np.median(frame.thermal)
     # enlarge to
     enlarged_region = region.copy()
 
@@ -96,9 +95,9 @@ def preprocess_frame_v2(
     )
     content_region = enlarged_region.copy()
     content_region.crop(crop_rectangle)
-    cropped_frame = frame.crop_by_region(content_region)
-    cropped_frame.float_arrays()
-    # logging.info("Frame has been cropped  was %s now is %s",frame.thermal.shape,cropped_frame.thermal.shape)
+
+    
+    cropped_frame = frame.crop_and_copy_as_float(content_region,make_copy=True)
     cropped_frame.thermal_norm = cropped_frame.thermal.copy()
     cropped_frame.thermal_norm -= median
     if np.median(cropped_frame.thermal_norm) >= 0:
@@ -333,20 +332,24 @@ def preprocess_movement(
     preprocess_fn=None,
     sample=None,
     seed=None,
+    pad_with = None
 ):
     from ml_tools.imageprocessing import square_clip
 
     frame_types = {}
     data = []
-    frame_samples = list(np.arange(len(preprocess_frames)))
-    if len(preprocess_frames) < frames_per_row * 5:
-        rng = np.random.default_rng(seed)
-        extra_samples = rng.choice(
-            frame_samples, frames_per_row * 5 - len(preprocess_frames)
-        )
+    frame_samples = None
+    if pad_with is not None:
+        frame_samples = list(np.arange(len(preprocess_frames)))
+        if len(preprocess_frames) < frames_per_row * 5 and pad_with is None:
+            rng = np.random.default_rng(seed)
+            extra_samples = rng.choice(
+                frame_samples, frames_per_row * 5 - len(preprocess_frames)
+            )
 
-        frame_samples.extend(extra_samples)
-        frame_samples.sort()
+            frame_samples.extend(extra_samples)
+            frame_samples.sort()
+        
     for channel in channels:
         if isinstance(channel, str):
             channel = TrackChannels[channel]
@@ -355,17 +358,14 @@ def preprocess_movement(
             continue
         channel_segment = [frame.get_channel(channel) for frame in preprocess_frames]
 
-        channel_data, success = square_clip(
+        channel_data = square_clip(
             channel_segment,
             frames_per_row,
             (frame_size, frame_size),
             frame_samples,
-            normalize=False,
+            pad_with=pad_with
         )
-        # already done normalization
 
-        if not success:
-            return None
         data.append(channel_data)
         frame_types[channel] = channel_data
     data = np.stack(data, axis=2)

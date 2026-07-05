@@ -443,12 +443,12 @@ class KerasModel(Interpreter):
 
                 # input_mask = Input(shape=(5, 5, 1), name='input_mask')
 
-                # 1. Shift the mask natively
-                shifted_mask = mask_input + 1.0
+                # # 1. Shift the mask natively
+                # shifted_mask = mask_input + 1.0
 
-                # 2. Use Keras operations instead of tf.nn / tf.math
-                relu_mask = keras.ops.relu(shifted_mask)
-                binary_presence_gate = keras.ops.ceil(relu_mask)
+                # # 2. Use Keras operations instead of tf.nn / tf.math
+                # relu_mask = keras.ops.relu(shifted_mask)
+                # binary_presence_gate = keras.ops.ceil(relu_mask)
 
                 # Step 1: Project the single timestamp into a 64-dimensional time embedding vector per cell
                 # A Dense layer applied to a 3D tensor operates independently on every single (5,5) cell!
@@ -457,7 +457,6 @@ class KerasModel(Interpreter):
                 )(
                     mask_input
                 )  # Shape: (None, 5, 5, 64)
-                time_embedding = time_embedding * binary_presence_gate
                 time_embedding = layers.Dense(
                     128, activation="relu", name="time_feature_expansion"
                 )(

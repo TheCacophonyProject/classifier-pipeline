@@ -173,17 +173,58 @@ class Frame:
             region=cropped_region,
         )
 
-    def crop_by_region(self, region, only_thermal=False, out=None):
+
+    def crop_and_copy_as_float(self, region, only_thermal=False, out=None,make_copy = False):
+        thermal = None
+        filtered = None
+        mask = None
+        if self.thermal is not None:
+            thermal = np.float32(region.subimage(self.thermal))
+            if make_copy and thermal.base is None:
+                thermal = thermal.copy()
+        if not only_thermal:
+            if self.filtered is not None:
+                filtered = np.float32(region.subimage(self.filtered))
+                if make_copy and filtered.base is None:
+                    filtered = filtered.copy()
+            if self.mask is not None:
+                mask = np.float32(region.subimage(self.mask))
+                if make_copy and mask.base is None:
+                    mask = mask.copy()
+        if out:
+            out.thermal = thermal
+            out.filtered = filtered
+            out.mask = mask
+            out.region = region
+            frame = out
+        else:
+            frame = Frame(
+                thermal,
+                filtered,
+                self.frame_number,
+                mask=mask,
+                ffc_affected=self.ffc_affected,
+                region=region,
+            )
+        return frame
+    
+    def crop_by_region(self, region, only_thermal=False, out=None,make_copy = False):
         thermal = None
         filtered = None
         mask = None
         if self.thermal is not None:
             thermal = region.subimage(self.thermal)
+            if make_copy:
+                thermal = thermal.copy()
         if not only_thermal:
             if self.filtered is not None:
                 filtered = region.subimage(self.filtered)
+                if make_copy:
+                    filtered = filtered.copy()
             if self.mask is not None:
                 mask = region.subimage(self.mask)
+                if make_copy:
+                    mask = mask.copy()
         if out:
             out.thermal = thermal
             out.filtered = filtered
