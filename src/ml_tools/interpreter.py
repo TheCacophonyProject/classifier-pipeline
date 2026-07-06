@@ -161,9 +161,11 @@ class Interpreter(ABC):
 
     def track_prediction_from_raw(self, track_id, prediction_frames, output, masses):
         track_prediction = TrackPrediction(
-            track_id, self.labels, smooth_preds=self.params.smooth_predictions
+            track_id,
+            self.labels,
+            smooth_preds=self.params.smooth_predictions,
+            multi_label=self.params.multi_label,
         )
-
         track_prediction.classified_track(
             output,
             prediction_frames,

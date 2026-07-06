@@ -95,7 +95,13 @@ class TrackPrediction:
     """
 
     def __init__(
-        self, track_id, labels, keep_all=True, start_frame=None, smooth_preds=False
+        self,
+        track_id,
+        labels,
+        keep_all=True,
+        start_frame=None,
+        smooth_preds=False,
+        multi_label=False,
     ):
         try:
             fp_index = labels.index("false-positive")
@@ -107,7 +113,7 @@ class TrackPrediction:
         self.fp_index = fp_index
         self.class_best_score = np.zeros((len(labels)))
         self.start_frame = start_frame
-
+        self.num_predictions = 0
         self.last_frame_classified = None
         self.num_frames_classified = 0
         self.keep_all = keep_all
@@ -117,6 +123,7 @@ class TrackPrediction:
         self.masses = []
         self.normalized = False
         self.smooth_preds = smooth_preds
+        self.multi_label = multi_label
 
     def cap_confidences(self, max_confidence):
         max_score = np.sum(self.class_best_score)
@@ -138,10 +145,10 @@ class TrackPrediction:
             masses = masses[:, None]
             smoothed_predictions = predictions * masses
 
-        self.num_frames_classified = len(predictions)
         index = 0
+        self.num_predictions = len(predictions)
         for prediction, frames, mass in zip(predictions, prediction_frames, masses):
-
+            self.num_frames_classified += len(prediction_frames)
             prediction = Prediction(
                 prediction,
                 (
@@ -163,22 +170,31 @@ class TrackPrediction:
                 self.class_best_score = np.sum(smoothed_predictions, axis=0)
             # normalize so it sums to 1
             if top_score is None:
-                self.class_best_score = self.class_best_score / np.sum(
-                    self.class_best_score
-                )
+                if self.multi_label:
+                    self.class_best_score = self.class_best_score / len(predictions)
+                else:
+                    self.class_best_score = self.class_best_score / np.sum(
+                        self.class_best_score
+                    )
             else:
                 # possibility it doesn't sum to 1 i.e multi label model
                 self.class_best_score /= top_score
 
     def normalized_best_score(self):
-        return self.class_best_score[self.best_label_index] / np.sum(
-            self.class_best_score
-        )
+        if self.multi_label:
+            return self.class_best_score[self.best_label_index] / self.num_predictions
+        else:
+            return self.class_best_score[self.best_label_index] / np.sum(
+                self.class_best_score
+            )
 
     def get_normalized_score(self):
         score = None
         if self.class_best_score is not None:
-            score = self.class_best_score / np.sum(self.class_best_score)
+            if self.multi_label:
+                score = self.class_best_score / self.num_predictions
+            else:
+                score = self.class_best_score / np.sum(self.class_best_score)
         return score
 
     def normalize_score(self):
@@ -198,6 +214,9 @@ class TrackPrediction:
         total_pred = None
         if not self.smooth_preds:
             total_pred = np.sum(predictions, axis=0)
+
+        self.num_predictions = len(predictions)
+
         for frames, pred, mass in zip(frame_numbers, predictions, masses):
             if isinstance(frames, list):
                 self.num_frames_classified += len(frames)
@@ -235,6 +254,7 @@ class TrackPrediction:
     def classified_frame(self, frame_number, predictions, mass):
         self.last_frame_classified = frame_number
         self.num_frames_classified += 1
+        self.num_predictions += 1
         self.masses.append(mass)
         smoothed_prediction = None
         if self.smooth_preds:

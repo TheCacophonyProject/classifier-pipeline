@@ -606,7 +606,7 @@ class ClipClassifier:
                 preds.extend(pred)
 
             track_prediction = classifier.track_prediction_from_raw(
-                track_id, pred_frame_numbers, preds, masses
+                track_id, pred_frame_numbers, preds
             )
             predictions.prediction_per_track[track_id] = track_prediction
 

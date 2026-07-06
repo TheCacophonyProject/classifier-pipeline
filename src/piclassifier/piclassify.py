@@ -352,6 +352,7 @@ def parse_cptv(file, config, thermal_config_file, preview_type, fps, seed):
         ),
     )
     preview_process.start()
+    pi_classifier = None
     try:
         thermal_config = ThermalConfig.load_from_file(
             thermal_config_file, headers.model
@@ -403,7 +404,8 @@ def parse_cptv(file, config, thermal_config_file, preview_type, fps, seed):
             except:
                 pass
     except Exception as ex:
-        pi_classifier.disconnected()
+        if pi_classifier:
+            pi_classifier.disconnected()
         logging.error("EXception all done")
         frame_queue.put(STOP_SIGNAL)
         preview_process.join(7)
