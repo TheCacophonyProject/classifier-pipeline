@@ -39,7 +39,7 @@ class Interpreter(ABC):
         self.label_probabilities = metadata.get("label_probabilities")
         self.thresholds_per_label = metadata.get("thresholds")
         self.preprocess_fn = self.get_preprocess_fn()
-        self.preprocess_v2 =metadata .get("v2_preprocess", False)
+        self.preprocess_v2 = metadata.get("v2_preprocess", False)
 
     @abstractmethod
     def shape(self):

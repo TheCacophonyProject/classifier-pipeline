@@ -1675,7 +1675,6 @@ def validate_model(model_file):
     return Path(model_file).exists()
 
 
-
 METRIC_ACCURACY = "accuracy"
 METRIC_LOSS = "loss"
 
