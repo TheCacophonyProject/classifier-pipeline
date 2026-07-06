@@ -39,6 +39,7 @@ class Interpreter(ABC):
         self.label_probabilities = metadata.get("label_probabilities")
         self.thresholds_per_label = metadata.get("thresholds")
         self.preprocess_fn = self.get_preprocess_fn()
+        self.preprocess_v2 =metadata .get("v2_preprocess", False)
 
     @abstractmethod
     def shape(self):
@@ -114,7 +115,7 @@ class Interpreter(ABC):
         # this might be a little slower as it checks some massess etc
         # but keeps it the same for all ways of classifying
         if frames_per_classify > 1:
-            if args.get("v2_preprocess", True):
+            if self.preprocess_v2:
                 frames, preprocessed, masses = self.preprocess_segments_v2(
                     clip,
                     track,
@@ -380,24 +381,24 @@ class Interpreter(ABC):
         preprocessed = {}
         for segment in segments:
             segment_data = []
-            for region, frame_num in zip(segment.regions, segment.frame_indices):
-                assert region.frame_number == frame_num
-                if frame_num in track_data:
-                    cropped_frame = track_data[frame_num]
+            for region in segment.regions:
+
+                if region.frame_number in track_data:
+                    cropped_frame = track_data[region.frame_number]
                 else:
-                    frame = clip.get_frame(frame_num)
+                    frame = clip.get_frame(region.frame_number)
                     result = preprocess_frame_v2(
                         frame, self.params.frame_size, region, clip.crop_rectangle
                     )
                     if result is None:
-                        track_data[frame_num] = None
+                        track_data[region.frame_number] = None
                         continue
                     cropped_frame, _, _ = result
                     # comes as normalized 0-1
                     cropped_frame.thermal *= 255
                     cropped_frame.thermal_norm *= 255
                     cropped_frame.filtered *= 255
-                track_data[frame_num] = cropped_frame
+                track_data[region.frame_number] = cropped_frame
                 segment_data.append(cropped_frame.copy())
             input_image = preprocess_movement(
                 segment_data,

@@ -472,7 +472,11 @@ class TrackPrediction:
         # GP makes api pick up the label this will change when logic is moved to API
         confidence = self.max_score if self.max_score else 0
         if thresholds_per_label is not None:
-            threshold = thresholds_per_label[self.predicted_tag()]
+            # if old style list
+            if isinstance(thresholds_per_label, list):
+                threshold = thresholds_per_label[self.best_label_index]
+            else:
+                threshold = thresholds_per_label[self.predicted_tag()]
         else:
             threshold = DEFAULT_THRESHOLD
 

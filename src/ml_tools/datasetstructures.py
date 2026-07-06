@@ -1543,6 +1543,7 @@ def get_segments(
                     assert region_slice[z].frame_number == f
 
                 if repeat_frame_indices:
+                    logging.info("Repeating frame indices")
                     # dont think we ever want this it can be handled elsewhere
                     if len(frames) < segment_width:
                         extra_samples = rng.choice(frames, segment_width - len(frames))
@@ -1550,7 +1551,6 @@ def get_segments(
                         frames = list(frames)
                         frames.extend(extra_samples)
                 frames.sort()
-
                 segment = SegmentHeader(
                     clip_id,
                     track_id,
