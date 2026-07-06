@@ -1552,7 +1552,6 @@ def get_segments(
                     clip_id,
                     track_id,
                     start_frame=start_frame,
-                    frames=segment_width,
                     mass=segment_mass,
                     label=label,
                     regions=region_slice,

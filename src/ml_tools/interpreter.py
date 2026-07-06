@@ -377,7 +377,7 @@ class Interpreter(ABC):
 
         track_data = {}
         masses = []
-        preprocessed = []
+        preprocessed = {}
         for segment in segments:
             segment_data = []
             for region, frame_num in zip(segment.regions, segment.frame_indices):
@@ -390,7 +390,7 @@ class Interpreter(ABC):
                         frame, self.params.frame_size, region, clip.crop_rectangle
                     )
                     if result is None:
-                        by_frame_number[frame_number] = None
+                        track_data[frame_num] = None
                         continue
                     cropped_frame, _, _ = result
                     # comes as normalized 0-1
@@ -412,10 +412,13 @@ class Interpreter(ABC):
                 logging.warn("No frames to predict on")
                 continue
             mask_input = get_frame_mask(segment.frame_indices)
-            preprocessed["input_image"].append(input_image)
-            preprocessed["input_mask"].append(mask_input)
+            preprocessed.setdefault('input_image', []).append(input_image)
+            preprocessed.setdefault('input_mask', []).append(input_image)
             masses.append(segment.mass)
-        preprocessed = np.array(preprocessed)
+        if len(self.preprocessed) >0:
+            preprocessed["input_image"] = np.array(input_image["input_image"])
+            preprocessed["input_mask"] = np.array(input_image["input_mask"])
+
 
         return [s.frame_indices for s in segments], preprocessed, masses
 
