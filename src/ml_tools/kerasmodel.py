@@ -32,6 +32,7 @@ from ml_tools.preprocess import FrameTypes
 from ml_tools.thermalwriter import MeanData
 
 classify_i = 0
+CURRENT_EPOCH = tf.Variable(0, dtype=tf.int32, trainable=False, name="current_epoch")
 
 
 class KerasModel(Interpreter):
@@ -1131,6 +1132,9 @@ class KerasModel(Interpreter):
                 min_lr=0.000001,  # Safety floor: Never drops lower than 10% of standard fine-tuning speed
             )
             checkpoints.append(reduce_lr_callback)
+            checkpoints.append(EpochTrackerCallback())
+
+
         return checkpoints
 
         # havent found much use in this just takes training time
@@ -2030,3 +2034,11 @@ class StepWarmupCallback(Callback):
             logging.info(msg)
 
         self.global_step += 1
+
+
+
+class EpochTrackerCallback(tf.keras.callbacks.Callback):
+    def on_epoch_end(self, epoch, logs=None):
+        # Assign the next epoch index to the TensorFlow variable
+        # Note: 'epoch' passed by Keras starts at 0, so epoch 0 finished means we move to 1
+        CURRENT_EPOCH.assign(epoch + 1)
