@@ -1032,7 +1032,10 @@ def get_samples_by_label_urgency(
         windows_float = (total_seconds - window_length_seconds) / (
             window_length_seconds // 2
         ) + 1
-        num_windows = min(int(windows_float), max_samples)
+        if max_samples is None:
+            num_windows = int(windows_float)
+        else:
+            num_windows = min(int(windows_float), max_samples)
         samples_to_take = num_windows
         # the left over frames
         stride_offset = total_frames % (fps * window_length_seconds / 2)
@@ -1043,6 +1046,7 @@ def get_samples_by_label_urgency(
             max_resample = 3
         else:
             max_resample = 5
+
         max_samples = max(1, math.ceil(total_frames / (3 * 25)))
         # For rare animals, aggressively pull 3 samples even if the clip is short
         samples_to_take = min(max_resample, max_samples)
@@ -1126,8 +1130,8 @@ def get_segment_indices(
         assert frame_num not in frame_indices
         segment_frames.append(frame_num)
         seg_regions.append(regions[frame_num - start_frame])
+        assert seg_regions[-1].frame_number == frame_num
         mass += mass_history[frame_num - start_frame]
-
     return segment_frames, seg_regions, mass, last_index, stopped_early
 
 
@@ -1145,9 +1149,9 @@ def random_sections(
     station_id,
     rec_time,
     seed=None,
+    max_samples=5,
 ):
     min_frames = int(25 / 4.0)
-
     rng = np.random.default_rng(seed=seed)
     chunks = 25
     window_length_seconds = 12
@@ -1157,9 +1161,8 @@ def random_sections(
     # logging.info("%s Got frames %s num frames %s %s",label,len(frame_indices),num_frames, frame_indices)
 
     frame_indices = list(frame_indices.copy())
-
     samples, num_windows, stride_offset = get_samples_by_label_urgency(
-        label, num_frames, window_length_seconds=12, fps=fps
+        label, num_frames, window_length_seconds=12, fps=fps, max_samples=max_samples
     )
     window_frames = min(window_length_seconds * fps, num_frames)
     upsampled = False
@@ -1437,7 +1440,6 @@ def get_segments(
         for _ in range(repeats):
 
             if segment_type == SegmentType.RANDOM_SECTIONS:
-                logging.info("RANODM SECTIONS")
                 new_segments = random_sections(
                     label,
                     frame_indices,
@@ -1452,6 +1454,7 @@ def get_segments(
                     station_id,
                     rec_time,
                     seed,
+                    max_samples=max_segments,
                 )
                 segments.extend(new_segments)
                 continue

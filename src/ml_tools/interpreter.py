@@ -37,7 +37,7 @@ class Interpreter(ABC):
 
         self.mapped_labels = metadata.get("mapped_labels")
         self.label_probabilities = metadata.get("label_probabilities")
-        self.thresholds = metadata.get("thresholds")
+        self.thresholds_per_label = metadata.get("thresholds")
         self.preprocess_fn = self.get_preprocess_fn()
 
     @abstractmethod
@@ -218,7 +218,7 @@ class Interpreter(ABC):
                         reversed(track.bounds_history[-available_frames:])
                     ):
                         logging.info(
-                            "Checking regoins in reverse %s", predict_from_last
+                            "Checking regions in reverse %s", predict_from_last
                         )
                         if r.blank:
                             continue
@@ -411,14 +411,14 @@ class Interpreter(ABC):
             if input_image is None:
                 logging.warn("No frames to predict on")
                 continue
-            mask_input = get_frame_mask(segment.frame_indices)
-            preprocessed.setdefault('input_image', []).append(input_image)
-            preprocessed.setdefault('input_mask', []).append(input_image)
+            input_mask = get_frame_mask(segment.frame_indices)
+            preprocessed.setdefault("input_image", []).append(input_image)
+            preprocessed.setdefault("input_mask", []).append(input_mask)
             masses.append(segment.mass)
-        if len(self.preprocessed) >0:
-            preprocessed["input_image"] = np.array(input_image["input_image"])
-            preprocessed["input_mask"] = np.array(input_image["input_mask"])
 
+        if len(preprocessed) > 0:
+            preprocessed["input_image"] = np.array(preprocessed["input_image"])
+            preprocessed["input_mask"] = np.array(preprocessed["input_mask"])
 
         return [s.frame_indices for s in segments], preprocessed, masses
 

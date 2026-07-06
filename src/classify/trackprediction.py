@@ -12,12 +12,12 @@ DEFAULT_THRESHOLD = 0.8
 
 
 class Predictions:
-    def __init__(self, labels, model, thresholds):
+    def __init__(self, labels, model, thresholds_per_label):
         self.labels = labels
         self.prediction_per_track = {}
         self.model = model
         self.model_load_time = None
-        self.thresholds = thresholds
+        self.thresholds_per_label = thresholds_per_label
 
     def get_or_create_prediction(self, track, keep_all=True, smooth_preds=False):
         prediction = self.prediction_per_track.setdefault(
@@ -462,7 +462,7 @@ class TrackPrediction:
         ]
         return guesses
 
-    def get_metadata(self, thresholds):
+    def get_metadata(self, thresholds_per_label):
         prediction_meta = {}
         if self.classify_time is not None:
             prediction_meta["classify_time"] = round(self.classify_time, 1)
@@ -471,8 +471,8 @@ class TrackPrediction:
 
         # GP makes api pick up the label this will change when logic is moved to API
         confidence = self.max_score if self.max_score else 0
-        if thresholds is not None:
-            threshold = thresholds[self.best_label_index]
+        if thresholds_per_label is not None:
+            threshold = thresholds_per_label[self.predicted_tag()]
         else:
             threshold = DEFAULT_THRESHOLD
 

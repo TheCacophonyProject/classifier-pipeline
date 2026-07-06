@@ -302,13 +302,6 @@ class RegionTracker(Tracker):
             if np.sum(np.abs(vel)) > 5:
                 # faster tracks can be a bit more deviant
                 mass_percent = mass_percent + 0.1
-            logging.info(
-                "Restricting mass %s avg %s percent %s",
-                self.min_mass_change,
-                average_mass,
-                mass_percent,
-            )
-
             return max(
                 self.min_mass_change,
                 average_mass * mass_percent,

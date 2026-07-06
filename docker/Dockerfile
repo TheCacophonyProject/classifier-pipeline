@@ -1,4 +1,4 @@
-FROM tensorflow/tensorflow:2.20.0
+FROM tensorflow/tensorflow:2.21.0
 COPY ./src/ .
 COPY ./requirements.txt .
 COPY docker/classifier-docker.yaml .
@@ -23,6 +23,10 @@ RUN mkdir -p /etc/cacophony
 RUN cp classifier-docker.yaml /etc/cacophony/classifier.yaml
 RUN touch /etc/cacophony/classifier
 RUN python3 latestmodel.py
+
+
+# 1. Install the legacy engine package
+RUN pip install --no-cache-dir --upgrade keras==3.14.1
 
 COPY docker/ready.sh .
 WORKDIR /

@@ -47,7 +47,9 @@ def convert_model(args):
         )
 
         # 5. Construct the final inference model
-        model.model = tf.keras.Model(inputs=model.inputs, outputs=probabilities)
+        model = tf.keras.Model(inputs=model.inputs, outputs=probabilities)
+        print("Addied sigmoid")
+        model.summary()
     print(time.time() - a, " to load model")
     # return
     model.trainable = False
@@ -93,7 +95,19 @@ def convert_model(args):
 
         else:
             print("saving model to", out_dir / args.model.name)
-            model.save(out_dir / args.model.name)
+            print(model.summary())
+            model.compile_config = None 
+            for layer in model.layers:
+                if isinstance(layer, tf.keras.layers.BatchNormalization):
+                    original_get_config = layer.get_config
+                    def clean_get_config():
+                        cfg = original_get_config()
+                        cfg.pop('renorm', None)
+                        cfg.pop('renorm_clipping', None)
+                        cfg.pop('renorm_momentum', None)
+                        return cfg
+                    layer.get_config = clean_get_config
+            model.save(out_dir / args.model.name,zipped=True)
             frozen_meta = out_dir / meta_file.name
 
     if meta_file.exists():

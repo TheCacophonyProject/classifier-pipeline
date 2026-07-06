@@ -5,7 +5,8 @@ import os
 
 # os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 import tensorflow as tf
-from tensorboard.plugins.hparams import api as hp
+
+# from tensorboard.plugins.hparams import api as hp
 
 
 import numpy as np
@@ -1674,18 +1675,6 @@ def validate_model(model_file):
     return Path(model_file).exists()
 
 
-# HYPER PARAM TRAINING OF A MODEL
-#
-HP_DENSE_SIZES = hp.HParam("dense_sizes", hp.Discrete([""]))
-HP_MVM = hp.HParam("mvm", hp.Discrete([3.0]))
-
-HP_BATCH_SIZE = hp.HParam("batch_size", hp.Discrete([64]))
-HP_OPTIMIZER = hp.HParam("optimizer", hp.Discrete(["adam"]))
-HP_LEARNING_RATE = hp.HParam("learning_rate", hp.Discrete([0.001]))
-HP_EPSILON = hp.HParam("epislon", hp.Discrete([1e-7]))  # 1.0 and 0.1 for inception
-HP_DROPOUT = hp.HParam("dropout", hp.Discrete([0.0]))
-HP_RETRAIN = hp.HParam("retrain_layer", hp.Discrete([-1]))
-HP_LEARNING_RATE_DECAY = hp.HParam("learning_rate_decay", hp.Discrete([1.0]))
 
 METRIC_ACCURACY = "accuracy"
 METRIC_LOSS = "loss"
@@ -1693,6 +1682,19 @@ METRIC_LOSS = "loss"
 
 # GRID SEARCH
 def train_test_model(model, hparams, log_dir, writer, epochs):
+
+    # HYPER PARAM TRAINING OF A MODEL
+    #
+    HP_DENSE_SIZES = hp.HParam("dense_sizes", hp.Discrete([""]))
+    HP_MVM = hp.HParam("mvm", hp.Discrete([3.0]))
+
+    HP_BATCH_SIZE = hp.HParam("batch_size", hp.Discrete([64]))
+    HP_OPTIMIZER = hp.HParam("optimizer", hp.Discrete(["adam"]))
+    HP_LEARNING_RATE = hp.HParam("learning_rate", hp.Discrete([0.001]))
+    HP_EPSILON = hp.HParam("epislon", hp.Discrete([1e-7]))  # 1.0 and 0.1 for inception
+    HP_DROPOUT = hp.HParam("dropout", hp.Discrete([0.0]))
+    HP_RETRAIN = hp.HParam("retrain_layer", hp.Discrete([-1]))
+    HP_LEARNING_RATE_DECAY = hp.HParam("learning_rate_decay", hp.Discrete([1.0]))
     # if not self.model:
     train_files = model.data_dir + "/train"
     validate_files = model.data_dir + "/validation"

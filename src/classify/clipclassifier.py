@@ -42,7 +42,7 @@ class ClipClassifier:
             self.model.name = f"post-{self.model.name}"
 
         # prediction record for each track
-
+        self.previewer = None
         if config.classify.preview and not config.classify.preview.lower() == "none":
             from ml_tools.previewer import Previewer
 
@@ -254,7 +254,9 @@ class ClipClassifier:
         location = meta_data.get("location")
         logging.info("getting classified with %s", location)
         classifier = self.get_classifier(model, location)
-        predictions = Predictions(classifier.labels, model, classifier.thresholds)
+        predictions = Predictions(
+            classifier.labels, model, classifier.thresholds_per_label
+        )
         predictions.model_load_time = time.time() - start
 
         for i, track in enumerate(clip.tracks):
@@ -278,7 +280,6 @@ class ClipClassifier:
                             logging.info("Reusing previous prediction frames %s", model)
                             segment_frames = prediction_tag["data"]["prediction_frames"]
                             segment_frames = np.uint16(segment_frames)
-
             prediction = classifier.classify_track(
                 clip, track, segment_frames=segment_frames, min_segments=1
             )
@@ -324,7 +325,9 @@ class ClipClassifier:
                 prediction = predictions.prediction_for(track.get_id())
                 if prediction is None:
                     continue
-                prediction_meta = prediction.get_metadata(predictions.thresholds)
+                prediction_meta = prediction.get_metadata(
+                    predictions.thresholds_per_label
+                )
                 prediction_meta["model_id"] = model_id
                 if self.keep_original_predictions:
                     prediction_meta["reprocessed"] = True
@@ -435,7 +438,9 @@ class ClipClassifier:
         model = self.config.classify.models[0]
         classifier = self.get_classifier(model)
         classifier_is_ready = not classifier.run_over_network
-        predictions = Predictions(classifier.labels, model, classifier.thresholds)
+        predictions = Predictions(
+            classifier.labels, model, classifier.thresholds_per_label
+        )
         predictions.model_load_time = time.time() - start
 
         track_samples = {}
