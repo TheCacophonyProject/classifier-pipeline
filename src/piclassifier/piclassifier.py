@@ -365,7 +365,7 @@ class PiClassifier(Processor):
                 self.frames_per_classify * 2 if not preview_type else None
             )
             self.predictions[model.id] = Predictions(
-                self.classifier.labels, model, self.classifier.thresholds
+                self.classifier.labels, model, self.classifier.thresholds_per_label
             )
             self.num_labels = len(self.classifier.labels)
             logging.info(

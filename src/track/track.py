@@ -1025,7 +1025,9 @@ class Track:
                 prediction = predictions.prediction_for(self.get_id())
                 if prediction is None:
                     continue
-                prediciont_meta = prediction.get_metadata(predictions.thresholds)
+                prediciont_meta = prediction.get_metadata(
+                    predictions.thresholds_per_label
+                )
                 prediciont_meta["model_id"] = model_id
                 prediction_info.append(prediciont_meta)
         track_info["predictions"] = prediction_info
