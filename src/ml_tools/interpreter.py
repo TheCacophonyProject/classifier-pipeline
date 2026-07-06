@@ -392,15 +392,14 @@ class Interpreter(ABC):
                     if result is None:
                         by_frame_number[frame_number] = None
                         continue
+                    cropped_frame, _, _ = result
                     # comes as normalized 0-1
                     cropped_frame.thermal *= 255
                     cropped_frame.thermal_norm *= 255
                     cropped_frame.filtered *= 255
-                    cropped_frame, _, _ = result
-
                 track_data[frame_num] = cropped_frame
                 segment_data.append(cropped_frame.copy())
-            frames = preprocess_movement(
+            input_image = preprocess_movement(
                 segment_data,
                 self.params.square_width,
                 self.params.frame_size,
@@ -409,10 +408,12 @@ class Interpreter(ABC):
                 sample=f"Clip-{clip.get_id()}-track-{track.get_id()}",
                 pad_with=0,  # dont repeat frames
             )
-            if frames is None:
+            if input_image is None:
                 logging.warn("No frames to predict on")
                 continue
-            preprocessed.append(frames)
+            mask_input = get_frame_mask(segment.frame_indices)
+            preprocessed["input_image"].append(input_image)
+            preprocessed["input_mask"].append(mask_input)
             masses.append(segment.mass)
         preprocessed = np.array(preprocessed)
 
@@ -725,3 +726,21 @@ class ModelMeta(Interpreter):
 
     def shape(self):
         raise "No shape for model meta"
+
+
+def get_frame_mask(indices):
+    """
+    Normalises frame intervals uniformly against a maximum inter-frame distance of 9 frames.
+    """
+    # this comes from the random section logic where frames are selected at intervals of 4.32 frames apart
+    #  allowing for a possible missed chunk  double this
+    MAX_FRAME_DIST = 9
+    indices = np.float32(indices)
+    num_valid = len(indices)
+    frame_delta = indices[1:] - indices[:-1]
+    normalised_delta = np.minimum(frame_delta / MAX_FRAME_DIST, 1.0)
+    # Use -1.0 as a strict geometric flag for empty padding slots
+    mask_flat = np.concatenate([[0.0], normalised_delta, np.full(25 - num_valid, -1.0)])
+
+    mask = mask_flat.reshape(5, 5, 1)
+    return mask

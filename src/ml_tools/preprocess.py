@@ -231,7 +231,7 @@ def preprocess_frame(
     median=None,
     clip_thermals_at_zero=True,
 ):
-    from imageprocessing import normalize
+    from ml_tools.imageprocessing import normalize
 
     if sub_median and median is None:
         median = np.median(frame.thermal)
@@ -347,7 +347,6 @@ def preprocess_movement(
             data.append(frame_types[channel])
             continue
         channel_segment = [frame.get_channel(channel) for frame in preprocess_frames]
-
         channel_data = square_clip(
             channel_segment,
             frames_per_row,

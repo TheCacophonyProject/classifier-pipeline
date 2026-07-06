@@ -1963,7 +1963,6 @@ def metrics(multi_label=True, from_logits=True):
             [
                 LogitRecall(name="recall"),
                 LogitPrecision(name="precision"),
-                LogitMacroF1(average="macro", name="macro_f1"),
             ]
         )
     else:
@@ -1972,7 +1971,6 @@ def metrics(multi_label=True, from_logits=True):
             [
                 tf.keras.metrics.Recall(name="recall"),
                 tf.keras.metrics.Precision(name="precision"),
-                tf.keras.metrics.F1Score(average="macro", name="macro_f1"),
             ]
         )
 

@@ -1437,6 +1437,7 @@ def get_segments(
         for _ in range(repeats):
 
             if segment_type == SegmentType.RANDOM_SECTIONS:
+                logging.info("RANODM SECTIONS")
                 new_segments = random_sections(
                     label,
                     frame_indices,
@@ -1556,7 +1557,6 @@ def get_segments(
                     label=label,
                     regions=region_slice,
                     frame_indices=frames,
-                    movement_data=movement_data,
                     camera=camera,
                     location=location,
                     station_id=station_id,

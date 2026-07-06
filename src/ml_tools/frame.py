@@ -328,6 +328,9 @@ class Frame:
             None if self.thermal is None else self.thermal.copy(),
             None if self.filtered is None else self.filtered.copy(),
             self.frame_number,
+            thermal_norm=(
+                None if self.thermal_norm is None else self.thermal_norm.copy()
+            ),
             mask=None if self.mask is None else self.mask.copy(),
             ffc_affected=self.ffc_affected,
             region=None if self.region is None else self.region.copy(),
