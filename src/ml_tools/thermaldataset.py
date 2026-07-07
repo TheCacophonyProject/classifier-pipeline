@@ -676,10 +676,26 @@ def prepare_cutmix_dataset(dataset_original, img_size, prob, current_epoch):
     # 2. Zip them together so each element is ((img1, lbl1), (img2, lbl2))
     zipped_dataset = tf.data.Dataset.zip((dataset_original, dataset_shuffled))
 
-    # Read the current epoch value from the global variable graph pointer
+    # current_epoch is read inside the mapped function (not here) so that each
+    # call sees the *live* value of the variable as it's updated by
+    # EpochTrackerCallback across epochs, rather than baking in a constant
+    # captured at dataset-construction time.
+    cutmix_dataset = zipped_dataset.map(
+        lambda d1, d2: video_sequential_cutmix(d1, d2, current_epoch),
+        num_parallel_calls=tf.data.AUTOTUNE,
+    )
+
+    return cutmix_dataset
+
+
+def video_sequential_cutmix(data1, data2, current_epoch):
+    # Read the current epoch value from the global variable graph pointer.
+    # Doing this here (inside the traced map function) rather than once when
+    # the dataset is built means it re-reads the variable's live value on
+    # every call, so the staging below tracks CURRENT_EPOCH as training
+    # progresses.
     epoch = current_epoch.read_value()
 
-    # Define your conditions natively using tf.case or tf.cond
     def heavy_stage():
         return tf.constant(1.0, dtype=tf.float32), tf.constant(1.0, dtype=tf.float32)
 
@@ -693,16 +709,14 @@ def prepare_cutmix_dataset(dataset_original, img_size, prob, current_epoch):
     prob, alpha = tf.case(
         [(epoch < 15, heavy_stage), (epoch < 25, medium_stage)], default=off_stage
     )
-    # 3. Map the sequential CutMix function (passed via lambda to include parameters)
-    cutmix_dataset = zipped_dataset.map(
-        lambda d1, d2: video_sequential_cutmix(d1, d2, prob, alpha),
-        num_parallel_calls=tf.data.AUTOTUNE,
-    )
 
-    return cutmix_dataset
+    # Sampled so it doesn't flood the logs - remove once you've confirmed
+    # the epoch value is actually advancing across epochs.
+    if tf.random.uniform([]) < 0.001:
+        tf.print(
+            "[cutmix] current_epoch=", epoch, " prob=", prob, " alpha=", alpha
+        )
 
-
-def video_sequential_cutmix(data1, data2, prob, alpha=0.3):
     x1, y1 = data1
     image1 = x1["input_image"]  # Shape: (25, 32, 32, 3)
     mask1 = x1["input_mask"]  # Shape: (25, 1)

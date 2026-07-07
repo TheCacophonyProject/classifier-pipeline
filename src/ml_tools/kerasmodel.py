@@ -2042,3 +2042,4 @@ class EpochTrackerCallback(tf.keras.callbacks.Callback):
         # Assign the next epoch index to the TensorFlow variable
         # Note: 'epoch' passed by Keras starts at 0, so epoch 0 finished means we move to 1
         CURRENT_EPOCH.assign(epoch + 1)
+        logging.info("CURRENT_EPOCH assigned to %s", epoch + 1)
