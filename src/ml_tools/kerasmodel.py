@@ -877,6 +877,7 @@ class KerasModel(Interpreter):
             rebalance=rebalance,
             single_input=single_input,
             epoch_size=100 if test else None,
+            current_epoch=CURRENT_EPOCH,
         )
 
         steps = epoch_size // self.params.batch_size
@@ -1019,6 +1020,7 @@ class KerasModel(Interpreter):
             downsize_fp=True,
             tf_mappings=tf_mappings,
             single_input=single_input,
+            current_epoch=CURRENT_EPOCH,
         )
 
         self.save_metadata(run_name)
@@ -1133,7 +1135,6 @@ class KerasModel(Interpreter):
             )
             checkpoints.append(reduce_lr_callback)
             checkpoints.append(EpochTrackerCallback())
-
 
         return checkpoints
 
@@ -2034,7 +2035,6 @@ class StepWarmupCallback(Callback):
             logging.info(msg)
 
         self.global_step += 1
-
 
 
 class EpochTrackerCallback(tf.keras.callbacks.Callback):

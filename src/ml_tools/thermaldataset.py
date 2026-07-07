@@ -282,7 +282,10 @@ def load_dataset(filenames, remap_lookup, labels, args):
 
     if augment:
         dataset = prepare_cutmix_dataset(
-            dataset, img_size=image_size[0], prob=args.get("cutmix_prob", 0.4)
+            dataset,
+            img_size=image_size[0],
+            prob=args.get("cutmix_prob", 0.4),
+            current_epoch=args.get("current_epoch"),
         )
     else:
         # remove num_frames_used from y
@@ -666,16 +669,33 @@ def read_tfrecord(
     # return rgb_image
 
 
-def prepare_cutmix_dataset(dataset_original, img_size, prob):
+def prepare_cutmix_dataset(dataset_original, img_size, prob, current_epoch):
     # 1. Create a second dataset and shuffle it to mix different images together
     dataset_shuffled = dataset_original.shuffle(buffer_size=4096)
 
     # 2. Zip them together so each element is ((img1, lbl1), (img2, lbl2))
     zipped_dataset = tf.data.Dataset.zip((dataset_original, dataset_shuffled))
 
+    # Read the current epoch value from the global variable graph pointer
+    epoch = current_epoch.read_value()
+
+    # Define your conditions natively using tf.case or tf.cond
+    def heavy_stage():
+        return tf.constant(1.0, dtype=tf.float32), tf.constant(1.0, dtype=tf.float32)
+
+    def medium_stage():
+        return tf.constant(0.4, dtype=tf.float32), tf.constant(0.3, dtype=tf.float32)
+
+    def off_stage():
+        return tf.constant(0.0, dtype=tf.float32), tf.constant(0.0, dtype=tf.float32)
+
+    # Graph-safe conditional selection based on epoch boundaries
+    prob, alpha = tf.case(
+        [(epoch < 15, heavy_stage), (epoch < 25, medium_stage)], default=off_stage
+    )
     # 3. Map the sequential CutMix function (passed via lambda to include parameters)
     cutmix_dataset = zipped_dataset.map(
-        lambda d1, d2: video_sequential_cutmix(d1, d2, prob),
+        lambda d1, d2: video_sequential_cutmix(d1, d2, prob, alpha),
         num_parallel_calls=tf.data.AUTOTUNE,
     )
 
@@ -713,7 +733,15 @@ def video_sequential_cutmix(data1, data2, prob, alpha=0.3):
         num_blocks_to_swap = tf.cast(
             tf.math.round((1.0 - lam) * tf.cast(num_frames, tf.float32)), tf.int32
         )
-        num_blocks_to_swap = tf.clip_by_value(num_blocks_to_swap, 1, num_frames - 1)
+        half_frames1 = frames_used1 // 2
+        num_blocks_to_swap = tf.where(
+            num_blocks_to_swap > half_frames1,
+            frames_used1 - num_blocks_to_swap,
+            num_blocks_to_swap,
+        )
+        num_blocks_to_swap = tf.math.maximum(num_blocks_to_swap, 1)
+
+        # num_blocks_to_swap = tf.clip_by_value(num_blocks_to_swap, 1, num_frames - 1)
 
         # 2. Create a random binary mask for the 25 chronological timesteps
         real_indices = tf.random.shuffle(tf.range(num_frames))
@@ -743,10 +771,25 @@ def video_sequential_cutmix(data1, data2, prob, alpha=0.3):
         actual_swap_ratio = tf.cast(num_blocks_to_swap, tf.float32) / tf.cast(
             total_cells, tf.float32
         )
-        adjusted_lam = 1.0 - actual_swap_ratio
+        # adjusted_lam = 1.0 - actual_swap_ratio
 
         # Blend the one-hot vectors normally
-        mixed_label = label1 * adjusted_lam + label2 * (1.0 - adjusted_lam)
+        # mixed_label = label1 * adjusted_lam + label2 * (1.0 - adjusted_lam)
+
+        # because we are doing multi label just saying both are present is better
+        # mixed_label = tf.maximum(label1, label2)
+        # 5. LABEL LOGIC: Only mix Image 2's labels if it has enough visual presence
+        # (e.g., at least 4 tiles / 15% of the timeline) to be reasonably seen.
+        presence_threshold = tf.cast(frames_used1, tf.float32) * 0.15
+        has_enough_frames = (
+            tf.cast(num_blocks_to_swap, tf.float32) >= presence_threshold
+        )
+
+        mixed_label = tf.where(
+            has_enough_frames,
+            tf.maximum(label1, label2),  # Mix both cleanly if significant presence
+            label1,  # Drop Image 2's label if it's just a tiny 1-3 tile flash
+        )
 
         return {"input_image": mixed_image, "input_mask": mask1}, mixed_label
 
