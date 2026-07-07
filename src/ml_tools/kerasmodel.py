@@ -473,7 +473,7 @@ class KerasModel(Interpreter):
                 # Concatenate visual maps (5x5x1536) and time maps (5x5x128) along the channels
                 image_features = x
                 # maybe add
-                image_features = tf.keras.layers.SpatialDropout2D(0.1)(image_features)
+                image_features = tf.keras.layers.SpatialDropout2D(0.3)(image_features)
 
                 # sounds good in practice but actually gives worse results
 
@@ -1670,8 +1670,8 @@ def optimizer(params, steps_per_epoch, epochs, fine_tune=False):
         # using warmup to set lr
         # params.learning_rate
 
-    # optimizer = tf.keras.optimizers.Adam(learning_rate=lr_schedule)
-    optimizer = tf.keras.optimizers.AdamW(learning_rate=lr_schedule, weight_decay=1e-4)
+    optimizer = tf.keras.optimizers.Adam(learning_rate=lr_schedule)
+    # optimizer = tf.keras.optimizers.AdamW(learning_rate=lr_schedule, weight_decay=1e-4)
 
     return optimizer
 
