@@ -238,6 +238,7 @@ def load_dataset(filenames, remap_lookup, labels, args):
                 ],
             ),
             repeat_frames=args.get("single_input", False),
+            current_epoch=args.get("current_epoch"),
         ),
         num_parallel_calls=AUTOTUNE,
         deterministic=deterministic,
@@ -469,6 +470,7 @@ def read_tfrecord(
         TrackChannels.filtered.name,
     ],
     repeat_frames=False,
+    current_epoch=None,
 ):
     logging.info(
         "Read tf record with image %s lbls %s aug  %s  prepr %s only features %s one hot %s include fetures %s num frames %s mosaic_size %s mosaic_enalrged %s padding %s",
@@ -577,10 +579,31 @@ def read_tfrecord(
             rgb_image = tf.image.random_crop(
                 rgb_image, size=[record_frames, mosaic_size, mosaic_size, 3]
             )
-            rgb_image, frame_indices = mask_random_frames(
-                rgb_image, frame_indices, record_frames
+
+            # Stage the frame-masking probability by epoch, same boundaries as
+            # the cutmix staging above: heavy early on, tapering to off, read
+            # live off current_epoch so it tracks training progress.
+            epoch = current_epoch.read_value()
+
+            def heavy_mask_prob():
+                return tf.constant(0.5, dtype=tf.float32)
+
+            def medium_mask_prob():
+                return tf.constant(0.25, dtype=tf.float32)
+
+            def off_mask_prob():
+                return tf.constant(0.0, dtype=tf.float32)
+
+            mask_frames_prob = tf.case(
+                [(epoch < 15, heavy_mask_prob), (epoch < 25, medium_mask_prob)],
+                default=off_mask_prob,
             )
-            record_frames = tf.shape(frame_indices)[0]
+
+            if tf.random.uniform(shape=[], minval=0.0, maxval=1.0) < mask_frames_prob:
+                rgb_image, frame_indices = mask_random_frames(
+                    rgb_image, frame_indices, record_frames
+                )
+                record_frames = tf.shape(frame_indices)[0]
         else:
             rgb_image = tf.image.crop_to_bounding_box(
                 rgb_image, padding, padding, mosaic_size, mosaic_size
@@ -710,12 +733,12 @@ def video_sequential_cutmix(data1, data2, current_epoch):
         [(epoch < 15, heavy_stage), (epoch < 25, medium_stage)], default=off_stage
     )
 
-    # Sampled so it doesn't flood the logs - remove once you've confirmed
-    # the epoch value is actually advancing across epochs.
-    if tf.random.uniform([]) < 0.001:
-        tf.print(
-            "[cutmix] current_epoch=", epoch, " prob=", prob, " alpha=", alpha
-        )
+    # # Sampled so it doesn't flood the logs - remove once you've confirmed
+    # # the epoch value is actually advancing across epochs.
+    # if tf.random.uniform([]) < 0.001:
+    #     tf.print(
+    #         "[cutmix] current_epoch=", epoch, " prob=", prob, " alpha=", alpha
+    #     )
 
     x1, y1 = data1
     image1 = x1["input_image"]  # Shape: (25, 32, 32, 3)
@@ -1077,20 +1100,27 @@ def show_batch(image_batch, label_batch, labels, save=None, tracks=False):
 
 
 @tf.function
-def mask_random_frames(rgb_image, frame_indices, record_frames, min_frames=15):
+def mask_random_frames(rgb_image, frame_indices, record_frames):
     """
     Drops a random number of frames from the end of rgb_image, removing up to
-    (record_frames - min_frames) frames so that at least min_frames remain.
+    75% of record_frames so that at least 25% remain.
     Returns the matching frame_indices so the frame mask can be recomputed
     against the surviving frames.
     """
-    max_drop = tf.maximum(record_frames - min_frames, 0)
-    num_drop = tf.random.uniform(
-        shape=[], minval=0, maxval=max_drop + 1, dtype=tf.int32
-    )
+    min_frames = tf.cast(tf.cast(record_frames, tf.float32) * 0.25, tf.int32)
 
-    keep = record_frames - num_drop
-    return rgb_image[:keep], frame_indices[:keep]
+    def no_drop():
+        return rgb_image, frame_indices
+
+    def drop_frames():
+        max_drop = tf.maximum(record_frames - min_frames, 0)
+        num_drop = tf.random.uniform(
+            shape=[], minval=1, maxval=max_drop + 1, dtype=tf.int32
+        )
+        keep = record_frames - num_drop
+        return rgb_image[:keep], frame_indices[:keep]
+
+    return tf.cond(min_frames > 0, drop_frames, no_drop)
 
 
 @tf.function
