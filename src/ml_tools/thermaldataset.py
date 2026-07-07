@@ -720,7 +720,7 @@ def video_sequential_cutmix(data1, data2, current_epoch):
     epoch = current_epoch.read_value()
 
     def heavy_stage():
-        return tf.constant(1.0, dtype=tf.float32), tf.constant(1.0, dtype=tf.float32)
+        return tf.constant(0.4, dtype=tf.float32), tf.constant(1.0, dtype=tf.float32)
 
     def medium_stage():
         return tf.constant(0.4, dtype=tf.float32), tf.constant(0.3, dtype=tf.float32)
@@ -730,7 +730,7 @@ def video_sequential_cutmix(data1, data2, current_epoch):
 
     # Graph-safe conditional selection based on epoch boundaries
     prob, alpha = tf.case(
-        [(epoch < 15, heavy_stage), (epoch < 25, medium_stage)], default=off_stage
+        [(epoch < 12, heavy_stage), (epoch < 25, medium_stage)], default=off_stage
     )
 
     # # Sampled so it doesn't flood the logs - remove once you've confirmed
