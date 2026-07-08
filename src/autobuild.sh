@@ -7,6 +7,7 @@ month_ago=$(python3 rebuildDate.py $1)
 echo $month_ago
 cd ../../cptv-download
 db_file=$(python3 backup-download.py ./dbs)
+echo "Restoring $db_file"
 sudo -u postgres pg_restore --clean -d cacodb $db_file
 cd ../../classifier-pipeline/src
 python3 ../../cptv-download/cptv-download-direct.py --start-date "$month_ago" "$1"

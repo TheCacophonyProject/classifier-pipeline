@@ -370,7 +370,7 @@ class KerasModel(Interpreter):
         retrain_from=None,
         dropout=None,
         run_name=None,
-        single_input=True,
+        single_input=False,
     ):
         RNN_MODEL = False
         if RNN_MODEL:
@@ -390,13 +390,42 @@ class KerasModel(Interpreter):
         self.preprocess_fn = preprocess
         # inputs = base_model.input
 
-        # Step A: Standardise channel means (92.96, 47.33, 30.62) & variances automatically
-        x = layers.BatchNormalization(axis=-1, name="channel_standardizer")(input_image)
+        # possible alternative to batch normalization
+        # # 2. Slice the channels apart
+        # c1_absolute = layers.Lambda(lambda x: x[..., 0:1], name="absolute_ck")(inputs)
+        # c2_c3_relative = layers.Lambda(lambda x: x[..., 1:3], name="relative_channels")(inputs)
+
+        # # 3. Apply Batch Normalization ONLY to the relative channels
+        # # This stabilizes the contrast-enhanced features across your batches
+        # c2_c3_normalized = layers.BatchNormalization(axis=-1, name="relative_standardizer")(c2_c3_relative)
+
+        # # 4. Recombine the absolute channel with the normalized relative channels
+        # x = layers.Concatenate(axis=-1, name="recombined_channels")([c1_absolute, c2_c3_normalized])
+
+
+        # think this is not a good idea
+        # # Step A: Standardise channel means (92.96, 47.33, 30.62) & variances automatically
+        # x = layers.BatchNormalization(axis=-1, name="channel_standardizer")(input_image)
 
         # 2. Trainable 1x1 conv with 3 filters to re-weight and re-bias the RGB channels
         # This lets the network automatically discover the optimal math to align your normalisations
         x = tf.keras.layers.Conv2D(3, (1, 1), activation=None, name="channel_aligner")(
-            x
+            input_image
+        )
+
+        # VIT stuff just for a test
+        import keras_hub
+        x = layers.Rescaling(scale=2.0 / 255.0, offset=-1.0, name="vit_range_scaler")(x)
+        
+        # 4. Initialize and call the Keras Hub backbone
+        base_model = keras_hub.models.ViTBackbone(
+            image_shape=(160, 160, 3),
+            patch_size=32,       # <- This matches your 32x32 ROIs exactly!
+            num_layers=12,       # Standard ViT-Base depth
+            num_heads=12,        # Standard ViT-Base attention heads
+            hidden_dim=768,      # Standard ViT-Base embedding token size
+            mlp_dim=3072,        # Standard ViT-Base dense expansion size
+            name="vit_b32_backbone"
         )
 
         x = base_model(x)
@@ -441,23 +470,18 @@ class KerasModel(Interpreter):
                 # --- Input 2: The Timeline Mask Layer (5x5x1) ---
                 mask_input = layers.Input(shape=(5, 5, 1), name="input_mask")
                 input_image = {"input_image": input_image, "input_mask": mask_input}
+                # 2. STEP A: Cleanly extract the 25 spatial patches by skipping the single leading token
+                # Slice from index 1 to the end, and enforce the output sequence length as exactly 25
+                       # Step A: Slice out the 25 spatial patches, ignoring the [CLS] token at index 0
+                spatial_tokens = layers.Lambda(lambda t: t[:, 1:, :], name="extract_spatial_tokens")(x)
 
-                # Generate temporal feature maps matching the spatial dimensions
-                # AI was insistent on this being the way to go until i questioned it and then it said Dense was obviously better
-                # t = layers.Conv2D(64, (1, 1), activation='relu', padding='same')(mask_input)
-                # t = layers.Conv2D(128, (3, 3), activation='relu', padding='same')(t)
+                # Step B: Reshape the 25 flat tokens back into a physical 5x5 grid plane -> (None, 5, 5, 768)
+                spatial_grid = layers.Reshape((5, 5, 768), name="vit_spatial_grid")(spatial_tokens)
 
-                # input_mask = Input(shape=(5, 5, 1), name='input_mask')
+                # Step C: Upscale features to 1536 to match what your network expects -> (None, 5, 5, 1536)
+                image_features = layers.Conv2D(1536, (1, 1), activation=None, name="vit_channel_matcher")(spatial_grid)
 
-                # # 1. Shift the mask natively
-                # shifted_mask = mask_input + 1.0
 
-                # # 2. Use Keras operations instead of tf.nn / tf.math
-                # relu_mask = keras.ops.relu(shifted_mask)
-                # binary_presence_gate = keras.ops.ceil(relu_mask)
-
-                # Step 1: Project the single timestamp into a 64-dimensional time embedding vector per cell
-                # A Dense layer applied to a 3D tensor operates independently on every single (5,5) cell!
                 time_embedding = layers.Dense(
                     64, activation="relu", name="time_feature_projection"
                 )(
@@ -471,20 +495,12 @@ class KerasModel(Interpreter):
 
                 # --- Feature Fusion ---
                 # Concatenate visual maps (5x5x1536) and time maps (5x5x128) along the channels
-                image_features = x
+                # image_features = x
                 # maybe add
                 image_features = tf.keras.layers.SpatialDropout2D(0.3)(image_features)
-
                 # sounds good in practice but actually gives worse results
 
-                # # 1. Shift the mask natively
-                # shifted_mask = mask_input + 1.0
 
-                # # 2. Use Keras operations instead of tf.nn / tf.math
-                # relu_mask = keras.ops.relu(shifted_mask)
-                # binary_presence_gate = keras.ops.ceil(relu_mask)
-
-                # image_features = image_features * binary_presence_gate
 
                 combined = layers.Concatenate(name="input_concat")(
                     [image_features, time_embedding]
@@ -793,7 +809,7 @@ class KerasModel(Interpreter):
         resample=False,
         fine_tune=None,
         warm_down=False,
-        single_input=True,
+        single_input=False,
         test=False,
     ):
         logging.info(
