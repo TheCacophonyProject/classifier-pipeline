@@ -1332,8 +1332,8 @@ def get_segments(
         and region.width > 0
         and region.height > 0
         and ((has_no_mass or frame_min_mass is None) or region.mass >= frame_min_mass)
-        and region.width < 158
-        and region.height < 118  # dont want full size regions
+        and (region.width < 158
+        or region.height < 118)  # dont want full size regions
     ]
 
     # this is checking that frames for an animal haven't been predicted as FP by the random forest model
