@@ -391,8 +391,8 @@ class KerasModel(Interpreter):
         # inputs = base_model.input
 
         # Step A: Standardise channel means (92.96, 47.33, 30.62) & variances automatically
-        x = layers.BatchNormalization(axis=-1, name="channel_standardizer")(input_image)
-
+        # x = layers.BatchNormalization(axis=-1, name="channel_standardizer")(input_image)
+        x = input_image
         # 2. Trainable 1x1 conv with 3 filters to re-weight and re-bias the RGB channels
         # This lets the network automatically discover the optimal math to align your normalisations
         x = tf.keras.layers.Conv2D(3, (1, 1), activation=None, name="channel_aligner")(

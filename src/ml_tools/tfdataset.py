@@ -230,13 +230,13 @@ def get_dataset(load_function, base_dir, labels, **args):
 
     augment = args.get("augment", False)
     if augment:
-        logging.info("Augmenting on batches")
+        # logging.info("Augmenting on batches")
         fp_index = labels.index("false-positive")
         fp_index = tf.constant(fp_index)
         dataset = dataset.map(
             lambda x, y: (
                 {
-                    "input_image": bright_contrast_augmentation(
+                    "input_image": data_augmentation(
                         x["input_image"], y, fp_index
                     ),
                     "input_mask": x["input_mask"],
@@ -339,20 +339,20 @@ def apply_channel_isolated_transforms(frame, bright_seed, contrast_seed):
     return modified_frame
 
 
-# brightness_contrast_aug = tf.keras.Sequential(
-#     [
-#         tf.keras.layers.RandomBrightness(0.2),  # better per frame or per sequence??
-#         tf.keras.layers.RandomContrast(0.5),
-#     ]
-# )
+brightness_contrast_aug = tf.keras.Sequential(
+    [
+        tf.keras.layers.RandomBrightness(0.2, value_range=(0.0, 255.0)),  
+        tf.keras.layers.RandomContrast(0.5, value_range=(0.0, 255.0)),
+    ]
+)
 
 
-# def data_augmentation(image, training=True):
-#     # only apply brightness/contrast to channels 2,3 (thermal_norm, filtered),
-#     # leave channel 1 (raw thermal) untouched
-#     raw = image[..., :1]
-#     augmented = brightness_contrast_aug(image[..., 1:], training=training)
-#     return tf.concat([raw, augmented], axis=-1)
+def data_augmentation(image, training=True):
+    # only apply brightness/contrast to channels 2,3 (thermal_norm, filtered),
+    # leave channel 1 (raw thermal) untouched
+    raw = image[..., :1]
+    augmented = brightness_contrast_aug(image[..., 1:], training=training)
+    return tf.concat([raw, augmented], axis=-1)
 
 
 def resample(dataset, labels):
