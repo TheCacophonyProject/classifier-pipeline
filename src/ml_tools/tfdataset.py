@@ -347,7 +347,7 @@ brightness_contrast_aug = tf.keras.Sequential(
 )
 
 
-def data_augmentation(image, training=True):
+def data_augmentation(image, y,fp_index,training=True):
     # only apply brightness/contrast to channels 2,3 (thermal_norm, filtered),
     # leave channel 1 (raw thermal) untouched
     raw = image[..., :1]
