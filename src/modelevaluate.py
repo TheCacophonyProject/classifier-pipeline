@@ -1032,6 +1032,8 @@ def main():
             logging.info("Writing best val thresholds to %s", thresh_dict)
             with threshold_out.open("w") as f:
                 json.dump(thresh_dict, f)
+            thresholds[thresholds < 0.5] = 0.5
+            thresholds[thresholds > 0.8] = 0.8
 
             files = base_dir / args.dataset
             dataset, _ = get_dataset(
