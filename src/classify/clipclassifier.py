@@ -5,7 +5,7 @@ import os.path
 import time
 import math
 import numpy as np
-
+import dbus
 from classify.trackprediction import Predictions
 from track.clip import Clip
 from track.cliptrackextractor import ClipTrackExtractor, is_affected_by_ffc
@@ -635,7 +635,7 @@ class ClipClassifier:
                     True,
                     data["track"].bounds_history[-1].frame_number,
                     model.id,
-                    rec_end.timestamp(),
+                    dbus.Int64(int(1000 * rec_end.timestamp())),
                 )
 
         models = [model]

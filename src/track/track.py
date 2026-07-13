@@ -492,7 +492,7 @@ class Track:
         dont_filter=False,
         filter_by_fp=False,
         min_segments=1,
-        seed = None,
+        seed=None,
     ):
         if from_last is not None:
             if from_last == 0:
@@ -539,7 +539,7 @@ class Track:
                 max_segments=max_segments,
                 dont_filter=dont_filter,
                 min_segments=min_segments,
-                seed = seed,
+                seed=seed,
             )
 
         return segments

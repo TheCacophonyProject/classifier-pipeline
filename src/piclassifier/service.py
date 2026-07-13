@@ -173,7 +173,7 @@ class Service(dbus.service.Object):
     def Recording(self, timestamp, is_recording):
         pass
 
-    @dbus.service.method(DBUS_NAME, in_signature="iiaisiaiiibbisd")
+    @dbus.service.method(DBUS_NAME, in_signature="iiaisiaiiibbisx")
     def TrackReprocessed(
         self,
         clip_id,
@@ -204,11 +204,11 @@ class Service(dbus.service.Object):
             tracking,
             last_prediction_frame,
             str(model_id),
-            clip_end_time,
+            dbus.Int64(clip_end_time),
         )
         # pass
 
-    @dbus.service.signal(DBUS_NAME, signature="iiaisiaiiibbisd")
+    @dbus.service.signal(DBUS_NAME, signature="iiaisiaiiibbisx")
     def TrackingReprocessed(
         self,
         clip_id,
@@ -274,7 +274,7 @@ class SnapshotService:
             self.service.ServiceStarted()
             self.loop.run()
         except:
-            logging.error("Couldn't run dbus server at %s %s",DBUS_NAME,session_bus)
+            logging.error("Couldn't run dbus server at %s %s", DBUS_NAME, session_bus)
 
     def tracking(
         self,
@@ -314,7 +314,7 @@ class SnapshotService:
                 tracking,
                 last_prediction_frame,
                 str(model_id),
-                int(track_start_time * 1000),
+                int(track_start_time * 1000),  # convert to ms
             )
         else:
             self.service.Tracking(
@@ -330,7 +330,7 @@ class SnapshotService:
                 tracking,
                 last_prediction_frame,
                 "0",
-                int(track_start_time * 1000),
+                int(track_start_time * 1000),  # convert to ms
             )
 
     def track_filtered(self, clip_id, track_id):
@@ -341,4 +341,5 @@ class SnapshotService:
     def recording(self, epoch_time, is_recording):
         if self.service is None:
             return
-        self.service.Recording(np.int64(epoch_time * 1000), is_recording)
+        # convert to ms
+        self.service.Recording(dbus.Int64(int(epoch_time * 1000)), is_recording)
