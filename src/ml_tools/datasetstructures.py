@@ -1103,23 +1103,23 @@ def get_segment_indices(
                 break
 
         if len(valid_frames) == 0:
-            logging.warning(
-                "Could not find a valid frame chunk %s - %s source %s track %s",
-                start,
-                end,
-                source_file,
-                track_id,
-            )
+            # logging.warning(
+            #     "Could not find a valid frame chunk %s - %s source %s track %s",
+            #     start,
+            #     end,
+            #     source_file,
+            #     track_id,
+            # )
             skipped_chunks += 1
             if skipped_chunks >= max_chunk_gap:
-                logging.warning(
-                    "Could not find frames that are close enough together for source %s track %s with window start %s for chunk size %s consecutive skipped chunks %s",
-                    source_file,
-                    track_id,
-                    window_start + start_frame,
-                    chunk_size,
-                    skipped_chunks,
-                )
+                # logging.warning(
+                #     "Could not find frames that are close enough together for source %s track %s with window start %s for chunk size %s consecutive skipped chunks %s",
+                #     source_file,
+                #     track_id,
+                #     window_start + start_frame,
+                #     chunk_size,
+                #     skipped_chunks,
+                # )
                 stopped_early = True
                 break
             continue
@@ -1317,7 +1317,6 @@ def get_segments(
     mass_history = np.uint16([region.mass for region in regions])
     filtered_stats = {"segment_mass": 0, "too short": 0}
     has_no_mass = np.sum(mass_history) == 0
-
     # Filter out frames bused of ffc, blank and mass
     frame_indices = [
         region.frame_number
@@ -1339,7 +1338,6 @@ def get_segments(
     # this is checking that frames for an animal haven't been predicted as FP by the random forest model
     if fp_frames is not None and label not in FP_LABELS:
         frame_indices = [f for f in frame_indices if f not in fp_frames]
-
     if len(frame_indices) == 0:
         logging.warn("Nothing to load for %s - %s", clip_id, track_id)
         return [], filtered_stats
@@ -1438,7 +1436,6 @@ def get_segments(
         ]
 
         for _ in range(repeats):
-
             if segment_type == SegmentType.RANDOM_SECTIONS:
                 new_segments = random_sections(
                     label,

@@ -385,7 +385,7 @@ def get_data(source_file, excluded_tags, extra_args):
                         region = track.regions_by_frame[frame_number]
 
                         result = preprocess_frame_v2(
-                            frame, resize_dim, region, crop_rectangle
+                            frame, resize_dim, region, crop_rectangle,original_dim = mosaic_dim
                         )
                         if result is None:
                             by_frame_number[frame_number] = None

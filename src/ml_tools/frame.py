@@ -213,6 +213,7 @@ class Frame:
         thermal = None
         filtered = None
         mask = None
+        thermal_norm = None
         if self.thermal is not None:
             thermal = region.subimage(self.thermal)
             if make_copy:
@@ -226,10 +227,15 @@ class Frame:
                 mask = region.subimage(self.mask)
                 if make_copy:
                     mask = mask.copy()
+            if self.thermal_norm is not None:
+                thermal_norm = region.subimage(self.thermal_norm)
+                if make_copy:
+                    thermal_norm = thermal_norm.copy()
         if out:
             out.thermal = thermal
             out.filtered = filtered
             out.mask = mask
+            out.thermal_norm = thermal_norm
             out.region = region
             frame = out
         else:
@@ -238,6 +244,7 @@ class Frame:
                 filtered,
                 self.frame_number,
                 mask=mask,
+                thermal_norm=thermal_norm,
                 ffc_affected=self.ffc_affected,
                 region=region,
             )

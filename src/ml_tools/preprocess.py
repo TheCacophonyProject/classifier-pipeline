@@ -4,6 +4,7 @@ from ml_tools import tools
 from ml_tools.frame import TrackChannels
 import logging
 from track.region import Region
+from ml_tools.rectangle import Rectangle
 import cv2
 from ml_tools.tools import FrameTypes
 
@@ -59,21 +60,40 @@ def preprocess_frame_v2(
     out_dim,
     region,
     crop_rectangle,
+    original_dim  = None,  #represent if we are taking extra padding
 ):
+    import math
     from ml_tools.imageprocessing import adapt_hist, normalize
     from ml_tools.thermalwriter import THERMAL_MAX_KV, THERMAL_MIN_KV, MeanData
     from ml_tools.frame import repeat_border
-
+    if original_dim is None:
+        original_dim = out_dim
     median = np.median(frame.thermal)
     # enlarge to
     enlarged_region = region.copy()
-
+    resize_times = None
     if region.width > out_dim or region.height > out_dim:
 
         enlarged_region.enlarge_for_rotation(final_dim=out_dim, extra_needed=0)
     else:
-        enlarged_region.enlarge_to(out_dim)
+        # we are going to resize up to 4 times.
+        MAX_RESIZE = 4
+        resize_dim = max(region.width,region.height)
+        resize_times = min(MAX_RESIZE, original_dim / resize_dim)
+        if resize_times <  1:
+            enlarged_region.enlarge_to(out_dim)
+            # logging.info("Resizing %s enlarging to %s region %s  enlarged %s",resize_times,resize_dim ,region,enlarged_region)
 
+            resize_times = None
+        else:
+            
+            extra_padding =  (out_dim  - (resize_dim * resize_times)) /resize_times
+            if extra_padding > 0:
+                # ceil this and maybe crop it out later
+                extra_padding = math.ceil(extra_padding)
+                enlarged_region.enlarge_to(resize_dim + extra_padding)
+            # logging.info("Resizing %s enlarging to %s region %s  enlarged %s",resize_times,resize_dim + extra_padding,region,enlarged_region)
+        # logging.info("Resizing %s max %s ",resize_dim,out_dim / MAX_RESIZE)
     pad_top = 0
     pad_left = 0
     if (
@@ -93,7 +113,6 @@ def preprocess_frame_v2(
     )
     content_region = enlarged_region.copy()
     content_region.crop(crop_rectangle)
-
     cropped_frame = frame.crop_and_copy_as_float(content_region, make_copy=True)
     cropped_frame.thermal_norm = cropped_frame.thermal.copy()
     cropped_frame.thermal_norm -= median
@@ -178,7 +197,59 @@ def preprocess_frame_v2(
         needs_pad = (
             pad_top > 0 or pad_left > 0 or scaled_w < new_width or scaled_h < new_height
         )
+    elif resize_times is not None:
+        scaled_w = max(1, round(content_region.width * resize_times))
+        scaled_h = max(1, round(content_region.height * resize_times))
+        # t_norm = cropped_frame.thermal_norm.copy()
+        # logging.info("pre %s",t_norm.shape)
+        # t_norm = np.uint8(t_norm*255)
+        # cv2.imshow("f",t_norm)
+        # cv2.waitKey()
+        cropped_frame.resize(
+            (scaled_w, scaled_h),
+            interpolation=cv2.INTER_CUBIC,
+        )
+        # logging.info("resized %s",cropped_frame.thermal_norm.shape)
 
+        # inter cubic can cause values out of range
+        np.clip(
+            cropped_frame.filtered, 0, 1, out=cropped_frame.filtered
+        )
+        np.clip(
+            cropped_frame.thermal_norm, 0, 1, out=cropped_frame.thermal_norm
+        )
+        np.clip(
+            cropped_frame.thermal, 0, 1, out=cropped_frame.thermal
+        )
+        # t_norm = cropped_frame.thermal_norm.copy()
+        # t_norm = np.uint8(t_norm*255)
+        # cv2.imshow("f",t_norm)
+        # cv2.waitKey()
+        # centre crop cropped_frame to a max of out_dim by out_dim, anything over this will be
+        # from the ceil of the extra padding
+        if scaled_w > out_dim or scaled_h > out_dim:
+            crop_w = min(scaled_w, out_dim)
+            crop_h = min(scaled_h, out_dim)
+            centre_crop = Rectangle(
+                (scaled_w - crop_w) // 2, (scaled_h - crop_h) // 2, crop_w, crop_h
+            )
+            cropped_frame.crop_by_region(centre_crop, out=cropped_frame)
+
+        # logging.info("%s Up sizing %s to %s resize times %s %s" ,region,content_region,(scaled_w, scaled_h), resize_times ,cropped_frame.thermal.shape)
+        # scale pad by the actual height/width scale applied to content_region,
+        # not resize_times, since the centre crop above may have shrunk
+        # the content below what resize_times alone would give
+        scaled_h, scaled_w = cropped_frame.thermal.shape[:2]
+        height_scale = scaled_h / content_region.height
+        width_scale = scaled_w / content_region.width
+        pad_top = max(0, min(round(pad_top * height_scale), out_dim - scaled_h))
+        pad_left = max(0, min(round(pad_left * width_scale), out_dim - scaled_w))
+        new_height = out_dim
+        new_width = out_dim
+        needs_pad = (
+            pad_top > 0 or pad_left > 0 or scaled_w < new_width or scaled_h < new_height
+        )
+        # logging.info("Padding top %s and left %s %s %s vs %s %s",pad_top,pad_left,scaled_w, scaled_h, new_width,new_height)
     # this is the offset in the final image of our actual image
     h, w = cropped_frame.thermal.shape[:2]
     data_region = [pad_left, pad_top, w, h]
@@ -201,6 +272,7 @@ def preprocess_frame_v2(
         )
 
     if needs_pad:
+        # logging.info("Paddding %s %s %s",pad_top,pad_left,cropped_frame.thermal.shape)
         threshold = mean_value.filtered
         # pad frame by repeating the border pixels and ignoring animal content( pixels above threshold)
         repeat_border(
@@ -212,7 +284,10 @@ def preprocess_frame_v2(
             threshold,
             mean_value,
         )
-
+    # t_norm = cropped_frame.thermal_norm.copy()
+    # t_norm = np.uint8(t_norm*255)
+    # cv2.imshow("f",t_norm)
+    # cv2.waitKey()
     cropped_frame.preprocessed = True
     return cropped_frame, mean_value, data_region
 

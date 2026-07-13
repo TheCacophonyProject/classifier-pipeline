@@ -972,7 +972,7 @@ def main():
     #     if l not in ["mustelid", "deer", "sheep"]:
     #         excluded_labels.append(l)
 
-    include_track = False
+    include_track = True
     if "weka" not in labels:
         labels.append("weka")
     if "chicken" not in labels:
@@ -994,11 +994,11 @@ def main():
     )
     resampled_ds, epoch_size = get_dataset(
         load_dataset,
-        training_folder / "test",
+        training_folder / "validation",
         labels,
         batch_size=32,
         image_size=(160, 160),
-        augment=True,
+        augment=False,
         shuffle=False,
         include_features=False,
         remapped_labels=get_remapped(multi_label=True),
@@ -1009,6 +1009,8 @@ def main():
         pads=pads,
         tf_mappings=tf_mappings,
         rebalance=False,
+        current_epoch = tf.Variable(0, dtype=tf.int32, trainable=False, name="current_epoch")
+
     )
     print("Epoch size is", epoch_size)
     # print(get_distribution(resampled_ds, len(labels), extra_meta=False))
