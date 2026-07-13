@@ -155,14 +155,16 @@ def preprocess_movement(
     channels,
     preprocess_fn=None,
     sample=None,
-    seed = None
+    seed=None,
 ):
     frame_types = {}
     data = []
     frame_samples = list(np.arange(len(preprocess_frames)))
     if len(preprocess_frames) < frames_per_row * 5:
         rng = np.random.default_rng(seed)
-        extra_samples = rng.choice(frame_samples, frames_per_row * 5 - len(preprocess_frames))
+        extra_samples = rng.choice(
+            frame_samples, frames_per_row * 5 - len(preprocess_frames)
+        )
 
         frame_samples.extend(extra_samples)
         frame_samples.sort()

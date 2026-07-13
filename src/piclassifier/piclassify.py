@@ -90,7 +90,7 @@ def main():
 
     if args.file:
         return parse_file(
-            args.file, config, thermal_config, args.preview_type, args.fps,args.seed
+            args.file, config, thermal_config, args.preview_type, args.fps, args.seed
         )
 
     process_queue = multiprocessing.Queue()
@@ -199,7 +199,7 @@ def file_changed(event):
         os._exit(0)
 
 
-def parse_file(file, config, thermal_config, preview_type, fps,seed):
+def parse_file(file, config, thermal_config, preview_type, fps, seed):
     from config.timewindow import TimeWindow, RelAbsTime
 
     _, ext = os.path.splitext(file)
@@ -208,7 +208,7 @@ def parse_file(file, config, thermal_config, preview_type, fps,seed):
     )
 
     if ext == ".cptv":
-        parse_cptv(file, config, thermal_config.config_file, preview_type, fps,seed)
+        parse_cptv(file, config, thermal_config.config_file, preview_type, fps, seed)
     else:
         parse_ir(file, config, thermal_config, preview_type, fps)
 
@@ -322,7 +322,7 @@ def preview_socket(headers, frame_queue):
             time.sleep(2)
 
 
-def parse_cptv(file, config, thermal_config_file, preview_type, fps,seed):
+def parse_cptv(file, config, thermal_config_file, preview_type, fps, seed):
     from .piclassifier import PiClassifier
 
     from cptv import Frame
@@ -364,7 +364,7 @@ def parse_cptv(file, config, thermal_config_file, preview_type, fps,seed):
             thermal_config.motion.run_classifier,
             0,
             preview_type,
-            seed
+            seed,
         )
         while True:
             frame = reader.next_frame()

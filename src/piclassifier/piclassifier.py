@@ -91,7 +91,7 @@ class PiClassifier(Processor):
         classify,
         detect_after=None,
         preview_type=None,
-        seed = None
+        seed=None,
     ):
         self.seed = seed
         self.constant_recorder = None
@@ -347,7 +347,10 @@ class PiClassifier(Processor):
 
         if model is not None:
             self.classifier = get_interpreter(
-                model, run_over_network=model.run_over_network, load_model=load_model,seed = self.seed
+                model,
+                run_over_network=model.run_over_network,
+                load_model=load_model,
+                seed=self.seed,
             )
             global classifier
             classifier = self.classifier
@@ -365,7 +368,10 @@ class PiClassifier(Processor):
                 self.classifier.labels, model, self.classifier.thresholds
             )
             self.num_labels = len(self.classifier.labels)
-            logging.info("Ignoring segment types %s and using ALL_RANDOM",self.classifier.params.segment_types)
+            logging.info(
+                "Ignoring segment types %s and using ALL_RANDOM",
+                self.classifier.params.segment_types,
+            )
 
             self.classifier.params["segment_types"] = ["ALL_RANDOM"]
             logging.info("Labels are %s ", self.classifier.labels)
@@ -1193,7 +1199,7 @@ def on_recording_stopping(
                         track.thumb_info.thumb,
                     )
                 except:
-                    logging.error("Couldn't save thumbnail file ",exc_info=True)
+                    logging.error("Couldn't save thumbnail file ", exc_info=True)
         if predictions is not None:
             valid_preds = {}
 

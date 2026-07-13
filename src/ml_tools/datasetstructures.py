@@ -387,7 +387,7 @@ class TrackHeader:
         frame_min_mass=None,
         filter_by_fp=True,
         min_segments=None,
-        seed = None
+        seed=None,
     ):
         if segment_frames is not None:
             raise Exception("Have not implement this path")
@@ -423,7 +423,7 @@ class TrackHeader:
             fp_frames=self.fp_frames if filter_by_fp else None,
             rec_time=self.start_time,
             min_segments=min_segments,
-            seed = seed
+            seed=seed,
         )
         self.filtered_stats.update(filtered_stats)
         # GP could get this from the tracks when writing
@@ -995,7 +995,7 @@ def get_segments(
     fp_frames=None,
     repeat_frame_indices=True,
     min_segments=None,
-    seed = None
+    seed=None,
 ):
     if min_frames is None:
         min_frames = segment_width / 4.0
@@ -1041,9 +1041,7 @@ def get_segments(
             # remove blank frames
         frame_indices = np.array(frame_indices)
 
-
         rng = np.random.default_rng(seed=seed)
-
 
         if segment_type == SegmentType.ELONGATION:
             crop_rectangle = tools.Rectangle(1, 1, 160 - 2, 120 - 2)
@@ -1273,7 +1271,7 @@ def get_segments(
                     # i think this can be default, means we dont need to handle
                     # short segments elsewhere
                     if len(frames) < segment_width:
-                        extra_samples = rng.choice(frames,segment_width - len(frames))
+                        extra_samples = rng.choice(frames, segment_width - len(frames))
 
                         frames = list(frames)
                         frames.extend(extra_samples)
