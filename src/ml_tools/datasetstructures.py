@@ -1194,12 +1194,12 @@ def random_sections(
             windows = windows + random_offset
         windows = np.concatenate([windows, extra_windows])
 
-        logging.info(
-            "%s Low sample resample windows are %s  stride_offset %s",
-            label,
-            windows,
-            stride_offset,
-        )
+        # logging.info(
+        #     "%s Low sample resample windows are %s  stride_offset %s",
+        #     label,
+        #     windows,
+        #     stride_offset,
+        # )
     else:
         if stride_offset > 0:
             random_offset = rng.integers(low=0, high=stride_offset + 1)
