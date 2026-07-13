@@ -236,9 +236,7 @@ def get_dataset(load_function, base_dir, labels, **args):
         dataset = dataset.map(
             lambda x, y: (
                 {
-                    "input_image": data_augmentation(
-                        x["input_image"], y, fp_index
-                    ),
+                    "input_image": data_augmentation(x["input_image"], y, fp_index),
                     "input_mask": x["input_mask"],
                 },
                 y,
@@ -341,13 +339,13 @@ def apply_channel_isolated_transforms(frame, bright_seed, contrast_seed):
 
 brightness_contrast_aug = tf.keras.Sequential(
     [
-        tf.keras.layers.RandomBrightness(0.2, value_range=(0.0, 255.0)),  
+        tf.keras.layers.RandomBrightness(0.2, value_range=(0.0, 255.0)),
         tf.keras.layers.RandomContrast(0.5, value_range=(0.0, 255.0)),
     ]
 )
 
 
-def data_augmentation(image, y,fp_index,training=True):
+def data_augmentation(image, y, fp_index, training=True):
     # only apply brightness/contrast to channels 2,3 (thermal_norm, filtered),
     # leave channel 1 (raw thermal) untouched
     raw = image[..., :1]

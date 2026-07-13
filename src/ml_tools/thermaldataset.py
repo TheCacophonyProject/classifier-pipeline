@@ -1009,8 +1009,9 @@ def main():
         pads=pads,
         tf_mappings=tf_mappings,
         rebalance=False,
-        current_epoch = tf.Variable(0, dtype=tf.int32, trainable=False, name="current_epoch")
-
+        current_epoch=tf.Variable(
+            0, dtype=tf.int32, trainable=False, name="current_epoch"
+        ),
     )
     print("Epoch size is", epoch_size)
     # print(get_distribution(resampled_ds, len(labels), extra_meta=False))

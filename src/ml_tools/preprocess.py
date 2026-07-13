@@ -60,12 +60,13 @@ def preprocess_frame_v2(
     out_dim,
     region,
     crop_rectangle,
-    original_dim  = None,  #represent if we are taking extra padding
+    original_dim=None,  # represent if we are taking extra padding
 ):
     import math
-    from ml_tools.imageprocessing import adapt_hist, normalize
+    from ml_tools.imageprocessing import adapt_hist, normalize, apply_fair_clahe
     from ml_tools.thermalwriter import THERMAL_MAX_KV, THERMAL_MIN_KV, MeanData
     from ml_tools.frame import repeat_border
+
     if original_dim is None:
         original_dim = out_dim
     median = np.median(frame.thermal)
@@ -78,16 +79,16 @@ def preprocess_frame_v2(
     else:
         # we are going to resize up to 4 times.
         MAX_RESIZE = 4
-        resize_dim = max(region.width,region.height)
+        resize_dim = max(region.width, region.height)
         resize_times = min(MAX_RESIZE, original_dim / resize_dim)
-        if resize_times <  1:
+        if resize_times < 1:
             enlarged_region.enlarge_to(out_dim)
             # logging.info("Resizing %s enlarging to %s region %s  enlarged %s",resize_times,resize_dim ,region,enlarged_region)
 
             resize_times = None
         else:
-            
-            extra_padding =  (out_dim  - (resize_dim * resize_times)) /resize_times
+
+            extra_padding = (out_dim - (resize_dim * resize_times)) / resize_times
             if extra_padding > 0:
                 # ceil this and maybe crop it out later
                 extra_padding = math.ceil(extra_padding)
@@ -128,7 +129,6 @@ def preprocess_frame_v2(
     )
     if not stats[0]:
         return None
-    cropped_frame.thermal_norm = adapt_hist(cropped_frame.thermal_norm)
 
     if np.median(cropped_frame.filtered) >= 0:
         np.clip(
@@ -143,7 +143,6 @@ def preprocess_frame_v2(
 
     if not stats[0]:
         return None
-    cropped_frame.filtered = adapt_hist(cropped_frame.filtered)
 
     np.clip(
         cropped_frame.thermal, THERMAL_MIN_KV, THERMAL_MAX_KV, out=cropped_frame.thermal
@@ -151,15 +150,6 @@ def preprocess_frame_v2(
 
     cropped_frame.thermal, _ = normalize(
         cropped_frame.thermal, min=THERMAL_MIN_KV, max=THERMAL_MAX_KV
-    )
-
-    # calculate averages of background
-    thermal_border = content_region.get_border(cropped_frame.thermal, 2, crop_rectangle)
-    filtered_border = content_region.get_border(
-        cropped_frame.filtered, 2, crop_rectangle
-    )
-    thermal_norm_border = content_region.get_border(
-        cropped_frame.thermal_norm, 2, crop_rectangle
     )
 
     # apply paddings
@@ -212,15 +202,9 @@ def preprocess_frame_v2(
         # logging.info("resized %s",cropped_frame.thermal_norm.shape)
 
         # inter cubic can cause values out of range
-        np.clip(
-            cropped_frame.filtered, 0, 1, out=cropped_frame.filtered
-        )
-        np.clip(
-            cropped_frame.thermal_norm, 0, 1, out=cropped_frame.thermal_norm
-        )
-        np.clip(
-            cropped_frame.thermal, 0, 1, out=cropped_frame.thermal
-        )
+        np.clip(cropped_frame.filtered, 0, 1, out=cropped_frame.filtered)
+        np.clip(cropped_frame.thermal_norm, 0, 1, out=cropped_frame.thermal_norm)
+        np.clip(cropped_frame.thermal, 0, 1, out=cropped_frame.thermal)
         # t_norm = cropped_frame.thermal_norm.copy()
         # t_norm = np.uint8(t_norm*255)
         # cv2.imshow("f",t_norm)
@@ -249,7 +233,25 @@ def preprocess_frame_v2(
         needs_pad = (
             pad_top > 0 or pad_left > 0 or scaled_w < new_width or scaled_h < new_height
         )
-        # logging.info("Padding top %s and left %s %s %s vs %s %s",pad_top,pad_left,scaled_w, scaled_h, new_width,new_height)
+
+    # CLAHE after resize
+    cropped_frame.filtered = apply_fair_clahe(
+        cropped_frame.filtered, resize_times if resize_times else 1
+    )
+
+    cropped_frame.thermal_norm = apply_fair_clahe(
+        cropped_frame.thermal_norm, resize_times if resize_times else 1
+    )
+
+    # calculate averages of background
+    thermal_border = content_region.get_border(cropped_frame.thermal, 2, crop_rectangle)
+    filtered_border = content_region.get_border(
+        cropped_frame.filtered, 2, crop_rectangle
+    )
+    thermal_norm_border = content_region.get_border(
+        cropped_frame.thermal_norm, 2, crop_rectangle
+    )
+
     # this is the offset in the final image of our actual image
     h, w = cropped_frame.thermal.shape[:2]
     data_region = [pad_left, pad_top, w, h]

@@ -16,6 +16,27 @@ def adapt_hist(image):
     )
 
 
+def apply_fair_clahe(resized_crop, resize_amount):
+    from skimage import exposure
+
+    # TODO test these values can run a small training and check the GRAD CAM
+    # for now these are safe values
+    # Base kernel size on the raw sensor scale (e.g., 2x2 pixels)
+    base_kernel = 8
+
+    # Scale the kernel size directly by the exact magnification factor
+    calculated_kernel = int(base_kernel * resize_amount)
+
+    # Ensure it is at least 2x2 to satisfy CLAHE mathematical limits
+    kernel_dim = max(2, calculated_kernel)
+    import logging
+
+    # logging.info("Kernel is %s for image %s",kernel_dim,resized_crop.shape)
+    return exposure.equalize_adapthist(
+        resized_crop, kernel_size=(kernel_dim, kernel_dim), clip_limit=0.01
+    )
+
+
 def resize_and_pad(
     frame,
     new_dim,
