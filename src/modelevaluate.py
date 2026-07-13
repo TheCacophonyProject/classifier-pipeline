@@ -417,72 +417,72 @@ def metadata_confusion(dir, confusion_file, after_date=None, model_metadata=None
 
     # print("True vs pred",y_true,y_pred, y_true == y_pred, median_areas[indices],y_true[indices])
 
-    label_graphs = {}
-    for l in labels:
-        label_graphs[l] = LabelGraph()
-    unid_index = labels.index("unidentified")
-    for width in range(4, 41):
-        # if width == 40:
-        #     median = 160 * 120
-        # else:
-        median = width * width
-        print("doing median ", median)
-        indices = (median_areas > prev_median) & (median_areas <= median)
+    # label_graphs = {}
+    # for l in labels:
+    #     label_graphs[l] = LabelGraph()
+    # unid_index = labels.index("unidentified")
+    # for width in range(4, 41):
+    #     # if width == 40:
+    #     #     median = 160 * 120
+    #     # else:
+    #     median = width * width
+    #     print("doing median ", median)
+    #     indices = (median_areas > prev_median) & (median_areas <= median)
 
-        med_y_true = y_true[indices]
-        if len(med_y_true) == 0:
-            # all_labels.blank(median)
-            prev_median = median
-            # for i, l in enumerate(labels):
-            #     label_graphs[l].blank(median)
-            continue
+    #     med_y_true = y_true[indices]
+    #     if len(med_y_true) == 0:
+    #         # all_labels.blank(median)
+    #         prev_median = median
+    #         # for i, l in enumerate(labels):
+    #         #     label_graphs[l].blank(median)
+    #         continue
 
-        med_y_pred = y_pred[indices]
-        cm = confusion_matrix(med_y_true, med_y_pred, labels=labels)
+    #     med_y_pred = y_pred[indices]
+    #     cm = confusion_matrix(med_y_true, med_y_pred, labels=labels)
 
-        all_total = 0
-        all_correct = 0
-        all_unid = 0
-        all_incorrect = 0
-        for i, l in enumerate(labels):
-            total = np.sum(cm[i])
-            correct = cm[i][i]
-            if total == 0:
-                continue
-            print("Adding correct for ", l, correct, total, median)
-            unided = cm[i][unid_index]
-            incorrect = total - correct - unided
-            label_graphs[l].add(median, correct, incorrect, unided, total)
+    #     all_total = 0
+    #     all_correct = 0
+    #     all_unid = 0
+    #     all_incorrect = 0
+    #     for i, l in enumerate(labels):
+    #         total = np.sum(cm[i])
+    #         correct = cm[i][i]
+    #         if total == 0:
+    #             continue
+    #         print("Adding correct for ", l, correct, total, median)
+    #         unided = cm[i][unid_index]
+    #         incorrect = total - correct - unided
+    #         label_graphs[l].add(median, correct, incorrect, unided, total)
 
-            all_total += total
-            all_correct += correct
-            all_unid += unided
-            all_incorrect += incorrect
-        all_labels.add(median, all_correct, all_incorrect, all_unid, all_total)
-        # Log the confusion matrix as an image summary.
-        figure = plot_confusion_matrix(
-            cm, class_names=labels, title=f"{prev_median} - {median} Median Area"
-        )
+    #         all_total += total
+    #         all_correct += correct
+    #         all_unid += unided
+    #         all_incorrect += incorrect
+    #     all_labels.add(median, all_correct, all_incorrect, all_unid, all_total)
+    #     # Log the confusion matrix as an image summary.
+    #     figure = plot_confusion_matrix(
+    #         cm, class_names=labels, title=f"{prev_median} - {median} Median Area"
+    #     )
 
-        med_file = confusion_file.parent / f"{confusion_file.stem}-{median}"
-        plt.savefig(med_file.with_suffix(".png"), format="png")
-        np.save(med_file.with_suffix(".npy"), cm)
-        prev_median = median
+    #     med_file = confusion_file.parent / f"{confusion_file.stem}-{median}"
+    #     plt.savefig(med_file.with_suffix(".png"), format="png")
+    #     np.save(med_file.with_suffix(".npy"), cm)
+    #     prev_median = median
 
-    for lbl, lbl_graph in label_graphs.items():
+    # for lbl, lbl_graph in label_graphs.items():
 
-        graph_file = (
-            confusion_file.parent / f"{confusion_file.stem}-{lbl.replace('/','-')}"
-        )
-        lbl_graph.plot(f"{lbl} Median vs Accuracy", graph_file)
+    #     graph_file = (
+    #         confusion_file.parent / f"{confusion_file.stem}-{lbl.replace('/','-')}"
+    #     )
+    #     lbl_graph.plot(f"{lbl} Median vs Accuracy", graph_file)
 
-    graph_file = confusion_file.parent / f"{confusion_file.stem}-all"
-    all_labels.plot(f"All Median vs Accuracy", graph_file)
+    # graph_file = confusion_file.parent / f"{confusion_file.stem}-all"
+    # all_labels.plot(f"All Median vs Accuracy", graph_file)
 
     cm = confusion_matrix(y_true, y_pred, labels=labels)
     # Log the confusion matrix as an image summary.
     figure = plot_confusion_matrix(cm, class_names=labels)
-    plt.savefig(confusion_file, format="png")
+    plt.savefig(confusion_file.with_suffix(".png"), format="png")
     np.save(confusion_file.with_suffix(".npy"), cm)
 
     # cm = np.around(cm.astype("float") / cm.sum(axis=1)[:, np.newaxis], decimals=2)
