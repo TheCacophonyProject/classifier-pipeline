@@ -909,7 +909,7 @@ def main():
 
             evaluate_dir(
                 model_file,
-                weights,
+                weight,
                 Path(args.evaluate_dir),
                 config,
                 args.confusion,
