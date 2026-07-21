@@ -103,7 +103,7 @@ class Interpreter(ABC):
     # use when predictin as tracks are being tracked i.e not finished yet
     def predict_recent_frames(self, clip, track, **args):
         samples = self.frames_for_prediction(clip, track, **args)
-        frames, preprocessed, mass = self.preprocess(clip, track, samples, **args)
+        frames, preprocessed, maspreprs = self.preprocess(clip, track, samples, **args)
         if preprocessed is None or len(preprocessed) == 0:
             return None
         prediction = self.predict(preprocessed)

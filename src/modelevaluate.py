@@ -667,7 +667,7 @@ def evaluate_dir(
         stats = {"correct": [], "incorrect": [], "low-confidence": []}
         for clip_data in pool.imap_unordered(load_clip_data, files, chunksize=20):
             if processed % 100 == 0:
-                logging.info("Procesed %s / %s", processed, len(files))
+                logging.info("Processed %s / %s", processed, len(files))
             processed += 1
             if clip_data is None:
                 continue
@@ -760,26 +760,11 @@ def evaluate_dir(
     print("Y true ", y_true_i)
     print(raw_preds_i)
     # thresholds found from best_score
-    thresholds_per_label = [
-        0.46797615,
-        0.70631117,
-        0.2496017,
-        0.96398157,
-        0.33895272,
-        0.9697655,
-        0.35740834,
-        0.60906386,
-        0.88741493,
-        0.02124451,
-        0.9998618,
-        0.6102594,
-        0.5604206,
-        0.9881419,
-        0.98753905,
-        0.987157,
-    ]
+    thresholds_per_label = model.thresholds_per_label
     thresholds_per_label = np.array(thresholds_per_label)
     thresholds_per_label[thresholds_per_label < 0.5] = 0.5
+    thresholds_per_label[thresholds_per_label >0.8] = 0.8
+
     preds = results.copy()
     for i, threshold in enumerate(thresholds_per_label):
         pred_mask = preds == model.labels[i]
@@ -795,7 +780,7 @@ def evaluate_dir(
     plt.savefig(smoothing_file.with_suffix(".png"), format="png")
     np.save(smoothing_file.with_suffix(".npy"), cm)
 
-    thresholds = [0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8, 0.85]
+    thresholds = [0.8]
     for threshold in thresholds:
         preds = results.copy()
         # set these to None
