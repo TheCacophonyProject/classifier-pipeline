@@ -410,7 +410,7 @@ class Interpreter(ABC):
                 self.preprocess_fn,
                 sample=f"Clip-{clip.get_id()}-track-{track.get_id()}",
                 pad_with=0,  # dont repeat frames
-                resize=True,
+                enlarge=True,
             )
             if input_image is None:
                 logging.warn("No frames to predict on")

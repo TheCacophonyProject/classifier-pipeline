@@ -450,12 +450,12 @@ def preprocess_movement(
     if enlarge:
         import cv2
 
-        input_image = cv2.resize(
-            input_image,
+        data = cv2.resize(
+            np.float32(data),
             (320, 320),
             interpolation=cv2.INTER_CUBIC,
         )
-        np.clip(input_image, 0, 255, out=input_image)
+        np.clip(data, 0, 255, out=data)
 
     if preprocess_fn:
         data = preprocess_fn(data)

@@ -620,7 +620,6 @@ class KerasModel(Interpreter):
             )
         else:
             self.model = tf.keras.models.load_model(self.model_file, compile=False)
-
         self.model.trainable = False
 
         if self.weights is not None:
