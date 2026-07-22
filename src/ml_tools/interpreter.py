@@ -410,10 +410,12 @@ class Interpreter(ABC):
                 self.preprocess_fn,
                 sample=f"Clip-{clip.get_id()}-track-{track.get_id()}",
                 pad_with=0,  # dont repeat frames
+                resize=True,
             )
             if input_image is None:
                 logging.warn("No frames to predict on")
                 continue
+
             input_mask = get_frame_mask(segment.frame_indices)
             preprocessed.setdefault("input_image", []).append(input_image)
             preprocessed.setdefault("input_mask", []).append(input_mask)

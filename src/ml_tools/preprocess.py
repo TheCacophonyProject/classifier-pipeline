@@ -400,6 +400,7 @@ def preprocess_movement(
     sample=None,
     seed=None,
     pad_with=None,
+    enlarge=False,
 ):
     from ml_tools.imageprocessing import square_clip
 
@@ -445,6 +446,16 @@ def preprocess_movement(
     #     np.uint8(data),
     #     f"samples/{sample}-{index}",
     # )
+
+    if enlarge:
+        import cv2
+
+        input_image = cv2.resize(
+            input_image,
+            (320, 320),
+            interpolation=cv2.INTER_CUBIC,
+        )
+        np.clip(input_image, 0, 255, out=input_image)
 
     if preprocess_fn:
         data = preprocess_fn(data)

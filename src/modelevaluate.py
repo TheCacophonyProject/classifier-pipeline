@@ -495,15 +495,37 @@ worker_model = None
 after_date = None
 
 
+def has_sigmoid_output(model):
+    activation = getattr(model.layers[-1], "activation", None)
+    if activation is None:
+        return False
+    return getattr(activation, "__name__", None) == "sigmoid"
+
+
+def add_sigmoid_output(model):
+    import tensorflow as tf
+
+    logging.info("Applying sigmoid")
+    probabilities = tf.keras.layers.Activation("sigmoid", name="sigmoid_output")(
+        model.output
+    )
+    return tf.keras.Model(inputs=model.inputs, outputs=probabilities)
+
+
 def init_worker(model_file, weights, date):
     global worker_model, after_date
-    import tensorflow as tf
+
+    init_logging()
 
     try:
         worker_model = get_interpreter_from_path(model_file)
         if weights is not None:
             worker_model.model.load_weights(weights)
         after_date = date
+
+        if not has_sigmoid_output(worker_model.model):
+            worker_model.model = add_sigmoid_output(worker_model.model)
+        worker_model.model.summary()
     except:
         logging.error("init_worker error", exc_info=True)
 
@@ -536,7 +558,8 @@ def load_clip_data(cptv_file):
         thermal_medians.append(np.median(f.thermal))
     thermal_medians = np.uint16(thermal_medians)
     data = []
-    preprocess_data = []
+    # this wont work for old models that dont use multi inputs, but dont think that matters
+    preprocess_data = {"input_image": [], "input_mask": []}
     for track in clip.tracks:
         try:
             samples = worker_model.frames_for_prediction(
@@ -552,22 +575,25 @@ def load_clip_data(cptv_file):
                 min_segments=1,
             )
             output = None
+            num_preds = 0
             if len(preprocessed) > 0:
-                preprocess_data.extend(preprocessed)
-
+                preprocess_data["input_image"].extend(preprocessed["input_image"])
+                preprocess_data["input_mask"].extend(preprocessed["input_mask"])
+                num_preds = len(preprocessed["input_image"])
             data.append(
                 [
                     f"{track.clip_id}-{track.get_id()}",
                     track.label,
                     frames,
-                    len(preprocessed),
+                    num_preds,
                     masses,
                 ]
             )
         except:
             logging.error("Could not load %s", clip.clip_id, exc_info=True)
-    if len(preprocess_data) > 0:
-        preprocess_data = np.array(preprocess_data)
+    if len(preprocess_data["input_image"]) > 0:
+        preprocess_data["input_image"] = np.array(preprocess_data["input_image"])
+        preprocess_data["input_mask"] = np.array(preprocess_data["input_mask"])
         output = worker_model.predict(preprocess_data)
         pred_pos = 0
         for i in range(len(data)):
@@ -761,13 +787,14 @@ def evaluate_dir(
     print(raw_preds_i)
     # thresholds found from best_score
     thresholds_per_label = model.thresholds_per_label
-    thresholds_per_label = np.array(thresholds_per_label)
-    thresholds_per_label[thresholds_per_label < 0.5] = 0.5
-    thresholds_per_label[thresholds_per_label >0.8] = 0.8
 
     preds = results.copy()
-    for i, threshold in enumerate(thresholds_per_label):
-        pred_mask = preds == model.labels[i]
+    for label in model.labels:
+        threshold = thresholds_per_label.get(label, 0.8)
+        if label not in thresholds_per_label:
+            logging.info("No threshold for %s so using 0.8", label)
+        threshold = np.clip(threshold, 0.5, 0.8)
+        pred_mask = preds == label
         conf_mask = confidences < threshold
         preds[pred_mask & conf_mask] = "None"
 
@@ -947,18 +974,8 @@ def main():
 
             model.labels = labels
 
-            import tensorflow as tf
-
-            logging.info("Applying sigmoid")
-            # 4. Apply the Sigmoid activation layer
-            probabilities = tf.keras.layers.Activation(
-                "sigmoid", name="sigmoid_output"
-            )(model.model.output)
-
-            # 5. Construct the final inference model
-            model.model = tf.keras.Model(
-                inputs=model.model.inputs, outputs=probabilities
-            )
+            if not has_sigmoid_output(model.model):
+                model.model = add_sigmoid_output(model.model)
             model.model.summary()
             logging.info("Loading val files to get best thresholds")
             files = base_dir / "validation"
