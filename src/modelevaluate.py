@@ -80,6 +80,7 @@ def model_score(cm, labels):
     unid_index = None
     if "None" in labels:
         none_index = labels.index("None")
+
     if "unidentified" in labels:
         unid_index = labels.index("unidentified")
     total_score = 0
@@ -87,7 +88,7 @@ def model_score(cm, labels):
         # if l in ["static", "animal", "deer", "sheep"]:
         # continue
         fp_acc = 0
-        if fp_index is not None:
+        if fp_index is not None and l_i != fp_index:
             fp_acc = cm[l_i][fp_index]
         none_acc = 0
         unid_acc = 0
@@ -96,7 +97,7 @@ def model_score(cm, labels):
             none_acc = cm[l_i][none_index]
         if unid_index:
             unid_acc = cm[l_i][unid_index]
-        other_animals = 1 - (fp_acc + none_acc + unid_acc + accuracy)
+        other_animals = np.sum(cm[l_i]) - (fp_acc + none_acc + unid_acc + accuracy)
         if np.sum(cm[l_i]) == 0:
             other_animals = 0
         if l == "bird":
@@ -122,7 +123,7 @@ def model_score(cm, labels):
             score = accuracy * 1
 
         print(
-            f"score for {l} is {score} unid {unid_acc} other animasl {round(other_animals,2)}"
+            f"score for {l} is {round(score,1)} none {round(unid_acc,1)} other animals {round(other_animals,1)}"
         )
         total_score += score
     logging.info("Model accuracy score is %s", total_score)
@@ -533,8 +534,13 @@ def init_worker(model_file, weights, date):
 def load_clip_data(cptv_file):
     # for clip in dataset.clips:
     reason = {}
-    clip_db = RawDatabase(cptv_file)
-    clip = clip_db.get_clip_tracks(BuildConfig.DEFAULT_GROUPS)
+
+    try:
+        clip_db = RawDatabase(cptv_file)
+        clip = clip_db.get_clip_tracks(BuildConfig.DEFAULT_GROUPS)
+    except:
+        logging.error("Couldnot parse file %s ",cptv_file,exc_info=True)
+        return None
     if clip is None:
         logging.warn("No clip for %s", cptv_file)
         return None
@@ -575,8 +581,8 @@ def load_clip_data(cptv_file):
                 min_segments=1,
             )
             output = None
-            num_preds = 0
-            if len(preprocessed) > 0:
+            num_preds = None
+            if len(preprocessed)>0 and  len(preprocessed["input_image"]) > 0:
                 preprocess_data["input_image"].extend(preprocessed["input_image"])
                 preprocess_data["input_mask"].extend(preprocessed["input_mask"])
                 num_preds = len(preprocessed["input_image"])
@@ -598,7 +604,8 @@ def load_clip_data(cptv_file):
         pred_pos = 0
         for i in range(len(data)):
             num_preds = data[i][3]
-            if num_preds == 0:
+            if num_preds is None or num_preds == 0:
+                data[i][3] = None
                 continue
             preds = output[pred_pos : pred_pos + num_preds]
             assert len(preds) == num_preds
@@ -709,7 +716,7 @@ def evaluate_dir(
                     y_pred.append("None")
                     continue
 
-                prediction = TrackPrediction(data[0], model.labels, smooth_preds=False)
+                prediction = TrackPrediction(data[0], model.labels, smooth_preds=False,multi_label= model.params.multi_label)
                 masses = np.array(data[4])
                 masses = masses[:, None]
                 top_score = None
@@ -807,6 +814,8 @@ def evaluate_dir(
     plt.savefig(smoothing_file.with_suffix(".png"), format="png")
     np.save(smoothing_file.with_suffix(".npy"), cm)
 
+    logging.info("Fscore model score ")
+    model_score(cm, model.labels)
     thresholds = [0.8]
     for threshold in thresholds:
         preds = results.copy()
@@ -818,6 +827,9 @@ def evaluate_dir(
         smoothing_file = filename.parent / f"{filename.stem}-{round(100*threshold)}%"
         plt.savefig(smoothing_file.with_suffix(".png"), format="png")
         np.save(smoothing_file.with_suffix(".npy"), cm)
+        logging.info("%s model score ",threshold)
+
+        model_score(cm, model.labels)
 
     # model.labels.append("None")
     model.labels.append("unidentified")
@@ -831,7 +843,6 @@ def evaluate_dir(
     plt.savefig(confusion_file.with_suffix(".png"), format="png")
     logging.info("Saving %s", confusion_file.with_suffix(".png"))
 
-    model_score(cm, model.labels)
 
 
 min_tag_clarity = 0.2

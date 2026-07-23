@@ -3,10 +3,12 @@ import logging
 import numpy as np
 import tensorflow as tf
 from pathlib import Path
+import pandas as pd
 
 from ml_tools import thermaldataset
 from ml_tools.frame import TrackChannels
-from ml_tools.tfdataset import get_dataset
+from ml_tools.tfdataset import get_dataset,apply_label_mapping
+
 import argparse
 from ml_tools.logs import init_logging
 
@@ -94,7 +96,6 @@ def main():
 
 def run_umap(model_file, features_file, labels, filter_labels=None):
     import numpy as np
-    import pandas as pd
     import umap
     import matplotlib.pyplot as plt
     import seaborn as sns
@@ -137,7 +138,7 @@ def run_umap(model_file, features_file, labels, filter_labels=None):
     clusterer = hdbscan.HDBSCAN(
         min_cluster_size=40, min_samples=3, gen_min_span_tree=True
     )
-    clusterer.fit(embedding)
+    hdbscan_labels = clusterer.fit(embedding)
 
     # 3. Detect Anomalies
     # HDBSCAN assigns -1 to points that do not fall into any cluster
@@ -227,6 +228,58 @@ def run_umap(model_file, features_file, labels, filter_labels=None):
     fig.savefig(features_file.with_suffix(".jpg"), dpi=600, bbox_inches="tight")
 
 
+def find_mislabeled_points(clusterer,hdbscan_labels,y_true,tracks):
+    probabilities = clusterer.probabilities_
+    # Create a summary dataframe for easier inspection
+    results = pd.DataFrame({
+        'index': range(len(y_true)),
+        'y_true': y_true,
+        'tracks':tracks,
+        'hdbscan_cluster': hdbscan_labels,
+        'confidence': probabilities
+    })
+
+    # Flag 1: The point was rejected entirely by HDBSCAN and marked as noise (-1)
+    noise_flags = results[results['hdbscan_cluster'] == -1]
+
+    # Flag 2: The point sits firmly inside an HDBSCAN cluster, 
+    # but its group features disagree with its y_true label.
+    # We filter for high confidence (> 0.8) to ensure it's deep inside that foreign cluster.
+    mismatch_flags = []
+    cluster_to_class_map = {-1:"Anomaly"}
+    ambiguous_clusters = []
+    for cluster_id in results['hdbscan_cluster'].unique():
+        if cluster_id == -1:
+            continue
+        
+        # Isolate the current cluster
+        cluster_subset = results[results['hdbscan_cluster'] == cluster_id]
+
+        # Calculate the percentage distribution of labels inside this cluster
+        label_counts = cluster_subset['y_true'].value_counts(normalize=True)
+        majority_label = label_counts.index[0]
+        majority_percentage = label_counts.iloc[0]
+        
+        # If the top label doesn't dominate (e.g., less than 70% of the cluster), flag it
+        if majority_percentage < 0.70:
+            print(f"⚠️ Cluster {cluster_id} is ambiguous! Top label '{majority_label}' is only {majority_percentage:.1%}")
+            ambiguous_clusters.append(cluster_id)
+            cluster_to_class_map[cluster_id] = "Ambiguous / Mixed Cluster"
+        else:
+            cluster_to_class_map[cluster_id] = majority_label
+
+        # Find the dominant (majority) true label in this density cluster
+        majority_true_label = cluster_subset['y_true'].mode()[0]
+        
+        # Flag points in this cluster that contradict the majority label with high certainty
+        intruders = cluster_subset[
+            (cluster_subset['y_true'] != majority_true_label) & 
+            (cluster_subset['confidence'] > 0.8)
+        ]
+        mismatch_flags.append(intruders)
+
+    mismatch_df = pd.concat(mismatch_flags)
+    mismatch_df["mapped_to"] = [clusters_to_class_map[cluster_id] for cluster_id in mismatch_df["hdbscan_cluster"]]
 def extract_embeddings(
     dataset_dir,
     model_file,
@@ -274,21 +327,27 @@ def extract_embeddings(
         excluded_labels,
         remapped_labels,
     )
-    model = tf.keras.models.load_model(model_file)
+    model = tf.keras.models.load_model(model_file,compile =False)
     if weights is not None:
         logging.info("Loading weights %s", weights)
         model.load_weights(weights)
     model.trainable = False
 
-    truncated = tf.keras.Model(inputs=model.input, outputs=model.layers[-3].output)
+    truncated = tf.keras.models.Model(
+        model.inputs,
+        model.get_layer("global_average_pooling2d").output,
+    )
     truncated.summary()
-
-    input_shape = model.input.shape  # (batch, h, w, c)
-    img_h = input_shape[1]
+    print(model.inputs)
+    input_shape = model.inputs[0].shape  # (batch, h, w, c)
+    img_h = input_shape[1] // 2
     num_channels = input_shape[-1]
     # channels = [TrackChannels.thermal.name, TrackChannels.filtered.name, TrackChannels.filtered.name][:num_channels]
-
-    dataset, _, new_labels, _ = get_dataset(
+    labels, tf_mappings = apply_label_mapping(
+           labels, excluded_labels, remapped_labels
+    )
+    new_labels = labels
+    dataset,epoch_size = get_dataset(
         thermaldataset.load_dataset,
         dataset_dir,
         labels,
@@ -299,6 +358,7 @@ def extract_embeddings(
         remapped_labels=remapped_labels,
         deterministic=True,
         include_track=True,
+        tf_mappings=tf_mappings,
         # channels=channels,
     )
 

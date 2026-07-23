@@ -427,7 +427,7 @@ class ClipClassifier:
             track_extractor.init_clip(clip)
         else:
             meta_data = {}
-            # just reloading the file might be bettery for memory so dont keep frames in memory
+            # just reloading the file might be better for memory so dont keep frames in memory
             clip, track_extractor, meta_data = extract_file(
                 filename, self.config, False, max_frames=45, save_meta=False
             )

@@ -19,22 +19,22 @@ def parse_args():
     args.source = Path(args.source)
     return args
 
-
-def build_model(metadata, weights_model):
-    base = tf.keras.applications.EfficientNetV2B3(
-        weights=None,
-        include_top=False,
-        input_tensor=tf.keras.Input((160, 160, 3)),
-    )
-    x = base.output
-    x = tf.keras.layers.GlobalAveragePooling2D()(x)
-    x = tf.keras.layers.Dropout(0.5)(x)
-    preds = tf.keras.layers.Dense(
-        len(metadata["labels"]), activation="softmax", name="prediction"
-    )(x)
-    model = tf.keras.models.Model(base.input, outputs=preds)
-    model.set_weights(weights_model.get_weights())
-    return model
+# old model
+# def build_model(metadata, weights_model):
+#     base = tf.keras.applications.EfficientNetV2B3(
+#         weights=None,
+#         include_top=False,
+#         input_tensor=tf.keras.Input((160, 160, 3)),
+#     )
+#     x = base.output
+#     x = tf.keras.layers.GlobalAveragePooling2D()(x)
+#     x = tf.keras.layers.Dropout(0.5)(x)
+#     preds = tf.keras.layers.Dense(
+#         len(metadata["labels"]), activation="softmax", name="prediction"
+#     )(x)
+#     model = tf.keras.models.Model(base.input, outputs=preds)
+#     model.set_weights(weights_model.get_weights())
+#     return model
 
 
 def make_gradcam_heatmap(
@@ -45,6 +45,7 @@ def make_gradcam_heatmap(
         model.inputs,
         [model.get_layer(last_conv_layer_name).output, model.output],
     )
+    grad_model.summary()
     with tf.GradientTape() as tape:
         conv_outputs, predictions = grad_model(img_array)
         loss = predictions[:, class_index]
@@ -55,6 +56,7 @@ def make_gradcam_heatmap(
     heatmap = conv_outputs @ pooled_grads[..., tf.newaxis]  # (h, w, 1)
     heatmap = tf.squeeze(heatmap)
     heatmap = tf.maximum(heatmap, 0) / (tf.math.reduce_max(heatmap) + 1e-8)
+    print("Heat map is ",heatmap.shape)
     return heatmap.numpy()
 
 
@@ -66,7 +68,6 @@ def overlay_heatmap_on_channel(channel, heatmap, alpha=0.4):
     """
     H, W = channel.shape
     heatmap_up = tf.image.resize(heatmap[..., np.newaxis], (H, W)).numpy()[..., 0]
-
     # Normalise channel to [0, 1] for display
     cmin, cmax = channel.min(), channel.max()
     ch_norm = (channel - cmin) / (cmax - cmin + 1e-8)
@@ -90,7 +91,7 @@ def preprocess_file(classifier, filename):
     from ml_tools.preprocess import preprocess_frame_v2, preprocess_movement
     from datetime import datetime
     from config.trackingconfig import TrackingConfig
-
+    from ml_tools.interpreter import get_frame_mask
     filename = Path(filename)
     meta_file = filename.with_suffix(".txt")
     has_metadata = meta_file.exists()
@@ -116,7 +117,7 @@ def preprocess_file(classifier, filename):
     clip = Clip(track_extractor.config, filename)
     meta_data = load_clip_metadata(meta_file)
 
-    rec_end = datetime.fromisoformat(meta_data["end_time"])
+    # rec_end = datetime.fromisoformat(meta_data["end_time"])
 
     clip.load_metadata(
         meta_data,
@@ -127,6 +128,7 @@ def preprocess_file(classifier, filename):
     track_data = {}
 
     for track in clip.tracks:
+        print("Track is ",track)
         pred_frames = classifier.frames_for_prediction(clip, track)
 
         track_data[track.get_id()] = {
@@ -166,13 +168,16 @@ def preprocess_file(classifier, filename):
             f.float_arrays()
             for track_id, region in track_samples[current_frame_num].items():
                 f.region = region
-                pre_f = preprocess_frame_v2(
+                pre_f,_,_ = preprocess_frame_v2(
                     f,
                     classifier.params.frame_size,
                     region,
                     clip.crop_rectangle,
                     thermal_median,
                 )
+                pre_f.thermal *= 255
+                pre_f.thermal_norm *= 255
+                pre_f.filtered *= 255
                 track_data[track_id]["frames"][region.frame_number] = pre_f
 
         # track_extractor.process_frame(clip, frame)
@@ -189,10 +194,11 @@ def preprocess_file(classifier, filename):
         current_frame_num += 1
     i = 0
     for track_id, data in track_data.items():
+        print("Track id is",track_id)
         i += 1
         pred_frames = data["pred_frames"]
         pred_frame_numbers = []
-        preprocessed = []
+        preprocess_data = {"input_image": [], "input_mask": []}
         masses = []
         for segment in pred_frames:
             segment_frames = []
@@ -207,17 +213,22 @@ def preprocess_file(classifier, filename):
                 classifier.params.channels,
                 classifier.preprocess_fn,
                 sample=f"{clip.get_id()}-{track_id}",
+                enlarge=True
             )
-            logging.info("Frame indices are %s", segment.frame_indices)
-            preprocessed.append(frames)
+            frame_mask = get_frame_mask(segment.frame_indices)
+            # preprocess_data["input_image"].append(np.zeros_like(frames))
+            preprocess_data["input_image"].append(frames)
+            preprocess_data["input_mask"].append(frame_mask)
+
             masses.append(segment.mass)
             pred_frame_numbers.append(segment.frame_indices)
-        if len(preprocessed) == 0:
+        if len(preprocess_data["input_image"]) == 0:
             logging.info("No prediction made for track %s", track_id)
             continue
             # dont think this should happen
-        preprocessed = np.array(preprocessed)
-    return preprocessed
+        preprocess_data["input_image"] = np.array(preprocess_data["input_image"])
+        preprocess_data["input_mask"] = np.array(preprocess_data["input_mask"])
+        return preprocess_data
 
 
 def init_logging():
@@ -241,7 +252,6 @@ def main():
 
     classifier = get_interpreter_from_path(args.model)
     data = preprocess_file(classifier, args.source)
-
     labels = metadata["labels"]
     channel_names = ["Red", "Green", "Blue"]
 
@@ -249,24 +259,23 @@ def main():
 
     if args.weights is not None:
         old_model.load_weights(args.weights)
-    model = build_model(metadata, old_model)
-
+    # model = build_model(metadata, old_model)
+    old_model.summary()
+    model = old_model
     # source = np.load(args.source)          # expected (H, W, 3) or (1, H, W, 3)
     # if source.ndim == 3:
     #     source = source[np.newaxis]        # → (1, H, W, 3)
     # img = source[0]                        # (H, W, 3) for display
 
     preds = model.predict(data)
-    for pred, data in zip(preds, data):
+    for pred, pred_image,pred_mask in zip(preds, data["input_image"],data["input_mask"]):
         print("Predictions:")
         for i, label in enumerate(labels):
             print(f"  {label}: {pred[i]*100:.1f}%")
-
         top_i = int(np.argmax(pred))
         top_label = labels[top_i]
-
         heatmap = make_gradcam_heatmap(
-            model, np.expand_dims(data, axis=0), class_index=top_i
+            model, {"input_image":np.expand_dims(pred_image,0),"input_mask":np.expand_dims(pred_mask,0)}, class_index=top_i,last_conv_layer_name="conv2d_1"
         )
 
         fig, axes = plt.subplots(1, 3, figsize=(12, 4), squeeze=False)
@@ -275,7 +284,7 @@ def main():
         )
 
         for ci, ch_name in enumerate(channel_names):
-            vis = overlay_heatmap_on_channel(data[..., ci], heatmap)
+            vis = overlay_heatmap_on_channel(pred_image[..., ci], heatmap)
             ax = axes[0][ci]
             ax.imshow(vis)
             ax.set_title(ch_name, fontsize=9)
@@ -285,7 +294,9 @@ def main():
         out_path = args.source.parent / f"{args.source.stem}-gradcam.png"
         plt.savefig(out_path, dpi=150)
         print(f"Saved → {out_path}")
-        plt.show()
+        break
+        # plt.show()
+
 
 
 if __name__ == "__main__":
