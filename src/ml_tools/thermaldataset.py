@@ -15,6 +15,7 @@ from ml_tools.frame import TrackChannels
 from pathlib import Path
 from ml_tools.tools import saveclassify_image
 
+# tf.config.run_functions_eagerly(True)
 # seed = 1341
 # tf.random.set_seed(seed)
 # np.random.seed(seed)
@@ -24,6 +25,7 @@ AUTOTUNE = tf.data.AUTOTUNE
 
 insect = None
 fp = None
+USE_VELOCITY = False
 
 
 # labels can be any subset of this, prevents new labels being trained on until we explicitly add them to here
@@ -229,6 +231,7 @@ def load_dataset(filenames, remap_lookup, labels, args):
             ),
             repeat_frames=args.get("single_input", False),
             current_epoch=args.get("current_epoch"),
+            use_velocity=USE_VELOCITY,
         ),
         num_parallel_calls=AUTOTUNE,
         deterministic=deterministic,
@@ -287,14 +290,19 @@ def load_dataset(filenames, remap_lookup, labels, args):
     RNN = False
     if not RNN:
         dataset = dataset.map(
-            lambda x, y: (tile_input(x), y), num_parallel_calls=tf.data.AUTOTUNE
+            lambda x, y: (tile_input(x, USE_VELOCITY), y),
+            num_parallel_calls=tf.data.AUTOTUNE,
         )
     return dataset
 
 
-def tile_input(x):
+@tf.function
+def tile_input(x, use_velocity):
     input_image = tile_images(x["input_image"])
-    mask = tf.reshape(x["input_mask"], (5, 5, 1))
+    if use_velocity:
+        mask = tf.reshape(x["input_mask"], (5, 5, 4))
+    else:
+        mask = tf.reshape(x["input_mask"], (5, 5, 2))
 
     return {"input_image": input_image, "input_mask": mask}
 
@@ -357,8 +365,8 @@ class RandomRotationPerChannelFill(tf.keras.layers.Layer):
         # shift by the mean, rotate with a CONSTANT 0 fill, then shift back -
         # areas rotated into view land exactly on the per-frame channel mean.
         fill = fill_values[:, tf.newaxis, tf.newaxis, :]
-        rotated = self._rotation(inputs - fill, training=training)
-        return rotated + fill
+        rotated, angle = self._rotation(inputs - fill, training=training)
+        return rotated + fill, angle
 
 
 data_augmentation = tf.keras.Sequential(
@@ -379,7 +387,7 @@ class SequenceRotation(tf.keras.layers.Layer):
     def call(self, inputs, training=None):
         # Expected unbatched input shape: (25, 32, 32, channels)
         if not training:
-            return inputs
+            return inputs, tf.constant(0.0)
 
         # 1. Capture spatial dimensions dynamically
         num_frames = tf.shape(inputs)[0]
@@ -426,7 +434,7 @@ class SequenceRotation(tf.keras.layers.Layer):
             fill_value=0.0,
         )
 
-        return rotated_sequence
+        return rotated_sequence, angle
 
 
 # order the "image/means" feature is written in, see thermalwriter.py create_tf_example
@@ -460,6 +468,7 @@ def read_tfrecord(
     ],
     repeat_frames=False,
     current_epoch=None,
+    use_velocity=False,
 ):
     logging.info(
         "Read tf record with image %s lbls %s aug  %s  prepr %s only features %s one hot %s include fetures %s num frames %s mosaic_size %s mosaic_enalrged %s padding %s",
@@ -488,6 +497,13 @@ def read_tfrecord(
             [], tf.float32, allow_missing=True
         ),
     }
+    if use_velocity:
+        tfrecord_format["image/centre_x"] = tf.io.FixedLenSequenceFeature(
+            [], tf.float32, allow_missing=True
+        )
+        tfrecord_format["image/centre_y"] = tf.io.FixedLenSequenceFeature(
+            [], tf.float32, allow_missing=True
+        )
 
     if load_images:
         if TrackChannels.filtered.name in channels:
@@ -513,6 +529,13 @@ def read_tfrecord(
     record_frames = example["image/num_frames"]
     frame_indices = example["image/frame_numbers"]
     means = example["image/means"]
+    centre_x = None
+    centre_y = None
+    if use_velocity:
+        centre_x = example["image/centre_x"]
+        centre_y = example["image/centre_y"]
+    # centre_x = tf.reshape(centre_x, [record_frames])
+    # centre_y = tf.reshape(centre_y, [record_frames])
 
     regions = tf.io.decode_raw(example["image/roi"], out_type=tf.uint8)
     regions = tf.reshape(regions, [record_frames, 4])
@@ -558,13 +581,16 @@ def read_tfrecord(
         if augment:
             logging.info("Augmenting")
 
-            rgb_image = rotation_augmentation(rgb_image, frame_means, training=True)
+            rgb_image, rotation_angle = rotation_augmentation(
+                rgb_image, frame_means, training=True
+            )
             random_value = tf.random.uniform(
                 shape=[], minval=0.0, maxval=1.0, dtype=tf.float32
             )
 
             if tf.greater(random_value, 0.5):
                 rgb_image = tf.image.flip_left_right(rgb_image)
+                rotation_angle += math.pi
 
             rgb_image = tf.image.random_crop(
                 rgb_image, size=[record_frames, mosaic_size, mosaic_size, 3]
@@ -605,12 +631,14 @@ def read_tfrecord(
         )
         rgb_image = tf.clip_by_value(rgb_image, 0.0, 255.0)
 
-        mask = get_frame_mask(record_frames, frame_indices)
-
-        zero_pad = True
-        # times = tf.concat([tf.cast(frame_indices,tf.float32), tf.fill([25 - record_frames], -1.0)], axis=0)
-
-        # ',times)
+        mask = get_frame_mask_v2(
+            record_frames,
+            frame_indices,
+            centre_x,
+            centre_y,
+            use_velocity,
+            rotation_angle,
+        )
 
         if num_frames > 1 and not repeat_frames:
             pad_size = num_frames - tf.shape(rgb_image)[0]
@@ -631,9 +659,7 @@ def read_tfrecord(
                 constant_values=0,
             )
             rgb_image = tf.concat([ch_r, ch_g, ch_b], axis=-1)
-            rgb_image = tf.ensure_shape(
-                rgb_image, [num_frames, mosaic_size * 2, mosaic_size * 2, 3]
-            )
+            rgb_image = tf.ensure_shape(rgb_image, [num_frames, 64, 64, 3])
 
         elif num_frames > 1:
             logging.info("Repeating frames to make 25")
@@ -648,12 +674,6 @@ def read_tfrecord(
                 rgb_image, [num_frames, mosaic_size * 2, mosaic_size * 2, 3]
             )
             record_frames = 25
-            
-#     # Optional: Clip values to 0-1 range to prevent any bicubic ringing overshoot
-    
-        # rgb_image = tile_images(rgb_image)
-
-        # rgb_image = tf.ensure_shape(rgb_image, [*image_size, 3])
 
     label = tf.cast(example["image/class/label"], tf.int32)
     label = remap_lookup.lookup(label)
@@ -971,7 +991,7 @@ def main():
     #     if l not in ["mustelid", "deer", "sheep"]:
     #         excluded_labels.append(l)
 
-    include_track = True
+    include_track = False
     if "weka" not in labels:
         labels.append("weka")
     if "chicken" not in labels:
@@ -997,7 +1017,7 @@ def main():
         labels,
         batch_size=32,
         image_size=(160, 160),
-        augment=False,
+        augment=True,
         shuffle=False,
         include_features=False,
         remapped_labels=get_remapped(multi_label=True),
@@ -1042,7 +1062,13 @@ def save_batch(image_batch, label_batch, labels, save_dir, tracks=False):
         track_batch = label_batch[1]
         label_batch = label_batch[0]
     for n, img in enumerate(image_batch):
-        # print("Mask is ", masks[n].shape)
+        # print("Mask is ", masks[n])
+        # for row in masks[n]:
+        #     for column in row:
+        #         print(column)
+        # # for i,mask in enumerate(masks[n]):
+        # #     print(i, " mask is ", mask)
+        # # 1/0
         # continue
         # ,frame_indices[n])
         if tracks:
@@ -1123,6 +1149,69 @@ def mask_random_frames(rgb_image, frame_indices, record_frames):
         return rgb_image[:keep], frame_indices[:keep]
 
     return tf.cond(min_frames > 0, drop_frames, no_drop)
+
+
+@tf.function
+def get_frame_mask_v2(
+    num_valid, frame_indices, centre_x, centre_y, use_velocity, rotation_angle
+):
+    """
+    Normalises frame intervals uniformly against a maximum inter-frame distance of 9 frames.
+    """
+    # this comes from the random section logic where frames are selected at intervals of 4.32 frames apart
+    #  allowing for a possible missed chunk  double this
+    MAX_FRAME_DIST = 9
+    # max possible centre_x/centre_y displacement between consecutive frames (mosaic tile width)
+    MAX_X_DIST = 30
+    MAX_Y_DIST = 30
+
+    indices = tf.cast(frame_indices, tf.float32)
+    frame_delta = indices[1:] - indices[:-1]
+    normalised_delta = tf.minimum(frame_delta / MAX_FRAME_DIST, 1.0)
+    # Use -1.0 as a strict geometric flag for empty padding slots
+    time_mask = tf.concat(
+        [[0.0], normalised_delta, tf.fill([25 - num_valid], 0.0)], axis=0
+    )
+
+    presence_mask = tf.concat(
+        [tf.fill([num_valid], 1.0), tf.fill([25 - num_valid], 0.0)], axis=0
+    )
+
+    if use_velocity:
+        centre_x = centre_x[:num_valid]
+        x_delta = centre_x[1:] - centre_x[:-1]
+        normalised_x_delta = tf.clip_by_value(x_delta / MAX_X_DIST, -1.0, 1.0)
+
+        centre_y = centre_y[:num_valid]
+
+        y_delta = centre_y[1:] - centre_y[:-1]
+        normalised_y_delta = tf.clip_by_value(y_delta / MAX_Y_DIST, -1.0, 1.0)
+
+        def rotate_velocity():
+            c = tf.cos(rotation_angle)
+            s = tf.sin(rotation_angle)
+            rot_matrix = tf.stack([tf.stack([c, -s]), tf.stack([s, c])])
+            vel_pairs = tf.stack([normalised_x_delta, normalised_y_delta], axis=-1)
+            rotated_vel = tf.matmul(vel_pairs, rot_matrix, transpose_b=True)
+            return rotated_vel[:, 0], rotated_vel[:, 1]
+
+        def no_rotate():
+            return normalised_x_delta, normalised_y_delta
+
+        rotated_vel_x, rotated_vel_y = tf.cond(
+            tf.not_equal(rotation_angle, 0.0), rotate_velocity, no_rotate
+        )
+
+        x_mask = tf.concat(
+            [[0.0], rotated_vel_x, tf.fill([25 - num_valid], 0.0)], axis=0
+        )
+        y_mask = tf.concat(
+            [[0.0], rotated_vel_y, tf.fill([25 - num_valid], 0.0)], axis=0
+        )
+
+        return tf.stack([time_mask, x_mask, y_mask, presence_mask], axis=1)
+    else:
+        return tf.stack([time_mask, presence_mask], axis=1)
 
 
 @tf.function

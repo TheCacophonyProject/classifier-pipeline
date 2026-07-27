@@ -737,6 +737,61 @@ def average_track_length(dataset):
         logging.info("%s lengths are %s %s ", k, np.median(v), np.mean(v))
 
 
+def average_velocity(dataset):
+    track_lengths = {"x": [], "y": []}
+    delta_per_labels = {}
+    for sample in dataset.samples:
+
+        if sample.remapped_label not in delta_per_labels:
+            delta_per_labels[sample.remapped_label] = {"x": [], "y": []}
+
+        # might be better to do of smaples since these are spaced apart
+        # regions = sample.regions_by_frame
+        # keys = list(sample.regions_by_frame.keys())
+        # keys.sort()
+        # sorted_regions = [regions[key] for key in keys]
+        centre_x = np.float32([r.centroid[0] for r in sample.track_bounds])
+        centre_y = np.float32([r.centroid[1] for r in sample.track_bounds])
+
+        x_delta = np.abs(centre_x[1:] - centre_x[:-1])
+
+        y_delta = np.abs(centre_y[1:] - centre_y[:-1])
+        delta_per_labels[sample.remapped_label]["x"].extend(x_delta)
+        delta_per_labels[sample.remapped_label]["y"].extend(y_delta)
+        if sample.label != "false-positive":
+            track_lengths["x"].extend(x_delta)
+            track_lengths["y"].extend(y_delta)
+
+    logging.info(
+        "Delta x %s %s  percentile (95th) %s",
+        np.median(track_lengths["x"]),
+        np.mean(track_lengths["x"]),
+        np.percentile(track_lengths["x"], 95),
+    )
+
+    logging.info(
+        "Delta y %s %s  percentile (95th) %s",
+        np.median(track_lengths["y"]),
+        np.mean(track_lengths["y"]),
+        np.percentile(track_lengths["y"], 95),
+    )
+    for k, v in delta_per_labels.items():
+        logging.info(
+            "%s x deltas are %s %s  percentile (95th) %s",
+            k,
+            np.median(v["x"]),
+            np.mean(v["x"]),
+            np.percentile(track_lengths["x"], 95),
+        )
+        logging.info(
+            "%s y deltas are %s %s  percentile (95th) %s",
+            k,
+            np.median(v["y"]),
+            np.mean(v["y"]),
+            np.percentile(track_lengths["y"], 95),
+        )
+
+
 def main():
     init_logging()
     args = parse_args()
@@ -781,6 +836,8 @@ def main():
         )
 
         average_track_length(master_dataset)
+        average_velocity(master_dataset)
+        1 / 0
         master_dataset.labels.sort()
 
         print("Loaded  found {:.1f}k samples".format(len(master_dataset.clips) / 1000))

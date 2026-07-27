@@ -171,6 +171,9 @@ def create_tf_example(sample, data, features, labels, country_code):
     # if we wanted can save writing memory by using alternative tf record writer
     import tensorflow as tf
 
+    centre_x = np.float32([r.centroid[0] for r in sample.track_bounds])
+    centre_y = np.float32([r.centroid[1] for r in sample.track_bounds])
+
     average_dim = [r.area for r in sample.track_bounds]
     average_dim = int(round(np.mean(average_dim) ** 0.5))
     thermal_raw, filtered, thermal_norm, frame_indices, roi, means = data
@@ -197,6 +200,8 @@ def create_tf_example(sample, data, features, labels, country_code):
 
     avg_mass = int(round(sample.mass / len(sample.frame_numbers)))
     feature_dict = {
+        "image/centre_x": tfrecord_util.float_list_feature(centre_x),
+        "image/centre_y": tfrecord_util.float_list_feature(centre_y),
         "image/upsampled": tfrecord_util.int64_feature(sample.upsampled),
         "image/roi": tfrecord_util.bytes_feature(roi.ravel().tobytes()),
         "image/means": tfrecord_util.float_list_feature(means.ravel()),

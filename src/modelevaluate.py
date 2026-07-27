@@ -539,7 +539,7 @@ def load_clip_data(cptv_file):
         clip_db = RawDatabase(cptv_file)
         clip = clip_db.get_clip_tracks(BuildConfig.DEFAULT_GROUPS)
     except:
-        logging.error("Couldnot parse file %s ",cptv_file,exc_info=True)
+        logging.error("Couldnot parse file %s ", cptv_file, exc_info=True)
         return None
     if clip is None:
         logging.warn("No clip for %s", cptv_file)
@@ -582,7 +582,7 @@ def load_clip_data(cptv_file):
             )
             output = None
             num_preds = None
-            if len(preprocessed)>0 and  len(preprocessed["input_image"]) > 0:
+            if len(preprocessed) > 0 and len(preprocessed["input_image"]) > 0:
                 preprocess_data["input_image"].extend(preprocessed["input_image"])
                 preprocess_data["input_mask"].extend(preprocessed["input_mask"])
                 num_preds = len(preprocessed["input_image"])
@@ -716,7 +716,12 @@ def evaluate_dir(
                     y_pred.append("None")
                     continue
 
-                prediction = TrackPrediction(data[0], model.labels, smooth_preds=False,multi_label= model.params.multi_label)
+                prediction = TrackPrediction(
+                    data[0],
+                    model.labels,
+                    smooth_preds=False,
+                    multi_label=model.params.multi_label,
+                )
                 masses = np.array(data[4])
                 masses = masses[:, None]
                 top_score = None
@@ -827,7 +832,7 @@ def evaluate_dir(
         smoothing_file = filename.parent / f"{filename.stem}-{round(100*threshold)}%"
         plt.savefig(smoothing_file.with_suffix(".png"), format="png")
         np.save(smoothing_file.with_suffix(".npy"), cm)
-        logging.info("%s model score ",threshold)
+        logging.info("%s model score ", threshold)
 
         model_score(cm, model.labels)
 
@@ -842,7 +847,6 @@ def evaluate_dir(
     figure = plot_confusion_matrix(cm, class_names=model.labels)
     plt.savefig(confusion_file.with_suffix(".png"), format="png")
     logging.info("Saving %s", confusion_file.with_suffix(".png"))
-
 
 
 min_tag_clarity = 0.2

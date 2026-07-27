@@ -288,7 +288,7 @@ class KerasModel(Interpreter):
         inputs = {"input_image": input_image, "input_mask": mask_input}
         expanded_mask = tf.keras.layers.Lambda(lambda x: tf.expand_dims(x, axis=-1))(
             mask_input
-        )  
+        )
         masked_timeline = layers.Masking(mask_value=-1.0, name="sequence_masking")(
             expanded_mask
         )
@@ -435,7 +435,7 @@ class KerasModel(Interpreter):
             # Multi input adding information about the frame number used
             if not single_input:
                 # --- Input 2: The Timeline Mask Layer (5x5x1) ---
-                mask_input = layers.Input(shape=(5, 5, 1), name="input_mask")
+                mask_input = layers.Input(shape=(5, 5, 2), name="input_mask")
                 input_image = {"input_image": input_image, "input_mask": mask_input}
 
                 time_embedding = layers.Dense(
@@ -452,10 +452,11 @@ class KerasModel(Interpreter):
                 # --- Feature Fusion ---
                 # Concatenate visual maps (5x5x1536) and time maps (5x5x128) along the channels
                 image_features = x
-                image_features = layers.MaxPooling2D(pool_size=(2, 2), name="preserve_tiny_anomalies")(x)
+                image_features = layers.MaxPooling2D(
+                    pool_size=(2, 2), name="preserve_tiny_anomalies"
+                )(x)
 
                 image_features = tf.keras.layers.SpatialDropout2D(0.3)(image_features)
-
 
                 combined = layers.Concatenate(name="input_concat")(
                     [image_features, time_embedding]
@@ -469,9 +470,8 @@ class KerasModel(Interpreter):
                 # Mix the combined space-time features together
                 x = layers.Conv2D(256, (3, 3), activation="swish", padding="same")(x)
 
-
             x = tf.keras.layers.GlobalAveragePooling2D()(x)
-            
+
             if self.params.mvm:
                 mvm_inputs = tf.keras.layers.Input((188))
                 input_image = [input_image, mvm_inputs]
