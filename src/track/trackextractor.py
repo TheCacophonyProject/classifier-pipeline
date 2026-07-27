@@ -1,24 +1,8 @@
-from multiprocessing import Pool
-
-import cv2
-import gc
 import json
 import logging
 import os.path
-import time
 
-import numpy as np
-
-from classify.trackprediction import Predictions
-from track.clip import Clip
-from track.cliptrackextractor import ClipTrackExtractor
-from track.irtrackextractor import IRTrackExtractor
 from pathlib import Path
-from ml_tools import tools
-from ml_tools.previewer import Previewer
-from track.track import Track
-
-from classify.thumbnail import get_thumbnail_info, best_trackless_thumb
 
 
 class TrackExtractor:
@@ -39,7 +23,9 @@ class TrackExtractor:
         """Reads meta-data for a given cptv file."""
         source_meta_filename = os.path.splitext(filename)[0] + ".txt"
         if os.path.exists(source_meta_filename):
-            meta_data = tools.load_clip_metadata(source_meta_filename)
+            from ml_tools.tools import load_clip_metadata
+
+            meta_data = load_clip_metadata(source_meta_filename)
 
             tags = set()
             for record in meta_data["Tags"]:
@@ -77,6 +63,9 @@ class TrackExtractor:
                 if os.path.splitext(name)[1] in [".mp4", ".avi", ".cptv"]:
                     full_path = os.path.join(folder_path, name)
                     data.append(full_path)
+
+        from multiprocessing import Pool
+
         with Pool(
             self.worker_threads,
             init_worker,
@@ -133,9 +122,15 @@ def extract_file(
     if not filename.is_file():
         raise Exception("File {} not found.".format(filename))
     logging.info("Tracking %s", filename)
-    previewer = Previewer.create_if_required(config, config.classify.preview)
+    previewer = None
+    if config.classify.preview and not config.classify.preview.lower() == "none":
+        from ml_tools.previewer import Previewer
+
+        previewer = Previewer.create_if_required(config, config.classify.preview)
     extension = filename.suffix
     if extension == ".cptv":
+        from track.cliptrackextractor import ClipTrackExtractor
+
         track_extractor = ClipTrackExtractor(
             config.tracking,
             config.use_opt_flow,
@@ -146,6 +141,8 @@ def extract_file(
         logging.info("Using cptv extractor")
 
     else:
+        from track.irtrackextractor import IRTrackExtractor
+
         track_extractor = IRTrackExtractor(
             config.tracking,
             cache_to_disk,
@@ -156,6 +153,8 @@ def extract_file(
         )
 
         logging.info("Using ir extractor")
+    from track.clip import Clip
+
     clip = Clip(track_extractor.config, filename)
     if extension == ".cptv":
         clip.frames_per_second = 9
@@ -163,7 +162,9 @@ def extract_file(
         clip.frames_per_second = 10
     existing_metadata = None
     if filename.with_suffix(".txt").exists():
-        existing_metadata = tools.load_clip_metadata(filename.with_suffix(".txt"))
+        from ml_tools.tools import load_clip_metadata
+
+        existing_metadata = load_clip_metadata(filename.with_suffix(".txt"))
 
     if retrack:
         logging.info("Retracking")
@@ -211,6 +212,8 @@ def get_metadata(
     to_stdout=False,
     save=True,
 ):
+    from classify.thumbnail import get_thumbnail_info, best_trackless_thumb
+
     metadata = clip.get_metadata()
     for i, track in enumerate(clip.tracks):
         best_thumb, best_score = get_thumbnail_info(clip, track)
@@ -243,9 +246,12 @@ def get_metadata(
 
         existing_metadata.update(metadata)
         metadata = existing_metadata
+
+    from ml_tools.tools import CustomJSONEncoder
+
     if to_stdout:
-        print(json.dumps(metadata, cls=tools.CustomJSONEncoder))
+        print(json.dumps(metadata, cls=CustomJSONEncoder))
     elif save:
         with open(meta_filename, "w") as f:
-            json.dump(metadata, f, indent=4, cls=tools.CustomJSONEncoder)
+            json.dump(metadata, f, indent=4, cls=CustomJSONEncoder)
     return metadata

@@ -8,7 +8,6 @@ import dbus.service
 import dbus.mainloop.glib
 from gi.repository import GLib
 from ml_tools.tools import CustomJSONEncoder
-from cptv import Frame
 
 from dbus.mainloop.glib import DBusGMainLoop
 
@@ -66,6 +65,9 @@ class Service(dbus.service.Object):
         out_signature="(aaq(xsiqddxb)s)",
     )
     def TakeSnapshot(self, last_num):
+
+        from cptv import Frame
+
         s = time.time()
         last_frame, track_meta, f_num = self.get_frame(last_num)
 
@@ -274,7 +276,7 @@ class SnapshotService:
             self.service.ServiceStarted()
             self.loop.run()
         except:
-            logging.error("Couldn't run dbus server at %s %s",DBUS_NAME,session_bus)
+            logging.error("Couldn't run dbus server at %s %s", DBUS_NAME, session_bus)
 
     def tracking(
         self,

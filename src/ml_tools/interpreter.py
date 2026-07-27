@@ -5,8 +5,6 @@ import logging
 import numpy as np
 from ml_tools.hyperparams import HyperParams
 from pathlib import Path
-from classify.trackprediction import TrackPrediction
-from ml_tools.imageprocessing import normalize
 import requests
 
 
@@ -149,6 +147,8 @@ class Interpreter(ABC):
         return track_pred
 
     def track_prediction_from_raw(self, track_id, prediction_frames, output, masses):
+        from classify.trackprediction import TrackPrediction
+
         track_prediction = TrackPrediction(
             track_id, self.labels, smooth_preds=self.params.smooth_predictions
         )
@@ -238,7 +238,7 @@ class Interpreter(ABC):
                 dont_filter=dont_filter,
                 filter_by_fp=False,
                 min_segments=args.get("min_segments"),
-                seed = self.seed
+                seed=self.seed,
             )
             return segments
         else:
@@ -566,16 +566,20 @@ def inc3_preprocess(x):
     return x
 
 
-def get_interpreter_from_path(model_file,run_over_network=False,load_model=True):
+def get_interpreter_from_path(model_file, run_over_network=False, load_model=True):
     logging.info("Loading %s", model_file)
 
     if model_file.suffix in [".keras", ".pb"]:
         from ml_tools.kerasmodel import KerasModel
 
         classifier = KerasModel(run_over_network=run_over_network)
-        classifier.init_model(model_file,run_over_network =run_over_network,load_model=load_model)
+        classifier.init_model(
+            model_file, run_over_network=run_over_network, load_model=load_model
+        )
     elif model_file.suffix == ".tflite":
-        classifier = LiteInterpreter(model_file,run_over_network =run_over_network,load_model=load_model)
+        classifier = LiteInterpreter(
+            model_file, run_over_network=run_over_network, load_model=load_model
+        )
     elif model_file.suffix == ".pkl":
         from ml_tools.forestmodel import ForestModel
 
@@ -587,18 +591,22 @@ def guess_type(model_file):
     model_file = Path(model_file)
     if model_file.suffix in [".keras", ".pb"]:
         from ml_tools.kerasmodel import KerasModel
+
         return KerasModel.TYPE
     elif model_file.suffix == ".tflite":
         return LiteInterpreter.TYPE
     elif model_file.suffix == ".pkl":
         from ml_tools.forestmodel import ForestModel
+
         return ForestModel.TYPE
-    
-def get_interpreter(model, run_over_network=False, load_model=True,seed = None):
+
+
+def get_interpreter(model, run_over_network=False, load_model=True, seed=None):
     if model.type is None:
         model.type = guess_type(model.model_file)
-    
-    logging.info("Loading %s type %s over network: %s",
+
+    logging.info(
+        "Loading %s type %s over network: %s",
         model.model_file,
         model.type,
         model.run_over_network,
@@ -630,6 +638,7 @@ def get_interpreter(model, run_over_network=False, load_model=True,seed = None):
 
 def get_contours(contour_image, frame_number):
     import cv2
+    from ml_tools.imageprocessing import normalize
 
     contour_image, stats = normalize(contour_image, new_max=255)
 

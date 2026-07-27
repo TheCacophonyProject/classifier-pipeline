@@ -2,13 +2,10 @@ from abc import ABC, abstractmethod
 import logging
 import time
 import math
-import cv2
 import numpy as np
 
-from track.track import Track
 from track.region import Region
 from ml_tools.rectangle import Rectangle
-from ml_tools.imageprocessing import normalize, hist_diff
 
 
 class ClipTracker(ABC):
@@ -97,6 +94,7 @@ class ClipTracker(ABC):
         :param background: (optional) used for background subtraction
         :return: uint8 filtered frame and adjusted clip threshold for normalized frame
         """
+        from ml_tools.imageprocessing import normalize
 
         filtered = np.float32(thermal.copy())
         if sub_change:
@@ -135,6 +133,8 @@ class ClipTracker(ABC):
         return new_tracks
 
     def _match_existing_tracks(self, clip, regions):
+        from ml_tools.imageprocessing import hist_diff
+
         scores = []
         used_regions = set()
         unmatched_regions = set(regions)
@@ -206,6 +206,8 @@ class ClipTracker(ABC):
 
     def _create_new_tracks(self, clip, unmatched_regions):
         """Create new tracks for any unmatched regions"""
+        from track.track import Track
+
         new_tracks = set()
         for region in unmatched_regions:
             # make sure we don't overlap with existing tracks.  This can happen if a tail gets tracked as a new object
@@ -247,6 +249,8 @@ class ClipTracker(ABC):
                 )
 
     def get_delta_frame(self, clip):
+        from ml_tools.imageprocessing import normalize
+
         frame = clip.frame_buffer.current_frame
         prev_frame = clip.frame_buffer.prev_frame
         if prev_frame is None:
@@ -543,6 +547,8 @@ class Background(ABC):
             return self.kernel_trigger
 
     def detect_motion(self):
+        import cv2
+
         fg = self.compute_filtered(None)
         erosion_image = cv2.erode(fg, self.get_kernel())
         erosion_pixels = len(erosion_image[erosion_image > 0])
@@ -570,6 +576,8 @@ class CVBackground(Background):
 
             self.algorithm = bgs.SuBSENSE()
         elif tracking_alg == "mog2":
+            import cv2
+
             self.algorithm = cv2.createBackgroundSubtractorMOG2(
                 history=1000, detectShadows=False
             )
@@ -660,6 +668,7 @@ def get_diff_back_filtered(background, frame, back_thresh):
     :param background: (optional) used for background subtraction
     :return: uint8 filtered frame and adjusted clip threshold for normalized frame
     """
+    from ml_tools.imageprocessing import normalize
 
     filtered = np.float32(frame.copy())
     filtered = abs(filtered - background)

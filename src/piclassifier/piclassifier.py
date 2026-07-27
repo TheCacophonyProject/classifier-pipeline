@@ -6,8 +6,6 @@ import time
 import psutil
 import numpy as np
 import logging
-from track.clip import Clip
-from track.track import ThumbInfo
 
 from .motiondetector import SlidingWindow
 from .processor import Processor
@@ -16,7 +14,6 @@ from ml_tools.logs import init_logging
 from ml_tools.rectangle import Rectangle
 from . import beacon
 
-from piclassifier.trapcontroller import trigger_trap
 from piclassifier.attiny import set_recording_state
 from pathlib import Path
 from functools import partial
@@ -91,7 +88,7 @@ class PiClassifier(Processor):
         classify,
         detect_after=None,
         preview_type=None,
-        seed = None
+        seed=None,
     ):
         self.seed = seed
         self.constant_recorder = None
@@ -347,7 +344,10 @@ class PiClassifier(Processor):
 
         if model is not None:
             self.classifier = get_interpreter(
-                model, run_over_network=model.run_over_network, load_model=load_model,seed = self.seed
+                model,
+                run_over_network=model.run_over_network,
+                load_model=load_model,
+                seed=self.seed,
             )
             global classifier
             classifier = self.classifier
@@ -365,7 +365,10 @@ class PiClassifier(Processor):
                 self.classifier.labels, model, self.classifier.thresholds
             )
             self.num_labels = len(self.classifier.labels)
-            logging.info("Ignoring segment types %s and using ALL_RANDOM",self.classifier.params.segment_types)
+            logging.info(
+                "Ignoring segment types %s and using ALL_RANDOM",
+                self.classifier.params.segment_types,
+            )
 
             self.classifier.params["segment_types"] = ["ALL_RANDOM"]
             logging.info("Labels are %s ", self.classifier.labels)
@@ -384,6 +387,8 @@ class PiClassifier(Processor):
             )
 
     def new_clip(self, preview_frames, received_at):
+        from track.clip import Clip
+
         self.clip = Clip(
             self.tracking_config,
             "stream",
@@ -709,6 +714,7 @@ class PiClassifier(Processor):
         best_contour = None
         from ml_tools.imageprocessing import resize_and_pad
         import cv2
+        from track.track import ThumbInfo
 
         for track in tracks:
             confidence = None
@@ -1153,6 +1159,8 @@ class PiClassifier(Processor):
 
 
 def on_track_trapped(track):
+    from piclassifier.trapcontroller import trigger_trap
+
     track.trap_reported = True
     # GP could make a prediction here
 
@@ -1193,7 +1201,7 @@ def on_recording_stopping(
                         track.thumb_info.thumb,
                     )
                 except:
-                    logging.error("Couldn't save thumbnail file ",exc_info=True)
+                    logging.error("Couldn't save thumbnail file ", exc_info=True)
         if predictions is not None:
             valid_preds = {}
 

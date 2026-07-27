@@ -1,8 +1,5 @@
 import attr
-import cv2
 import numpy as np
-from ml_tools.tools import get_clipped_flow
-from ml_tools.imageprocessing import resize_cv, rotate, normalize, resize_and_pad
 import enum
 
 
@@ -55,7 +52,6 @@ class Frame:
         f = cls(
             None,
             None,
-            None,
             frame_number,
             flow_clipped=flow_clipped,
             ffc_affected=ffc_affected,
@@ -64,18 +60,17 @@ class Frame:
         flow_h = None
         flow_v = None
         for channel, data in zip(channels, frame):
-            if TrackChannels.thermal == channel:
+            if TrackChannels.thermal.value == channel:
                 f.thermal = data
-            if TrackChannels.filtered == channel:
+            elif TrackChannels.filtered.value == channel:
                 f.filtered = data
-
-            if TrackChannels.mask == channel:
+            elif TrackChannels.mask.value == channel:
                 f.mask = data
-            if TrackChannels.flow_h == channel:
+            elif TrackChannels.flow_h.value == channel:
                 flow_h = data
-            if TrackChannels.flow_v == channel:
+            elif TrackChannels.flow_v.value == channel:
                 flow_v = data
-            if TrackChannels.flow == channel:
+            elif TrackChannels.flow.value == channel:
                 f.flow = data
         if flow_h is not None and flow_v is not None:
             flow = np.stack((flow_h, flow_v), axis=2)
@@ -145,6 +140,9 @@ class Frame:
         Generate optical flow from thermal frames
         :param opt_flow: An optical flow algorithm
         """
+        import cv2
+        from ml_tools.imageprocessing import normalize
+
         height, width = self.thermal.shape
         flow = np.zeros([height, width, 2], dtype=np.float32)
         scaled_thermal = self.thermal.copy()
@@ -171,11 +169,15 @@ class Frame:
 
     def clip_flow(self):
         if self.flow is not None:
+            from ml_tools.tools import get_clipped_flow
+
             self.flow = get_clipped_flow(self.flow)
             self.flow_clipped = True
 
     def get_flow_split(self, clip_flow=False):
         if self.flow is not None:
+            from ml_tools.tools import get_clipped_flow
+
             if self.clip_flow and not self.flow_clipped:
                 flow_c = get_clipped_flow(self.flow)
                 return flow_c[:, :, 0], flow_c[:, :, 1]
@@ -185,6 +187,8 @@ class Frame:
         return None, None
 
     def normalize(self):
+        from ml_tools.imageprocessing import normalize
+
         if self.thermal is not None:
             self.thermal, _ = normalize(self.thermal, new_max=255)
         if self.filtered is not None:
@@ -243,6 +247,9 @@ class Frame:
         edge_offset=(0, 0, 0, 0),
         original_region=None,
     ):
+        import cv2
+        from ml_tools.imageprocessing import resize_and_pad
+
         if self.thermal is not None:
             self.thermal = resize_and_pad(
                 self.thermal,

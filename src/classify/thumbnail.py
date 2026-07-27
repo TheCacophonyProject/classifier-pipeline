@@ -1,12 +1,8 @@
 import math
 import numpy as np
 from track.region import Region
-import cv2
-import matplotlib as mpl
-import matplotlib.pyplot as plt
 from collections import namedtuple
 from ml_tools import tools
-from ml_tools.imageprocessing import normalize
 import logging
 
 
@@ -63,6 +59,9 @@ Stat = namedtuple("Stat", "region contours median_diff")
 
 
 def get_track_thumb_stats(clip, track):
+    import cv2
+    from ml_tools.imageprocessing import normalize
+
     max_mass = 0
     max_median_diff = 0
     min_median_diff = 0
@@ -190,6 +189,9 @@ def score(stat, max_mass, max_median_diff, min_median_diff, max_contour):
 
 # just for testing
 def display_track(h_data, id):
+    import matplotlib as mpl
+    import matplotlib.pyplot as plt
+
     rows = len(h_data)
     columns = 10
     fig = plt.figure(figsize=(50, 50))
@@ -229,6 +231,8 @@ def display_track(h_data, id):
 
 
 def remove_axes(title):
+    import matplotlib.pyplot as plt
+
     ax = plt.gca()
     # hide x-axis
     ax.get_xaxis().set_visible(False)

@@ -6,15 +6,9 @@ import time
 import math
 import numpy as np
 
-from classify.trackprediction import Predictions
-from track.clip import Clip
-from track.cliptrackextractor import ClipTrackExtractor, is_affected_by_ffc
-from ml_tools.tools import load_clip_metadata, clear_session, CustomJSONEncoder
-from ml_tools.interpreter import get_interpreter
-from track.trackextractor import extract_file
-from classify.thumbnail import get_thumbnail_info, best_trackless_thumb
+from ml_tools.tools import load_clip_metadata, CustomJSONEncoder
 from pathlib import Path
-from piclassifier.eventreporter import log_event
+import psutil
 
 
 class ClipClassifier:
@@ -62,6 +56,8 @@ class ClipClassifier:
         Returns a classifier object, which is created on demand.
         This means if the ClipClassifier is copied to a new process a new Classifier instance will be created.
         """
+        from ml_tools.interpreter import get_interpreter
+
         if model.id in self.models:
             return self.models[model.id]
         load_start = time.time()
@@ -162,10 +158,14 @@ class ClipClassifier:
         meta_data = None
         if track:
             logging.info("Doing tracking")
+            from track.trackextractor import extract_file
+
             clip, track_extractor, meta_data = extract_file(
                 filename, self.config, cache_to_disk, to_stdout=False, save_meta=False
             )
         elif ext == ".cptv":
+            from track.cliptrackextractor import ClipTrackExtractor
+
             track_extractor = ClipTrackExtractor(
                 self.config.tracking,
                 self.config.use_opt_flow,
@@ -200,6 +200,8 @@ class ClipClassifier:
         logging.info("Processing file '{}'".format(filename))
 
         if not track:
+            from track.clip import Clip
+
             clip = Clip(track_extractor.config, filename)
             clip.load_metadata(
                 meta_data,
@@ -250,6 +252,8 @@ class ClipClassifier:
         return meta_data
 
     def classify_clip(self, clip, model, meta_data, reuse_frames=None):
+        from classify.trackprediction import Predictions
+
         start = time.time()
         location = meta_data.get("location")
         logging.info("getting classified with %s", location)
@@ -295,7 +299,9 @@ class ClipClassifier:
                 (time.time() - start) * 1000 / max(1, len(clip.frame_buffer.frames))
             )
             logging.info("Took {:.1f}ms per frame".format(ms_per_frame))
-        if classifier.TYPE == "Keras":
+        if classifier.TYPE == "Keras" and not model.run_over_network:
+            from ml_tools.tools import clear_session
+
             clear_session()
         del classifier
         gc.collect()
@@ -311,6 +317,8 @@ class ClipClassifier:
         models,
         calculate_thumbnails=False,
     ):
+        from classify.thumbnail import get_thumbnail_info, best_trackless_thumb
+
         tracks = meta_data.get("tracks")
         for track in clip.tracks:
             meta_track = next((x for x in tracks if x["id"] == track.get_id()), None)
@@ -383,6 +391,12 @@ class ClipClassifier:
         return meta_data
 
     def post_process_file(self, filename, service):
+        from piclassifier.eventreporter import log_event
+        from classify.trackprediction import Predictions
+
+        from track.cliptrackextractor import ClipTrackExtractor
+        from piclassifier.cptvmotiondetector import is_affected_by_ffc
+
         from cptv_rs_python_bindings import CptvReader
         from piclassifier.motiondetector import RunningMean, SlidingWindow
         from piclassifier.cptvmotiondetector import CPTVMotionDetector
@@ -402,7 +416,6 @@ class ClipClassifier:
 
         filename = Path(filename)
         if has_metadata:
-
             # get segments here, or frames
             # only extra data for segments
             track_extractor = ClipTrackExtractor(
@@ -411,6 +424,7 @@ class ClipClassifier:
                 calculate_filtered=True,
                 verbose=self.config.verbose,
             )
+            from track.clip import Clip
 
             clip = Clip(track_extractor.config, filename)
             meta_data = load_clip_metadata(meta_file)
@@ -424,12 +438,20 @@ class ClipClassifier:
             track_extractor.init_clip(clip)
         else:
             meta_data = {}
-            # just reloading the file might be bettery for memory so dont keep frames in memory
+            from track.trackextractor import extract_file
+
+            # just reloading the file might be better for memory so dont keep frames in memory
             clip, track_extractor, meta_data = extract_file(
-                filename, self.config, False, max_frames=45, save_meta=False
+                filename, self.config, False, max_frames=45, save_meta=True
             )
             rec_end = datetime.fromisoformat(meta_data["end_time"])
 
+        logging.info(
+            "Tracked file cpu is %s mem is %s system mem %s",
+            psutil.cpu_percent(),
+            process_mem(),
+            psutil.virtual_memory()[2],
+        )
         logging.info("Just running on first model")
         start = time.time()
         model = self.config.classify.models[0]
@@ -440,15 +462,18 @@ class ClipClassifier:
 
         track_samples = {}
         track_data = {}
-
+        track_length = 0
         for track in clip.tracks:
-            pred_frames = classifier.frames_for_prediction(clip, track)
-
+            pred_frames = classifier.frames_for_prediction(clip, track, min_segments=1)
+            if len(pred_frames) == 0:
+                continue
+            track_length += len(track)
             track_data[track.get_id()] = {
                 "pred_frames": pred_frames,
                 "limits": None,
                 "frames": {},
                 "track": track,
+                "regions": {},
             }
 
             for seg in pred_frames:
@@ -464,7 +489,16 @@ class ClipClassifier:
 
         if classifier.params.thermal_diff_norm:
             logging.error("Thermal min diff is not implemented so will not be used")
+        from ml_tools.framecache import FrameCache, get_frame_from_group
+        import tempfile
 
+        _, unique_filename = tempfile.mkstemp()
+        # 3 minutes of tracks probably could be longer since they are all cropped
+        cache = track_length > 3 * 60 * 9
+        frame_cache = None
+        if cache:
+            logging.info("Caching file, track length is %s", track_length)
+            frame_cache = FrameCache(unique_filename)
         while True:
             frame = reader.next_frame()
 
@@ -484,7 +518,11 @@ class ClipClassifier:
                     filtered = thermal - background
                     thermal -= thermal_median
                     f = Frame(thermal, filtered, current_frame_num, region=region)
-                    track_data[track_id]["frames"][region.frame_number] = f
+                    if cache:
+                        frame_cache.add_frame(f, track_id)
+                        track_data[track_id]["regions"][region.frame_number] = region
+                    else:
+                        track_data[track_id]["frames"][region.frame_number] = f
                     if classifier.params.diff_norm:
                         f_min = np.min(filtered)
                         f_max = np.max(filtered)
@@ -510,17 +548,46 @@ class ClipClassifier:
             if not is_ffc:
                 track_extractor.background_alg.process_frame(running_mean.mean())
             current_frame_num += 1
+        logging.info(
+            "Loaded all frames for predicting on %s cpu is %s mem is %s system mem %s",
+            current_frame_num,
+            psutil.cpu_percent(),
+            process_mem(),
+            psutil.virtual_memory()[2],
+        )
         i = 0
-        for track_id, data in track_data.items():
-            i += 1
+        logging.info("Track keys are %s", list(frame_cache.db["tracks"].keys()))
+        track_ids = list(track_data.keys())
+        logging.info("Local track ids are %s", track_ids)
+
+        for track_id in track_ids:
+            data = track_data[track_id]
             pred_frames = data["pred_frames"]
+            if cache:
+                logging.info("Loading track id %s", track_id)
+                track_frames = frame_cache.get_track_frames(track_id)
+            i += 1
             pred_frame_numbers = []
             preprocessed = []
             masses = []
             for segment in pred_frames:
                 segment_frames = []
                 for frame_i in segment.frame_indices:
-                    f = data["frames"][frame_i]
+                    if cache and frame_i not in data["frames"]:
+                        f = get_frame_from_group(track_frames, frame_i)
+                        if f is None:
+                            logging.error(
+                                "couldn't get %s for %s of %s",
+                                frame_i,
+                                track_id,
+                                filename,
+                            )
+                            continue
+                        f.region = track_data[track_id]["regions"][frame_i]
+                        data["frames"][frame_i] = f
+
+                    else:
+                        f = data["frames"][frame_i]
                     if not f.preprocessed:
                         f = preprocess_frame(
                             f,
@@ -528,7 +595,6 @@ class ClipClassifier:
                                 classifier.params.frame_size,
                                 classifier.params.frame_size,
                             ),
-                            region,
                             clip.background,
                             clip.crop_rectangle,
                             calculate_filtered=False,
@@ -550,12 +616,15 @@ class ClipClassifier:
                 preprocessed.append(frames)
                 masses.append(segment.mass)
                 pred_frame_numbers.append(segment.frame_indices)
+            last_frame_num = data["track"].bounds_history[-1].frame_number
+
+            del track_data[track_id]
+            data = None
             if len(preprocessed) == 0:
                 logging.info("No prediction made for track %s", track_id)
                 continue
                 # dont think this should happen
             preprocessed = np.array(preprocessed)
-
             # what to do if recording
             if self._is_recording:
                 while self._is_recording:
@@ -568,9 +637,8 @@ class ClipClassifier:
             chunks = int(math.ceil(len(preprocessed) / chunk_size))
             # if is a very long track should break this up into samller chunks
             for chunk in range(chunks):
-                preprocessed_chunk = preprocessed[
-                    chunk * chunk_size : chunk * chunk_size + chunk_size
-                ]
+                preprocessed_chunk = preprocessed[:chunk_size]
+                preprocessed = preprocessed[chunk_size:]
                 logging.info(
                     "Predicting chunk %s (%s #) of %s %s:%s total preprocessed %s",
                     chunk,
@@ -633,14 +701,15 @@ class ClipClassifier:
                     int(region.mass),
                     region.blank,
                     True,
-                    data["track"].bounds_history[-1].frame_number,
+                    last_frame_num,
                     model.id,
                     rec_end.timestamp(),
                 )
 
         models = [model]
         predictions_per_model = {model.id: predictions}
-
+        if cache:
+            frame_cache.delete()
         meta_data = self.save_metadata(
             meta_data,
             meta_file,
@@ -676,3 +745,11 @@ def wait_for_classifier(url, timeout=45):
         time.sleep(2)
     logging.error("Timeout reached. Network Classifier is not responding.")
     return False
+
+
+def process_mem():
+    import os
+
+    # return the memory usage in MB
+    process = psutil.Process(os.getpid())
+    return process.memory_info().rss / (1024 * 1024)

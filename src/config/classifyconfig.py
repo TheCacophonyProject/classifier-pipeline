@@ -24,7 +24,15 @@ import logging
 
 from config import config
 from .defaultconfig import DefaultConfig
-from ml_tools.previewer import PREVIEW_OPTIONS
+
+PREVIEW_OPTIONS = [
+    None,
+    "none",
+    "raw",
+    "classified",
+    "tracking",
+    "boxes",
+]
 
 
 @attr.s

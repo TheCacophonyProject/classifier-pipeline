@@ -1,3 +1,14 @@
+import psutil
+
+
+def process_mem():
+    import os
+
+    # return the memory usage in MB
+    process = psutil.Process(os.getpid())
+    return process.memory_info().rss / (1024 * 1024)
+
+
 import time
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
@@ -17,6 +28,8 @@ import threading
 import dbus
 from gi.repository import GLib
 from piclassifier.utils import toggle_network_classifier, is_service_running
+
+logging.info("Process usage %s", process_mem())
 
 
 class DirWatcher(FileSystemEventHandler):

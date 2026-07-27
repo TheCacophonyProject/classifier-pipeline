@@ -2,12 +2,9 @@ import json
 import dateutil
 import numpy as np
 import logging
-from ml_tools import tools
 from track.region import Region
 from abc import ABC, abstractmethod
 from ml_tools.rectangle import Rectangle
-from config.buildconfig import BuildConfig
-from ml_tools import imageprocessing
 from enum import Enum
 import attr
 
@@ -246,8 +243,9 @@ class TrackHeader:
             except:
                 pass
         meta_dict["label"] = self.label
+        from ml_tools.tools import CustomJSONEncoder
 
-        return json.dumps(meta_dict, indent=3, cls=tools.CustomJSONEncoder)
+        return json.dumps(meta_dict, indent=3, cls=CustomJSONEncoder)
 
     def add_sample(self, sample):
         self.samples.append(sample)
@@ -354,7 +352,7 @@ class TrackHeader:
         for rect in self.regions:
             rx, ry = rect.mid_x, rect.mid_y
             size = max(rect.width, rect.height)
-            adjusted_rect = tools.Rectangle(rx - size / 2, ry - size / 2, size, size)
+            adjusted_rect = Rectangle(rx - size / 2, ry - size / 2, size, size)
             self.frame_crop.append(
                 get_cropped_fraction(adjusted_rect, self.res_x, self.res_y)
             )
@@ -387,12 +385,14 @@ class TrackHeader:
         frame_min_mass=None,
         filter_by_fp=True,
         min_segments=None,
-        seed = None
+        seed=None,
     ):
+        NO_MIN_FRAMES = ["stoat", "mustelid", "weasel", "ferret"]
+
         if segment_frames is not None:
             raise Exception("Have not implement this path")
         min_frames = segment_width / 4.0
-        if self.label in BuildConfig.NO_MIN_FRAMES:
+        if self.label in NO_MIN_FRAMES:
             # try and always get one for these
             min_frames = 0
             if min_segments is None:
@@ -423,7 +423,7 @@ class TrackHeader:
             fp_frames=self.fp_frames if filter_by_fp else None,
             rec_time=self.start_time,
             min_segments=min_segments,
-            seed = seed
+            seed=seed,
         )
         self.filtered_stats.update(filtered_stats)
         # GP could get this from the tracks when writing
@@ -891,7 +891,9 @@ class SegmentHeader(Sample):
         return self.id
 
     def get_data(self, db):
-        crop_rectangle = tools.Rectangle(1, 1, 160 - 2, 120 - 2)
+        from ml_tools.imageprocessing import normalize
+
+        crop_rectangle = Rectangle(1, 1, 160 - 2, 120 - 2)
 
         try:
             background = db.get_clip_background(self.clip_id)
@@ -950,7 +952,7 @@ class SegmentHeader(Sample):
 
 def get_cropped_fraction(region: Rectangle, width, height):
     """Returns the fraction regions mass outside the rect ((0,0), (width, height)"""
-    bounds = tools.Rectangle(0, 0, width - 1, height - 1)
+    bounds = Rectangle(0, 0, width - 1, height - 1)
     return 1 - (bounds.overlap_area(region) / region.area)
 
 
@@ -995,8 +997,10 @@ def get_segments(
     fp_frames=None,
     repeat_frame_indices=True,
     min_segments=None,
-    seed = None
+    seed=None,
 ):
+    if segment_types is None:
+        segment_types = [SegmentType.ALL_RANDOM_MASKED]
     if min_frames is None:
         min_frames = segment_width / 4.0
     segments = []
@@ -1041,12 +1045,10 @@ def get_segments(
             # remove blank frames
         frame_indices = np.array(frame_indices)
 
-
         rng = np.random.default_rng(seed=seed)
 
-
         if segment_type == SegmentType.ELONGATION:
-            crop_rectangle = tools.Rectangle(1, 1, 160 - 2, 120 - 2)
+            crop_rectangle = Rectangle(1, 1, 160 - 2, 120 - 2)
             border_regions = []
             non_border_regions = []
 
@@ -1273,7 +1275,7 @@ def get_segments(
                     # i think this can be default, means we dont need to handle
                     # short segments elsewhere
                     if len(frames) < segment_width:
-                        extra_samples = rng.choice(frames,segment_width - len(frames))
+                        extra_samples = rng.choice(frames, segment_width - len(frames))
 
                         frames = list(frames)
                         frames.extend(extra_samples)

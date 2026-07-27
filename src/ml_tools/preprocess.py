@@ -1,12 +1,7 @@
 import numpy as np
 import random
-from ml_tools import tools
 from ml_tools.frame import TrackChannels
 import logging
-from ml_tools import imageprocessing
-from track.region import Region
-import cv2
-from ml_tools.tools import FrameTypes
 
 # size to scale each frame to when loaded.
 
@@ -32,7 +27,9 @@ def convert(image):
 
 
 def augement_frame(frame, frame_size, dim):
-    frame = imageprocessing.resize_cv(
+    from ml_tools.imageprocessing import resize_cv
+
+    frame = resize_cv(
         frame,
         dim,
         extra_h=random.randint(0, int(frame_size * 0.05)),
@@ -67,6 +64,8 @@ def preprocess_frame(
     median=None,
     clip_thermals_at_zero=True,
 ):
+    from ml_tools.imageprocessing import normalize
+
     if sub_median and median is None:
         median = np.median(frame.thermal)
     if not cropped:
@@ -93,7 +92,7 @@ def preprocess_frame(
         np.clip(cropped_frame.thermal, 0, None, out=cropped_frame.thermal)
 
     if filtered_norm_limits is not None:
-        cropped_frame.filtered, stats = imageprocessing.normalize(
+        cropped_frame.filtered, stats = normalize(
             cropped_frame.filtered,
             min=filtered_norm_limits[0],
             max=filtered_norm_limits[1],
@@ -104,7 +103,7 @@ def preprocess_frame(
             thermal_max = None
             if thermal_norm_limits is not None:
                 thermal_min, thermal_max = thermal_norm_limits
-            cropped_frame.thermal, _ = imageprocessing.normalize(
+            cropped_frame.thermal, _ = normalize(
                 cropped_frame.thermal, min=thermal_min, max=thermal_max, new_max=255
             )
     else:
@@ -155,14 +154,18 @@ def preprocess_movement(
     channels,
     preprocess_fn=None,
     sample=None,
-    seed = None
+    seed=None,
 ):
+    from ml_tools.imageprocessing import square_clip
+
     frame_types = {}
     data = []
     frame_samples = list(np.arange(len(preprocess_frames)))
     if len(preprocess_frames) < frames_per_row * 5:
         rng = np.random.default_rng(seed)
-        extra_samples = rng.choice(frame_samples, frames_per_row * 5 - len(preprocess_frames))
+        extra_samples = rng.choice(
+            frame_samples, frames_per_row * 5 - len(preprocess_frames)
+        )
 
         frame_samples.extend(extra_samples)
         frame_samples.sort()
@@ -173,7 +176,7 @@ def preprocess_movement(
             data.append(frame_types[channel])
             continue
         channel_segment = [frame.get_channel(channel) for frame in preprocess_frames]
-        channel_data, success = imageprocessing.square_clip(
+        channel_data, success = square_clip(
             channel_segment,
             frames_per_row,
             (frame_size, frame_size),

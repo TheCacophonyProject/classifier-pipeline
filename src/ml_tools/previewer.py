@@ -31,25 +31,6 @@ from ml_tools.mpeg_creator import MPEGCreator
 # from track.region import Region
 from ml_tools.imageprocessing import normalize
 
-PREVIEW_RAW = "raw"
-
-PREVIEW_CLASSIFIED = "classified"
-
-PREVIEW_NONE = "none"
-
-PREVIEW_TRACKING = "tracking"
-
-PREVIEW_BOXES = "boxes"
-
-PREVIEW_OPTIONS = [
-    None,
-    PREVIEW_NONE,
-    PREVIEW_RAW,
-    PREVIEW_CLASSIFIED,
-    PREVIEW_TRACKING,
-    PREVIEW_BOXES,
-]
-
 
 class Previewer:
 
