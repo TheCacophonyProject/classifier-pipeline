@@ -285,14 +285,10 @@ class KerasModel(Interpreter):
         input_image = layers.Input(
             shape=(num_tiles, tile_size, tile_size, 3), name="input_image"
         )
-        # Shape: (Batch, 25, 1) -> Using your relative time / missing flag array
         inputs = {"input_image": input_image, "input_mask": mask_input}
         expanded_mask = tf.keras.layers.Lambda(lambda x: tf.expand_dims(x, axis=-1))(
             mask_input
-        )  # (None, 25, 1)
-
-        # 3. Apply the native Keras Masking Layer to the timeline data
-        # This flags the -1.0 values and propagates a hidden boolean mask to the LSTM
+        )  
         masked_timeline = layers.Masking(mask_value=-1.0, name="sequence_masking")(
             expanded_mask
         )
@@ -381,7 +377,7 @@ class KerasModel(Interpreter):
         from tensorflow import keras
 
         # width = self.params.frame_size
-        width = self.params.output_dim[0]
+        width = self.params.output_dim[0] * 2
         input_image = tf.keras.Input(
             shape=(width, width, len(self.params.channels)), name="input_image"
         )
@@ -442,22 +438,6 @@ class KerasModel(Interpreter):
                 mask_input = layers.Input(shape=(5, 5, 1), name="input_mask")
                 input_image = {"input_image": input_image, "input_mask": mask_input}
 
-                # Generate temporal feature maps matching the spatial dimensions
-                # AI was insistent on this being the way to go until i questioned it and then it said Dense was obviously better
-                # t = layers.Conv2D(64, (1, 1), activation='relu', padding='same')(mask_input)
-                # t = layers.Conv2D(128, (3, 3), activation='relu', padding='same')(t)
-
-                # input_mask = Input(shape=(5, 5, 1), name='input_mask')
-
-                # # 1. Shift the mask natively
-                # shifted_mask = mask_input + 1.0
-
-                # # 2. Use Keras operations instead of tf.nn / tf.math
-                # relu_mask = keras.ops.relu(shifted_mask)
-                # binary_presence_gate = keras.ops.ceil(relu_mask)
-
-                # Step 1: Project the single timestamp into a 64-dimensional time embedding vector per cell
-                # A Dense layer applied to a 3D tensor operates independently on every single (5,5) cell!
                 time_embedding = layers.Dense(
                     64, activation="relu", name="time_feature_projection"
                 )(
@@ -472,19 +452,10 @@ class KerasModel(Interpreter):
                 # --- Feature Fusion ---
                 # Concatenate visual maps (5x5x1536) and time maps (5x5x128) along the channels
                 image_features = x
-                # maybe add
+                image_features = layers.MaxPooling2D(pool_size=(2, 2), name="preserve_tiny_anomalies")(x)
+
                 image_features = tf.keras.layers.SpatialDropout2D(0.3)(image_features)
 
-                # sounds good in practice but actually gives worse results
-
-                # # 1. Shift the mask natively
-                # shifted_mask = mask_input + 1.0
-
-                # # 2. Use Keras operations instead of tf.nn / tf.math
-                # relu_mask = keras.ops.relu(shifted_mask)
-                # binary_presence_gate = keras.ops.ceil(relu_mask)
-
-                # image_features = image_features * binary_presence_gate
 
                 combined = layers.Concatenate(name="input_concat")(
                     [image_features, time_embedding]
@@ -497,10 +468,10 @@ class KerasModel(Interpreter):
 
                 # Mix the combined space-time features together
                 x = layers.Conv2D(256, (3, 3), activation="swish", padding="same")(x)
-            # else:
-            # input_image = {"input_image": input_image}
+
 
             x = tf.keras.layers.GlobalAveragePooling2D()(x)
+            
             if self.params.mvm:
                 mvm_inputs = tf.keras.layers.Input((188))
                 input_image = [input_image, mvm_inputs]

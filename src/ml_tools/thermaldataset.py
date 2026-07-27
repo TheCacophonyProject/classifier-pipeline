@@ -553,6 +553,7 @@ def read_tfrecord(
                 rgb_image = image
             else:
                 rgb_image = tf.concat((rgb_image, image), axis=3)
+
         # rotation augmentation before tiling
         if augment:
             logging.info("Augmenting")
@@ -598,6 +599,12 @@ def read_tfrecord(
                 rgb_image, padding, padding, mosaic_size, mosaic_size
             )
 
+        # double the resolution of each frame (mosaic_size -> mosaic_size * 2)
+        rgb_image = tf.image.resize(
+            rgb_image, [mosaic_size * 2, mosaic_size * 2], method="bicubic"
+        )
+        rgb_image = tf.clip_by_value(rgb_image, 0.0, 255.0)
+
         mask = get_frame_mask(record_frames, frame_indices)
 
         zero_pad = True
@@ -625,7 +632,7 @@ def read_tfrecord(
             )
             rgb_image = tf.concat([ch_r, ch_g, ch_b], axis=-1)
             rgb_image = tf.ensure_shape(
-                rgb_image, [num_frames, mosaic_size, mosaic_size, 3]
+                rgb_image, [num_frames, mosaic_size * 2, mosaic_size * 2, 3]
             )
 
         elif num_frames > 1:
@@ -638,9 +645,12 @@ def read_tfrecord(
             repeat_indices = tf.sort(repeat_indices)
             rgb_image = tf.gather(rgb_image, repeat_indices)
             rgb_image = tf.ensure_shape(
-                rgb_image, [num_frames, mosaic_size, mosaic_size, 3]
+                rgb_image, [num_frames, mosaic_size * 2, mosaic_size * 2, 3]
             )
             record_frames = 25
+            
+#     # Optional: Clip values to 0-1 range to prevent any bicubic ringing overshoot
+    
         # rgb_image = tile_images(rgb_image)
 
         # rgb_image = tf.ensure_shape(rgb_image, [*image_size, 3])

@@ -265,7 +265,7 @@ def get_dataset(load_function, base_dir, labels, **args):
             num_parallel_calls=tf.data.AUTOTUNE,
         )
 
-    dataset = dataset.map(resize_mosaic, num_parallel_calls=tf.data.AUTOTUNE)
+    # dataset = dataset.map(resize_mosaic, num_parallel_calls=tf.data.AUTOTUNE)
     # doing this early would speed things up but for testing it best performance it wont matter too much
     if args.get("single_input", False):
         logging.info("Loading single input")
@@ -278,22 +278,22 @@ def get_dataset(load_function, base_dir, labels, **args):
     return dataset, epoch_size
 
 
-@tf.function
-def resize_mosaic(x, label):
-    # the smallest regions we accept are 4 by 4 pixels which will be enlarged by preprocessing into 16 by 16
-    # efficient architecture will shrink features that 16 by 16 pixels down to 1 by 1 representation.
-    # To avoid this we double the image size this seems to improve accuracy by 1-2%
-    # Ensure image is in floats before resizing to maintain smooth gradients
-    image = x["input_image"]
-    image = tf.image.convert_image_dtype(image, tf.float32)
+# @tf.function
+# def resize_mosaic(x, label):
+#     # the smallest regions we accept are 4 by 4 pixels which will be enlarged by preprocessing into 16 by 16
+#     # efficient architecture will shrink features that 16 by 16 pixels down to 1 by 1 representation.
+#     # To avoid this we double the image size this seems to improve accuracy by 1-2%
+#     # Ensure image is in floats before resizing to maintain smooth gradients
+#     image = x["input_image"]
+#     image = tf.image.convert_image_dtype(image, tf.float32)
 
-    # Pixel-perfect 2.0x upscale to stop fractional stretching
-    image = tf.image.resize(image, [320, 320], method="bicubic")
+#     # Pixel-perfect 2.0x upscale to stop fractional stretching
+#     image = tf.image.resize(image, [320, 320], method="bicubic")
 
-    # Optional: Clip values to 0-1 range to prevent any bicubic ringing overshoot
-    image = tf.clip_by_value(image, 0.0, 255.0)
+#     # Optional: Clip values to 0-1 range to prevent any bicubic ringing overshoot
+#     image = tf.clip_by_value(image, 0.0, 255.0)
 
-    return {"input_image": image, "input_mask": x["input_mask"]}, label
+#     return {"input_image": image, "input_mask": x["input_mask"]}, label
 
 
 @tf.function
