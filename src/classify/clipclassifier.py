@@ -477,7 +477,6 @@ class ClipClassifier:
             }
 
             for seg in pred_frames:
-
                 for r in seg.regions:
                     frame_data = track_samples.setdefault(r.frame_number, {})
                     frame_data[track.get_id()] = r
@@ -631,7 +630,7 @@ class ClipClassifier:
                     logging.info("Waiting for current recording to finish")
                     time.sleep(10)
                 # sleep here until not recording
-
+            logging.info("Preprocess mem usage %s",process_mem())
             preds = []
             chunk_size = 5
             chunks = int(math.ceil(len(preprocessed) / chunk_size))
@@ -667,7 +666,10 @@ class ClipClassifier:
                     log_event("Classify Error", {"Error": repr(ex)})
                     break
                 preds.extend(pred)
+                logging.info("Preprocess mem usage %s at chunk %s",process_mem(),chunk)
 
+            gc.collect()
+            logging.info("After collect %s",process_mem())
             track_prediction = classifier.track_prediction_from_raw(
                 track_id, pred_frame_numbers, preds, masses
             )
