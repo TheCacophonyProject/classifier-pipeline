@@ -584,6 +584,7 @@ def read_tfrecord(
                 rgb_image = tf.concat((rgb_image, image), axis=3)
 
         # rotation augmentation before tiling
+        rotation_angle = 0
         if augment:
             logging.info("Augmenting")
 
