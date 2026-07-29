@@ -1239,7 +1239,7 @@ def random_sections(
                 frame_to_closest_valid,
             )
         )
-        if stopped_early and (len(segment_frames) < 25 // 2):
+        if stopped_early and (len(segment_frames) < 25 // 4):
             logging.warning(
                 "Could not find frames that are close enough together for source %s track %s with window start %s  for chunk size %s",
                 source_file,

@@ -1093,17 +1093,22 @@ class KerasModel(Interpreter):
             )
             checkpoints.append(earlyStopping)
 
-            reduce_lr_callback = tf.keras.callbacks.ReduceLROnPlateau(
-                monitor=stop_on[0],
-                verbose=1,
-                mode=stop_on[1],
-                factor=0.5,
-                patience=8,
-                min_delta=0.0001,
-                cooldown=max(warmup_epochs, 3),
-                min_lr=0.000001,  # Safety floor: Never drops lower than 10% of standard fine-tuning speed
+            lr_scheduler_callback = tf.keras.callbacks.LearningRateScheduler(
+                synchronized_progressive_schedule
             )
-            checkpoints.append(reduce_lr_callback)
+            checkpoints.append(lr_scheduler_callback)
+
+            # reduce_lr_callback = tf.keras.callbacks.ReduceLROnPlateau(
+            #     monitor=stop_on[0],
+            #     verbose=1,
+            #     mode=stop_on[1],
+            #     factor=0.5,
+            #     patience=8,
+            #     min_delta=0.0001,
+            #     cooldown=max(warmup_epochs, 3),
+            #     min_lr=0.000001,  # Safety floor: Never drops lower than 10% of standard fine-tuning speed
+            # )
+            # checkpoints.append(reduce_lr_callback)
             checkpoints.append(EpochTrackerCallback())
 
         return checkpoints
@@ -2013,3 +2018,18 @@ class EpochTrackerCallback(tf.keras.callbacks.Callback):
         # Note: 'epoch' passed by Keras starts at 0, so epoch 0 finished means we move to 1
         CURRENT_EPOCH.assign(epoch + 1)
         logging.info("CURRENT_EPOCH assigned to %s", epoch + 1)
+
+
+def synchronized_progressive_schedule(epoch):
+    initial_lr = 2e-4
+
+    if epoch < 16:
+        # Phase 1: Heavy Jitter (0.4) -> Keep LR high to force global exploration
+        return initial_lr
+    elif epoch < 25:
+        # Phase 2: Medium Jitter (0.2) -> Drop LR immediately by 10x to freeze
+        # feature maps and force micro fine-tuning on subtle thermal details
+        return initial_lr * 0.1  # Drops instantly to 2e-5
+    else:
+        # Phase 3: Jitter Off (0.0) -> Drop to the floor for final convergence
+        return initial_lr * 0.01  # Drops instantly to 2e-6

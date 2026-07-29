@@ -617,16 +617,16 @@ def read_tfrecord(
             def off_mask_prob():
                 return tf.constant(0.0, dtype=tf.float32)
 
-            mask_frames_prob = tf.case(
-                [(epoch < 15, heavy_mask_prob), (epoch < 25, medium_mask_prob)],
-                default=off_mask_prob,
-            )
+            # mask_frames_prob = tf.case(
+            #     [(epoch < 15, heavy_mask_prob), (epoch < 25, medium_mask_prob)],
+            #     default=off_mask_prob,
+            # )
 
-            if tf.random.uniform(shape=[], minval=0.0, maxval=1.0) < mask_frames_prob:
-                rgb_image, frame_indices = mask_random_frames(
-                    rgb_image, frame_indices, record_frames
-                )
-                record_frames = tf.shape(frame_indices)[0]
+            # if tf.random.uniform(shape=[], minval=0.0, maxval=1.0) < mask_frames_prob:
+            #     rgb_image, frame_indices = mask_random_frames(
+            #         rgb_image, frame_indices, record_frames
+            #     )
+            #     record_frames = tf.shape(frame_indices)[0]
         else:
             rgb_image = tf.image.crop_to_bounding_box(
                 rgb_image, padding, padding, mosaic_size, mosaic_size
@@ -752,18 +752,18 @@ def jitter_dataset(x, y, current_epoch):
 
     # Graph-safe conditional selection based on epoch boundaries
     prob = tf.case(
-        [(epoch < 12, heavy_stage), (epoch < 25, medium_stage)], default=off_stage
+        [(epoch < 18, heavy_stage), (epoch < 26, medium_stage)], default=off_stage
     )
     image = x["input_image"]  # Shape: (num_frames, size, size, 3)
     mask = x[
         "input_mask"
     ]  # Shape: (num_frames, 4) if USE_VELOCITY else (num_frames, 2)
+    frames_used = tf.cast(y["num_frames"], tf.int32)
 
     def no_jitter():
         return {"input_image": image, "input_mask": mask}, y["label"]
 
     def jitter():
-        frames_used = tf.cast(y["num_frames"], tf.int32)
 
         # mask a random number of frames up to prob * frames_used
         max_to_mask = tf.math.maximum(
@@ -795,11 +795,24 @@ def jitter_dataset(x, y, current_epoch):
         # mask the mask by setting these frames to zero
         jittered_mask = mask * keep_gate[:, tf.newaxis]
 
-        return {"input_image": jittered_image, "input_mask": jittered_mask}, y["label"]
+        f_used_float = tf.cast(frames_used, tf.float32)
+        n_mask_float = tf.cast(num_to_mask, tf.float32)
+
+        fraction_retained = (f_used_float - n_mask_float) / f_used_float
+        # Soften the target label so the model isn't penalized for missing data you erased
+        adjusted_label = y["label"] * fraction_retained
+
+        return {
+            "input_image": jittered_image,
+            "input_mask": jittered_mask,
+        }, adjusted_label
 
     is_active_stage = tf.greater(prob, 0.0)
-    should_jitter = tf.logical_and(is_active_stage, tf.random.uniform([]) < prob)
+    min_frames_required = tf.constant(5, dtype=tf.int32)
+    has_enough_frames = tf.greater_equal(frames_used, min_frames_required)
 
+    should_jitter = tf.logical_and(is_active_stage, tf.random.uniform([]) < prob)
+    should_jitter = tf.logical_and(should_jitter, has_enough_frames)
     return tf.cond(should_jitter, jitter, no_jitter)
 
 
