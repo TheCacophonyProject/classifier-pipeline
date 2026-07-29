@@ -9,6 +9,7 @@ import numpy as np
 from ml_tools.tools import load_clip_metadata, CustomJSONEncoder
 from pathlib import Path
 import psutil
+from pympler import asizeof
 
 
 class ClipClassifier:
@@ -555,11 +556,15 @@ class ClipClassifier:
             psutil.virtual_memory()[2],
         )
         i = 0
-        logging.info("Track keys are %s", list(frame_cache.db["tracks"].keys()))
+
         track_ids = list(track_data.keys())
-        logging.info("Local track ids are %s", track_ids)
 
         for track_id in track_ids:
+            logging.info(
+                "Total mem for track %s preds %s",
+                process_mem(),
+                asizeof.asizeof(predictions) / (1024**2),
+            )
             data = track_data[track_id]
             pred_frames = data["pred_frames"]
             if cache:
@@ -617,26 +622,34 @@ class ClipClassifier:
                 pred_frame_numbers.append(segment.frame_indices)
             last_frame_num = data["track"].bounds_history[-1].frame_number
 
+            # free memory no longer needed
+            segment_frames = None
+            f = None
             del track_data[track_id]
+            pred_frames = None
             data = None
+            if cache:
+                # close and let it lazily reopen for the next track, so
+                # HDF5's internal caches don't accumulate across all tracks
+                frame_cache.close()
+
             if len(preprocessed) == 0:
                 logging.info("No prediction made for track %s", track_id)
                 continue
                 # dont think this should happen
-            preprocessed = np.array(preprocessed)
             # what to do if recording
             if self._is_recording:
                 while self._is_recording:
                     logging.info("Waiting for current recording to finish")
                     time.sleep(10)
                 # sleep here until not recording
-            logging.info("Preprocess mem usage %s",process_mem())
+            logging.info("Preprocess mem usage %s", process_mem())
             preds = []
             chunk_size = 5
             chunks = int(math.ceil(len(preprocessed) / chunk_size))
             # if is a very long track should break this up into samller chunks
             for chunk in range(chunks):
-                preprocessed_chunk = preprocessed[:chunk_size]
+                preprocessed_chunk = np.array(preprocessed[:chunk_size])
                 preprocessed = preprocessed[chunk_size:]
                 logging.info(
                     "Predicting chunk %s (%s #) of %s %s:%s total preprocessed %s",
@@ -666,10 +679,12 @@ class ClipClassifier:
                     log_event("Classify Error", {"Error": repr(ex)})
                     break
                 preds.extend(pred)
-                logging.info("Preprocess mem usage %s at chunk %s",process_mem(),chunk)
+                logging.info(
+                    "Preprocess mem usage %s at chunk %s", process_mem(), chunk
+                )
 
             gc.collect()
-            logging.info("After collect %s",process_mem())
+            logging.info("After collect %s", process_mem())
             track_prediction = classifier.track_prediction_from_raw(
                 track_id, pred_frame_numbers, preds, masses
             )

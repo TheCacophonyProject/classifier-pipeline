@@ -37,8 +37,6 @@ class FrameCache:
             frames = frames.create_group("frames")
         else:
             frames = tracks[str(track_id)]["frames"]
-        frame_group = frames.create_group(str(frame.frame_number))
-        frame_group.attrs["ffc_affected"] = frame.ffc_affected
         height, width = frame.thermal.shape
 
         chunks = (1, height, width)
@@ -68,12 +66,13 @@ class FrameCache:
             channels.append(TrackChannels.mask.value)
             data.append(np.float32(frame.mask))
             dims += 1
-        frame_group.attrs["channels"] = np.uint8(channels)
 
         dims = (dims, height, width)
-        frame_node = frame_group.create_dataset(
-            "frame", dims, chunks=chunks, dtype=np.float32
+        frame_node = frames.create_dataset(
+            str(frame.frame_number), dims, chunks=chunks, dtype=np.float32
         )
+        frame_node.attrs["ffc_affected"] = frame.ffc_affected
+        frame_node.attrs["channels"] = np.uint8(channels)
 
         frame_node[:, :, :] = data
         if self.keep_open:
@@ -91,7 +90,7 @@ class FrameCache:
     def get_frame(self, frame_number, track_id=0):
         self.open()
         frames = self.db["tracks"][str(track_id)]["frames"]
-        frame = self.get_frame_from_group(frames, frame_number)
+        frame = get_frame_from_group(frames, frame_number)
 
         if not self.keep_open:
             self.close()
@@ -120,12 +119,11 @@ class FrameCache:
 
 def get_frame_from_group(raw, frame_number):
     if str(frame_number) in raw:
-        frame_group = raw[str(frame_number)]
-        frame = frame_group["frame"]
-        ffc_affected = frame_group.attrs["ffc_affected"]
-        channels = frame_group.attrs["channels"]
+        frame_node = raw[str(frame_number)]
+        ffc_affected = frame_node.attrs["ffc_affected"]
+        channels = frame_node.attrs["channels"]
         return Frame.from_channels(
-            frame,
+            frame_node,
             channels,
             frame_number,
             flow_clipped=True,
