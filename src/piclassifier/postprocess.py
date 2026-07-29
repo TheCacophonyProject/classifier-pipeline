@@ -16,7 +16,11 @@ from functools import partial
 import threading
 import dbus
 from gi.repository import GLib
-from piclassifier.utils import toggle_network_classifier, is_service_running
+from piclassifier.utils import (
+    toggle_network_classifier,
+    is_service_running,
+    start_thermal_recorder,
+)
 
 
 class DirWatcher(FileSystemEventHandler):
@@ -139,6 +143,8 @@ def main():
                     try:
                         dbus_object, bus, _, loop = connect_to_dbus(callback_fn)
                     except Exception as ex:
+                        # this may not be running due to tc2-agent stopping it
+                        start_thermal_recorder()
                         logging.info(
                             "Couldn't connect to dbus (%s) waiting 20 seconds and trying again",
                             service.DBUS_NAME,

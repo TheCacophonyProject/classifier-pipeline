@@ -26,6 +26,11 @@ def startup_postprocessor(enable):
     return run_cmd(cmd)
 
 
+def start_thermal_recorder():
+    cmd = "sudo systemctl start thermal-recorder-py"
+    return run_cmd(cmd)
+
+
 def stop_network_classifier():
     cmd = "sudo systemctl stop thermal-classifier"
     return run_cmd(cmd)
