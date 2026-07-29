@@ -27,6 +27,7 @@ from ml_tools import tools
 from ml_tools.rectangle import Rectangle
 import ml_tools.globals as globs
 from ml_tools.mpeg_creator import MPEGCreator
+from config.classifyconfig import PreviewType
 
 # from track.region import Region
 from ml_tools.imageprocessing import normalize
@@ -48,7 +49,7 @@ class Previewer:
 
     @classmethod
     def create_if_required(self, config, preview_type):
-        if preview_type and not preview_type.lower() == PREVIEW_NONE:
+        if preview_type and not preview_type.lower() == PreviewType.NONE.value:
             return Previewer(config, preview_type)
 
     def _load_colourmap(self):
@@ -72,8 +73,8 @@ class Previewer:
         if self.debug:
             footer = Previewer.stats_footer(clip.stats)
         if predictions and (
-            self.preview_type == PREVIEW_CLASSIFIED
-            or self.preview_type == PREVIEW_TRACKING
+            self.preview_type == PreviewType.CLASSIFIED.value
+            or self.preview_type == PreviewType.TRACKING.value
         ):
             self.create_track_descriptions(clip, predictions)
 
@@ -84,19 +85,19 @@ class Previewer:
 
         res_x = clip.res_x
         res_y = clip.res_y
-        if self.preview_type == PREVIEW_TRACKING:
+        if self.preview_type == PreviewType.TRACKING.value:
             res_x *= 2
             res_y *= 2
 
         mpeg = MPEGCreator(str(filename))
         frame_scale = 4
         for frame_number, frame in enumerate(clip.frame_buffer):
-            if self.preview_type == PREVIEW_RAW:
+            if self.preview_type == PreviewType.RAW.value:
                 image = self.convert_and_resize(
                     frame.thermal, clip.stats.min_temp, clip.stats.max_temp, clip.type
                 )
                 draw = ImageDraw.Draw(image)
-            elif self.preview_type == PREVIEW_TRACKING:
+            elif self.preview_type == PreviewType.TRACKING.value:
                 image = self.create_four_tracking_image(
                     frame,
                     clip.stats.min_temp,
@@ -113,7 +114,7 @@ class Previewer:
                     scale=frame_scale,
                 )
 
-            elif self.preview_type == PREVIEW_BOXES:
+            elif self.preview_type == PreviewType.BOXES.value:
                 image = self.convert_and_resize(
                     frame.thermal,
                     clip.stats.min_temp,
@@ -131,7 +132,7 @@ class Previewer:
                     scale=frame_scale,
                 )
 
-            elif self.preview_type == PREVIEW_CLASSIFIED:
+            elif self.preview_type == PreviewType.CLASSIFIED.value:
                 image = self.convert_and_resize(
                     frame.thermal,
                     clip.stats.min_temp,

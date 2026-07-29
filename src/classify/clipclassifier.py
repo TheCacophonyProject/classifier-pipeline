@@ -9,7 +9,6 @@ import numpy as np
 from ml_tools.tools import load_clip_metadata, CustomJSONEncoder
 from pathlib import Path
 import psutil
-from pympler import asizeof
 
 
 class ClipClassifier:
@@ -560,11 +559,6 @@ class ClipClassifier:
         track_ids = list(track_data.keys())
 
         for track_id in track_ids:
-            logging.info(
-                "Total mem for track %s preds %s",
-                process_mem(),
-                asizeof.asizeof(predictions) / (1024**2),
-            )
             data = track_data[track_id]
             pred_frames = data["pred_frames"]
             if cache:
@@ -643,7 +637,6 @@ class ClipClassifier:
                     logging.info("Waiting for current recording to finish")
                     time.sleep(10)
                 # sleep here until not recording
-            logging.info("Preprocess mem usage %s", process_mem())
             preds = []
             chunk_size = 5
             chunks = int(math.ceil(len(preprocessed) / chunk_size))
@@ -679,12 +672,10 @@ class ClipClassifier:
                     log_event("Classify Error", {"Error": repr(ex)})
                     break
                 preds.extend(pred)
-                logging.info(
-                    "Preprocess mem usage %s at chunk %s", process_mem(), chunk
-                )
 
-            gc.collect()
-            logging.info("After collect %s", process_mem())
+            logging.info(
+                "Finished predicting track %s memory %s", track_id, process_mem()
+            )
             track_prediction = classifier.track_prediction_from_raw(
                 track_id, pred_frame_numbers, preds, masses
             )

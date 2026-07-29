@@ -112,6 +112,8 @@ class ClipTracker(ABC):
         )
         filtered, stats = normalize(filtered, new_max=255)
         if denoise:
+            import cv2
+
             filtered = cv2.fastNlMeansDenoising(np.uint8(filtered), None)
         if stats[1] == stats[2]:
             mapped_thresh = clip.background_thresh

@@ -18,6 +18,7 @@ along with this program. If not, see <http://www.gnu.org/licenses/>.
 """
 
 import os.path as path
+from enum import Enum
 
 import attr
 import logging
@@ -25,14 +26,17 @@ import logging
 from config import config
 from .defaultconfig import DefaultConfig
 
-PREVIEW_OPTIONS = [
-    None,
-    "none",
-    "raw",
-    "classified",
-    "tracking",
-    "boxes",
-]
+
+class PreviewType(Enum):
+    NONE = "none"
+    RAW = "raw"
+    CLASSIFIED = "classified"
+    TRACKING = "tracking"
+    BOXES = "boxes"
+
+    @classmethod
+    def options(cls):
+        return [None] + [preview_type.value for preview_type in cls]
 
 
 @attr.s
@@ -48,7 +52,7 @@ class ClassifyConfig(DefaultConfig):
             models=ClassifyConfig.load_models(classify.get("models")),
             meta_to_stdout=classify["meta_to_stdout"],
             preview=config.parse_options_param(
-                "preview", classify["preview"], PREVIEW_OPTIONS
+                "preview", classify["preview"], PreviewType.options()
             ),
             cache_to_disk=classify["cache_to_disk"],
         )
