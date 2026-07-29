@@ -781,14 +781,14 @@ def average_velocity(dataset):
             k,
             np.median(v["x"]),
             np.mean(v["x"]),
-            np.percentile(track_lengths["x"], 95),
+            np.percentile(v["x"], 95),
         )
         logging.info(
             "%s y deltas are %s %s  percentile (95th) %s",
             k,
             np.median(v["y"]),
             np.mean(v["y"]),
-            np.percentile(track_lengths["y"], 95),
+            np.percentile(v["y"], 95),
         )
 
 
