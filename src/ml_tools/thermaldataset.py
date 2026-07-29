@@ -275,12 +275,18 @@ def load_dataset(filenames, remap_lookup, labels, args):
         )
 
     if augment:
-        dataset = prepare_cutmix_dataset(
+        dataset = prepare_jitter_dataset(
             dataset,
             img_size=image_size[0],
             prob=args.get("cutmix_prob", 0.4),
             current_epoch=args.get("current_epoch"),
         )
+        # dataset = prepare_cutmix_dataset(
+        #     dataset,
+        #     img_size=image_size[0],
+        #     prob=args.get("cutmix_prob", 0.4),
+        #     current_epoch=args.get("current_epoch"),
+        # )
     else:
         # remove num_frames_used from y
         dataset = dataset.map(
@@ -709,6 +715,91 @@ def read_tfrecord(
     # elif include_features:
     #     return (rgb_image, tf.squeeze(example["image/features"]))
     # return rgb_image
+
+
+def prepare_jitter_dataset(dataset_original, img_size, prob, current_epoch):
+    # 1. Create a second dataset and shuffle it to mix different images together
+
+    # current_epoch is read inside the mapped function (not here) so that each
+    # call sees the *live* value of the variable as it's updated by
+    # EpochTrackerCallback across epochs, rather than baking in a constant
+    # captured at dataset-construction time.
+    cutmix_dataset = dataset_original.map(
+        lambda x, y: jitter_dataset(x, y, current_epoch),
+        num_parallel_calls=tf.data.AUTOTUNE,
+    )
+
+    return cutmix_dataset
+
+
+def jitter_dataset(x, y, current_epoch):
+    # Read the current epoch value from the global variable graph pointer.
+    # Doing this here (inside the traced map function) rather than once when
+    # the dataset is built means it re-reads the variable's live value on
+    # every call, so the staging below tracks CURRENT_EPOCH as training
+    # progresses.
+    epoch = current_epoch.read_value()
+
+    def heavy_stage():
+        return tf.constant(0.4, dtype=tf.float32)
+
+    def medium_stage():
+        return tf.constant(0.2, dtype=tf.float32)
+
+    def off_stage():
+        return tf.constant(0.0, dtype=tf.float32)
+
+    # Graph-safe conditional selection based on epoch boundaries
+    prob = tf.case(
+        [(epoch < 12, heavy_stage), (epoch < 25, medium_stage)], default=off_stage
+    )
+    image = x["input_image"]  # Shape: (num_frames, size, size, 3)
+    mask = x[
+        "input_mask"
+    ]  # Shape: (num_frames, 4) if USE_VELOCITY else (num_frames, 2)
+
+    def no_jitter():
+        return {"input_image": image, "input_mask": mask}, y["label"]
+
+    def jitter():
+        frames_used = tf.cast(y["num_frames"], tf.int32)
+
+        # mask a random number of frames up to prob * frames_used
+        max_to_mask = tf.math.maximum(
+            tf.cast(tf.math.floor(prob * tf.cast(frames_used, tf.float32)), tf.int32),
+            1,
+        )
+        num_to_mask = tf.random.uniform(
+            [], minval=1, maxval=max_to_mask + 1, dtype=tf.int32
+        )
+
+        keep_gate = tf.concat(
+            [
+                tf.zeros([num_to_mask], dtype=tf.float32),
+                tf.ones([frames_used - num_to_mask], dtype=tf.float32),
+            ],
+            axis=0,
+        )
+        keep_gate = tf.random.shuffle(keep_gate)
+
+        keep_gate = tf.concat(
+            [
+                keep_gate,
+                tf.zeros([tf.shape(image)[0] - frames_used], dtype=tf.float32),
+            ],
+            axis=0,
+        )
+        # mask the input image by setting these frames to zero
+        jittered_image = image * keep_gate[:, tf.newaxis, tf.newaxis, tf.newaxis]
+        # mask the mask by setting these frames to zero
+        jittered_mask = mask * keep_gate[:, tf.newaxis]
+
+        return {"input_image": jittered_image, "input_mask": jittered_mask}, y["label"]
+
+    is_active_stage = tf.greater(prob, 0.0)
+    should_jitter = tf.logical_and(is_active_stage, tf.random.uniform([]) < prob)
+
+    return tf.cond(should_jitter, jitter, no_jitter)
 
 
 def prepare_cutmix_dataset(dataset_original, img_size, prob, current_epoch):
