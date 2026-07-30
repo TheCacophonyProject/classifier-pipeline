@@ -752,3 +752,28 @@ def get_frame_mask(indices):
 
     mask = mask_flat.reshape(5, 5, 1)
     return mask
+
+
+label_paths_dl = "https://raw.githubusercontent.com/TheCacophonyProject/cacophony-web/main/api/classifications/label_paths.json"
+
+
+def dl_mappings():
+    import requests
+
+    logging.info("Downloading mappings file from %s ", label_paths_dl)
+    response = requests.get(label_paths_dl)
+    response.raise_for_status()
+
+    mapping_content = response.content.decode()
+    print(mapping_content)
+    with open("label_paths.json", "w") as f:
+        f.write(mapping_content)
+    return mapping_content
+
+
+def get_mappings():
+    labels_path = Path("label_paths.json")
+    if not labels_path.exists():
+        label_paths = json.loads(dl_mappings())
+    with open("label_paths.json", "r") as f:
+        label_paths = json.load(f)

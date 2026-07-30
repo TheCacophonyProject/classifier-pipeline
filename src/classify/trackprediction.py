@@ -19,6 +19,30 @@ class Predictions:
         self.model_load_time = None
         self.thresholds_per_label = thresholds_per_label
 
+        from ml_tools.interpreter import get_mappings
+
+        parent_mappings = {}
+        mappings = get_mappings()
+        for l in labels:
+            path = mappings.get(l)
+            if path is None:
+                parent_mappings[l] = ("all", 0)
+            else:
+                parents = path.split(".")
+                if len(parents) == 1:
+                    parent_mappings[l] = l
+                    continue
+                # all.mammal.bird  makes mappings for parents up to alld
+                depth = 0
+                prev_parent = parents[0]
+
+                for parent in parents[1:]:
+                    parent_mappings[parent] = (prev_parent, depth)
+                    prev_parent = parent
+                    depth += 1
+
+        self.parent_mappings = parent_mappings
+
     def get_or_create_prediction(self, track, keep_all=True, smooth_preds=False):
         prediction = self.prediction_per_track.setdefault(
             track.get_id(),
@@ -486,19 +510,41 @@ class TrackPrediction:
         prediction_meta = {}
         if self.classify_time is not None:
             prediction_meta["classify_time"] = round(self.classify_time, 1)
+        best_score = self.normalized_best_score()
+        if self.multi_label:
+            if thresholds_per_label is not None:
+                if isinstance(thresholds_per_label, list):
+                    thresholds = thresholds_per_label
+                else:
+                    thresholds = [
+                        thresholds_per_label.get(l, DEFAULT_THRESHOLD)
+                        for l in self.labels
+                    ]
+                indices = np.where(best_score >= thresholds)[0]
+            else:
+                indices = np.where(best_score >= DEFAULT_THRESHOLD)[0]
 
-        prediction_meta["tag"] = self.predicted_tag()
+            tag = most_specific_tag(self.labels, indices, self.parent_mappings)
+            if tag is not None:
+                index = self.labels.index(tag)
+                threshold = thresholds[index]
+                confidence = best_score[index]
+        # always get a label if none of the labels meet the thresholds just choose argmax
+        if tag is None:
+            tag = self.predicted_tag()
+            if thresholds_per_label is not None:
+                # if old style list
+                if isinstance(thresholds_per_label, list):
+                    threshold = thresholds_per_label[self.best_label_index]
+                else:
+                    threshold = thresholds_per_label[self.predicted_tag()]
+            else:
+                threshold = DEFAULT_THRESHOLD
+
+        prediction_meta["tag"] = tag
 
         # GP makes api pick up the label this will change when logic is moved to API
         confidence = self.max_score if self.max_score else 0
-        if thresholds_per_label is not None:
-            # if old style list
-            if isinstance(thresholds_per_label, list):
-                threshold = thresholds_per_label[self.best_label_index]
-            else:
-                threshold = thresholds_per_label[self.predicted_tag()]
-        else:
-            threshold = DEFAULT_THRESHOLD
 
         prediction_meta["threshold_used"] = threshold
         prediction_meta["confident"] = confidence >= threshold
@@ -529,3 +575,157 @@ class TrackPrediction:
 class TrackResult:
     what = attr.ib()
     confidence = attr.ib()
+
+
+def find_common_parent(
+    final_tag, label, depth, other_label, other_depth, parent_mappings
+):
+    # if different depth this new one must be more specific
+    if final_tag == "all" or label == "all" or other_label == "all":
+        return ("all", 0)
+
+    if other_depth > depth:
+        deep_label, deep_depth = (
+            other_label,
+            other_depth,
+        )
+        shallow_label, shallow_depth = (label, depth)
+    else:
+        deep_label, deep_depth = label, depth
+        shallow_label, shallow_depth = (other_label, other_depth)
+
+    most_specific = (deep_label, deep_depth)
+
+    while deep_depth > shallow_depth:
+        deep_label, deep_depth = parent_mappings[deep_label]
+    if deep_depth == shallow_depth and deep_label == shallow_label:
+        if final_tag is None:
+            # can choose most specific tag
+            return most_specific
+        return (shallow_label, shallow_depth)
+
+    # if a tag is missing this will occur
+    if deep_label == "all":
+        return (deep_label, deep_depth)
+
+    while deep_label != shallow_label:
+        deep_label, deep_depth = parent_mappings[deep_label]
+        shallow_label, shallow_depth = parent_mappings[shallow_label]
+
+    return (shallow_label, shallow_depth)
+
+
+def test_init():
+    from ml_tools.interpreter import get_mappings
+
+    parent_mappings = {}
+    labels = [
+        "bird",
+        "cat",
+        "chicken",
+        "deer",
+        "dog",
+        "false-positive",
+        "hedgehog",
+        "human",
+        "kiwi",
+        "leporidae",
+        "mustelid",
+        "penguin",
+        "possum",
+        "rodent",
+        "sheep",
+        "vehicle",
+        "wallaby",
+        "weka",
+    ]
+    mappings = get_mappings()
+    parent_mappings = {}
+    for l in labels:
+        path = mappings.get(l)
+        if path is None:
+            parent_mappings[l] = ("all", 0)
+        else:
+            parents = path.split(".")
+            if len(parents) == 1:
+                parent_mappings[l] = l
+                continue
+            # all.mammal.bird  makes mappings for parents up to alld
+            depth = 0
+            prev_parent = parents[0]
+
+            for parent in parents[1:]:
+                parent_mappings[parent] = (prev_parent, depth)
+                prev_parent = parent
+                depth += 1
+
+    most_specific_tag(labels, test_indices, parent_mappings)
+
+
+def most_specific_tag(labels, indices, parent_mappings):
+    if len(indices) == 0:
+        return None
+    label = labels[indices[0]]
+    final_tag = label
+    _, final_depth = parent_mappings[label]
+    final_depth += 1
+    for other_index in indices[1:]:
+        other_label = labels[other_index]
+        _, other_depth = parent_mappings[other_label]
+        other_depth += 1
+        if final_tag is not None:
+            # if different depth this new one must be more specific
+            final_tag, final_depth = find_common_parent(
+                final_tag,
+                final_tag,
+                final_depth,
+                other_label,
+                other_depth,
+                parent_mappings,
+            )
+        else:
+            final_tag, final_depth = find_common_parent(
+                None, final_tag, final_depth, other_label, other_depth, parent_mappings
+            )
+    return final_tag
+
+    # elif depth == other_depth:
+    #     # both are specific tags so find a common ancestor
+    #     while parent != other_parent:
+    #         parent,depth = self.parent_mappings[parent]
+    #         other_parent,_ = self.parent_mappings[other_parent]
+
+    #     # 2 tags with same parent choose the parent tag i.e mammal.cat and mammal.possum
+    #     final_tag = parent
+    #     final_depth = depth
+    # else:
+    #     # normalise so deep_* is always the more specific (higher depth) side,
+    #     # keeping the outer loop's label/parent/depth untouched
+    #     if other_depth > depth:
+    #         deep_label, deep_parent, deep_depth = (
+    #             other_label,
+    #             other_parent,
+    #             other_depth,
+    #         )
+    #         shallow_label = label
+    #     else:
+    #         deep_label, deep_parent, deep_depth = label, parent, depth
+    #         shallow_label = other_label
+    #     # considered_depth =deep_depth
+
+    #     # find common parent, the labels will only ever differ by one depth so just check the parent
+    #     if deep_parent == shallow_label:
+    #         final_tag = deep_label
+    #         final_depth = deep_depth
+    #     else:
+    #         # find common parent.
+    #         # in order to make depth equal set parent to label
+    #         shallow_parent = shallow_label
+    #         while deep_parent != shallow_parent:
+    #             deep_parent, deep_depth = self.parent_mappings[deep_parent]
+    #             shallow_parent, _ = self.parent_mappings[shallow_parent]
+
+    #         # 2 tags with same parent choose the parent tag i.e mammal.cat and mammal.possum
+    #         final_tag = deep_parent
+    #         final_depth = deep_depth
+    return final_tag

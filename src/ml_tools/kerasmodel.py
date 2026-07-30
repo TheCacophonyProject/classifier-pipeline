@@ -1093,11 +1093,6 @@ class KerasModel(Interpreter):
             )
             checkpoints.append(earlyStopping)
 
-            lr_scheduler_callback = tf.keras.callbacks.LearningRateScheduler(
-                synchronized_progressive_schedule
-            )
-            checkpoints.append(lr_scheduler_callback)
-
             # reduce_lr_callback = tf.keras.callbacks.ReduceLROnPlateau(
             #     monitor=stop_on[0],
             #     verbose=1,
@@ -2008,6 +2003,19 @@ class StepWarmupCallback(Callback):
 
             # 2. Use LOGGING to write a clean, timestamped record into your log file backup
             logging.info(msg)
+        else:
+            initial_lr = self.target_lr
+
+            if epoch < 16:
+                # Phase 1: Heavy Jitter (0.4) -> Keep LR high to force global exploration
+                return initial_lr
+            elif epoch < 25:
+                # Phase 2: Medium Jitter (0.2) -> Drop LR immediately by 10x to freeze
+                # feature maps and force micro fine-tuning on subtle thermal details
+                return initial_lr * 0.1  # Drops instantly to 2e-5
+            else:
+                # Phase 3: Jitter Off (0.0) -> Drop to the floor for final convergence
+                return initial_lr * 0.01  # Drops instantly to 2e-6
 
         self.global_step += 1
 
@@ -2018,18 +2026,3 @@ class EpochTrackerCallback(tf.keras.callbacks.Callback):
         # Note: 'epoch' passed by Keras starts at 0, so epoch 0 finished means we move to 1
         CURRENT_EPOCH.assign(epoch + 1)
         logging.info("CURRENT_EPOCH assigned to %s", epoch + 1)
-
-
-def synchronized_progressive_schedule(epoch):
-    initial_lr = 2e-4
-
-    if epoch < 16:
-        # Phase 1: Heavy Jitter (0.4) -> Keep LR high to force global exploration
-        return initial_lr
-    elif epoch < 25:
-        # Phase 2: Medium Jitter (0.2) -> Drop LR immediately by 10x to freeze
-        # feature maps and force micro fine-tuning on subtle thermal details
-        return initial_lr * 0.1  # Drops instantly to 2e-5
-    else:
-        # Phase 3: Jitter Off (0.0) -> Drop to the floor for final convergence
-        return initial_lr * 0.01  # Drops instantly to 2e-6
