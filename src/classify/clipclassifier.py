@@ -711,7 +711,7 @@ class ClipClassifier:
                     True,
                     last_frame_num,
                     model.id,
-                    rec_end.timestamp(),
+                    dbus.Int64(int(1000 * rec_end.timestamp())),
                 )
 
         models = [model]
