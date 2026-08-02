@@ -229,9 +229,11 @@ def load_dataset(filenames, remap_lookup, labels, args):
                     TrackChannels.filtered.name,
                 ],
             ),
-            repeat_frames=args.get("single_input", False),
+            repeat_frames=False,
+            # args.get("single_input", False),
             current_epoch=args.get("current_epoch"),
             use_velocity=USE_VELOCITY,
+            single_input=args.get("single_input", False),
         ),
         num_parallel_calls=AUTOTUNE,
         deterministic=deterministic,
@@ -275,18 +277,20 @@ def load_dataset(filenames, remap_lookup, labels, args):
         )
 
     if augment:
-        dataset = prepare_jitter_dataset(
-            dataset,
-            img_size=image_size[0],
-            prob=args.get("cutmix_prob", 0.4),
-            current_epoch=args.get("current_epoch"),
-        )
-        # dataset = prepare_cutmix_dataset(
-        #     dataset,
-        #     img_size=image_size[0],
-        #     prob=args.get("cutmix_prob", 0.4),
-        #     current_epoch=args.get("current_epoch"),
-        # )
+        if not args.get("single_input", False):
+            logging.info("Doing jitter")
+            dataset = prepare_jitter_dataset(
+                dataset,
+                current_epoch=args.get("current_epoch"),
+            )
+        else:
+            logging.info("Doing cutmix")
+            dataset = prepare_cutmix_dataset(
+                dataset,
+                img_size=image_size[0],
+                prob=args.get("cutmix_prob", 0.4),
+                current_epoch=args.get("current_epoch"),
+            )
     else:
         # remove num_frames_used from y
         dataset = dataset.map(
@@ -475,6 +479,7 @@ def read_tfrecord(
     repeat_frames=False,
     current_epoch=None,
     use_velocity=False,
+    single_input=False,
 ):
     logging.info(
         "Read tf record with image %s lbls %s aug  %s  prepr %s only features %s one hot %s include fetures %s num frames %s mosaic_size %s mosaic_enalrged %s padding %s",
@@ -603,30 +608,35 @@ def read_tfrecord(
                 rgb_image, size=[record_frames, mosaic_size, mosaic_size, 3]
             )
 
-            # Stage the frame-masking probability by epoch, same boundaries as
-            # the cutmix staging above: heavy early on, tapering to off, read
-            # live off current_epoch so it tracks training progress.
-            epoch = current_epoch.read_value()
+            if single_input:
+                logging.info("Applying random frame mask")
+                # Stage the frame-masking probability by epoch, same boundaries as
+                # the cutmix staging above: heavy early on, tapering to off, read
+                # live off current_epoch so it tracks training progress.
+                epoch = current_epoch.read_value()
 
-            def heavy_mask_prob():
-                return tf.constant(0.5, dtype=tf.float32)
+                def heavy_mask_prob():
+                    return tf.constant(0.5, dtype=tf.float32)
 
-            def medium_mask_prob():
-                return tf.constant(0.25, dtype=tf.float32)
+                def medium_mask_prob():
+                    return tf.constant(0.25, dtype=tf.float32)
 
-            def off_mask_prob():
-                return tf.constant(0.0, dtype=tf.float32)
+                def off_mask_prob():
+                    return tf.constant(0.0, dtype=tf.float32)
 
-            # mask_frames_prob = tf.case(
-            #     [(epoch < 15, heavy_mask_prob), (epoch < 25, medium_mask_prob)],
-            #     default=off_mask_prob,
-            # )
+                mask_frames_prob = tf.case(
+                    [(epoch < 15, heavy_mask_prob), (epoch < 25, medium_mask_prob)],
+                    default=off_mask_prob,
+                )
 
-            # if tf.random.uniform(shape=[], minval=0.0, maxval=1.0) < mask_frames_prob:
-            #     rgb_image, frame_indices = mask_random_frames(
-            #         rgb_image, frame_indices, record_frames
-            #     )
-            #     record_frames = tf.shape(frame_indices)[0]
+                if (
+                    tf.random.uniform(shape=[], minval=0.0, maxval=1.0)
+                    < mask_frames_prob
+                ):
+                    rgb_image, frame_indices = mask_random_frames(
+                        rgb_image, frame_indices, record_frames
+                    )
+                    record_frames = tf.shape(frame_indices)[0]
         else:
             rgb_image = tf.image.crop_to_bounding_box(
                 rgb_image, padding, padding, mosaic_size, mosaic_size
@@ -718,7 +728,7 @@ def read_tfrecord(
     # return rgb_image
 
 
-def prepare_jitter_dataset(dataset_original, img_size, prob, current_epoch):
+def prepare_jitter_dataset(dataset_original, current_epoch):
     # 1. Create a second dataset and shuffle it to mix different images together
 
     # current_epoch is read inside the mapped function (not here) so that each
@@ -752,7 +762,7 @@ def jitter_dataset(x, y, current_epoch):
 
     # Graph-safe conditional selection based on epoch boundaries
     prob = tf.case(
-        [(epoch < 18, heavy_stage), (epoch < 26, medium_stage)], default=off_stage
+        [(epoch < 16, heavy_stage), (epoch < 25, medium_stage)], default=off_stage
     )
     image = x["input_image"]  # Shape: (num_frames, size, size, 3)
     mask = x[
@@ -854,7 +864,7 @@ def video_sequential_cutmix(data1, data2, current_epoch):
 
     # Graph-safe conditional selection based on epoch boundaries
     prob, alpha = tf.case(
-        [(epoch < 12, heavy_stage), (epoch < 25, medium_stage)], default=off_stage
+        [(epoch < 16, heavy_stage), (epoch < 25, medium_stage)], default=off_stage
     )
 
     # # Sampled so it doesn't flood the logs - remove once you've confirmed
@@ -1136,6 +1146,7 @@ def main():
         current_epoch=tf.Variable(
             0, dtype=tf.int32, trainable=False, name="current_epoch"
         ),
+        single_input=True,
     )
     print("Epoch size is", epoch_size)
     # print(get_distribution(resampled_ds, len(labels), extra_meta=False))
@@ -1267,8 +1278,6 @@ def get_frame_mask_v2(
     #  allowing for a possible missed chunk  double this
     MAX_FRAME_DIST = 9
     # max possible centre_x/centre_y displacement between consecutive frames (mosaic tile width)
-    MAX_X_DIST = 30
-    MAX_Y_DIST = 30
 
     indices = tf.cast(frame_indices, tf.float32)
     frame_delta = indices[1:] - indices[:-1]
@@ -1285,34 +1294,43 @@ def get_frame_mask_v2(
     if use_velocity:
         centre_x = centre_x[:num_valid]
         x_delta = centre_x[1:] - centre_x[:-1]
-        normalised_x_delta = tf.clip_by_value(x_delta / MAX_X_DIST, -1.0, 1.0)
 
         centre_y = centre_y[:num_valid]
 
         y_delta = centre_y[1:] - centre_y[:-1]
-        normalised_y_delta = tf.clip_by_value(y_delta / MAX_Y_DIST, -1.0, 1.0)
 
         def rotate_velocity():
+            # Angle comes directly from the SequenceRotation layer output
             c = tf.cos(rotation_angle)
             s = tf.sin(rotation_angle)
-            rot_matrix = tf.stack([tf.stack([c, -s]), tf.stack([s, c])])
-            vel_pairs = tf.stack([normalised_x_delta, normalised_y_delta], axis=-1)
+
+            # Rotation angle is counter clockwise so invert s
+            rot_matrix = tf.stack(
+                [
+                    tf.stack([c, s]),  # Changed from [c, -s]
+                    tf.stack([-s, c]),  # Changed from [s, c]
+                ]
+            )
+
+            vel_pairs = tf.stack([x_delta, y_delta], axis=-1)
             rotated_vel = tf.matmul(vel_pairs, rot_matrix, transpose_b=True)
             return rotated_vel[:, 0], rotated_vel[:, 1]
 
         def no_rotate():
-            return normalised_x_delta, normalised_y_delta
+            return x_delta, y_delta
 
+        MAX_X_DIST = 6
+        MAX_Y_DIST = 3.5
+        # ai reckons this more robust when working with rotations
+        UNIFIED_MAX_DIST = 6.94
         rotated_vel_x, rotated_vel_y = tf.cond(
             tf.not_equal(rotation_angle, 0.0), rotate_velocity, no_rotate
         )
+        rotated_vel_x = tf.clip_by_value(rotated_vel_x / UNIFIED_MAX_DIST, -1.0, 1.0)
+        rotated_vel_y = tf.clip_by_value(rotated_vel_y / UNIFIED_MAX_DIST, -1.0, 1.0)
 
-        x_mask = tf.concat(
-            [[0.0], rotated_vel_x, tf.fill([25 - num_valid], 0.0)], axis=0
-        )
-        y_mask = tf.concat(
-            [[0.0], rotated_vel_y, tf.fill([25 - num_valid], 0.0)], axis=0
-        )
+        x_mask = tf.concat([rotated_vel_x, tf.fill([25 - num_valid + 1], 0.0)], axis=0)
+        y_mask = tf.concat([rotated_vel_y, tf.fill([25 - num_valid + 1], 0.0)], axis=0)
 
         return tf.stack([time_mask, x_mask, y_mask, presence_mask], axis=1)
     else:

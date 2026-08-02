@@ -439,12 +439,12 @@ class KerasModel(Interpreter):
                 input_image = {"input_image": input_image, "input_mask": mask_input}
 
                 time_embedding = layers.Dense(
-                    64, activation="relu", name="time_feature_projection"
+                    64, activation="swish", name="time_feature_projection"
                 )(
                     mask_input
                 )  # Shape: (None, 5, 5, 64)
                 time_embedding = layers.Dense(
-                    128, activation="relu", name="time_feature_expansion"
+                    128, activation="swish", name="time_feature_expansion"
                 )(
                     time_embedding
                 )  # Shape: (None, 5, 5, 128)
@@ -1081,6 +1081,7 @@ class KerasModel(Interpreter):
         checkpoints = [checkpoint_acc, checkpoint_loss, cp_callback]
         if not fine_tuning:
             earlyStopping = tf.keras.callbacks.EarlyStopping(
+                start_from_epoch=15,
                 patience=11,
                 monitor=stop_on[0],
                 # monitor=(
@@ -1980,15 +1981,28 @@ class StepWarmupCallback(Callback):
         # Calculate the total linear steps for the warmup phase
         self.total_warmup_steps = warmup_epochs * steps_per_epoch
         self.global_step = 0
+        self.last_lr = None
 
     def on_train_batch_begin(self, batch, logs=None):
         # Only run adjustments during the warmup phase
         if self.global_step < self.total_warmup_steps:
             # Linear scaling formula2
             lr = (self.global_step / self.total_warmup_steps) * self.target_lr
+        elif self.global_step < 16 * self.steps_per_epoch:
+            lr = self.target_lr
+        elif self.global_step < 25 * self.steps_per_epoch:
+            lr = self.target_lr * 0.1
+        else:
+            lr = self.target_lr * 0.01
 
-            # Dynamically update the backend float value (safe for ReduceLROnPlateau)
-            self.model.optimizer.learning_rate = lr
+        if lr != self.last_lr:
+            print(
+                f"StepWarmupCallback: setting learning rate to {lr} at step {self.global_step}"
+            )
+            self.last_lr = lr
+
+        # Dynamically update the backend float value (safe for ReduceLROnPlateau)
+        self.model.optimizer.learning_rate = lr
         self.global_step += 1
 
     def on_epoch_begin(self, epoch, logs=None):
@@ -2003,21 +2017,8 @@ class StepWarmupCallback(Callback):
 
             # 2. Use LOGGING to write a clean, timestamped record into your log file backup
             logging.info(msg)
-        else:
-            initial_lr = self.target_lr
 
-            if epoch < 16:
-                # Phase 1: Heavy Jitter (0.4) -> Keep LR high to force global exploration
-                return initial_lr
-            elif epoch < 25:
-                # Phase 2: Medium Jitter (0.2) -> Drop LR immediately by 10x to freeze
-                # feature maps and force micro fine-tuning on subtle thermal details
-                return initial_lr * 0.1  # Drops instantly to 2e-5
-            else:
-                # Phase 3: Jitter Off (0.0) -> Drop to the floor for final convergence
-                return initial_lr * 0.01  # Drops instantly to 2e-6
-
-        self.global_step += 1
+        # self.global_step += 1
 
 
 class EpochTrackerCallback(tf.keras.callbacks.Callback):
