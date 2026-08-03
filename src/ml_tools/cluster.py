@@ -138,8 +138,9 @@ def run_umap(model_file, features_file, labels, filter_labels=None):
     clusterer = hdbscan.HDBSCAN(
         min_cluster_size=40, min_samples=3, gen_min_span_tree=True
     )
-    hdbscan_labels = clusterer.fit(embedding)
+    clusterer.fit(embedding)
 
+    find_mislabeled_points(clusterer, true_labels, tracks)
     # 3. Detect Anomalies
     # HDBSCAN assigns -1 to points that do not fall into any cluster
     anomaly_labels = clusterer.labels_
@@ -228,8 +229,9 @@ def run_umap(model_file, features_file, labels, filter_labels=None):
     fig.savefig(features_file.with_suffix(".jpg"), dpi=600, bbox_inches="tight")
 
 
-def find_mislabeled_points(clusterer, hdbscan_labels, y_true, tracks):
+def find_mislabeled_points(clusterer, y_true, tracks):
     probabilities = clusterer.probabilities_
+    hdbscan_labels = clusterer.labels_
     # Create a summary dataframe for easier inspection
     results = pd.DataFrame(
         {
@@ -240,7 +242,7 @@ def find_mislabeled_points(clusterer, hdbscan_labels, y_true, tracks):
             "confidence": probabilities,
         }
     )
-
+    print("Probablities are ", probabilities, hdbscan_labels)
     # Flag 1: The point was rejected entirely by HDBSCAN and marked as noise (-1)
     noise_flags = results[results["hdbscan_cluster"] == -1]
 
@@ -287,6 +289,7 @@ def find_mislabeled_points(clusterer, hdbscan_labels, y_true, tracks):
         clusters_to_class_map[cluster_id]
         for cluster_id in mismatch_df["hdbscan_cluster"]
     ]
+    print(mismatch_df)
 
 
 def extract_embeddings(
