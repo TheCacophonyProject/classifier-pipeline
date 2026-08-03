@@ -41,6 +41,36 @@ class Interpreter(ABC):
         self.preprocess_fn = self.get_preprocess_fn()
         self.preprocess_v2 = metadata.get("v2_preprocess", False)
 
+        from ml_tools.interpreter import get_mappings
+
+        parent_mappings = {}
+        mappings = get_mappings()
+        for l in self.labels:
+            path = mappings.get(l)
+            if path is None:
+                parent_mappings[l] = ("all", 0)
+            else:
+                parents = path.split(".")
+                if len(parents) == 1:
+                    parent_mappings[l] = l
+                    continue
+                # all.mammal.bird  makes mappings for parents up to alld
+                depth = 0
+                prev_parent = parents[0]
+
+                for parent in parents[1:]:
+                    # print("Depth ",depth,len(parents))
+                    if depth == len(parents) - 2:
+                        # print("Final depth ", parent,l)
+                        # choose label as it can change
+                        parent_mappings[l] = (prev_parent, depth)
+                    else:
+                        parent_mappings[parent] = (prev_parent, depth)
+                    prev_parent = parent
+                    depth += 1
+
+        self.parent_mappings = parent_mappings
+
     @abstractmethod
     def shape(self):
         """Num Inputs, Prediction shape"""
@@ -165,6 +195,7 @@ class Interpreter(ABC):
             self.labels,
             smooth_preds=self.params.smooth_predictions,
             multi_label=self.params.multi_label,
+            parent_mappings=self.parent_mappings,
         )
         track_prediction.classified_track(
             output,
@@ -774,6 +805,8 @@ def dl_mappings():
 def get_mappings():
     labels_path = Path("label_paths.json")
     if not labels_path.exists():
+        print("Doesnt exist so dling")
         label_paths = json.loads(dl_mappings())
     with open("label_paths.json", "r") as f:
         label_paths = json.load(f)
+    return label_paths

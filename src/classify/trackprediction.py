@@ -12,35 +12,12 @@ DEFAULT_THRESHOLD = 0.8
 
 
 class Predictions:
-    def __init__(self, labels, model, thresholds_per_label):
+    def __init__(self, labels, model, thresholds_per_label, parent_mappings=None):
         self.labels = labels
         self.prediction_per_track = {}
         self.model = model
         self.model_load_time = None
         self.thresholds_per_label = thresholds_per_label
-
-        from ml_tools.interpreter import get_mappings
-
-        parent_mappings = {}
-        mappings = get_mappings()
-        for l in labels:
-            path = mappings.get(l)
-            if path is None:
-                parent_mappings[l] = ("all", 0)
-            else:
-                parents = path.split(".")
-                if len(parents) == 1:
-                    parent_mappings[l] = l
-                    continue
-                # all.mammal.bird  makes mappings for parents up to alld
-                depth = 0
-                prev_parent = parents[0]
-
-                for parent in parents[1:]:
-                    parent_mappings[parent] = (prev_parent, depth)
-                    prev_parent = parent
-                    depth += 1
-
         self.parent_mappings = parent_mappings
 
     def get_or_create_prediction(self, track, keep_all=True, smooth_preds=False):
@@ -52,6 +29,7 @@ class Predictions:
                 keep_all=keep_all,
                 start_frame=track.start_frame,
                 smooth_preds=smooth_preds,
+                parent_mappings=self.parent_mappings,
             ),
         )
         return prediction
@@ -126,12 +104,13 @@ class TrackPrediction:
         start_frame=None,
         smooth_preds=False,
         multi_label=False,
+        parent_mappings=None,
     ):
         try:
             fp_index = labels.index("false-positive")
         except ValueError:
             fp_index = None
-
+        self.parent_mappings = parent_mappings
         self.track_id = track_id
         self.predictions = []
         self.fp_index = fp_index
@@ -197,6 +176,7 @@ class TrackPrediction:
                 if self.multi_label:
                     self.class_best_score = self.class_best_score / len(predictions)
                 else:
+
                     self.class_best_score = self.class_best_score / np.sum(
                         self.class_best_score
                     )
@@ -228,9 +208,12 @@ class TrackPrediction:
         # correct way would be to calculate the max for each prediction and divide by the sum of that
         # per pred (np.sum(p.prediction) ** 2) * p.mass
         if self.class_best_score is not None:
-            self.class_best_score = self.class_best_score / np.sum(
-                self.class_best_score
-            )
+            if self.multi_label:
+                self.class_best_score = self.class_best_score / self.num_predictions
+            else:
+                self.class_best_score = self.class_best_score / np.sum(
+                    self.class_best_score
+                )
             self.normalized = True
 
     def classified_frames(self, frame_numbers, predictions, masses):
@@ -268,7 +251,7 @@ class TrackPrediction:
                 self.predictions = [prediction]
 
         if self.normalized:
-            logging.warning("Already normalized and still adding predicitions")
+            logging.warning("Already normalized and still adding predictions")
 
         if self.class_best_score is None:
             self.class_best_score = total_pred
@@ -510,7 +493,9 @@ class TrackPrediction:
         prediction_meta = {}
         if self.classify_time is not None:
             prediction_meta["classify_time"] = round(self.classify_time, 1)
-        best_score = self.normalized_best_score()
+        self.normalize_score()
+        best_score = self.class_best_score
+        tag = None
         if self.multi_label:
             if thresholds_per_label is not None:
                 if isinstance(thresholds_per_label, list):
@@ -523,12 +508,15 @@ class TrackPrediction:
                 indices = np.where(best_score >= thresholds)[0]
             else:
                 indices = np.where(best_score >= DEFAULT_THRESHOLD)[0]
-
             tag = most_specific_tag(self.labels, indices, self.parent_mappings)
             if tag is not None:
-                index = self.labels.index(tag)
-                threshold = thresholds[index]
-                confidence = best_score[index]
+                if tag in self.labels:
+                    index = self.labels.index(tag)
+                    threshold = thresholds[index]
+                    confidence = best_score[index]
+                else:
+                    threshold = DEFAULT_THRESHOLD
+                    confidence = self.max_score
         # always get a label if none of the labels meet the thresholds just choose argmax
         if tag is None:
             tag = self.predicted_tag()
@@ -540,11 +528,10 @@ class TrackPrediction:
                     threshold = thresholds_per_label[self.predicted_tag()]
             else:
                 threshold = DEFAULT_THRESHOLD
+            # GP makes api pick up the label this will change when logic is moved to API
+            confidence = self.max_score if self.max_score else 0
 
         prediction_meta["tag"] = tag
-
-        # GP makes api pick up the label this will change when logic is moved to API
-        confidence = self.max_score if self.max_score else 0
 
         prediction_meta["threshold_used"] = threshold
         prediction_meta["confident"] = confidence >= threshold
@@ -595,7 +582,6 @@ def find_common_parent(
         shallow_label, shallow_depth = (other_label, other_depth)
 
     most_specific = (deep_label, deep_depth)
-
     while deep_depth > shallow_depth:
         deep_label, deep_depth = parent_mappings[deep_label]
     if deep_depth == shallow_depth and deep_label == shallow_label:
@@ -615,60 +601,16 @@ def find_common_parent(
     return (shallow_label, shallow_depth)
 
 
-def test_init():
-    from ml_tools.interpreter import get_mappings
-
-    parent_mappings = {}
-    labels = [
-        "bird",
-        "cat",
-        "chicken",
-        "deer",
-        "dog",
-        "false-positive",
-        "hedgehog",
-        "human",
-        "kiwi",
-        "leporidae",
-        "mustelid",
-        "penguin",
-        "possum",
-        "rodent",
-        "sheep",
-        "vehicle",
-        "wallaby",
-        "weka",
-    ]
-    mappings = get_mappings()
-    parent_mappings = {}
-    for l in labels:
-        path = mappings.get(l)
-        if path is None:
-            parent_mappings[l] = ("all", 0)
-        else:
-            parents = path.split(".")
-            if len(parents) == 1:
-                parent_mappings[l] = l
-                continue
-            # all.mammal.bird  makes mappings for parents up to alld
-            depth = 0
-            prev_parent = parents[0]
-
-            for parent in parents[1:]:
-                parent_mappings[parent] = (prev_parent, depth)
-                prev_parent = parent
-                depth += 1
-
-    most_specific_tag(labels, test_indices, parent_mappings)
-
-
 def most_specific_tag(labels, indices, parent_mappings):
     if len(indices) == 0:
         return None
     label = labels[indices[0]]
-    final_tag = label
+    if len(indices) == 1:
+        return label
+    final_tag = None
     _, final_depth = parent_mappings[label]
     final_depth += 1
+
     for other_index in indices[1:]:
         other_label = labels[other_index]
         _, other_depth = parent_mappings[other_label]
@@ -685,47 +627,6 @@ def most_specific_tag(labels, indices, parent_mappings):
             )
         else:
             final_tag, final_depth = find_common_parent(
-                None, final_tag, final_depth, other_label, other_depth, parent_mappings
+                None, label, final_depth, other_label, other_depth, parent_mappings
             )
-    return final_tag
-
-    # elif depth == other_depth:
-    #     # both are specific tags so find a common ancestor
-    #     while parent != other_parent:
-    #         parent,depth = self.parent_mappings[parent]
-    #         other_parent,_ = self.parent_mappings[other_parent]
-
-    #     # 2 tags with same parent choose the parent tag i.e mammal.cat and mammal.possum
-    #     final_tag = parent
-    #     final_depth = depth
-    # else:
-    #     # normalise so deep_* is always the more specific (higher depth) side,
-    #     # keeping the outer loop's label/parent/depth untouched
-    #     if other_depth > depth:
-    #         deep_label, deep_parent, deep_depth = (
-    #             other_label,
-    #             other_parent,
-    #             other_depth,
-    #         )
-    #         shallow_label = label
-    #     else:
-    #         deep_label, deep_parent, deep_depth = label, parent, depth
-    #         shallow_label = other_label
-    #     # considered_depth =deep_depth
-
-    #     # find common parent, the labels will only ever differ by one depth so just check the parent
-    #     if deep_parent == shallow_label:
-    #         final_tag = deep_label
-    #         final_depth = deep_depth
-    #     else:
-    #         # find common parent.
-    #         # in order to make depth equal set parent to label
-    #         shallow_parent = shallow_label
-    #         while deep_parent != shallow_parent:
-    #             deep_parent, deep_depth = self.parent_mappings[deep_parent]
-    #             shallow_parent, _ = self.parent_mappings[shallow_parent]
-
-    #         # 2 tags with same parent choose the parent tag i.e mammal.cat and mammal.possum
-    #         final_tag = deep_parent
-    #         final_depth = deep_depth
     return final_tag
