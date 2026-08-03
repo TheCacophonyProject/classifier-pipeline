@@ -947,19 +947,28 @@ def video_sequential_cutmix(data1, data2, current_epoch):
         # Blend the one-hot vectors normally
         # mixed_label = label1 * adjusted_lam + label2 * (1.0 - adjusted_lam)
 
+        total_active_frames = tf.cast(frames_used1, tf.float32)
+        swap_count_float = tf.cast(num_blocks_to_swap, tf.float32)
+
+        # Calculate precise percentage weights
+        weight_2 = swap_count_float / total_active_frames
+        weight_1 = 1.0 - weight_2
         # because we are doing multi label just saying both are present is better
         # mixed_label = tf.maximum(label1, label2)
         # 5. LABEL LOGIC: Only mix Image 2's labels if it has enough visual presence
         # (e.g., at least 4 tiles / 15% of the timeline) to be reasonably seen.
         presence_threshold = tf.cast(frames_used1, tf.float32) * 0.15
-        has_enough_frames = (
-            tf.cast(num_blocks_to_swap, tf.float32) >= presence_threshold
-        )
+        soft_label_mixed = (label1 * weight_1) + (label2 * weight_2)
+
+        # Enforce your structural noise threshold filter
+        # If Video 2's visual footprint is under 15%, drop its influence completely
+        presence_threshold = 0.15
+        has_enough_presence = weight_2 >= presence_threshold
 
         mixed_label = tf.where(
-            has_enough_frames,
-            tf.maximum(label1, label2),  # Mix both cleanly if significant presence
-            label1,  # Drop Image 2's label if it's just a tiny 1-3 tile flash
+            has_enough_presence,
+            soft_label_mixed,  # Clean soft density target matching visual evidence
+            label1,  # Pure base label if Video 2 is just an unreadable flash
         )
 
         return {"input_image": mixed_image, "input_mask": mask1}, mixed_label
