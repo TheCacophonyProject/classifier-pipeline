@@ -835,9 +835,8 @@ def main():
             dont_filter_segment=True, seed=args.seed, num_processes=args.cores
         )
 
-        average_track_length(master_dataset)
-        average_velocity(master_dataset)
-        1 / 0
+        # average_track_length(master_dataset)
+        # average_velocity(master_dataset)
         master_dataset.labels.sort()
 
         print("Loaded  found {:.1f}k samples".format(len(master_dataset.clips) / 1000))
