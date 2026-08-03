@@ -9,6 +9,7 @@ def process_mem():
     return process.memory_info().rss / (1024 * 1024)
 
 
+import queue
 import re
 import time
 from datetime import datetime
@@ -16,7 +17,6 @@ from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
 from config.thermalconfig import ThermalConfig
 from pathlib import Path
-import multiprocessing
 from classify.clipclassifier import ClipClassifier
 from config.config import Config
 import logging
@@ -50,8 +50,11 @@ def filename_timestamp(cptv_file):
 
 
 class DirWatcher(FileSystemEventHandler):
-    def __init__(self, process_queue):
-        self.process_queue = process_queue
+    def __init__(self, priority_queue):
+        # files detected live take priority over the backlog list built at
+        # startup. It's a PriorityQueue ordered by filename timestamp so a
+        # burst of created events still gets processed oldest-first.
+        self.priority_queue = priority_queue
 
     def on_created(self, event):
         if not event.is_directory:
@@ -60,12 +63,16 @@ class DirWatcher(FileSystemEventHandler):
                 if event_file.with_suffix(".txt").exists() or event_file.stem.endswith(
                     "-track"
                 ):
-                    self.process_queue.put(event_file)
+                    self._queue_file(event_file)
             elif event_file.suffix == ".txt":
                 if event_file.with_suffix(
                     ".cptv"
                 ).exists() and not event_file.stem.endswith("-track"):
-                    self.process_queue.put(event_file.with_suffix(".cptv"))
+                    self._queue_file(event_file.with_suffix(".cptv"))
+
+    def _queue_file(self, event_file):
+        timestamp = filename_timestamp(event_file)
+        self.priority_queue.put((timestamp, event_file))
 
 
 def get_model(config):
@@ -106,16 +113,12 @@ def main():
         logging.info("No network model exiting")
         sys.exit(0)
 
-    process_queue = multiprocessing.Queue()
-    dir_watcher = DirWatcher(process_queue)
+    priority_queue = queue.PriorityQueue()
+    dir_watcher = DirWatcher(priority_queue)
     observer = Observer()
-    reprocess_files = sorted(
-        reprocess_dir.glob("*.cptv"), key=filename_timestamp, reverse=True
-    )
-
-    for cptv_f in reprocess_files:
-        logging.info("Adding existing %s", cptv_f)
-        process_queue.put(cptv_f)
+    # oldest first, so newest can be popped off the end in O(1)
+    reprocess_files = sorted(reprocess_dir.glob("*.cptv"), key=filename_timestamp)
+    logging.info("Adding existing %s", reprocess_files)
 
     postprocess = thermal_config.motion.postprocess
     pending_exit = False
@@ -151,14 +154,17 @@ def main():
     try:
         while True:
             try:
-                new_file = process_queue.get(block=False)
-            except:
-                send_finished_request()
-                if pending_exit:
-                    logging.info("Finished processing exit")
-                    break
-                time.sleep(5)
-                continue
+                _, new_file = priority_queue.get(block=False)
+            except queue.Empty:
+                if reprocess_files:
+                    new_file = reprocess_files.pop()
+                else:
+                    send_finished_request()
+                    if pending_exit:
+                        logging.info("Finished processing exit")
+                        break
+                    time.sleep(5)
+                    continue
             new_file = Path(new_file)
             if not new_file.exists():
                 continue
