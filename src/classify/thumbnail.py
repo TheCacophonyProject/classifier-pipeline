@@ -23,6 +23,8 @@ def best_trackless_thumb(clip):
     # if zero take thermal mean values
     best_frame_i = np.argmax(clip.stats.frame_stats_mean)
     best_frame = clip.frame_buffer.get_frame(best_frame_i).thermal
+    if best_frame is None:
+        return None
     frame_height, frame_width = best_frame.shape
     best_filtered = best_frame - clip.background
     best_region = None

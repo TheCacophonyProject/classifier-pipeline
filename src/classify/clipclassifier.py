@@ -9,6 +9,7 @@ import numpy as np
 from ml_tools.tools import load_clip_metadata, CustomJSONEncoder
 from pathlib import Path
 import psutil
+import dbus
 
 
 class ClipClassifier:

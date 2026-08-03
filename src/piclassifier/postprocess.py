@@ -9,7 +9,9 @@ def process_mem():
     return process.memory_info().rss / (1024 * 1024)
 
 
+import re
 import time
+from datetime import datetime
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
 from config.thermalconfig import ThermalConfig
@@ -30,6 +32,21 @@ from gi.repository import GLib
 from piclassifier.utils import toggle_network_classifier, is_service_running
 
 logging.info("Process usage %s", process_mem())
+
+TIMESTAMP_FORMATS = [
+    (re.compile(r"^\d{4}-\d{2}-\d{2}--\d{2}-\d{2}-\d{2}"), "%Y-%m-%d--%H-%M-%S"),
+    (re.compile(r"^\d{8}-\d{6}\.\d+"), "%Y%m%d-%H%M%S.%f"),
+]
+
+
+def filename_timestamp(cptv_file):
+    stem = cptv_file.stem
+    for pattern, fmt in TIMESTAMP_FORMATS:
+        match = pattern.match(stem)
+        if match:
+            return datetime.strptime(match.group(), fmt)
+
+    return datetime.fromtimestamp(0)
 
 
 class DirWatcher(FileSystemEventHandler):
@@ -92,7 +109,10 @@ def main():
     process_queue = multiprocessing.Queue()
     dir_watcher = DirWatcher(process_queue)
     observer = Observer()
-    reprocess_files = list(reprocess_dir.glob("*.cptv"))
+    reprocess_files = sorted(
+        reprocess_dir.glob("*.cptv"), key=filename_timestamp, reverse=True
+    )
+
     for cptv_f in reprocess_files:
         logging.info("Adding existing %s", cptv_f)
         process_queue.put(cptv_f)

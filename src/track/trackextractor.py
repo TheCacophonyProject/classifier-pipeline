@@ -230,7 +230,8 @@ def get_metadata(
     if len(clip.tracks) == 0:
         # if no tracks choose a clip thumb
         region = best_trackless_thumb(clip)
-        metadata["thumbnail_region"] = region
+        if region is not None:
+            metadata["thumbnail_region"] = region
     metadata["source"] = str(filename)
     metadata["tracking_time"] = round(track_extractor.tracking_time, 1)
     metadata["algorithm"] = {}

@@ -186,7 +186,7 @@ class Recorder(ABC):
         return True
 
     def new_temp_name(self, frame_time):
-        file_name = datetime.fromtimestamp(frame_time).strftime("%Y%m%d-%H%M%S.%f")
+        file_name = datetime.fromtimestamp(frame_time).strftime("%Y-%m-%d--%H-%M-%S")
         if self.file_suffix is not None:
             file_name = f"{file_name}{self.file_suffix}"
         return self.temp_dir / f"{file_name}{self.file_extention}"
