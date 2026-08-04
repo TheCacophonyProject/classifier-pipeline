@@ -818,7 +818,9 @@ class KerasModel(Interpreter):
 
             if weights is not None:
                 logging.info("Loading %s", weights)
-                self.model.load_weights(weights, by_name=True, skip_mismatch=True)
+                self.phase1_weights(weights)
+                
+                # self.model.load_weights(weights, by_name=True, skip_mismatch=True)
 
             # self.model.load_weights(weights)
 
@@ -980,6 +982,27 @@ class KerasModel(Interpreter):
             fine_tune=fine_tune,
             single_input=single_input,
         )
+    def phase1_weights(weights):
+        # 1. Build your small Phase 1 architecture layout
+        model = weights.parent / f"{weights.parent.name}.keras"
+        logging.info("Transferring weight from model % %s",model,weights)
+
+        phase1_model =            tf.keras.models.load_model(str(model))
+        logging.info(phase1_model.summary())
+
+        # 2. Load the native Keras 3 weights file sequentially (No by_name needed)
+        phase1_model.load_weights(weights)
+
+
+        # 4. Inject the weights directly by matching string layer labels in memory
+        target_layers = ["channel_aligner", "efficientnetv2-b3"]
+
+        for layer_name in target_layers:
+            source_layer = phase1_model.get_layer(layer_name)
+            destination_layer = self.model.get_layer(layer_name)
+            
+            print(f"Injecting weights for: {layer_name}")
+            destination_layer.set_weights(source_layer.get_weights())
 
     def warm_down(self, run_name, weights, tf_mappings, epochs=5, single_input=False):
         logging.info(
