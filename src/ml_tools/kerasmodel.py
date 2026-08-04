@@ -819,7 +819,7 @@ class KerasModel(Interpreter):
             if weights is not None:
                 logging.info("Loading %s", weights)
                 self.phase1_weights(weights)
-                
+
                 # self.model.load_weights(weights, by_name=True, skip_mismatch=True)
 
             # self.model.load_weights(weights)
@@ -982,17 +982,18 @@ class KerasModel(Interpreter):
             fine_tune=fine_tune,
             single_input=single_input,
         )
+
     def phase1_weights(weights):
+        weights = Path(weights)
         # 1. Build your small Phase 1 architecture layout
         model = weights.parent / f"{weights.parent.name}.keras"
-        logging.info("Transferring weight from model % %s",model,weights)
+        logging.info("Transferring weight from model % %s", model, weights)
 
-        phase1_model =            tf.keras.models.load_model(str(model))
+        phase1_model = tf.keras.models.load_model(str(model))
         logging.info(phase1_model.summary())
 
         # 2. Load the native Keras 3 weights file sequentially (No by_name needed)
         phase1_model.load_weights(weights)
-
 
         # 4. Inject the weights directly by matching string layer labels in memory
         target_layers = ["channel_aligner", "efficientnetv2-b3"]
@@ -1000,7 +1001,7 @@ class KerasModel(Interpreter):
         for layer_name in target_layers:
             source_layer = phase1_model.get_layer(layer_name)
             destination_layer = self.model.get_layer(layer_name)
-            
+
             print(f"Injecting weights for: {layer_name}")
             destination_layer.set_weights(source_layer.get_weights())
 
@@ -2101,7 +2102,7 @@ class LayerUnfreezeCallback(tf.keras.callbacks.Callback):
                 f"\n[Epoch {epoch+1}] Phase 2A Initiation: Freezing Vision Backbone. LR: {self.initial_lr}"
             )
             self._set_backbone_trainable(False)
-            tf.keras.backend.set_value(self.model.optimizer.lr, self.initial_lr)
+            self.model.optimizer.learning_rate.assign(self.initial_lr)
             self._recompile_graph()
 
         # ----------------------------------------------------
@@ -2112,7 +2113,7 @@ class LayerUnfreezeCallback(tf.keras.callbacks.Callback):
                 f"\n[Epoch {epoch+1}] Phase 2B Transition: Unfreezing Backbone & Stepping Down LR to {self.fine_tune_lr}"
             )
             self._set_backbone_trainable(True)
-            tf.keras.backend.set_value(self.model.optimizer.lr, self.fine_tune_lr)
+            self.model.optimizer.learning_rate.assign(self.fine_tune_lr)
             self._recompile_graph()
 
         # ----------------------------------------------------
@@ -2122,7 +2123,7 @@ class LayerUnfreezeCallback(tf.keras.callbacks.Callback):
             print(
                 f"\n[Epoch {epoch+1}] Phase 2C Transition: Entering Max Jitter. Final Deep LR Drop to {self.finer_lr}"
             )
-            tf.keras.backend.set_value(self.model.optimizer.lr, self.finer_lr)
+            self.model.optimizer.learning_rate.assign(self.finer_lr)
 
     def _set_backbone_trainable(self, trainable):
         self.model.get_layer("channel_aligner").trainable = trainable
