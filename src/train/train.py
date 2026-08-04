@@ -49,7 +49,7 @@ def train_model(
     warm_down=False,
     single_input=False,
     test=False,
-    phase2 = False,
+    phase2=False,
 ):
     init_logging()
     """Trains a model with the given hyper parameters."""
@@ -87,7 +87,7 @@ def train_model(
             warm_down=warm_down,
             single_input=single_input,
             test=test,
-            phase2 = phase2,
+            phase2=phase2,
         )
     except KeyboardInterrupt:
         pass

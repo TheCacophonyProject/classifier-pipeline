@@ -821,6 +821,7 @@ class KerasModel(Interpreter):
             if weights is not None:
                 logging.info("Loading %s", weights)
                 if phase2:
+
                     self.phase1_weights(weights)
                 else:
                     self.model.load_weights(weights, by_name=True, skip_mismatch=True)
@@ -869,7 +870,7 @@ class KerasModel(Interpreter):
             image_size=self.params.output_dim[:2],
             preprocess_fn=self.preprocess_fn,
             resample=resample,
-            stop_on_empty_dataset=False,lr_schedule
+            stop_on_empty_dataset=False,
             include_features=self.params.mvm,
             excluded_labels=self.excluded_labels,
             remapped_labels=self.remapped_labels,
@@ -941,17 +942,21 @@ class KerasModel(Interpreter):
         )
 
         if phase2:
-            optimizer_fn =  tf.keras.optimizers.Adam(learning_rate=self.params.learning_rate*0.1)
+            optimizer_fn = tf.keras.optimizers.Adam(
+                learning_rate=self.params.learning_rate * 0.1
+            )
             # phase2
             self.model.get_layer("channel_aligner").trainable = True
             self.model.get_layer("efficientnetv2-b3").trainable = True
-
 
             self.model.compile(
                 optimizer=optimizer_fn,
                 loss=loss(self.params),
                 metrics={"prediction": metrics(self.params.multi_label)},
             )
+            logging.info("Starting phase2")
+            logging.info(self.model.summary())
+
             lr_callback = tf.keras.callbacks.LearningRateScheduler(stage_3_lr_scheduler)
             checkpoints.append(lr_callback)
             history = self.model.fit(
@@ -966,10 +971,8 @@ class KerasModel(Interpreter):
                     ),
                     *checkpoints,
                 ],
-                initial_epoch=5
+                initial_epoch=5,
             )
-
-
 
         history = history.history
         test_accuracy = None
@@ -1009,7 +1012,7 @@ class KerasModel(Interpreter):
             single_input=single_input,
         )
 
-    def phase1_weights(self,weights):
+    def phase1_weights(self, weights):
         weights = Path(weights)
         # 1. Build your small Phase 1 architecture layout
         model = weights.parent / f"{weights.parent.name}.keras"
@@ -2150,15 +2153,16 @@ class LayerUnfreezeCallback(tf.keras.callbacks.Callback):
             )
             self.model.optimizer.learning_rate.assign(self.finer_lr)
 
+
 def stage_3_lr_scheduler(epoch, lr):
     from ml_tools.thermaldataset import (
         JITTER_HEAVY_STAGE_EPOCH,
     )
+
     # Remember: 'epoch' here is the absolute epoch number (counting from 0 to 29)
-    if epoch > JITTER_HEAVY_STAGE_EPOCH:
+    if epoch >= JITTER_HEAVY_STAGE_EPOCH:
         print(
             f"\n[Epoch {epoch+1}] Phase 2C Transition: Entering Max Jitter. Final Deep LR Drop to 2e-6"
         )
         return 2e-6  # Drop to final safety floor during hard regularisation
-    return lr        # Keep the 2e-5 fine-tuning rate for epochs 5-14
-
+    return lr  # Keep the 2e-5 fine-tuning rate for epochs 5-14

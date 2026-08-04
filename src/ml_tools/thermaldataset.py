@@ -24,8 +24,8 @@ AUTOTUNE = tf.data.AUTOTUNE
 # BATCH_SIZE = 64
 
 # Jitter dataset epoch-staging thresholds/probabilities (see jitter_dataset)
-JITTER_MEDIUM_STAGE_EPOCH = tf.constant(4, dtype=tf.int32)
-JITTER_HEAVY_STAGE_EPOCH = tf.constant(14, dtype=tf.int32)
+JITTER_MEDIUM_STAGE_EPOCH = tf.constant(5, dtype=tf.int32)
+JITTER_HEAVY_STAGE_EPOCH = tf.constant(15, dtype=tf.int32)
 JITTER_LIGHT_STAGE_PROB = tf.constant(
     0.1, dtype=tf.float32
 )  # Epochs 0-4: Learn the base math cleanly
