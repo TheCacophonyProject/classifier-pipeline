@@ -44,7 +44,7 @@ LAST_JITTER_STAGE = tf.Variable(
 
 insect = None
 fp = None
-USE_VELOCITY = False
+USE_VELOCITY = True
 
 
 # labels can be any subset of this, prevents new labels being trained on until we explicitly add them to here
@@ -1199,7 +1199,7 @@ def main():
         current_epoch=tf.Variable(
             0, dtype=tf.int32, trainable=False, name="current_epoch"
         ),
-        single_input=True,
+        single_input=False,
     )
     print("Epoch size is", epoch_size)
     # print(get_distribution(resampled_ds, len(labels), extra_meta=False))
@@ -1231,7 +1231,7 @@ def save_batch(image_batch, label_batch, labels, save_dir, tracks=False):
         track_batch = label_batch[1]
         label_batch = label_batch[0]
     for n, img in enumerate(image_batch):
-        # print("Mask is ", masks[n])
+        print("Mask is ", masks[n])
         # for row in masks[n]:
         #     for column in row:
         #         print(column)
@@ -1343,49 +1343,49 @@ def get_frame_mask_v2(
     presence_mask = tf.concat(
         [tf.fill([num_valid], 1.0), tf.fill([25 - num_valid], 0.0)], axis=0
     )
-
     if use_velocity:
         centre_x = centre_x[:num_valid]
         x_delta = centre_x[1:] - centre_x[:-1]
 
         centre_y = centre_y[:num_valid]
-
         y_delta = centre_y[1:] - centre_y[:-1]
 
         def rotate_velocity():
-            # Angle comes directly from the SequenceRotation layer output
             c = tf.cos(rotation_angle)
             s = tf.sin(rotation_angle)
 
-            # Rotation angle is counter clockwise so invert s
-            rot_matrix = tf.stack(
-                [
-                    tf.stack([c, s]),  # Changed from [c, -s]
-                    tf.stack([-s, c]),  # Changed from [s, c]
-                ]
-            )
+            # Standard transformation layout for top-left (0,0) image coordinates
+            rot_matrix = tf.stack([tf.stack([c, -s]), tf.stack([s, c])])
 
             vel_pairs = tf.stack([x_delta, y_delta], axis=-1)
-            rotated_vel = tf.matmul(vel_pairs, rot_matrix, transpose_b=True)
+            rotated_vel = tf.matmul(vel_pairs, rot_matrix)  # Removed transpose_b=True
             return rotated_vel[:, 0], rotated_vel[:, 1]
 
         def no_rotate():
             return x_delta, y_delta
 
-        MAX_X_DIST = 6
-        MAX_Y_DIST = 3.5
-        # ai reckons this more robust when working with rotations
         UNIFIED_MAX_DIST = 6.94
+
+        # Apply spatial transformations natively
         rotated_vel_x, rotated_vel_y = tf.cond(
             tf.not_equal(rotation_angle, 0.0), rotate_velocity, no_rotate
         )
+
+        # Apply isotropic normalisation and clipping bounds
         rotated_vel_x = tf.clip_by_value(rotated_vel_x / UNIFIED_MAX_DIST, -1.0, 1.0)
         rotated_vel_y = tf.clip_by_value(rotated_vel_y / UNIFIED_MAX_DIST, -1.0, 1.0)
 
-        x_mask = tf.concat([rotated_vel_x, tf.fill([25 - num_valid + 1], 0.0)], axis=0)
-        y_mask = tf.concat([rotated_vel_y, tf.fill([25 - num_valid + 1], 0.0)], axis=0)
+        # Synchronise trailing pads to eliminate sequence lag
+        padding_len = 25 - num_valid + 1
+        x_mask = tf.concat(
+            [rotated_vel_x, tf.zeros([padding_len], dtype=tf.float32)], axis=0
+        )
+        y_mask = tf.concat(
+            [rotated_vel_y, tf.zeros([padding_len], dtype=tf.float32)], axis=0
+        )
 
         return tf.stack([time_mask, x_mask, y_mask, presence_mask], axis=1)
+
     else:
         return tf.stack([time_mask, presence_mask], axis=1)
 

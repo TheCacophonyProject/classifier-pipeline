@@ -435,7 +435,7 @@ class KerasModel(Interpreter):
             # Multi input adding information about the frame number used
             if not single_input:
                 # --- Input 2: The Timeline Mask Layer (5x5x1) ---
-                mask_input = layers.Input(shape=(5, 5, 2), name="input_mask")
+                mask_input = layers.Input(shape=(5, 5, 4), name="input_mask")
                 input_image = {"input_image": input_image, "input_mask": mask_input}
 
                 time_embedding = layers.Dense(
