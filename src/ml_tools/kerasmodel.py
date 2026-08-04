@@ -817,7 +817,10 @@ class KerasModel(Interpreter):
             )
 
             if weights is not None:
-                self.model.load_weights(weights)
+                logging.info("Loading %s", weights)
+                self.model.load_weights(weights, by_name=True, skip_mismatch=True)
+
+            # self.model.load_weights(weights)
 
         self.model.summary()
 
@@ -893,13 +896,31 @@ class KerasModel(Interpreter):
             )
         else:
             if fine_tune is None:
-                warmup_callback = StepWarmupCallback(
-                    target_lr=self.params.learning_rate,
-                    warmup_epochs=2,
-                    steps_per_epoch=steps,
-                )
-                checkpoints.append(warmup_callback)
+                # use one or other
+                # logging.info("Adding layer stepwarmup callback")
 
+                # warmup_callback = StepWarmupCallback(
+                #     target_lr=self.params.learning_rate,
+                #     warmup_epochs=2,
+                #     steps_per_epoch=steps,
+                # )
+                # checkpoints.append(warmup_callback)
+                self.model.get_layer("channel_aligner").trainable = False
+                self.model.get_layer("efficientnetv2-b3").trainable = False
+                logging.info("Adding layer un freeze callback")
+                from ml_tools.thermaldataset import (
+                    JITTER_HEAVY_STAGE_EPOCH,
+                    JITTER_MEDIUM_STAGE_EPOCH,
+                )
+
+                unfreeze_callback = LayerUnfreezeCallback(
+                    unfreeze_epoch=JITTER_MEDIUM_STAGE_EPOCH,
+                    max_jitter_epoch=JITTER_HEAVY_STAGE_EPOCH,
+                    initial_lr=self.params.learning_rate,
+                    fine_tune_lr=self.params.learning_rate * 0.1,
+                    finer_lr=self.params.learning_rate * 0.01,
+                )
+                checkpoints.append(unfreeze_callback)
             optimizer_fn = optimizer(
                 self.params, steps, self.epochs, fine_tune=fine_tune is not None
             )
@@ -2027,3 +2048,67 @@ class EpochTrackerCallback(tf.keras.callbacks.Callback):
         # Note: 'epoch' passed by Keras starts at 0, so epoch 0 finished means we move to 1
         CURRENT_EPOCH.assign(epoch + 1)
         logging.info("CURRENT_EPOCH assigned to %s", epoch + 1)
+
+
+import tensorflow as tf
+
+
+class LayerUnfreezeCallback(tf.keras.callbacks.Callback):
+    def __init__(
+        self,
+        unfreeze_epoch=4,
+        max_jitter_epoch=14,
+        initial_lr=2e-4,
+        fine_tune_lr=2e-5,
+        finer_lr=2e-6,
+    ):
+        super().__init__()
+        self.unfreeze_epoch = unfreeze_epoch  # Index 4 (Start of Epoch 5)
+        self.max_jitter_epoch = max_jitter_epoch  # Index 14 (Start of Epoch 15)
+        self.initial_lr = initial_lr
+        self.fine_tune_lr = fine_tune_lr
+        self.finer_lr = finer_lr
+
+    def on_epoch_begin(self, epoch, logs=None):
+        # ----------------------------------------------------
+        # STAGE 1 BOUNDARY (Loop 1 / Epoch 1)
+        # ----------------------------------------------------
+        if epoch == 0:
+            print(
+                f"\n[Epoch {epoch+1}] Phase 2A Initiation: Freezing Vision Backbone. LR: {self.initial_lr}"
+            )
+            self._set_backbone_trainable(False)
+            tf.keras.backend.set_value(self.model.optimizer.lr, self.initial_lr)
+            self._recompile_graph()
+
+        # ----------------------------------------------------
+        # STAGE 2 BOUNDARY (Loop 5 / Epoch 5)
+        # --------------------------------────────────────----
+        elif epoch == self.unfreeze_epoch:
+            print(
+                f"\n[Epoch {epoch+1}] Phase 2B Transition: Unfreezing Backbone & Stepping Down LR to {self.fine_tune_lr}"
+            )
+            self._set_backbone_trainable(True)
+            tf.keras.backend.set_value(self.model.optimizer.lr, self.fine_tune_lr)
+            self._recompile_graph()
+
+        # ----------------------------------------------------
+        # STAGE 3 BOUNDARY (Loop 15 / Epoch 15)
+        # ----------------------------------------------------
+        elif epoch == self.max_jitter_epoch:
+            print(
+                f"\n[Epoch {epoch+1}] Phase 2C Transition: Entering Max Jitter. Final Deep LR Drop to {self.finer_lr}"
+            )
+            tf.keras.backend.set_value(self.model.optimizer.lr, self.finer_lr)
+            # Recompile not required here as .trainable attributes didn't change
+
+    def _set_backbone_trainable(self, trainable):
+        self.model.get_layer("channel_aligner").trainable = trainable
+        self.model.get_layer("efficientnetv2-b3").trainable = trainable
+
+    def _recompile_graph(self):
+        self.model.compile(
+            optimizer=self.model.optimizer,
+            loss=self.model.loss,
+            metrics=self.model.compiled_metrics._metrics,
+        )

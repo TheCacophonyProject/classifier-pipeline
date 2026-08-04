@@ -23,6 +23,19 @@ AUTOTUNE = tf.data.AUTOTUNE
 # IMAGE_SIZE = [256, 256]
 # BATCH_SIZE = 64
 
+# Jitter dataset epoch-staging thresholds/probabilities (see jitter_dataset)
+JITTER_MEDIUM_STAGE_EPOCH = tf.constant(4, dtype=tf.int32)
+JITTER_HEAVY_STAGE_EPOCH = tf.constant(14, dtype=tf.int32)
+JITTER_LIGHT_STAGE_PROB = tf.constant(
+    0.1, dtype=tf.float32
+)  # Epochs 0-4: Learn the base math cleanly
+JITTER_MEDIUM_STAGE_PROB = tf.constant(
+    0.25, dtype=tf.float32
+)  # Epochs 5-14: Introduce structural tracking gaps
+JITTER_HEAVY_STAGE_PROB = tf.constant(
+    0.4, dtype=tf.float32
+)  # Epochs 15-30: Hard regularisation cap
+
 insect = None
 fp = None
 USE_VELOCITY = False
@@ -749,20 +762,25 @@ def jitter_dataset(x, y, current_epoch):
     # the dataset is built means it re-reads the variable's live value on
     # every call, so the staging below tracks CURRENT_EPOCH as training
     # progresses.
+
     epoch = current_epoch.read_value()
 
-    def heavy_stage():
-        return tf.constant(0.4, dtype=tf.float32)
+    def light_stage():
+        return JITTER_LIGHT_STAGE_PROB
 
     def medium_stage():
-        return tf.constant(0.2, dtype=tf.float32)
+        return JITTER_MEDIUM_STAGE_PROB
 
-    def off_stage():
-        return tf.constant(0.0, dtype=tf.float32)
+    def heavy_stage():
+        return JITTER_HEAVY_STAGE_PROB
 
-    # Graph-safe conditional selection based on epoch boundaries
+    # Reconfigured epoch boundary gates to scale up as training progresses
     prob = tf.case(
-        [(epoch < 16, heavy_stage), (epoch < 25, medium_stage)], default=off_stage
+        [
+            (epoch < JITTER_MEDIUM_STAGE_EPOCH, light_stage),
+            (epoch < JITTER_HEAVY_STAGE_EPOCH, medium_stage),
+        ],
+        default=heavy_stage,
     )
     image = x["input_image"]  # Shape: (num_frames, size, size, 3)
     mask = x[

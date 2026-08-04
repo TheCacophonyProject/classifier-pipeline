@@ -289,7 +289,10 @@ def find_mislabeled_points(clusterer, y_true, tracks):
         clusters_to_class_map[cluster_id]
         for cluster_id in mismatch_df["hdbscan_cluster"]
     ]
-    print(mismatch_df)
+    mismatch_file = features_file.with_name(features_file.stem + "-mismatch.csv")
+
+    print("saving mismatches to ",mismatch_file")
+    mismatch_df.to_csv(mismatch_file, index=False)
 
 
 def extract_embeddings(

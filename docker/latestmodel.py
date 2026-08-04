@@ -69,7 +69,9 @@ def main():
     ]
 
     rf_releases = sorted(rf_releases, key=lambda r: r["tag_name"], reverse=True)
-    server_releases = sorted(server_releases, key=lambda r: version_number(r["tag_name"]), reverse=True)
+    server_releases = sorted(
+        server_releases, key=lambda r: version_number(r["tag_name"]), reverse=True
+    )
     if len(rf_releases) == 0 and len(server_releases) == 0:
         print("No releases found for server")
         sys.exit(0)
@@ -98,9 +100,11 @@ def version_number(tag):
     v_index = tag.rindex("v")
     version = float(tag[v_index + 1 :])
     version = int(10 * version)
-    print("tag ",version,tag)
+    print("tag ", version, tag)
 
     return version
+
+
 def add_to_config(release, config, model_id, model_type):
     print("Using release ", release["tag_name"])
     if len(release["assets"]) == 0:
