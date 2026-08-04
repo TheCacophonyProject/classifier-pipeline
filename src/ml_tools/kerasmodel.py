@@ -765,13 +765,15 @@ class KerasModel(Interpreter):
         warm_down=False,
         single_input=True,
         test=False,
+        phase2=False,
     ):
         logging.info(
-            "%s Training model for %s epochs with weights %s with single input as: %s",
+            "%s Training model for %s epochs with weights %s with single input as: %s phase2 %s",
             run_name,
             epochs,
             weights,
             single_input,
+            phase2,
         )
         if test:
             logging.info("Running in test, small datasets of 100")
@@ -818,9 +820,10 @@ class KerasModel(Interpreter):
 
             if weights is not None:
                 logging.info("Loading %s", weights)
-                self.phase1_weights(weights)
-
-                # self.model.load_weights(weights, by_name=True, skip_mismatch=True)
+                if phase2:
+                    self.phase1_weights(weights)
+                else:
+                    self.model.load_weights(weights, by_name=True, skip_mismatch=True)
 
             # self.model.load_weights(weights)
 
@@ -866,7 +869,7 @@ class KerasModel(Interpreter):
             image_size=self.params.output_dim[:2],
             preprocess_fn=self.preprocess_fn,
             resample=resample,
-            stop_on_empty_dataset=False,
+            stop_on_empty_dataset=False,lr_schedule
             include_features=self.params.mvm,
             excluded_labels=self.excluded_labels,
             remapped_labels=self.remapped_labels,
@@ -898,31 +901,22 @@ class KerasModel(Interpreter):
             )
         else:
             if fine_tune is None:
-                # use one or other
-                # logging.info("Adding layer stepwarmup callback")
+                if phase2:
+                    logging.info("Setting phase2")
+                    self.model.get_layer("channel_aligner").trainable = False
+                    self.model.get_layer("efficientnetv2-b3").trainable = False
+                    self.model.summary()
+                else:
 
-                # warmup_callback = StepWarmupCallback(
-                #     target_lr=self.params.learning_rate,
-                #     warmup_epochs=2,
-                #     steps_per_epoch=steps,
-                # )
-                # checkpoints.append(warmup_callback)
-                self.model.get_layer("channel_aligner").trainable = False
-                self.model.get_layer("efficientnetv2-b3").trainable = False
-                logging.info("Adding layer un freeze callback")
-                from ml_tools.thermaldataset import (
-                    JITTER_HEAVY_STAGE_EPOCH,
-                    JITTER_MEDIUM_STAGE_EPOCH,
-                )
+                    logging.info("Adding layer stepwarmup callback")
 
-                unfreeze_callback = LayerUnfreezeCallback(
-                    unfreeze_epoch=JITTER_MEDIUM_STAGE_EPOCH,
-                    max_jitter_epoch=JITTER_HEAVY_STAGE_EPOCH,
-                    initial_lr=self.params.learning_rate,
-                    fine_tune_lr=self.params.learning_rate * 0.1,
-                    finer_lr=self.params.learning_rate * 0.01,
-                )
-                checkpoints.append(unfreeze_callback)
+                    warmup_callback = StepWarmupCallback(
+                        target_lr=self.params.learning_rate,
+                        warmup_epochs=2,
+                        steps_per_epoch=steps,
+                    )
+                    checkpoints.append(warmup_callback)
+
             optimizer_fn = optimizer(
                 self.params, steps, self.epochs, fine_tune=fine_tune is not None
             )
@@ -935,7 +929,7 @@ class KerasModel(Interpreter):
         history = self.model.fit(
             self.train,
             validation_data=self.validate,
-            epochs=epochs,
+            epochs=5 if phase2 else epochs,
             shuffle=False,
             class_weight=self.class_weights,
             callbacks=[
@@ -945,6 +939,38 @@ class KerasModel(Interpreter):
                 *checkpoints,
             ],
         )
+
+        if phase2:
+            optimizer_fn =  tf.keras.optimizers.Adam(learning_rate=self.params.learning_rate*0.1)
+            # phase2
+            self.model.get_layer("channel_aligner").trainable = True
+            self.model.get_layer("efficientnetv2-b3").trainable = True
+
+
+            self.model.compile(
+                optimizer=optimizer_fn,
+                loss=loss(self.params),
+                metrics={"prediction": metrics(self.params.multi_label)},
+            )
+            lr_callback = tf.keras.callbacks.LearningRateScheduler(stage_3_lr_scheduler)
+            checkpoints.append(lr_callback)
+            history = self.model.fit(
+                self.train,
+                validation_data=self.validate,
+                epochs=epochs,
+                shuffle=False,
+                class_weight=self.class_weights,
+                callbacks=[
+                    tf.keras.callbacks.TensorBoard(
+                        self.log_dir, write_graph=True, write_images=True
+                    ),
+                    *checkpoints,
+                ],
+                initial_epoch=5
+            )
+
+
+
         history = history.history
         test_accuracy = None
         test_files = self.data_dir / "test"
@@ -983,11 +1009,11 @@ class KerasModel(Interpreter):
             single_input=single_input,
         )
 
-    def phase1_weights(weights):
+    def phase1_weights(self,weights):
         weights = Path(weights)
         # 1. Build your small Phase 1 architecture layout
         model = weights.parent / f"{weights.parent.name}.keras"
-        logging.info("Transferring weight from model % %s", model, weights)
+        logging.info("Transferring weight from model %s %s", model, weights)
 
         phase1_model = tf.keras.models.load_model(str(model))
         logging.info(phase1_model.summary())
@@ -2101,9 +2127,9 @@ class LayerUnfreezeCallback(tf.keras.callbacks.Callback):
             print(
                 f"\n[Epoch {epoch+1}] Phase 2A Initiation: Freezing Vision Backbone. LR: {self.initial_lr}"
             )
-            self._set_backbone_trainable(False)
+            # self._set_backbone_trainable(False)
             self.model.optimizer.learning_rate.assign(self.initial_lr)
-            self._recompile_graph()
+            # self._recompile_graph()
 
         # ----------------------------------------------------
         # STAGE 2 BOUNDARY (Loop 5 / Epoch 5)
@@ -2112,9 +2138,8 @@ class LayerUnfreezeCallback(tf.keras.callbacks.Callback):
             print(
                 f"\n[Epoch {epoch+1}] Phase 2B Transition: Unfreezing Backbone & Stepping Down LR to {self.fine_tune_lr}"
             )
-            self._set_backbone_trainable(True)
+            # self._set_backbone_trainable(True)
             self.model.optimizer.learning_rate.assign(self.fine_tune_lr)
-            self._recompile_graph()
 
         # ----------------------------------------------------
         # STAGE 3 BOUNDARY (Loop 15 / Epoch 15)
@@ -2125,13 +2150,15 @@ class LayerUnfreezeCallback(tf.keras.callbacks.Callback):
             )
             self.model.optimizer.learning_rate.assign(self.finer_lr)
 
-    def _set_backbone_trainable(self, trainable):
-        self.model.get_layer("channel_aligner").trainable = trainable
-        self.model.get_layer("efficientnetv2-b3").trainable = trainable
-
-    def _recompile_graph(self):
-        self.model.compile(
-            optimizer=self.model.optimizer,
-            loss=self.model.loss,
-            metrics=self.model.compiled_metrics._metrics,
+def stage_3_lr_scheduler(epoch, lr):
+    from ml_tools.thermaldataset import (
+        JITTER_HEAVY_STAGE_EPOCH,
+    )
+    # Remember: 'epoch' here is the absolute epoch number (counting from 0 to 29)
+    if epoch > JITTER_HEAVY_STAGE_EPOCH:
+        print(
+            f"\n[Epoch {epoch+1}] Phase 2C Transition: Entering Max Jitter. Final Deep LR Drop to 2e-6"
         )
+        return 2e-6  # Drop to final safety floor during hard regularisation
+    return lr        # Keep the 2e-5 fine-tuning rate for epochs 5-14
+

@@ -49,6 +49,9 @@ def load_config():
     parser.add_argument(
         "-s", "--single-input", action="store_true", help="Run on image input only"
     )
+    parser.add_argument(
+            "--phase2", action="store_true", help="Run when loading weights from phase1 (single input) into phase2 ( image, input_mask)"
+        )
     parser.add_argument("--test", action="store_true", help="Test mode")
     parser.add_argument(
         "-r", "--rebalance", action="store_true", help="Rebalance training set"
@@ -84,6 +87,7 @@ def main():
         warm_down=args.warm_down,
         single_input=args.single_input,
         test=args.test,
+        phase2 = args.phase2,
     )
 
 
