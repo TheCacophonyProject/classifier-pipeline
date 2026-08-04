@@ -1102,7 +1102,7 @@ class KerasModel(Interpreter):
         checkpoints = [checkpoint_acc, checkpoint_loss, cp_callback]
         if not fine_tuning:
             earlyStopping = tf.keras.callbacks.EarlyStopping(
-                start_from_epoch=15,
+                start_from_epoch=5,
                 patience=11,
                 monitor=stop_on[0],
                 # monitor=(
