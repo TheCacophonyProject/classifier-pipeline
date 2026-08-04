@@ -2100,7 +2100,6 @@ class LayerUnfreezeCallback(tf.keras.callbacks.Callback):
                 f"\n[Epoch {epoch+1}] Phase 2C Transition: Entering Max Jitter. Final Deep LR Drop to {self.finer_lr}"
             )
             tf.keras.backend.set_value(self.model.optimizer.lr, self.finer_lr)
-            # Recompile not required here as .trainable attributes didn't change
 
     def _set_backbone_trainable(self, trainable):
         self.model.get_layer("channel_aligner").trainable = trainable

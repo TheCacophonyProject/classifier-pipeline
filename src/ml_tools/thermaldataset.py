@@ -36,6 +36,12 @@ JITTER_HEAVY_STAGE_PROB = tf.constant(
     0.4, dtype=tf.float32
 )  # Epochs 15-30: Hard regularisation cap
 
+# Tracks which jitter stage (0=light, 1=medium, 2=heavy) was last announced,
+# so jitter_dataset only tf.prints on the call where the stage actually changes.
+LAST_JITTER_STAGE = tf.Variable(
+    -1, dtype=tf.int32, trainable=False, name="last_jitter_stage"
+)
+
 insect = None
 fp = None
 USE_VELOCITY = False
@@ -781,6 +787,26 @@ def jitter_dataset(x, y, current_epoch):
             (epoch < JITTER_HEAVY_STAGE_EPOCH, medium_stage),
         ],
         default=heavy_stage,
+    )
+
+    stage_index = tf.case(
+        [
+            (epoch < JITTER_MEDIUM_STAGE_EPOCH, lambda: tf.constant(0, dtype=tf.int32)),
+            (epoch < JITTER_HEAVY_STAGE_EPOCH, lambda: tf.constant(1, dtype=tf.int32)),
+        ],
+        default=lambda: tf.constant(2, dtype=tf.int32),
+    )
+
+    def announce_new_stage():
+        stage_name = tf.gather(["light", "medium", "heavy"], stage_index)
+        tf.print("jitter_dataset: entering", stage_name, "stage at epoch", epoch)
+        LAST_JITTER_STAGE.assign(stage_index)
+        return False
+
+    tf.cond(
+        tf.not_equal(stage_index, LAST_JITTER_STAGE),
+        announce_new_stage,
+        lambda: False,
     )
     image = x["input_image"]  # Shape: (num_frames, size, size, 3)
     mask = x[
