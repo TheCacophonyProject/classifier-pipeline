@@ -1240,23 +1240,23 @@ def random_sections(
             )
         )
         if stopped_early and (len(segment_frames) < 25 // 4):
-            logging.warning(
-                "Could not find frames that are close enough together for source %s track %s with window start %s  for chunk size %s",
-                source_file,
-                track_id,
-                window_start + start_frame,
-                chunk_size,
-            )
+            # logging.warning(
+            #     "Could not find frames that are close enough together for source %s track %s with window start %s  for chunk size %s",
+            #     source_file,
+            #     track_id,
+            #     window_start + start_frame,
+            #     chunk_size,
+            # )
             continue
         if len(segment_frames) < min_frames and num_frames > min_frames:
-            logging.warning(
-                "Not enough segment frames %s for source %s track %s with window start %s already added %s",
-                len(segment_frames),
-                source_file,
-                track_id,
-                window_start + start_frame,
-                len(segments),
-            )
+            # logging.warning(
+            #     "Not enough segment frames %s for source %s track %s with window start %s already added %s",
+            #     len(segment_frames),
+            #     source_file,
+            #     track_id,
+            #     window_start + start_frame,
+            #     len(segments),
+            # )
             continue
         segment = SegmentHeader(
             clip_id,

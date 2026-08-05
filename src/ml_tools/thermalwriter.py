@@ -171,16 +171,25 @@ def create_tf_example(sample, data, features, labels, country_code):
     # if we wanted can save writing memory by using alternative tf record writer
     import tensorflow as tf
 
-    original_roi = np.uint8([r.to_ltwh() for r in sample.track_bounds])
-
-    centre_x = np.float32([r.centroid[0] for r in sample.track_bounds])
-    centre_y = np.float32([r.centroid[1] for r in sample.track_bounds])
-
-    average_dim = [r.area for r in sample.track_bounds]
-    average_dim = int(round(np.mean(average_dim) ** 0.5))
     thermal_raw, filtered, thermal_norm, frame_indices, roi, means = data
     if len(thermal_raw) == 0:
         return None
+
+    # frames can be dropped while preprocessing (e.g. max and min the same value), so
+    # track_bounds must be filtered down to the frames that were actually
+    # kept to stay aligned with image/num_frames (len(filtered))
+    kept_frames = set(frame_indices)
+    track_bounds = [r for r in sample.track_bounds if r.frame_number in kept_frames]
+    for r, f in zip(track_bounds, frame_indices):
+        assert r.frame_number == f
+
+    original_roi = np.uint8([r.to_ltwh() for r in track_bounds])
+
+    centre_x = np.float32([r.centroid[0] for r in track_bounds])
+    centre_y = np.float32([r.centroid[1] for r in track_bounds])
+
+    average_dim = [r.area for r in track_bounds]
+    average_dim = int(round(np.mean(average_dim) ** 0.5))
     image_id = sample.unique_id
     image_height, image_width = thermal_raw[0].shape
     # while len(thermal_raw) < num_frames:
