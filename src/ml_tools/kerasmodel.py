@@ -438,26 +438,63 @@ class KerasModel(Interpreter):
                 mask_input = layers.Input(shape=(5, 5, 4), name="input_mask")
                 input_image = {"input_image": input_image, "input_mask": mask_input}
 
-                time_embedding = layers.Dense(
-                    64, activation="swish", name="time_feature_projection"
+                # === METADATA BRANCH RE-ENGINEERING ===
+                # mask_input Shape: (None, 5, 5, 4)
+
+                # 1. Isolate tracking indicators away from continuous kinematics
+                # Channel 0: Time, Channel 1: Presence Flag
+                tracking_flags = layers.Lambda(
+                    lambda m: m[..., :2], name="extract_tracking_indicators"
+                )(mask_input)
+
+                # Channel 2: Vx Velocity, Channel 3: Vy Velocity
+                kinematics = layers.Lambda(
+                    lambda m: m[..., 2:], name="extract_kinematic_vectors"
+                )(mask_input)
+
+                # 2. Process discrete indicators with standard Dense layers
+                t_embed = layers.Dense(
+                    32, activation="swish", name="tracking_projection"
+                )(tracking_flags)
+                t_embed = layers.Dense(
+                    64, activation="swish", name="tracking_expansion"
                 )(
-                    mask_input
+                    t_embed
                 )  # Shape: (None, 5, 5, 64)
-                time_embedding = layers.Dense(
-                    128, activation="swish", name="time_feature_expansion"
+
+                # 3. Process kinematic vectors with an explicit 1x1 Convolution.
+                # Convolutions treat features as spatial coordinate fields, preventing
+                # the velocity scales from being dominated by the binary presence flags.
+                k_embed = layers.Conv2D(
+                    32,
+                    (1, 1),
+                    activation="swish",
+                    padding="same",
+                    name="velocity_projection",
+                )(kinematics)
+                k_embed = layers.Conv2D(
+                    64,
+                    (1, 1),
+                    activation="swish",
+                    padding="same",
+                    name="velocity_expansion",
                 )(
-                    time_embedding
+                    k_embed
+                )  # Shape: (None, 5, 5, 64)
+
+                # 4. Re-combine metadata channels cleanly -> Preserves exactly 128 channels
+                time_embedding = layers.Concatenate(name="unified_metadata_embedding")(
+                    [t_embed, k_embed]
                 )  # Shape: (None, 5, 5, 128)
 
-                # --- Feature Fusion ---
-                # Concatenate visual maps (5x5x1536) and time maps (5x5x128) along the channels
-                image_features = x
+                # --- Feature Fusion (Maintains your exact native dimensions) ---
                 image_features = layers.MaxPooling2D(
                     pool_size=(2, 2), name="preserve_tiny_anomalies"
                 )(x)
 
                 image_features = tf.keras.layers.SpatialDropout2D(0.3)(image_features)
 
+                # Dimensions match your blueprint perfectly: 1536 (Vision) + 128 (Metadata) = 1664
                 combined = layers.Concatenate(name="input_concat")(
                     [image_features, time_embedding]
                 )  # Shape: (None, 5, 5, 1664)
@@ -465,7 +502,7 @@ class KerasModel(Interpreter):
                 # 1. Compress channel depth from 1664 to 256 using 1x1 convolution
                 x = layers.Conv2D(256, (1, 1), activation="swish", padding="same")(
                     combined
-                )  # ~426K params
+                )
 
                 # Mix the combined space-time features together
                 x = layers.Conv2D(256, (3, 3), activation="swish", padding="same")(x)
