@@ -939,21 +939,22 @@ class KerasModel(Interpreter):
             )
         else:
             if fine_tune is None:
-                if phase2:
-                    logging.info("Setting phase2")
-                    self.model.get_layer("channel_aligner").trainable = False
-                    self.model.get_layer("efficientnetv2-b3").trainable = False
-                    self.model.summary()
-                else:
+                # if phase2:
+                # pass
+                # logging.info("Setting phase2")
+                # self.model.get_layer("channel_aligner").trainable = False
+                # self.model.get_layer("efficientnetv2-b3").trainable = False
+                # self.model.summary()
+                # else:
 
-                    logging.info("Adding layer stepwarmup callback")
+                logging.info("Adding layer stepwarmup callback")
 
-                    warmup_callback = StepWarmupCallback(
-                        target_lr=self.params.learning_rate,
-                        warmup_epochs=2,
-                        steps_per_epoch=steps,
-                    )
-                    checkpoints.append(warmup_callback)
+                warmup_callback = StepWarmupCallback(
+                    target_lr=self.params.learning_rate,
+                    warmup_epochs=2,
+                    steps_per_epoch=steps,
+                )
+                checkpoints.append(warmup_callback)
 
             optimizer_fn = optimizer(
                 self.params, steps, self.epochs, fine_tune=fine_tune is not None
@@ -967,7 +968,7 @@ class KerasModel(Interpreter):
         history = self.model.fit(
             self.train,
             validation_data=self.validate,
-            epochs=5 if phase2 else epochs,
+            epochs=epochs,
             shuffle=False,
             class_weight=self.class_weights,
             callbacks=[
@@ -978,38 +979,38 @@ class KerasModel(Interpreter):
             ],
         )
 
-        if phase2:
-            optimizer_fn = tf.keras.optimizers.Adam(
-                learning_rate=self.params.learning_rate * 0.1
-            )
-            # phase2
-            self.model.get_layer("channel_aligner").trainable = True
-            self.model.get_layer("efficientnetv2-b3").trainable = True
+        # if phase2:
+        #     optimizer_fn = tf.keras.optimizers.Adam(
+        #         learning_rate=self.params.learning_rate * 0.1
+        #     )
+        #     # phase2
+        #     self.model.get_layer("channel_aligner").trainable = True
+        #     self.model.get_layer("efficientnetv2-b3").trainable = True
 
-            self.model.compile(
-                optimizer=optimizer_fn,
-                loss=loss(self.params),
-                metrics={"prediction": metrics(self.params.multi_label)},
-            )
-            logging.info("Starting phase2")
-            logging.info(self.model.summary())
+        #     self.model.compile(
+        #         optimizer=optimizer_fn,
+        #         loss=loss(self.params),
+        #         metrics={"prediction": metrics(self.params.multi_label)},
+        #     )
+        #     logging.info("Starting phase2")
+        #     logging.info(self.model.summary())
 
-            lr_callback = tf.keras.callbacks.LearningRateScheduler(stage_3_lr_scheduler)
-            checkpoints.append(lr_callback)
-            history = self.model.fit(
-                self.train,
-                validation_data=self.validate,
-                epochs=epochs,
-                shuffle=False,
-                class_weight=self.class_weights,
-                callbacks=[
-                    tf.keras.callbacks.TensorBoard(
-                        self.log_dir, write_graph=True, write_images=True
-                    ),
-                    *checkpoints,
-                ],
-                initial_epoch=5,
-            )
+        #     lr_callback = tf.keras.callbacks.LearningRateScheduler(stage_3_lr_scheduler)
+        #     checkpoints.append(lr_callback)
+        #     history = self.model.fit(
+        #         self.train,
+        #         validation_data=self.validate,
+        #         epochs=epochs,
+        #         shuffle=False,
+        #         class_weight=self.class_weights,
+        #         callbacks=[
+        #             tf.keras.callbacks.TensorBoard(
+        #                 self.log_dir, write_graph=True, write_images=True
+        #             ),
+        #             *checkpoints,
+        #         ],
+        #         initial_epoch=5,
+        #     )
 
         history = history.history
         test_accuracy = None
@@ -1062,8 +1063,13 @@ class KerasModel(Interpreter):
         phase1_model.load_weights(weights)
 
         # 4. Inject the weights directly by matching string layer labels in memory
-        target_layers = ["channel_aligner", "efficientnetv2-b3"]
 
+        target_layers = [
+            "channel_aligner",
+            "efficientnetv2-b3",
+            "conv2d_1",
+            "prediction",
+        ]
         for layer_name in target_layers:
             source_layer = phase1_model.get_layer(layer_name)
             destination_layer = self.model.get_layer(layer_name)
@@ -2095,13 +2101,18 @@ class StepWarmupCallback(Callback):
         self.last_lr = None
 
     def on_train_batch_begin(self, batch, logs=None):
+        from ml_tools.thermaldataset import (
+            JITTER_HEAVY_STAGE_EPOCH,
+            JITTER_MEDIUM_STAGE_EPOCH,
+        )
+
         # Only run adjustments during the warmup phase
         if self.global_step < self.total_warmup_steps:
             # Linear scaling formula2
             lr = (self.global_step / self.total_warmup_steps) * self.target_lr
-        elif self.global_step < 16 * self.steps_per_epoch:
+        elif self.global_step < JITTER_MEDIUM_STAGE_EPOCH * self.steps_per_epoch:
             lr = self.target_lr
-        elif self.global_step < 25 * self.steps_per_epoch:
+        elif self.global_step < JITTER_HEAVY_STAGE_EPOCH * self.steps_per_epoch:
             lr = self.target_lr * 0.1
         else:
             lr = self.target_lr * 0.01
