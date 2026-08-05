@@ -26,15 +26,9 @@ AUTOTUNE = tf.data.AUTOTUNE
 # Jitter dataset epoch-staging thresholds/probabilities (see jitter_dataset)
 JITTER_MEDIUM_STAGE_EPOCH = tf.constant(5, dtype=tf.int32)
 JITTER_HEAVY_STAGE_EPOCH = tf.constant(15, dtype=tf.int32)
-JITTER_LIGHT_STAGE_PROB = tf.constant(
-    0.1, dtype=tf.float32
-)  # Epochs 0-4: Learn the base math cleanly
-JITTER_MEDIUM_STAGE_PROB = tf.constant(
-    0.25, dtype=tf.float32
-)  # Epochs 5-14: Introduce structural tracking gaps
-JITTER_HEAVY_STAGE_PROB = tf.constant(
-    0.4, dtype=tf.float32
-)  # Epochs 15-30: Hard regularisation cap
+JITTER_LIGHT_STAGE_PROB = tf.constant(0.1, dtype=tf.float32)
+JITTER_MEDIUM_STAGE_PROB = tf.constant(0.25, dtype=tf.float32)
+JITTER_HEAVY_STAGE_PROB = tf.constant(0.4, dtype=tf.float32)
 
 # Tracks which jitter stage (0=light, 1=medium, 2=heavy) was last announced,
 # so jitter_dataset only tf.prints on the call where the stage actually changes.
