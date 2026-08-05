@@ -435,19 +435,19 @@ class KerasModel(Interpreter):
             # Multi input adding information about the frame number used
             if not single_input:
                 # --- Input 2: The Timeline Mask Layer (5x5x1) ---
-                mask_input = layers.Input(shape=(5, 5, 4), name="input_mask")
+                mask_input = layers.Input(shape=(5, 5, 6), name="input_mask")
                 input_image = {"input_image": input_image, "input_mask": mask_input}
 
                 # === METADATA BRANCH RE-ENGINEERING ===
-                # mask_input Shape: (None, 5, 5, 4)
+                # mask_input Shape: (None, 5, 5, 6)
 
                 # 1. Isolate tracking indicators away from continuous kinematics
                 # Channel 0: Time, Channel 1: Presence Flag
                 tracking_flags = layers.Lambda(
-                    lambda m: m[..., :2], name="extract_tracking_indicators"
+                    lambda m: m[..., :4], name="extract_tracking_indicators"
                 )(mask_input)
 
-                # Channel 2: Vx Velocity, Channel 3: Vy Velocity
+                # Channel 2: Vx Velocity, Channel 3: Vy Velocity, Channel 4: Width, Channel 5: Height
                 kinematics = layers.Lambda(
                     lambda m: m[..., 2:], name="extract_kinematic_vectors"
                 )(mask_input)

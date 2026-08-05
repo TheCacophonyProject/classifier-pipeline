@@ -329,7 +329,7 @@ def load_dataset(filenames, remap_lookup, labels, args):
 def tile_input(x, use_velocity):
     input_image = tile_images(x["input_image"])
     if use_velocity:
-        mask = tf.reshape(x["input_mask"], (5, 5, 4))
+        mask = tf.reshape(x["input_mask"], (5, 5, 6))
     else:
         mask = tf.reshape(x["input_mask"], (5, 5, 2))
 
@@ -522,7 +522,7 @@ def read_tfrecord(
         "image/frame_numbers": tf.io.FixedLenSequenceFeature(
             [], tf.int64, allow_missing=True
         ),
-        "image/roi": tf.io.FixedLenFeature([], tf.string),
+        "image/original_roi": tf.io.FixedLenFeature([], tf.string),
         "image/means": tf.io.FixedLenSequenceFeature(
             [], tf.float32, allow_missing=True
         ),
@@ -567,7 +567,7 @@ def read_tfrecord(
     # centre_x = tf.reshape(centre_x, [record_frames])
     # centre_y = tf.reshape(centre_y, [record_frames])
 
-    regions = tf.io.decode_raw(example["image/roi"], out_type=tf.uint8)
+    regions = tf.io.decode_raw(example["image/original_roi"], out_type=tf.uint8)
     regions = tf.reshape(regions, [record_frames, 4])
     # written as [thermal, filtered, thermal_norm] per frame, see thermalwriter.py
     means = tf.reshape(means, [record_frames, 3])
@@ -674,6 +674,7 @@ def read_tfrecord(
             centre_y,
             use_velocity,
             rotation_angle,
+            regions,
         )
 
         if num_frames > 1 and not repeat_frames:
@@ -1159,7 +1160,7 @@ def main():
     #     if l not in ["mustelid", "deer", "sheep"]:
     #         excluded_labels.append(l)
 
-    include_track = False
+    include_track = True
     if "weka" not in labels:
         labels.append("weka")
     if "chicken" not in labels:
@@ -1185,7 +1186,7 @@ def main():
         labels,
         batch_size=32,
         image_size=(160, 160),
-        augment=True,
+        augment=False,
         shuffle=False,
         include_features=False,
         remapped_labels=get_remapped(multi_label=True),
@@ -1229,9 +1230,12 @@ def save_batch(image_batch, label_batch, labels, save_dir, tracks=False):
     # print("masks are ",m[0].shape,m.shape,m[1].shape)
     if tracks:
         track_batch = label_batch[1]
+
+        # roi = label_batch[-1]
         label_batch = label_batch[0]
     for n, img in enumerate(image_batch):
-        print("Mask is ", masks[n])
+        # print("Mask is ", masks[n][0])
+        # print(roi[n])
         # for row in masks[n]:
         #     for column in row:
         #         print(column)
@@ -1322,7 +1326,7 @@ def mask_random_frames(rgb_image, frame_indices, record_frames):
 
 @tf.function
 def get_frame_mask_v2(
-    num_valid, frame_indices, centre_x, centre_y, use_velocity, rotation_angle
+    num_valid, frame_indices, centre_x, centre_y, use_velocity, rotation_angle, regions
 ):
     """
     Normalises frame intervals uniformly against a maximum inter-frame distance of 9 frames.
@@ -1384,7 +1388,25 @@ def get_frame_mask_v2(
             [rotated_vel_y, tf.zeros([padding_len], dtype=tf.float32)], axis=0
         )
 
-        return tf.stack([time_mask, x_mask, y_mask, presence_mask], axis=1)
+        MAX_WIDTH = 160
+        MAX_HEIGHT = 120
+        # regions are stored per-frame as [left, top, width, height] (ltwh)
+        # against a 160x120 source frame
+        valid_regions = tf.cast(regions[:num_valid], tf.float32)
+        width_percent = valid_regions[:, 2] / MAX_WIDTH
+        height_percent = valid_regions[:, 3] / MAX_HEIGHT
+
+        width_mask = tf.concat(
+            [width_percent, tf.zeros([25 - num_valid], dtype=tf.float32)], axis=0
+        )
+        height_mask = tf.concat(
+            [height_percent, tf.zeros([25 - num_valid], dtype=tf.float32)], axis=0
+        )
+
+        return tf.stack(
+            [time_mask, presence_mask, width_mask, height_mask, x_mask, y_mask],
+            axis=1,
+        )
 
     else:
         return tf.stack([time_mask, presence_mask], axis=1)

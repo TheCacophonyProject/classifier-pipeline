@@ -171,6 +171,8 @@ def create_tf_example(sample, data, features, labels, country_code):
     # if we wanted can save writing memory by using alternative tf record writer
     import tensorflow as tf
 
+    original_roi = np.uint8([r.to_ltwh() for r in sample.track_bounds])
+
     centre_x = np.float32([r.centroid[0] for r in sample.track_bounds])
     centre_y = np.float32([r.centroid[1] for r in sample.track_bounds])
 
@@ -203,6 +205,9 @@ def create_tf_example(sample, data, features, labels, country_code):
         "image/centre_x": tfrecord_util.float_list_feature(centre_x),
         "image/centre_y": tfrecord_util.float_list_feature(centre_y),
         "image/upsampled": tfrecord_util.int64_feature(sample.upsampled),
+        "image/original_roi": tfrecord_util.bytes_feature(
+            original_roi.ravel().tobytes()
+        ),
         "image/roi": tfrecord_util.bytes_feature(roi.ravel().tobytes()),
         "image/means": tfrecord_util.float_list_feature(means.ravel()),
         "image/frame_numbers": tfrecord_util.int64_list_feature(frame_indices),
