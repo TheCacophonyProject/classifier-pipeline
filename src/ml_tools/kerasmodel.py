@@ -441,13 +441,17 @@ class KerasModel(Interpreter):
                 # === METADATA BRANCH RE-ENGINEERING ===
                 # mask_input Shape: (None, 5, 5, 6)
 
-                # 1. Isolate tracking indicators away from continuous kinematics
-                # Channel 0: Time, Channel 1: Presence Flag
+                # # 1. Isolate tracking indicators away from continuous kinematics
+                # # Channel 0: Time, Channel 1: Presence Flag
+                # tracking_flags = mask_input[..., :4]
+
+                # # Channel 2: Vx Velocity, Channel 3: Vy Velocity, Channel 4: Width, Channel 5: Height
+                # kinematics = mask_input[..., 2:]
                 tracking_flags = layers.Lambda(
-                    lambda m: m[..., :4], name="extract_tracking_indicators"
+                    lambda m: m[..., :2], name="extract_tracking_indicators"
                 )(mask_input)
 
-                # Channel 2: Vx Velocity, Channel 3: Vy Velocity, Channel 4: Width, Channel 5: Height
+                # Channel 2: Vx Velocity, Channel 3: Vy Velocity
                 kinematics = layers.Lambda(
                     lambda m: m[..., 2:], name="extract_kinematic_vectors"
                 )(mask_input)
