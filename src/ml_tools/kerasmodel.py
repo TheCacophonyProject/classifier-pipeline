@@ -918,6 +918,9 @@ class KerasModel(Interpreter):
             checkpoints = [
                 c for c in checkpoints if not isinstance(c, StepWarmupCallback)
             ]
+            checkpoints.append(
+                tf.keras.callbacks.LearningRateScheduler(stage_3_lr_scheduler)
+            )
 
             logging.info(
                 "Phase2 stage 2: unfreezing channel_aligner and "
@@ -2145,13 +2148,15 @@ class LayerUnfreezeCallback(tf.keras.callbacks.Callback):
 
 def stage_3_lr_scheduler(epoch, lr):
     from ml_tools.thermaldataset import (
+        JITTER_MEDIUM_STAGE_EPOCH,
         JITTER_HEAVY_STAGE_EPOCH,
     )
 
-    # Remember: 'epoch' here is the absolute epoch number (counting from 0 to 29)
-    if epoch >= JITTER_HEAVY_STAGE_EPOCH:
-        print(
-            f"\n[Epoch {epoch+1}] Phase 2C Transition: Entering Max Jitter. Final Deep LR Drop to 2e-6"
-        )
+    if epoch < JITTER_MEDIUM_STAGE_EPOCH:
+        return 2e-5
+    else:
+        if epoch == JITTER_HEAVY_STAGE_EPOCH:
+            print(
+                f"\n[Epoch {epoch+1}] Phase 2C Transition: Entering Max Jitter. Final Deep LR Drop to 2e-6"
+            )
         return 2e-6  # Drop to final safety floor during hard regularisation
-    return lr  # Keep the 2e-5 fine-tuning rate for epochs 5-14
