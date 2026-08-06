@@ -362,10 +362,7 @@ class KerasModel(Interpreter):
 
     def build_model(
         self,
-        dense_sizes=None,
-        retrain_from=None,
         dropout=None,
-        run_name=None,
         single_input=True,
     ):
         RNN_MODEL = False
@@ -396,185 +393,104 @@ class KerasModel(Interpreter):
         )
 
         x = base_model(x)
-        # x = base_model(inputs, training=self.params.base_training)
-        if self.params.get("model_merge"):
-            logging.info(
-                "Loading cnn rf model %s %s",
-                self.params.get("model_cnn"),
-                self.params.get("model_rf"),
+
+        # Multi input adding information about the frame number used
+        if not single_input:
+            # --- Input 2: The Timeline Mask Layer (5x5x1) ---
+            mask_input = layers.Input(shape=(5, 5, 6), name="input_mask")
+            input_image = {"input_image": input_image, "input_mask": mask_input}
+
+            # === METADATA BRANCH RE-ENGINEERING ===
+            # mask_input Shape: (None, 5, 5, 6)
+
+            # # 1. Isolate tracking indicators away from continuous kinematics
+            # # Channel 0: Time, Channel 1: Presence Flag
+            # tracking_flags = mask_input[..., :4]
+
+            # # Channel 2: Vx Velocity, Channel 3: Vy Velocity, Channel 4: Width, Channel 5: Height
+            # kinematics = mask_input[..., 2:]
+            tracking_indicators = layers.Lambda(
+                reconstruct_absolute_time_and_indicators,
+                name="dense_macro_timeline",
+            )(mask_input)
+
+            # # Channel 2: Vx Velocity, Channel 3: Vy Velocity
+            # kinematics = layers.Lambda(
+            #     lambda m: m[..., 2:], name="extract_kinematic_vectors"
+            # )(mask_input)
+
+            # 2. Process discrete indicators with standard Dense layers
+            t_embed = layers.Dense(32, activation="swish", name="tracking_projection")(
+                tracking_indicators
             )
-            cnn = tf.keras.models.load_model(self.params.get("model_cnn"))
-            cnn.load_weights(
-                Path(self.params.get("model_cnn")) / "val_acc"
-            ).expect_partial()
-            feature_input = tf.keras.Input(shape=(188), name="feature_input")
-            model_rf = tf.keras.models.load_model(self.params.get("model_rf"))
-            rf = model_rf(feature_input)
-            input_image = [cnn.input, feature_input]
-            cnn.summary()
-            model_rf.summary()
-            print("Outputs", cnn.outputs, rf)
-            x = tf.keras.layers.Concatenate()([cnn.outputs[0], rf])
-            activation = "softmax"
-            if self.params.multi_label:
-                activation = "sigmoid"
-            logging.info("Using %s activation", activation)
-            preds = tf.keras.layers.Dense(
-                len(self.labels), activation=activation, name="merged-prediction"
+            t_embed = layers.Dense(64, activation="swish", name="tracking_expansion")(
+                t_embed
+            )  # Shape: (None, 5, 5, 64)
+
+            # 2. Conv2D Lane: Receives localized rate-of-change metrics (Vx, Vy, Delta-T)
+            kinematics_with_dt = layers.Lambda(
+                extract_pure_kinematics, name="conv2d_micro_kinematics"
+            )(mask_input)
+            # 3. Process kinematic vectors with an explicit 1x1 Convolution.
+            # Convolutions treat features as spatial coordinate fields, preventing
+            # the velocity scales from being dominated by the binary presence flags.
+            k_embed = layers.Conv2D(
+                32,
+                (1, 1),
+                activation="swish",
+                padding="same",
+                name="velocity_projection",
+            )(kinematics_with_dt)
+            k_embed = layers.Conv2D(
+                64,
+                (1, 1),
+                activation="swish",
+                padding="same",
+                name="velocity_expansion",
+            )(
+                k_embed
+            )  # Shape: (None, 5, 5, 64)
+
+            # 4. Re-combine metadata channels cleanly -> Preserves exactly 128 channels
+            time_embedding = layers.Concatenate(name="unified_metadata_embedding")(
+                [t_embed, k_embed]
+            )  # Shape: (None, 5, 5, 128)
+
+            # --- Feature Fusion (Maintains your exact native dimensions) ---
+            image_features = layers.MaxPooling2D(
+                pool_size=(2, 2), name="preserve_tiny_anomalies"
             )(x)
-            self.model = tf.keras.models.Model(input_image, outputs=preds)
-        elif self.params.lstm:
-            x = tf.keras.layers.GlobalAveragePooling2D()(x)
-            for i in dense_sizes:
-                x = tf.keras.layers.Dense(i, activation="relu")(x)
-            # gp not sure how many should be pre lstm, and how many post
-            cnn = tf.keras.models.Model(input_image, outputs=x)
 
-            self.model = self.add_lstm(cnn)
-        else:
-            # Multi input adding information about the frame number used
-            if not single_input:
-                # --- Input 2: The Timeline Mask Layer (5x5x1) ---
-                mask_input = layers.Input(shape=(5, 5, 6), name="input_mask")
-                input_image = {"input_image": input_image, "input_mask": mask_input}
+            image_features = tf.keras.layers.SpatialDropout2D(0.3)(image_features)
 
-                # === METADATA BRANCH RE-ENGINEERING ===
-                # mask_input Shape: (None, 5, 5, 6)
+            # Dimensions match your blueprint perfectly: 1536 (Vision) + 128 (Metadata) = 1664
+            combined = layers.Concatenate(name="input_concat")(
+                [image_features, time_embedding]
+            )  # Shape: (None, 5, 5, 1664)
 
-                # # 1. Isolate tracking indicators away from continuous kinematics
-                # # Channel 0: Time, Channel 1: Presence Flag
-                # tracking_flags = mask_input[..., :4]
+            # 1. Compress channel depth from 1664 to 256 using 1x1 convolution
+            x = layers.Conv2D(256, (1, 1), activation="swish", padding="same")(combined)
 
-                # # Channel 2: Vx Velocity, Channel 3: Vy Velocity, Channel 4: Width, Channel 5: Height
-                # kinematics = mask_input[..., 2:]
-                tracking_indicators = layers.Lambda(
-                    reconstruct_absolute_time_and_indicators,
-                    name="dense_macro_timeline",
-                )(mask_input)
+            # Mix the combined space-time features together
+            x = layers.Conv2D(256, (3, 3), activation="swish", padding="same")(x)
 
-                # # Channel 2: Vx Velocity, Channel 3: Vy Velocity
-                # kinematics = layers.Lambda(
-                #     lambda m: m[..., 2:], name="extract_kinematic_vectors"
-                # )(mask_input)
+        x = tf.keras.layers.GlobalAveragePooling2D()(x)
 
-                # 2. Process discrete indicators with standard Dense layers
-                t_embed = layers.Dense(
-                    32, activation="swish", name="tracking_projection"
-                )(tracking_indicators)
-                t_embed = layers.Dense(
-                    64, activation="swish", name="tracking_expansion"
-                )(
-                    t_embed
-                )  # Shape: (None, 5, 5, 64)
+        if dropout:
+            logging.info("Using dropout of %s", dropout)
+            x = tf.keras.layers.Dropout(dropout)(x)
 
-                # 2. Conv2D Lane: Receives localized rate-of-change metrics (Vx, Vy, Delta-T)
-                kinematics_with_dt = layers.Lambda(
-                    extract_pure_kinematics, name="conv2d_micro_kinematics"
-                )(mask_input)
-                # 3. Process kinematic vectors with an explicit 1x1 Convolution.
-                # Convolutions treat features as spatial coordinate fields, preventing
-                # the velocity scales from being dominated by the binary presence flags.
-                k_embed = layers.Conv2D(
-                    32,
-                    (1, 1),
-                    activation="swish",
-                    padding="same",
-                    name="velocity_projection",
-                )(kinematics_with_dt)
-                k_embed = layers.Conv2D(
-                    64,
-                    (1, 1),
-                    activation="swish",
-                    padding="same",
-                    name="velocity_expansion",
-                )(
-                    k_embed
-                )  # Shape: (None, 5, 5, 64)
+        activation = "softmax"
+        if self.params.multi_label:
+            # will need to add this in after training
+            activation = None
+        logging.info("Using %s activation", activation)
+        preds = tf.keras.layers.Dense(
+            len(self.labels), activation=activation, name="prediction"
+        )(x)
+        self.model = tf.keras.models.Model(input_image, outputs=preds)
 
-                # 4. Re-combine metadata channels cleanly -> Preserves exactly 128 channels
-                time_embedding = layers.Concatenate(name="unified_metadata_embedding")(
-                    [t_embed, k_embed]
-                )  # Shape: (None, 5, 5, 128)
-
-                # --- Feature Fusion (Maintains your exact native dimensions) ---
-                image_features = layers.MaxPooling2D(
-                    pool_size=(2, 2), name="preserve_tiny_anomalies"
-                )(x)
-
-                image_features = tf.keras.layers.SpatialDropout2D(0.3)(image_features)
-
-                # Dimensions match your blueprint perfectly: 1536 (Vision) + 128 (Metadata) = 1664
-                combined = layers.Concatenate(name="input_concat")(
-                    [image_features, time_embedding]
-                )  # Shape: (None, 5, 5, 1664)
-
-                # 1. Compress channel depth from 1664 to 256 using 1x1 convolution
-                x = layers.Conv2D(256, (1, 1), activation="swish", padding="same")(
-                    combined
-                )
-
-                # Mix the combined space-time features together
-                x = layers.Conv2D(256, (3, 3), activation="swish", padding="same")(x)
-
-            x = tf.keras.layers.GlobalAveragePooling2D()(x)
-
-            if self.params.mvm:
-                mvm_inputs = tf.keras.layers.Input((188))
-                input_image = [input_image, mvm_inputs]
-                # mvm_features = tf.keras.layers.Flatten()(mvm_inputs)
-                #
-                # if self.params["hq_mvm"]:
-                # print("HQ")
-                if self.params.mvm_forest:
-                    rf = self.get_forest_model(run_name)
-
-                    rf = rf(mvm_inputs)
-                    x = tf.keras.layers.Concatenate()([x, rf])
-
-                else:
-                    mvm_features = tf.keras.layers.Dense(128, activation="relu")(
-                        mvm_inputs
-                    )
-                    mvm_features = tf.keras.layers.Dense(128, activation="relu")(
-                        mvm_features
-                    )
-                    mvm_features = tf.keras.layers.Dropout(0.1)(mvm_features)
-
-                    # else:
-                    #     mvm_features = tf.keras.layers.Dense(32, activation="relu")(
-                    #         mvm_inputs
-                    #     )
-                    x = tf.keras.layers.Concatenate()([x, mvm_features])
-                # x = tf.keras.layers.Dense(1028, activation="relu")(x)
-            if dense_sizes is not None:
-                for i in dense_sizes:
-                    x = tf.keras.layers.Dense(i, activation="swish")(x)
-            if dropout:
-                logging.info("Using dropout of %s", dropout)
-                x = tf.keras.layers.Dropout(dropout)(x)
-
-            activation = "softmax"
-            if self.params.multi_label:
-                activation = "sigmoid"
-                # will need to add this in after training
-                activation = None
-            logging.info("Using %s activation", activation)
-            preds = tf.keras.layers.Dense(
-                len(self.labels), activation=activation, name="prediction"
-            )(x)
-            self.model = tf.keras.models.Model(input_image, outputs=preds)
-        if retrain_from is None:
-            retrain_from = self.params.retrain_layer
-        if retrain_from:
-            for i, layer in enumerate(base_model.layers):
-                if isinstance(layer, tf.keras.layers.BatchNormalization):
-                    # apparently this shouldn't matter as we set base_training = False
-                    layer.trainable = False
-                    logging.info("dont train %s %s", i, layer.name)
-                else:
-                    layer.trainable = i >= retrain_from
-        else:
-            base_model.trainable = self.params.base_training
+        base_model.trainable = self.params.base_training
         return self.model
 
     def adjust_final_layer(self):
@@ -869,6 +785,12 @@ class KerasModel(Interpreter):
                 if phase2:
 
                     self.phase1_weights(weights)
+                    logging.info(
+                        "Freezing channel_aligner and efficientnetv2-b3 for %s epochs so the new head can stabilise",
+                        self.params.phase2_freeze_epochs,
+                    )
+                    self.model.get_layer("channel_aligner").trainable = False
+                    self.model.get_layer("efficientnetv2-b3").trainable = False
                 else:
                     self.model.load_weights(weights, by_name=True, skip_mismatch=True)
 
@@ -937,6 +859,27 @@ class KerasModel(Interpreter):
         self.save(run_name, fine_tune=fine_tune, rebalance=rebalance)
 
         checkpoints = self.checkpoints(run_name, warmup_epochs=2, fine_tuning=warm_down)
+
+        # Phase2 loads a good pretrained backbone (channel_aligner +
+        # efficientnetv2-b3) from phase1 and, when single_input is False,
+        # also attaches a large freshly initialised metadata-fusion head.
+        # Training everything at once from epoch 0 lets the random head's
+        # large early gradients drag the backbone away from its phase1
+        # optimum, so validation peaks at epoch 1 and degrades from there.
+        # Freeze the backbone for a few epochs so the new head stabilises
+        # first, then unfreeze and fine tune the whole model at a low LR.
+        phase2_freeze_epochs = 0
+        if phase2 and fine_tune is None and weights is not None and not warm_down:
+            phase2_freeze_epochs = min(epochs, self.params.phase2_freeze_epochs)
+
+        def fit_callbacks():
+            return [
+                tf.keras.callbacks.TensorBoard(
+                    self.log_dir, write_graph=True, write_images=True
+                ),
+                *checkpoints,
+            ]
+
         if warm_down:
             optimizer_fn = tf.keras.optimizers.Adam(
                 learning_rate=self.params.fine_tune_learning_rate
@@ -948,14 +891,6 @@ class KerasModel(Interpreter):
             )
         else:
             if fine_tune is None:
-                # if phase2:
-                # pass
-                # logging.info("Setting phase2")
-                # self.model.get_layer("channel_aligner").trainable = False
-                # self.model.get_layer("efficientnetv2-b3").trainable = False
-                # self.model.summary()
-                # else:
-
                 logging.info("Adding layer stepwarmup callback")
 
                 warmup_callback = StepWarmupCallback(
@@ -974,52 +909,62 @@ class KerasModel(Interpreter):
             metrics={"prediction": metrics(self.params.multi_label)},
         )
 
-        history = self.model.fit(
-            self.train,
-            validation_data=self.validate,
-            epochs=epochs,
-            shuffle=False,
-            class_weight=self.class_weights,
-            callbacks=[
-                tf.keras.callbacks.TensorBoard(
-                    self.log_dir, write_graph=True, write_images=True
+        if phase2_freeze_epochs > 0:
+            logging.info(
+                "Phase2 stage 1: training new head only for %s epochs with "
+                "channel_aligner and efficientnetv2-b3 frozen",
+                phase2_freeze_epochs,
+            )
+            history = self.model.fit(
+                self.train,
+                validation_data=self.validate,
+                epochs=phase2_freeze_epochs,
+                shuffle=False,
+                class_weight=self.class_weights,
+                callbacks=fit_callbacks(),
+            )
+
+            # drop the warmup callback, it already ramped to target_lr and
+            # would otherwise override the low fine-tuning LR below
+            checkpoints = [
+                c for c in checkpoints if not isinstance(c, StepWarmupCallback)
+            ]
+
+            logging.info(
+                "Phase2 stage 2: unfreezing channel_aligner and "
+                "efficientnetv2-b3, fine tuning at %s for remaining %s epochs",
+                self.params.fine_tune_learning_rate,
+                epochs - phase2_freeze_epochs,
+            )
+            self.model.get_layer("channel_aligner").trainable = True
+            self.model.get_layer("efficientnetv2-b3").trainable = True
+            self.model.compile(
+                optimizer=tf.keras.optimizers.Adam(
+                    learning_rate=self.params.fine_tune_learning_rate
                 ),
-                *checkpoints,
-            ],
-        )
-
-        # if phase2:
-        #     optimizer_fn = tf.keras.optimizers.Adam(
-        #         learning_rate=self.params.learning_rate * 0.1
-        #     )
-        #     # phase2
-        #     self.model.get_layer("channel_aligner").trainable = True
-        #     self.model.get_layer("efficientnetv2-b3").trainable = True
-
-        #     self.model.compile(
-        #         optimizer=optimizer_fn,
-        #         loss=loss(self.params),
-        #         metrics={"prediction": metrics(self.params.multi_label)},
-        #     )
-        #     logging.info("Starting phase2")
-        #     logging.info(self.model.summary())
-
-        #     lr_callback = tf.keras.callbacks.LearningRateScheduler(stage_3_lr_scheduler)
-        #     checkpoints.append(lr_callback)
-        #     history = self.model.fit(
-        #         self.train,
-        #         validation_data=self.validate,
-        #         epochs=epochs,
-        #         shuffle=False,
-        #         class_weight=self.class_weights,
-        #         callbacks=[
-        #             tf.keras.callbacks.TensorBoard(
-        #                 self.log_dir, write_graph=True, write_images=True
-        #             ),
-        #             *checkpoints,
-        #         ],
-        #         initial_epoch=5,
-        #     )
+                loss=loss(self.params),
+                metrics={"prediction": metrics(self.params.multi_label)},
+            )
+            history = self.model.fit(
+                self.train,
+                validation_data=self.validate,
+                epochs=epochs,
+                initial_epoch=phase2_freeze_epochs,
+                shuffle=False,
+                class_weight=self.class_weights,
+                callbacks=fit_callbacks(),
+            )
+            # for key, values in stage2_history.history.items():
+            # history.history.setdefault(key, []).extend(values)
+        else:
+            history = self.model.fit(
+                self.train,
+                validation_data=self.validate,
+                epochs=epochs,
+                shuffle=False,
+                class_weight=self.class_weights,
+                callbacks=fit_callbacks(),
+            )
 
         history = history.history
         test_accuracy = None

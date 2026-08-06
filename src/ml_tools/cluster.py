@@ -11,6 +11,7 @@ from ml_tools.tfdataset import get_dataset, apply_label_mapping
 
 import argparse
 from ml_tools.logs import init_logging
+import hdbscan
 
 
 def parse_args():
@@ -85,6 +86,13 @@ def main():
     new_labels = np.load(label_f)
     logging.info("Loaded labels %s", new_labels)
     filter_labels = ["false-positive"]
+
+    print("USING HDB TESTING")
+    hdb_load(
+        args.output.with_name(f"{args.output.stem}-features.npy"),
+        new_labels,
+        filter_labels,)
+    return
     run_umap(
         args.model,
         args.output.with_name(f"{args.output.stem}-features.npy"),
@@ -93,6 +101,46 @@ def main():
     )
     return
 
+def hdb_load( features_file, labels, filter_labels=None):
+
+    features = np.load(features_file)
+    labels_file = features_file.with_name(f"{features_file.stem.replace("-features","-labels")}.npy")
+    true_labels = np.load(labels_file)
+    tracks_file = features_file.with_name(
+        f"{features_file.stem.replace("-features","-tracks")}.npy"
+    )
+    tracks = np.load(tracks_file)
+    filter_labels = []
+    labels = np.array(labels)
+    keep_indices = np.array([i for i, l in enumerate(labels) if l not in filter_labels])
+
+    item_mask = np.isin(true_labels, keep_indices)
+    features = features[item_mask]
+    true_labels = true_labels[item_mask]
+    true_labels = labels[true_labels]
+
+    logging.info("Features are %s labels %s", features.shape, true_labels.shape)
+
+
+    embedding_file = features_file.with_name(
+        f"{features_file.stem.replace('-features', '-umap2d')}.npy"
+    )
+    embedding = np.load(embedding_file)
+    import joblib
+    hdb_file = features_file.with_name(features_file.stem + "-hdb.pkl")
+    # clusterer = joblib.load(hdb_file)
+# 2. Cluster with HDBSCAN
+    # The lower the min_cluster_size and min_samples, the more granular the detection
+    clusterer = hdbscan.HDBSCAN(
+        min_cluster_size=30,
+        min_samples=3,
+        gen_min_span_tree=True,
+    )
+    clusterer.fit(embedding)
+    joblib.dump(clusterer, hdb_file)
+
+
+    find_mislabeled_points(clusterer, true_labels, tracks,features_file)
 
 def run_umap(model_file, features_file, labels, filter_labels=None):
     import numpy as np
@@ -108,9 +156,7 @@ def run_umap(model_file, features_file, labels, filter_labels=None):
         meta = json.load(f)
     # labels = meta.get("labels", [])
     features = np.load(features_file)
-    labels_file = features_file.with_name(
-        f"{features_file.stem.replace("-features","-labels")}.npy"
-    )
+    labels_file = features_file.with_name(f"{features_file.stem.replace("-features","-labels")}.npy")
     true_labels = np.load(labels_file)
     tracks_file = features_file.with_name(
         f"{features_file.stem.replace("-features","-tracks")}.npy"
@@ -128,19 +174,32 @@ def run_umap(model_file, features_file, labels, filter_labels=None):
     logging.info("Features are %s labels %s", features.shape, true_labels.shape)
 
     # detect anomalies
-    reducer = umap.UMAP(n_neighbors=90, min_dist=0.0, n_components=6, metric="cosine")
+    reducer = umap.UMAP(n_neighbors=45, min_dist=0.0, n_components=6, metric="cosine")
     embedding = reducer.fit_transform(features)  # Notice: y is NOT passed here
+
+
+    embedding_file = features_file.with_name(
+        f"{features_file.stem.replace('-features', '-umap2d')}.npy"
+    )
+    np.save(embedding_file, embedding)
+    logging.info("Saved 2D UMAP embedding to %s", embedding_file)
 
     import hdbscan
 
     # 2. Cluster with HDBSCAN
     # The lower the min_cluster_size and min_samples, the more granular the detection
     clusterer = hdbscan.HDBSCAN(
-        min_cluster_size=40, min_samples=3, gen_min_span_tree=True
+        min_cluster_size=30,
+        min_samples=3,
+        gen_min_span_tree=True,
     )
     clusterer.fit(embedding)
+    import joblib
+    hdb_file = features_file.with_name(features_file.stem + "-hdb.pkl")
 
-    find_mislabeled_points(clusterer, true_labels, tracks)
+    joblib.dump(clusterer, hdb_file)
+
+    find_mislabeled_points(clusterer, true_labels, tracks,features_file)
     # 3. Detect Anomalies
     # HDBSCAN assigns -1 to points that do not fall into any cluster
     anomaly_labels = clusterer.labels_
@@ -161,7 +220,7 @@ def run_umap(model_file, features_file, labels, filter_labels=None):
     logging.info("Saved anomalies to %s", anomalies_file)
 
     # draw umap with 2 components
-    reducer = umap.UMAP(n_neighbors=15, min_dist=0.1, n_components=2)
+    reducer = umap.UMAP(n_neighbors=45, min_dist=0.1, n_components=2)
     embedding = reducer.fit_transform(features)  # Notice: y is NOT passed here
 
     # calculate distance of groups and get a colour palette based of this
@@ -229,9 +288,11 @@ def run_umap(model_file, features_file, labels, filter_labels=None):
     fig.savefig(features_file.with_suffix(".jpg"), dpi=600, bbox_inches="tight")
 
 
-def find_mislabeled_points(clusterer, y_true, tracks):
+def find_mislabeled_points(clusterer, y_true, tracks,features_file):
     probabilities = clusterer.probabilities_
     hdbscan_labels = clusterer.labels_
+    n_clusters = len(set(hdbscan_labels)) - (1 if -1 in hdbscan_labels else 0)
+    print(f"HDBSCAN found {n_clusters} clusters")
     # Create a summary dataframe for easier inspection
     results = pd.DataFrame(
         {
@@ -242,7 +303,6 @@ def find_mislabeled_points(clusterer, y_true, tracks):
             "confidence": probabilities,
         }
     )
-    print("Probablities are ", probabilities, hdbscan_labels)
     # Flag 1: The point was rejected entirely by HDBSCAN and marked as noise (-1)
     noise_flags = results[results["hdbscan_cluster"] == -1]
 
@@ -269,6 +329,9 @@ def find_mislabeled_points(clusterer, y_true, tracks):
             print(
                 f"⚠️ Cluster {cluster_id} is ambiguous! Top label '{majority_label}' is only {majority_percentage:.1%}"
             )
+            other_labels = label_counts.iloc[1:]
+            for label, percentage in other_labels[other_labels > 0.20].items():
+                print(f"    Other label '{label}' is {percentage:.1%}")
             ambiguous_clusters.append(cluster_id)
             cluster_to_class_map[cluster_id] = "Ambiguous / Mixed Cluster"
         else:
@@ -286,12 +349,12 @@ def find_mislabeled_points(clusterer, y_true, tracks):
 
     mismatch_df = pd.concat(mismatch_flags)
     mismatch_df["mapped_to"] = [
-        clusters_to_class_map[cluster_id]
+        cluster_to_class_map[cluster_id]
         for cluster_id in mismatch_df["hdbscan_cluster"]
     ]
     mismatch_file = features_file.with_name(features_file.stem + "-mismatch.csv")
 
-    print("saving mismatches to ",mismatch_file")
+    print("saving mismatches to ",mismatch_file)
     mismatch_df.to_csv(mismatch_file, index=False)
 
 

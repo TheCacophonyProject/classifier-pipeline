@@ -266,7 +266,7 @@ def preprocess_frame_v2(
 
     # i dont think this will happen
     if len(thermal_border) == 0:
-        logging.info("NO thermal border so using 10% quartile")
+        logging.info("No thermal border so using 10% quartile")
         mean_value = MeanData(
             np.quantile(cropped_frame.thermal, 0.1),
             np.quantile(cropped_frame.filtered, 0.1),

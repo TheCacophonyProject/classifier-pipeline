@@ -158,6 +158,14 @@ class HyperParams(dict):
         return self.get("fine_tune_learning_rate", 0.00001)
 
     @property
+    def phase2_freeze_epochs(self):
+        # Number of epochs to keep the phase1 backbone (channel_aligner +
+        # base model) frozen at the start of phase2 training, so the freshly
+        # initialised head can stabilise before it starts pushing gradients
+        # back through the already-trained backbone.
+        return self.get("phase2_freeze_epochs", 3)
+
+    @property
     def learning_rate(self):
         return self.get("learning_rate", 0.0002)
 
