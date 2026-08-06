@@ -2117,9 +2117,9 @@ class StepWarmupCallback(Callback):
         if self.global_step < self.total_warmup_steps:
             # Linear scaling formula2
             lr = (self.global_step / self.total_warmup_steps) * self.target_lr
-        elif self.global_step <= (JITTER_MEDIUM_STAGE_EPOCH+1) * self.steps_per_epoch:
+        elif self.global_step <= (JITTER_MEDIUM_STAGE_EPOCH + 1) * self.steps_per_epoch:
             lr = self.target_lr
-        elif self.global_step <= (JITTER_HEAVY_STAGE_EPOCH+1) * self.steps_per_epoch:
+        elif self.global_step <= (JITTER_HEAVY_STAGE_EPOCH + 1) * self.steps_per_epoch:
             lr = self.target_lr * 0.1
         else:
             lr = self.target_lr * 0.01

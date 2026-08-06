@@ -1042,7 +1042,7 @@ class Track:
             tag
             for tag in track_tags
             if not tag.get("automatic", False)
-            and tag.get("confidence") >= min_confidence
+            and tag.get("confidence", 0) >= min_confidence
         ]
 
         if not track_tags:
@@ -1087,6 +1087,8 @@ class Track:
 def is_conflicting_tag(tag_one, tag_two):
     path_one = tag_one.get("path")
     path_two = tag_two.get("path")
+    if path_one is None or path_two is None:
+        return tag_one["what"] != tag_two["what"]
     # this should cover similar tags i.e. all.mammal.leporidae.rabbit and all.mammal.leporidae
     same_parents = path_one in path_two or path_two in path_one
     same_parents and path_one != "all.mammal" and path_two != "all.mammal"

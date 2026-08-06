@@ -268,7 +268,7 @@ def create_tf_example(sample, data, features, labels, country_code):
 def save_data(source_file, excluded_tags, writer, labels, extra_args):
     sample_data = get_data(source_file, excluded_tags, extra_args)
     if sample_data is None:
-        return 0
+        return None
     saved = 0
     try:
         sample_data, country_code, border_data = sample_data

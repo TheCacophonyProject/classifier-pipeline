@@ -1071,7 +1071,7 @@ def get_segment_indices(
 ):
     segment_frames = []
     seg_regions = []
-    mass = 0
+    mass = np.uint16(0)
     skipped_chunks = 0
     max_chunk_gap = 2
     stopped_early = False

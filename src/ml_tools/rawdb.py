@@ -218,7 +218,15 @@ class RawDatabase:
             fp_index = fp_labels.index("false-positive")
         meta = []
         for track_meta in tracks:
+
             try:
+                if "positions" not in track_meta:
+                    logging.error(
+                        "No positions for track %s in %s",
+                        track_meta.get("id"),
+                        self.file,
+                    )
+                    continue
                 tags = track_meta.get("tags", [])
                 tag = Track.get_best_human_tag(tags, tag_precedence, 0)
                 human_tag = None
