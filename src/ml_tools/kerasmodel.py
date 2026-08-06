@@ -925,15 +925,13 @@ class KerasModel(Interpreter):
             logging.info(
                 "Phase2 stage 2: unfreezing channel_aligner and "
                 "efficientnetv2-b3, fine tuning at %s for remaining %s epochs",
-                self.params.fine_tune_learning_rate,
+                2e-5,
                 epochs - phase2_freeze_epochs,
             )
             self.model.get_layer("channel_aligner").trainable = True
             self.model.get_layer("efficientnetv2-b3").trainable = True
             self.model.compile(
-                optimizer=tf.keras.optimizers.Adam(
-                    learning_rate=self.params.fine_tune_learning_rate
-                ),
+                optimizer=tf.keras.optimizers.Adam(learning_rate=2e-5),
                 loss=loss(self.params),
                 metrics={"prediction": metrics(self.params.multi_label)},
             )
@@ -2152,7 +2150,7 @@ def stage_3_lr_scheduler(epoch, lr):
         JITTER_HEAVY_STAGE_EPOCH,
     )
 
-    if epoch < JITTER_MEDIUM_STAGE_EPOCH:
+    if epoch < JITTER_HEAVY_STAGE_EPOCH:
         return 2e-5
     else:
         if epoch == JITTER_HEAVY_STAGE_EPOCH:
