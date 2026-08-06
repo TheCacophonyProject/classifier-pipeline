@@ -309,6 +309,7 @@ def load_dataset(filenames, remap_lookup, labels, args):
         dataset = dataset.map(
             lambda x, y: (x, y["label"]), num_parallel_calls=tf.data.AUTOTUNE
         )
+
     # this might be slightly slower than doing this here instead of when reading the records
     RNN = False
     if not RNN:
@@ -323,7 +324,7 @@ def load_dataset(filenames, remap_lookup, labels, args):
 def tile_input(x, use_velocity):
     input_image = tile_images(x["input_image"])
     if use_velocity:
-        mask = tf.reshape(x["input_mask"], (5, 5, 6))
+        mask = tf.reshape(x["input_mask"], (5, 5, 7))
     else:
         mask = tf.reshape(x["input_mask"], (5, 5, 2))
 
@@ -841,8 +842,14 @@ def jitter_dataset(x, y, current_epoch):
         )
         # mask the input image by setting these frames to zero
         jittered_image = image * keep_gate[:, tf.newaxis, tf.newaxis, tf.newaxis]
-        # mask the mask by setting these frames to zero
-        jittered_mask = mask * keep_gate[:, tf.newaxis]
+        # mask the mask by setting these frames to zero, except channel 0
+        # (the absolute time reconstructed in get_frame_mask_v2) which must
+        # stay untouched - it's a cumulative timeline, not a per-frame
+        # signal, so zeroing a dropped frame's entry would falsely reset
+        # the clock back to the start mid-sequence.
+        jittered_mask = tf.concat(
+            [mask[:, :1], mask[:, 1:] * keep_gate[:, tf.newaxis]], axis=-1
+        )
 
         f_used_float = tf.cast(frames_used, tf.float32)
         n_mask_float = tf.cast(num_to_mask, tf.float32)
@@ -1333,10 +1340,18 @@ def get_frame_mask_v2(
     indices = tf.cast(frame_indices, tf.float32)
     frame_delta = indices[1:] - indices[:-1]
     normalised_delta = tf.minimum(frame_delta / MAX_FRAME_DIST, 1.0)
-    # Use -1.0 as a strict geometric flag for empty padding slots
-    time_mask = tf.concat(
-        [[0.0], normalised_delta, tf.fill([25 - num_valid], 0.0)], axis=0
-    )
+
+    # Reconstruct an absolute timeline by cumulative-summing the
+    # backward-aligned per-frame deltas (index i = delta from frame i-1 to
+    # i), then normalise to [0, 1] against this track's own max. Done here,
+    # against the real per-track frame numbers, rather than later against
+    # (possibly jitter-dropped) frames, so the timeline always reflects
+    # genuine elapsed time.
+    backward_delta = tf.concat([[0.0], normalised_delta], axis=0)
+    abs_time = tf.cumsum(backward_delta)
+    max_time = tf.maximum(tf.reduce_max(abs_time), 1e-5)
+    normalized_abs_time = abs_time / max_time
+    time_mask = tf.concat([normalized_abs_time, tf.fill([25 - num_valid], 0.0)], axis=0)
 
     presence_mask = tf.concat(
         [tf.fill([num_valid], 1.0), tf.fill([25 - num_valid], 0.0)], axis=0
@@ -1397,8 +1412,26 @@ def get_frame_mask_v2(
             [height_percent, tf.zeros([25 - num_valid], dtype=tf.float32)], axis=0
         )
 
+        # time_mask is backward-aligned (index i holds the delta from frame
+        # i-1 to i) so it can be cumsum'd into an absolute timeline later.
+        # x_mask/y_mask are forward-aligned (index i holds the delta from
+        # frame i to i+1). dt_forward_mask reuses the same forward-aligned
+        # normalised_delta so it lines up with the velocities at the same
+        # index without needing a runtime shift.
+        dt_forward_mask = tf.concat(
+            [normalised_delta, tf.zeros([padding_len], dtype=tf.float32)], axis=0
+        )
+
         return tf.stack(
-            [time_mask, presence_mask, width_mask, height_mask, x_mask, y_mask],
+            [
+                time_mask,
+                presence_mask,
+                width_mask,
+                height_mask,
+                x_mask,
+                y_mask,
+                dt_forward_mask,
+            ],
             axis=1,
         )
 

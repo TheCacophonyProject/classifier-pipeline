@@ -396,28 +396,20 @@ class KerasModel(Interpreter):
 
         # Multi input adding information about the frame number used
         if not single_input:
-            # --- Input 2: The Timeline Mask Layer (5x5x1) ---
-            mask_input = layers.Input(shape=(5, 5, 6), name="input_mask")
+            # --- Input 2: The Timeline Mask Layer (5x5x7) ---
+            # Channels 0-3: absolute time, presence, width, height
+            # Channels 4-6: Vx velocity, Vy velocity, forward-aligned delta-T
+            # Both the absolute-time cumsum and the forward alignment of
+            # delta-T against velocity are done upstream in the tf.data
+            # pipeline (thermaldataset.reconstruct_absolute_time and
+            # get_frame_mask_v2), so the branches below are plain slices.
+            mask_input = layers.Input(shape=(5, 5, 7), name="input_mask")
             input_image = {"input_image": input_image, "input_mask": mask_input}
 
-            # === METADATA BRANCH RE-ENGINEERING ===
-            # mask_input Shape: (None, 5, 5, 6)
-
-            # # 1. Isolate tracking indicators away from continuous kinematics
-            # # Channel 0: Time, Channel 1: Presence Flag
-            # tracking_flags = mask_input[..., :4]
-
-            # # Channel 2: Vx Velocity, Channel 3: Vy Velocity, Channel 4: Width, Channel 5: Height
-            # kinematics = mask_input[..., 2:]
             tracking_indicators = layers.Lambda(
-                reconstruct_absolute_time_and_indicators,
+                lambda m: m[..., :4],
                 name="dense_macro_timeline",
             )(mask_input)
-
-            # # Channel 2: Vx Velocity, Channel 3: Vy Velocity
-            # kinematics = layers.Lambda(
-            #     lambda m: m[..., 2:], name="extract_kinematic_vectors"
-            # )(mask_input)
 
             # 2. Process discrete indicators with standard Dense layers
             t_embed = layers.Dense(32, activation="swish", name="tracking_projection")(
@@ -429,7 +421,7 @@ class KerasModel(Interpreter):
 
             # 2. Conv2D Lane: Receives localized rate-of-change metrics (Vx, Vy, Delta-T)
             kinematics_with_dt = layers.Lambda(
-                extract_pure_kinematics, name="conv2d_micro_kinematics"
+                lambda m: m[..., 4:7], name="conv2d_micro_kinematics"
             )(mask_input)
             # 3. Process kinematic vectors with an explicit 1x1 Convolution.
             # Convolutions treat features as spatial coordinate fields, preventing
@@ -2163,57 +2155,3 @@ def stage_3_lr_scheduler(epoch, lr):
         )
         return 2e-6  # Drop to final safety floor during hard regularisation
     return lr  # Keep the 2e-5 fine-tuning rate for epochs 5-14
-
-
-def reconstruct_absolute_time_and_indicators(mask_input):
-    """
-    Inputs: mask_input shape (None, 5, 5, 6)
-    Channel 0: Local Delta-T (Tx)
-    Channels 1-3: Presence, Width, Height
-    """
-    # Flatten the 5x5 grid to a 25-frame sequence to perform chronological math
-    flat_mask = tf.reshape(mask_input, [-1, 25, 6])
-
-    local_deltas = flat_mask[..., 0]  # Shape: (None, 25)
-    other_indicators = flat_mask[..., 1:4]  # Shape: (None, 25, 3)
-
-    # Reconstruct absolute time sequence via cumulative sum
-    # Shape: (None, 25, 1)
-    abs_time = tf.expand_dims(tf.cumsum(local_deltas, axis=1), axis=-1)
-
-    # Max-normalize absolute time to a strict [0.0, 1.0] scale based on the batch maximum
-    # This acts as your sequence-level timeline anchor
-    max_time = tf.reduce_max(abs_time, axis=1, keepdims=True)
-    max_time = tf.maximum(max_time, 1e-5)  # Prevent zero division
-    normalized_abs_time = abs_time / max_time
-
-    # Combine back with Presence, Width, and Height
-    reconstructed_sequence = tf.concat([normalized_abs_time, other_indicators], axis=-1)
-
-    # Reshape back to the native 5x5 layout for the Dense lane
-    return tf.reshape(reconstructed_sequence, [-1, 5, 5, 4])
-
-
-def extract_pure_kinematics(mask_input):
-    """
-    Inputs: mask_input shape (None, 5, 5, 6)
-    Channel 0: Backward Time Delta (A_x - A_x-1)
-    Channels 4-5: Forward Velocity (Center_x+1 - Center_x)
-    """
-    # Flatten grid to shift indices cleanly along the sequence
-    flat_mask = tf.reshape(mask_input, [-1, 25, 6])
-
-    backward_deltas = flat_mask[..., 0:1]  # Shape: (None, 25, 1)
-    velocities = flat_mask[..., 4:6]  # Shape: (None, 25, 2)
-
-    # SHIFT OPERATION: Move the time deltas forward by 1 index.
-    # Tile(x) now gets the time delta from Tile(x) to Tile(x+1).
-    # Slice off the first frame's delta, and pad the last frame with your median step (0.04)
-    forward_deltas = backward_deltas[:, 1:, :]
-    final_pad = tf.zeros_like(backward_deltas[:, :1, :])
-    aligned_dt = tf.concat([forward_deltas, final_pad], axis=1)
-
-    # Pair the now aligned features together: [Vx, Vy, Aligned_Delta-T]
-    kinematics_seq = tf.concat([velocities, aligned_dt], axis=-1)
-
-    return tf.reshape(kinematics_seq, [-1, 5, 5, 3])
