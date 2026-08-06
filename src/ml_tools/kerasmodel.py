@@ -773,10 +773,7 @@ class KerasModel(Interpreter):
         else:
 
             self.model = self.build_model(
-                dense_sizes=self.params.dense_sizes,
-                retrain_from=self.params.retrain_layer,
                 dropout=self.params.dropout,
-                run_name=run_name,
                 single_input=single_input,
             )
 

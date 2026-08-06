@@ -163,7 +163,7 @@ class HyperParams(dict):
         # base model) frozen at the start of phase2 training, so the freshly
         # initialised head can stabilise before it starts pushing gradients
         # back through the already-trained backbone.
-        return self.get("phase2_freeze_epochs", 3)
+        return self.get("phase2_freeze_epochs", 5)
 
     @property
     def learning_rate(self):
