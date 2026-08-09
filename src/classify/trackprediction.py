@@ -508,13 +508,14 @@ class TrackPrediction:
                     ]
                 indices = np.where(best_score >= thresholds)[0]
             else:
+                thresholds = None
                 indices = np.where(best_score >= DEFAULT_THRESHOLD)[0]
             tag = most_specific_tag(self.labels, indices, self.parent_mappings)
 
             if tag is not None:
                 if tag in self.labels:
                     index = self.labels.index(tag)
-                    threshold = thresholds[index]
+                    threshold = thresholds[index] if thresholds else DEFAULT_THRESHOLD
                     confidence = best_score[index]
                 else:
                     threshold = DEFAULT_THRESHOLD
