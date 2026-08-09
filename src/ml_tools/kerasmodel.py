@@ -1344,9 +1344,11 @@ class KerasModel(Interpreter):
                 for y in y_true:
                     ll.append(labels[y])
                 logging.info("Have multiple labels %s", ll)
+            covered_preds = set()
             for y in y_true:
                 if y in preds:
                     idx = y
+                    covered_preds.add(idx)
                     results.append(y)
                     confidences.append(no_smoothing[y])
                     raw_class_confidences.append(no_smoothing)
@@ -1361,6 +1363,7 @@ class KerasModel(Interpreter):
 
                 else:
                     for idx in preds:
+                        covered_preds.add(idx)
                         results.append(idx)
                         confidences.append(no_smoothing[idx])
                         flat_y.append(y)
@@ -1372,6 +1375,21 @@ class KerasModel(Interpreter):
                                 labels[y],
                                 np.round(100 * no_smoothing),
                             )
+
+            # predicted labels with no matching true label (false positives
+            # that the loop above never touched, e.g. y_true=[0], preds=[0,3])
+            nothing_idx = len(labels) - 1
+            for idx in preds:
+                if idx not in covered_preds:
+                    results.append(idx)
+                    confidences.append(no_smoothing[idx])
+                    flat_y.append(nothing_idx)
+                    raw_class_confidences.append(no_smoothing)
+                    logging.info(
+                        "Extra Pred %s with no true label confs %s",
+                        labels[idx],
+                        np.round(100 * no_smoothing),
+                    )
 
             assert len(results) == len(flat_y)
         true_categories = np.int64(flat_y)
