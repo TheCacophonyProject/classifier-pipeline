@@ -406,10 +406,7 @@ class KerasModel(Interpreter):
             mask_input = layers.Input(shape=(5, 5, 7), name="input_mask")
             input_image = {"input_image": input_image, "input_mask": mask_input}
 
-            tracking_indicators = layers.Lambda(
-                lambda m: m[..., :4],
-                name="dense_macro_timeline",
-            )(mask_input)
+            tracking_indicators = mask_input[..., :4]
 
             # 2. Process discrete indicators with standard Dense layers
             t_embed = layers.Dense(32, activation="swish", name="tracking_projection")(
@@ -420,9 +417,7 @@ class KerasModel(Interpreter):
             )  # Shape: (None, 5, 5, 64)
 
             # 2. Conv2D Lane: Receives localized rate-of-change metrics (Vx, Vy, Delta-T)
-            kinematics_with_dt = layers.Lambda(
-                lambda m: m[..., 4:7], name="conv2d_micro_kinematics"
-            )(mask_input)
+            kinematics_with_dt = mask_input[..., 4:7]
             # 3. Process kinematic vectors with an explicit 1x1 Convolution.
             # Convolutions treat features as spatial coordinate fields, preventing
             # the velocity scales from being dominated by the binary presence flags.

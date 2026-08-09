@@ -183,6 +183,7 @@ class TrackPrediction:
             else:
                 # possibility it doesn't sum to 1 i.e multi label model
                 self.class_best_score /= top_score
+        self.normalized = True
 
     def normalized_best_score(self):
         if self.multi_label:
@@ -207,7 +208,7 @@ class TrackPrediction:
         # need to inverstigate on a test set,what gives the best results.
         # correct way would be to calculate the max for each prediction and divide by the sum of that
         # per pred (np.sum(p.prediction) ** 2) * p.mass
-        if self.class_best_score is not None:
+        if self.class_best_score is not None and self.normalized is not True:
             if self.multi_label:
                 self.class_best_score = self.class_best_score / self.num_predictions
             else:
@@ -509,6 +510,7 @@ class TrackPrediction:
             else:
                 indices = np.where(best_score >= DEFAULT_THRESHOLD)[0]
             tag = most_specific_tag(self.labels, indices, self.parent_mappings)
+
             if tag is not None:
                 if tag in self.labels:
                     index = self.labels.index(tag)
@@ -530,7 +532,6 @@ class TrackPrediction:
                 threshold = DEFAULT_THRESHOLD
             # GP makes api pick up the label this will change when logic is moved to API
             confidence = self.max_score if self.max_score else 0
-
         prediction_meta["tag"] = tag
 
         prediction_meta["threshold_used"] = threshold

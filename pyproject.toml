@@ -46,7 +46,8 @@ dependencies = [
   "ai_edge_litert==1.4.0",
   "flask==3.1.1",
   "watchdog==6.0.0",
-  "waitress~=3.0.2"
+  "waitress~=3.0.2",
+  "scikit-image~=0.26.0"
 
 ]
 
