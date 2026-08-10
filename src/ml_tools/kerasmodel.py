@@ -819,7 +819,7 @@ class KerasModel(Interpreter):
         validate_files = self.data_dir / "validation"
         augment = fine_tune is None
         self.train, epoch_size = get_dataset(
-            train_files,
+            validate_files,
             self.data_type,
             self.labels,
             batch_size=self.params.batch_size,
@@ -845,10 +845,11 @@ class KerasModel(Interpreter):
         )
 
         steps = epoch_size // self.params.batch_size
+        test_files = self.data_dir / "test"
 
         # self.remapped = remapped
         self.validate, _ = get_dataset(
-            validate_files,
+            test_files,
             self.data_type,
             self.labels,
             batch_size=self.params.batch_size,
@@ -940,7 +941,7 @@ class KerasModel(Interpreter):
                 class_weight=self.class_weights,
                 callbacks=fit_callbacks(),
             )
-
+            return
             # drop the warmup callback, it already ramped to target_lr and
             # would otherwise override the low fine-tuning LR below
             checkpoints = [
