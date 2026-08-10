@@ -447,6 +447,8 @@ class KerasModel(Interpreter):
             image_features = layers.MaxPooling2D(
                 pool_size=(2, 2), name="preserve_tiny_anomalies"
             )(x)
+            # BOTTLENECK
+            image_features = layers.Conv2D(512, (1, 1), activation="swish", name="visual_bottleneck")(image_features)
 
             image_features = tf.keras.layers.SpatialDropout2D(0.3)(image_features)
 

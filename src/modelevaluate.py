@@ -225,6 +225,11 @@ def load_args():
         "--prediction-results",
         help="Results npy file to calculate from",
     )
+    parser.add_argument(
+        "--evaluate",
+        action="store_true",
+        help="Used to just evaluate a dataset",
+    )
 
     args = parser.parse_args()
     if args.date:
@@ -989,6 +994,43 @@ def main():
 
             model.labels = labels
 
+            if args.evaluate:
+                files = base_dir / args.dataset
+                logging.info("Evaluating %s", files)
+                from ml_tools.kerasmodel import loss, metrics
+                import tensorflow as tf
+
+                model.model.compile(
+                    optimizer=tf.keras.optimizers.Adam(learning_rate=2e-5),
+                    loss=loss(model.params),
+                    metrics={"prediction": metrics(model.params.multi_label)},
+                )
+                dataset, _ = get_dataset(
+                    files,
+                    model.data_type,
+                    labels,
+                    batch_size=64,
+                    image_size=model.params.output_dim[:2],
+                    preprocess_fn=model.preprocess_fn,
+                    augment=False,
+                    resample=False,
+                    include_features=model.params.mvm,
+                    one_hot=True,
+                    deterministic=True,
+                    shuffle=False,
+                    excluded_labels=excluded,
+                    remapped_labels=remapped,
+                    multi_label=model.params.multi_label,
+                    include_track=False,
+                    channels=model.params.channels,
+                    num_frames=model.params.square_width**2,
+                    pads=model.pads,
+                    tf_mappings=tf_mappings,
+                )
+                results = model.model.evaluate(dataset)
+                for name, value in zip(model.model.metrics_names, results):
+                    logging.info(f"{name}: {value:.4f}")
+                return
             if not has_sigmoid_output(model.model):
                 model.model = add_sigmoid_output(model.model)
             model.model.summary()
