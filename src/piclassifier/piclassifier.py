@@ -441,6 +441,20 @@ class PiClassifier(Processor):
         for t in new_tracks:
             t.received_at = received_at
 
+    def wait_for_classifier(self):
+        if not self.classifier.run_over_network:
+                return
+        from classify.clipclassifier import wait_for_classifier
+
+        logging.info(
+            "Checking if classifier is ready at %s",
+            f"http://127.0.0.1:{self.classifier.port}/ready",
+        )
+        classifier_is_ready = wait_for_classifier(
+            f"http://127.0.0.1:{self.classifier.port}/ready"
+        )
+        return classifier_is_ready
+    
     def startup_classifier(self):
         self.classifier_initialised = True
         if self.classifier.run_over_network:

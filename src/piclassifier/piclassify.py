@@ -352,6 +352,7 @@ def parse_cptv(file, config, thermal_config_file, preview_type, fps, seed):
         ),
     )
     preview_process.start()
+    pi_classifier = None
     try:
         thermal_config = ThermalConfig.load_from_file(
             thermal_config_file, headers.model
@@ -366,6 +367,17 @@ def parse_cptv(file, config, thermal_config_file, preview_type, fps, seed):
             preview_type,
             seed,
         )
+        started_classifier = False
+        if (
+            pi_classifier.motion_detector.can_record()
+            and not pi_classifier.classifier_initialised
+            and pi_classifier.classify
+        ):
+            
+            logging.info("Starting up and waiting for classifier")
+            pi_classifier.startup_classifier()
+            pi_classifier.wait_for_classifier()
+            started_classifier = True
         while True:
             frame = reader.next_frame()
 
@@ -402,8 +414,13 @@ def parse_cptv(file, config, thermal_config_file, preview_type, fps, seed):
                 kill_process_with_timeout(preview_process)
             except:
                 pass
+        if started_classifier:
+            logging.info("Stopping classifier")
+            utils.toggle_network_classifier(False)
+
     except Exception as ex:
-        pi_classifier.disconnected()
+        if pi_classifier:
+            pi_classifier.disconnected()
         logging.error("EXception all done")
         frame_queue.put(STOP_SIGNAL)
         preview_process.join(7)
@@ -593,6 +610,7 @@ def take_snapshots(window, process_queue, output_dir):
 
 
 def delete_stale_thumbnails(output_dir):
+    # delete all but latest clip thumbnail
     logging.info("Deleting stale thumnbnails")
     thumbnail_dir = Path(output_dir) / "thumbnails"
     thumbnail_dir.mkdir(exist_ok=True)
@@ -634,30 +652,44 @@ def delete_stale_thumbnails(output_dir):
 
 def kill_process_with_timeout(process, timeout=30):
     # for some reason process.kill hangs sometimes
-    kill_thread = Thread(target=kill_process, args=(process,))
+    kill_thread = Thread(target=kill_process, args=(process,),daemon=True)
     kill_thread.start()
     try:
         kill_thread.join(timeout)
+        if kill_thread.is_alive():
+            logging.error("Kill thread didn't terminate, should terminate when parent process terminates")
     except:
         logging.error("Kill thread didnt terminate", exc_info=True)
 
 
 def kill_process(process):
-    logging.info("Killing process %s", process.pid)
+    pid = process.pid
+    logging.info("Killing process %s", pid)
     try:
-        parent = psutil.Process(process.pid)
+        parent = psutil.Process(pid)
+        # 1. Filter out Zombies and Uninterruptible Sleep (D-state) processes instantly
+        try:
+            status = parent.status()
+            if status == psutil.STATUS_ZOMBIE:
+                logging.info("PID %s is a Zombie; skipping signal.", pid)
+                return
+            if status == 'uninterruptible-sleep': # D-state
+                logging.warning("PID %s is stuck in D-state (I/O hang). kill -9 will fail.", pid)
+        except psutil.NoSuchProcess:
+            return
+        
         children = parent.children()
         for child in children:
-            if child.is_running:
+            if child.is_running():
                 kill_process(child)
         psutil.wait_procs(children, timeout=5)
-        if parent.is_running:
+        if parent.is_running():
             try:
                 parent.kill()
+                logging.info("Killed %s",process.pid)
             except:
                 logging.error("Could not kill process %s ", parent.pid, exc_info=True)
             parent.wait(5)
-
     except:
         logging.error("Could not kill process", exc_info=True)
 

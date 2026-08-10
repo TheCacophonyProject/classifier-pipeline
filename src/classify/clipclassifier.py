@@ -698,22 +698,24 @@ class ClipClassifier:
                 dbus_preds = track_prediction.class_best_score.copy()
                 dbus_preds = np.uint8(np.round(dbus_preds * 100))
                 dbus_preds = dbus_preds.tolist()
-
-                service.TrackReprocessed(
-                    meta_data.get("id", 0),
-                    track_id,
-                    dbus_preds,
-                    track_prediction.predicted_tag(),
-                    int(round(100 * track_prediction.max_score)),
-                    np.uint8(region.to_ltrb()).tolist(),
-                    region.frame_number,
-                    int(region.mass),
-                    region.blank,
-                    True,
-                    last_frame_num,
-                    model.id,
-                    dbus.Int64(int(1000 * rec_end.timestamp())),
-                )
+                try:
+                    service.TrackReprocessed(
+                        meta_data.get("id", 0),
+                        track_id,
+                        dbus_preds,
+                        track_prediction.predicted_tag(),
+                        int(round(100 * track_prediction.max_score)),
+                        np.uint8(region.to_ltrb()).tolist(),
+                        region.frame_number,
+                        int(region.mass),
+                        region.blank,
+                        True,
+                        last_frame_num,
+                        model.id,
+                        dbus.Int64(int(1000 * rec_end.timestamp())),
+                    )
+                except:
+                    logging.error("Could not send tracking reprocessed signal over dbus %s",exc_info=True)
 
         models = [model]
         predictions_per_model = {model.id: predictions}
