@@ -32,6 +32,8 @@ class HyperParams(dict):
         self["smooth_predictions"] = self.smooth_predictions
         self["channels"] = self.channels
         self["image_modality_dropout"] = self.image_modality_dropout
+        self["metadata_margin_weight"] = self.metadata_margin_weight
+        self["metadata_margin"] = self.metadata_margin
 
     @property
     def channels(self):
@@ -166,6 +168,23 @@ class HyperParams(dict):
         # starvation of the lower-capacity metadata branch by the dominant
         # image branch. 0 disables it.
         return self.get("image_modality_dropout", 0.15)
+
+    @property
+    def metadata_margin_weight(self):
+        # Weight of the auxiliary loss that penalises the model whenever a
+        # prediction made with real metadata isn't measurably better than
+        # the same prediction made with metadata zeroed out - a direct
+        # training signal for the fusion head to actually use the metadata
+        # branch, rather than hoping it emerges from modality dropout
+        # alone. 0 disables the auxiliary head entirely.
+        return self.get("metadata_margin_weight", 0.2)
+
+    @property
+    def metadata_margin(self):
+        # Required loss improvement (zeroed-metadata loss minus
+        # real-metadata loss) before the margin term is satisfied and
+        # stops contributing gradient.
+        return self.get("metadata_margin", 0.05)
 
     @property
     def phase2_freeze_epochs(self):
