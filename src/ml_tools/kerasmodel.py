@@ -35,6 +35,34 @@ classify_i = 0
 CURRENT_EPOCH = tf.Variable(0, dtype=tf.int32, trainable=False, name="current_epoch")
 
 
+@tf.keras.utils.register_keras_serializable(package="Custom")
+class ModalityDropout(tf.keras.layers.Layer):
+    """Zeroes an entire modality's features for a random subset of examples
+    each training step, so the loss on those examples can only be explained
+    by the other modality. Counters gradient starvation when a
+    higher-capacity modality (e.g. the image branch) would otherwise
+    dominate a lower-capacity one (e.g. metadata) during joint training.
+    No-op at inference time."""
+
+    def __init__(self, drop_prob, **kwargs):
+        super().__init__(**kwargs)
+        self.drop_prob = drop_prob
+
+    def call(self, inputs, training=None):
+        if not training or self.drop_prob <= 0:
+            return inputs
+        batch_size = tf.shape(inputs)[0]
+        keep = tf.cast(
+            tf.random.uniform((batch_size, 1, 1, 1)) >= self.drop_prob, inputs.dtype
+        )
+        return inputs * keep
+
+    def get_config(self):
+        config = super().get_config()
+        config.update({"drop_prob": self.drop_prob})
+        return config
+
+
 class KerasModel(Interpreter):
     """Defines a deep learning model"""
 
@@ -451,13 +479,16 @@ class KerasModel(Interpreter):
             image_features = layers.Conv2D(512, (1, 1), activation="swish", name="visual_bottleneck")(image_features)
 
             image_features = tf.keras.layers.SpatialDropout2D(0.3)(image_features)
+            image_features = ModalityDropout(
+                self.params.image_modality_dropout, name="image_modality_dropout"
+            )(image_features)
 
-            # Dimensions match your blueprint perfectly: 1536 (Vision) + 128 (Metadata) = 1664
+            # 512 (Vision, post-bottleneck) + 128 (Metadata) = 640
             combined = layers.Concatenate(name="input_concat")(
                 [image_features, time_embedding]
-            )  # Shape: (None, 5, 5, 1664)
+            )  # Shape: (None, 5, 5, 640)
 
-            # 1. Compress channel depth from 1664 to 256 using 1x1 convolution
+            # 1. Compress channel depth from 640 to 256 using 1x1 convolution
             x = layers.Conv2D(256, (1, 1), activation="swish", padding="same")(combined)
 
             # Mix the combined space-time features together

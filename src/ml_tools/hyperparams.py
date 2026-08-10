@@ -31,6 +31,7 @@ class HyperParams(dict):
 
         self["smooth_predictions"] = self.smooth_predictions
         self["channels"] = self.channels
+        self["image_modality_dropout"] = self.image_modality_dropout
 
     @property
     def channels(self):
@@ -156,6 +157,15 @@ class HyperParams(dict):
     @property
     def fine_tune_learning_rate(self):
         return self.get("fine_tune_learning_rate", 0.00001)
+
+    @property
+    def image_modality_dropout(self):
+        # Probability of zeroing the image branch's features for a given
+        # example during training, forcing that example's loss to be
+        # explained by the metadata branch alone. Counters gradient
+        # starvation of the lower-capacity metadata branch by the dominant
+        # image branch. 0 disables it.
+        return self.get("image_modality_dropout", 0.15)
 
     @property
     def phase2_freeze_epochs(self):
