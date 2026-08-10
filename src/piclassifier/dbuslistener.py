@@ -87,7 +87,7 @@ def tracking_reprocessed(
     model_id,
     rec_end,
 ):
-    rec_end = datetime.fromtimestamp(rec_end)
+    rec_end = datetime.fromtimestamp(rec_end/ 1000)
     logging.info(
         "Received post processing event for recording ended at %s clip %s track %s prediction of %s with %s%% confidence at region %s",
         rec_end,

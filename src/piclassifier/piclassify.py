@@ -593,7 +593,6 @@ def take_snapshots(window, process_queue, output_dir):
 
 
 def delete_stale_thumbnails(output_dir):
-    # delete all but latest clip thumbnail
     logging.info("Deleting stale thumnbnails")
     thumbnail_dir = Path(output_dir) / "thumbnails"
     thumbnail_dir.mkdir(exist_ok=True)
