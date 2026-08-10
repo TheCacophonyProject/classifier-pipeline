@@ -2197,7 +2197,7 @@ def stage_3_lr_scheduler(epoch, lr):
     )
 
     if epoch < JITTER_HEAVY_STAGE_EPOCH:
-        return 2e-5
+        return 2e-6
     else:
         if epoch == JITTER_HEAVY_STAGE_EPOCH:
             print(
