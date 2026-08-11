@@ -999,7 +999,7 @@ def main():
                 logging.info("Evaluating %s", files)
                 from ml_tools.kerasmodel import loss, metrics
                 import tensorflow as tf
-
+                model.model.load_weights(weights[0])
                 model.model.compile(
                     optimizer=tf.keras.optimizers.Adam(learning_rate=2e-5),
                     loss=loss(model.params),
@@ -1030,6 +1030,94 @@ def main():
                 results = model.model.evaluate(dataset)
                 for name, value in zip(model.model.metrics_names, results):
                     logging.info(f"{name}: {value:.4f}")
+
+                if model.params.metadata_margin_weight > 0:
+                    logging.info(
+                        "Rebuilding model with metadata-margin aux output to "
+                        "compare real vs zeroed-metadata predictions"
+                    )
+                    model.build_model(dropout=model.params.dropout, single_input=False)
+                    if model.model_with_aux is None:
+                        logging.warning(
+                            "model_with_aux was not built - metadata_margin_weight "
+                            "is set but single_input path wasn't taken, skipping"
+                        )
+                    else:
+                        model.model_with_aux.load_weights(
+                            weights[0], by_name=True, skip_mismatch=True
+                        )
+                        real_metrics = metrics(model.params.multi_label)
+                        zero_metrics = metrics(model.params.multi_label)
+
+                        # Per-example view of what metadata_margin_loss actually
+                        # sees during training, to check whether the margin is
+                        # being met by a constant confidence nudge (gap clusters
+                        # right at `margin` regardless of example difficulty,
+                        # and per-label decisions rarely flip) rather than by
+                        # metadata content changing what's predicted.
+                        margin = model.params.metadata_margin
+                        per_example_loss = tf.keras.losses.BinaryCrossentropy(
+                            from_logits=True,
+                            label_smoothing=model.params.label_smoothing,
+                            reduction=tf.keras.losses.Reduction.NONE,
+                        )
+                        gaps = []
+                        decision_diffs = 0
+                        total_decisions = 0
+
+                        for x, y in dataset:
+                            outputs = model.model_with_aux(x, training=False)
+                            margin_preds = outputs[
+                                "metadata_margin"
+                            ]  # (batch, 2, num_labels) logits
+                            real_logits = margin_preds[:, 0]
+                            zero_logits = margin_preds[:, 1]
+
+                            for m in real_metrics:
+                                m.update_state(y, real_logits)
+                            for m in zero_metrics:
+                                m.update_state(y, zero_logits)
+
+                            real_loss = per_example_loss(y, real_logits)
+                            zero_loss = per_example_loss(y, zero_logits)
+                            gaps.append((zero_loss - real_loss).numpy())
+
+                            real_decision = real_logits > 0.0
+                            zero_decision = zero_logits > 0.0
+                            decision_diffs += tf.reduce_sum(
+                                tf.cast(
+                                    tf.not_equal(real_decision, zero_decision),
+                                    tf.int32,
+                                )
+                            ).numpy()
+                            total_decisions += tf.size(real_decision).numpy()
+
+                        gaps = np.concatenate(gaps)
+                        logging.info(
+                            "Per-example loss gap (zero_loss - real_loss): "
+                            "mean=%.4f std=%.4f min=%.4f max=%.4f "
+                            "margin=%.4f fraction>=margin=%.3f",
+                            gaps.mean(),
+                            gaps.std(),
+                            gaps.min(),
+                            gaps.max(),
+                            margin,
+                            np.mean(gaps >= margin),
+                        )
+                        logging.info(
+                            "Per-label decisions (logit>0) that differ between "
+                            "real and zeroed metadata: %.4f%% (%d / %d)",
+                            100 * decision_diffs / total_decisions,
+                            decision_diffs,
+                            total_decisions,
+                        )
+
+                        logging.info("Real metadata:")
+                        for m in real_metrics:
+                            logging.info(f"  {m.name}: {m.result().numpy():.4f}")
+                        logging.info("Zeroed metadata:")
+                        for m in zero_metrics:
+                            logging.info(f"  {m.name}: {m.result().numpy():.4f}")
                 return
             if not has_sigmoid_output(model.model):
                 model.model = add_sigmoid_output(model.model)

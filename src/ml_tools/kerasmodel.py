@@ -481,8 +481,12 @@ class KerasModel(Interpreter):
             # Named instances (rather than inline calls) so the same
             # weights can be re-applied to a zeroed-metadata copy of the
             # input below, for the auxiliary metadata-margin loss.
-            fuse_conv1 = layers.Conv2D(256, (1, 1), activation="swish", padding="same")
-            fuse_conv2 = layers.Conv2D(256, (3, 3), activation="swish", padding="same")
+            fuse_conv1 = layers.Conv2D(
+                256, (1, 1), activation="swish", padding="same", name="fusion_conv1"
+            )
+            fuse_conv2 = layers.Conv2D(
+                256, (3, 3), activation="swish", padding="same", name="fusion_conv2"
+            )
 
             # 1. Compress channel depth from 640 to 256 using 1x1 convolution
             x = fuse_conv1(combined)
