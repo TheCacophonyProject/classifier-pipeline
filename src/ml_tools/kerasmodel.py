@@ -435,42 +435,31 @@ class KerasModel(Interpreter):
             mask_input = layers.Input(shape=(5, 5, 7), name="input_mask")
             input_image = {"input_image": input_image, "input_mask": mask_input}
 
-            tracking_indicators = mask_input[..., :4]
+            # =====================================================================
+            # FULLY SYNCHRONIZED SYMMETRIC METADATA ENGINE
+            # =====================================================================
+            # mask_input Shape: (None, 5, 5, 7) - Perfectly matching the visual 5x5 footprint
 
-            # 2. Process discrete indicators with standard Dense layers
-            t_embed = layers.Dense(32, activation="swish", name="tracking_projection")(
-                tracking_indicators
-            )
-            t_embed = layers.Dense(64, activation="swish", name="tracking_expansion")(
-                t_embed
-            )  # Shape: (None, 5, 5, 64)
+            # Layer 1: Local Dimensional Projection (1x1 Kernel)
+            # Prepares the 7 channels by mixing them locally within each individual tile cell
+            m_embed = layers.Conv2D(
+                64, 
+                (1, 1), 
+                activation="swish", 
+                padding="same", 
+                name="metadata_local_projection"
+            )(mask_input)
 
-            # 2. Conv2D Lane: Receives localized rate-of-change metrics (Vx, Vy, Delta-T)
-            kinematics_with_dt = mask_input[..., 4:7]
-            # 3. Process kinematic vectors with an explicit 1x1 Convolution.
-            # Convolutions treat features as spatial coordinate fields, preventing
-            # the velocity scales from being dominated by the binary presence flags.
-            k_embed = layers.Conv2D(
-                32,
-                (1, 1),
-                activation="swish",
-                padding="same",
-                name="velocity_projection",
-            )(kinematics_with_dt)
-            k_embed = layers.Conv2D(
-                64,
-                (1, 1),
-                activation="swish",
-                padding="same",
-                name="velocity_expansion",
-            )(
-                k_embed
-            )  # Shape: (None, 5, 5, 64)
-
-            # 4. Re-combine metadata channels cleanly -> Preserves exactly 128 channels
-            time_embedding = layers.Concatenate(name="unified_metadata_embedding")(
-                [t_embed, k_embed]
-            )  # Shape: (None, 5, 5, 128)
+            # Layer 2: Symmetric Receptive Field Matcher (3x3 Kernel)
+            # Uses a symmetric (3,3) kernel to mirror the exact spatial blending 
+            # patterns occurring inside your EfficientNet visual backbone!
+            time_embedding = layers.Conv2D(
+                128, 
+                (3, 3), # Locked back to symmetric to align with image feature maps
+                activation="swish", 
+                padding="same", 
+                name="metadata_symmetric_receptive_engine"
+            )(m_embed) # Output Footprint: (None, 5, 5, 128) - Flawless structural
 
             # --- Feature Fusion (Maintains your exact native dimensions) ---
             image_features = layers.MaxPooling2D(

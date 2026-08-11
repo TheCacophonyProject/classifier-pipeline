@@ -622,35 +622,37 @@ def read_tfrecord(
                 rgb_image, size=[record_frames, mosaic_size, mosaic_size, 3]
             )
 
-            if single_input:
-                logging.info("Applying random frame mask")
-                # Stage the frame-masking probability by epoch, same boundaries as
-                # the cutmix staging above: heavy early on, tapering to off, read
-                # live off current_epoch so it tracks training progress.
-                epoch = current_epoch.read_value()
+            logging.info("Applying random frame mask")
+            # Stage the frame-masking probability by epoch, same boundaries as
+            # the cutmix staging above: heavy early on, tapering to off, read
+            # live off current_epoch so it tracks training progress. Applied
+            # for both single and dual input - replicates real tracks that
+            # naturally run shorter than 25 frames, so (unlike jitter) the
+            # label isn't softened: nothing is being faked missing here.
+            epoch = current_epoch.read_value()
 
-                def heavy_mask_prob():
-                    return tf.constant(0.5, dtype=tf.float32)
+            def heavy_mask_prob():
+                return tf.constant(0.5, dtype=tf.float32)
 
-                def medium_mask_prob():
-                    return tf.constant(0.25, dtype=tf.float32)
+            def medium_mask_prob():
+                return tf.constant(0.25, dtype=tf.float32)
 
-                def off_mask_prob():
-                    return tf.constant(0.0, dtype=tf.float32)
+            def off_mask_prob():
+                return tf.constant(0.0, dtype=tf.float32)
 
-                mask_frames_prob = tf.case(
-                    [(epoch < 15, heavy_mask_prob), (epoch < 25, medium_mask_prob)],
-                    default=off_mask_prob,
+            mask_frames_prob = tf.case(
+                [(epoch < 15, heavy_mask_prob), (epoch < 25, medium_mask_prob)],
+                default=off_mask_prob,
+            )
+
+            if (
+                tf.random.uniform(shape=[], minval=0.0, maxval=1.0)
+                < mask_frames_prob
+            ):
+                rgb_image, frame_indices = mask_random_frames(
+                    rgb_image, frame_indices, record_frames
                 )
-
-                if (
-                    tf.random.uniform(shape=[], minval=0.0, maxval=1.0)
-                    < mask_frames_prob
-                ):
-                    rgb_image, frame_indices = mask_random_frames(
-                        rgb_image, frame_indices, record_frames
-                    )
-                    record_frames = tf.shape(frame_indices)[0]
+                record_frames = tf.shape(frame_indices)[0]
         else:
             rgb_image = tf.image.crop_to_bounding_box(
                 rgb_image, padding, padding, mosaic_size, mosaic_size
@@ -1422,7 +1424,7 @@ def get_frame_mask_v2(
             [normalised_delta, tf.zeros([padding_len], dtype=tf.float32)], axis=0
         )
 
-        return tf.stack(
+        mask =  tf.stack(
             [
                 time_mask,
                 presence_mask,
@@ -1434,7 +1436,7 @@ def get_frame_mask_v2(
             ],
             axis=1,
         )
-
+        return mask
     else:
         return tf.stack([time_mask, presence_mask], axis=1)
 
