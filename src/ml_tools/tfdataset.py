@@ -272,7 +272,10 @@ def get_dataset(load_function, base_dir, labels, **args):
         dataset = dataset.map(
             lambda x, y: (x["input_image"], y), num_parallel_calls=tf.data.AUTOTUNE
         )
-
+    dataset = dataset.map(
+            lambda x, y: (x["input_mask"],y),            
+            num_parallel_calls=tf.data.AUTOTUNE,
+        )
     dataset = dataset.prefetch(buffer_size=AUTOTUNE)
 
     return dataset, epoch_size

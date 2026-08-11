@@ -389,6 +389,23 @@ class KerasModel(Interpreter):
         model = models.Model(inputs=inputs, outputs=output)
         return model
 
+
+    def build_isolated_metadata_test_model(self):
+        from tensorflow.keras import layers
+ 
+        # Pass ONLY your 7-channel input mask
+        mask_input = layers.Input(shape=(5, 5, 7), name="input_mask")
+        
+        # Use your exact deep symmetric 3x3 layout
+        m_embed = layers.Conv2D(64, (1, 1), activation="swish", padding="same")(mask_input)
+        time_embedding = layers.Conv2D(128, (3, 3), activation="swish", padding="same")(m_embed)
+        
+        x = layers.GlobalAveragePooling2D()(time_embedding)
+        prediction = layers.Dense(18, activation=None)(x) # Outputting raw logits
+        
+        self.model =  tf.keras.Model(inputs=mask_input, outputs=prediction)
+        return self.model
+    
     def build_model(
         self,
         dropout=None,
@@ -399,7 +416,6 @@ class KerasModel(Interpreter):
             # this isn't performing well and is slow to train
             # the dataset also needs to be adjusted to handle this
             return self.build_model_lstm()
-        from tensorflow.keras import layers
         from tensorflow import keras
 
         # width = self.params.frame_size
@@ -432,7 +448,7 @@ class KerasModel(Interpreter):
             # delta-T against velocity are done upstream in the tf.data
             # pipeline (thermaldataset.reconstruct_absolute_time and
             # get_frame_mask_v2), so the branches below are plain slices.
-            mask_input = layers.Input(shape=(5, 5, 7), name="input_mask")
+            mask_input = tf.keras.layers.Input(shape=(5, 5, 7), name="input_mask")
             input_image = {"input_image": input_image, "input_mask": mask_input}
 
             # =====================================================================
@@ -825,10 +841,12 @@ class KerasModel(Interpreter):
             self.model.summary()
         else:
 
-            self.model = self.build_model(
-                dropout=self.params.dropout,
-                single_input=single_input,
-            )
+            # self.model = self.build_model(
+            #     dropout=self.params.dropout,
+            #     single_input=single_input,
+            # )
+
+            self.model = self.build_isolated_metadata_test_model()
 
             if weights is not None:
                 logging.info("Loading %s", weights)
@@ -861,7 +879,7 @@ class KerasModel(Interpreter):
             resample=resample,
             stop_on_empty_dataset=False,
             include_features=self.params.mvm,
-            augment=augment,
+            augment=False,
             excluded_labels=self.excluded_labels,
             remapped_labels=self.remapped_labels,
             # dist=self.dataset_counts["train"],

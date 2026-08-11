@@ -251,12 +251,12 @@ def load_dataset(filenames, remap_lookup, labels, args):
         num_parallel_calls=AUTOTUNE,
         deterministic=deterministic,
     )
-    if only_features:
-        filter_nan = lambda x, y: not tf.reduce_any(tf.math.is_nan(x))
-    else:
-        filter_nan = lambda x, y: not tf.reduce_any(tf.math.is_nan(x["input_image"][0]))
+    # if only_features:
+    #     filter_nan = lambda x, y: not tf.reduce_any(tf.math.is_nan(x))
+    # else:
+    #     filter_nan = lambda x, y: not tf.reduce_any(tf.math.is_nan(x["input_image"][0]))
 
-    dataset = dataset.filter(filter_nan)
+    # dataset = dataset.filter(filter_nan)
 
     # if features are missing they wil be 0 size
     if args.get("only_features"):
@@ -322,13 +322,13 @@ def load_dataset(filenames, remap_lookup, labels, args):
 
 @tf.function
 def tile_input(x, use_velocity):
-    input_image = tile_images(x["input_image"])
+    # input_image = tile_images(x["input_image"])
     if use_velocity:
         mask = tf.reshape(x["input_mask"], (5, 5, 7))
     else:
         mask = tf.reshape(x["input_mask"], (5, 5, 2))
 
-    return {"input_image": input_image, "input_mask": mask}
+    return {"input_image": x["input_image"], "input_mask": mask}
 
 
 import tensorflow as tf
@@ -568,8 +568,20 @@ def read_tfrecord(
     means = tf.reshape(means, [record_frames, 3])
     mean_indices = [MEANS_CHANNEL_ORDER.index(c) for c in channels]
     frame_means = tf.gather(means, mean_indices, axis=1) * 255.0
+    rgb_image = None
 
+    load_images = False
     record_frames = tf.cast(record_frames, tf.int32)
+    rotation_angle = 0.0
+    mask = get_frame_mask_v2(
+        record_frames,
+        frame_indices,
+        centre_x,
+        centre_y,
+        use_velocity,
+        rotation_angle,
+        regions,
+    )
     if load_images:
         if TrackChannels.thermal_norm.name in channels:
             thermalnorm = 255.0 * example["image/thermal_norm_encoded"]
@@ -664,15 +676,6 @@ def read_tfrecord(
         )
         rgb_image = tf.clip_by_value(rgb_image, 0.0, 255.0)
 
-        mask = get_frame_mask_v2(
-            record_frames,
-            frame_indices,
-            centre_x,
-            centre_y,
-            use_velocity,
-            rotation_angle,
-            regions,
-        )
 
         if num_frames > 1 and not repeat_frames:
             pad_size = num_frames - tf.shape(rgb_image)[0]
