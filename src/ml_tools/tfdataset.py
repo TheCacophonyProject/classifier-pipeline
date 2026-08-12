@@ -3,6 +3,7 @@ import tensorflow as tf
 from functools import partial
 import numpy as np
 import logging
+import os
 import random
 import math
 
@@ -161,7 +162,12 @@ def get_dataset(load_function, base_dir, labels, **args):
     #         )
 
     # 1 / 0
-    filenames = tf.io.gfile.glob(f"{base_dir}/*.tfrecord")
+    filenames = [
+        os.path.join(dirpath, f)
+        for dirpath, _, files in tf.io.gfile.walk(base_dir)
+        for f in files
+        if f.endswith(".tfrecord")
+    ]
     if not args.get("deterministic"):
         random.shuffle(filenames)
 

@@ -999,6 +999,7 @@ def main():
                 logging.info("Evaluating %s", files)
                 from ml_tools.kerasmodel import loss, metrics
                 import tensorflow as tf
+
                 model.model.load_weights(weights[0])
                 model.model.compile(
                     optimizer=tf.keras.optimizers.Adam(learning_rate=2e-5),

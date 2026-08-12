@@ -102,6 +102,23 @@ def get_excluded():
     ]
 
 
+def load_excluded_tracks(filename="exclude.txt"):
+    path = Path(filename)
+    if not path.exists():
+        logging.warning("Exclude tracks file %s not found, not excluding any tracks", path)
+        return None
+    with open(path, "r") as f:
+        track_ids = [int(line.strip()) for line in f if line.strip()]
+    logging.info("Loaded %s excluded tracks from %s", len(track_ids), path)
+    keys = tf.constant(track_ids, dtype=tf.int32)
+    values = tf.ones_like(keys, dtype=tf.bool)
+    return tf.lookup.StaticHashTable(
+        initializer=tf.lookup.KeyValueTensorInitializer(keys=keys, values=values),
+        default_value=False,
+        name="excluded_tracks",
+    )
+
+
 def get_remapped(multi_label=False):
     land_bird = "bird"
 
@@ -258,6 +275,15 @@ def load_dataset(filenames, remap_lookup, labels, args):
 
     dataset = dataset.filter(filter_nan)
 
+    
+    logging.info("Filtering tracks that have been considered misclassified by umap")
+    excluded_tracks_table = load_excluded_tracks()
+    if excluded_tracks_table is not None:
+        filter_bad_tracks = lambda x, y: not excluded_tracks_table.lookup(y["label"][1])
+        dataset = dataset.filter(filter_bad_tracks)
+    dataset = dataset.map(
+        lambda x, y: (x, {"label":y["label"][0],"num_frames":y["num_frames"]}), num_parallel_calls=tf.data.AUTOTUNE
+    )
     # if features are missing they wil be 0 size
     if args.get("only_features"):
         filter_none = lambda x, y: tf.size(x) > 0

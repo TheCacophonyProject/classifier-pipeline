@@ -423,6 +423,19 @@ def find_mislabeled_points(clusterer, y_true, tracks,features_file):
     print("saving mismatches to ",mismatch_file)
     grouped_df.to_csv(mismatch_file, index=False)
 
+    # Tracks whose mismatches were never explained away by an ambiguous
+    # cluster are the ones most likely to be genuinely mislabeled.
+    no_ambiguous_df = grouped_df[
+        grouped_df["mapped_to"].apply(
+            lambda labels: not any("Ambiguous" in label for label in labels)
+        )
+    ]
+    mismatched_tracks_file = features_file.with_name("mismatched-tracks.txt")
+    print("saving mismatched tracks to ", mismatched_tracks_file)
+    with open(mismatched_tracks_file, "w") as f:
+        for track in no_ambiguous_df["tracks"]:
+            f.write(f"{track}\n")
+
 
 def extract_embeddings(
     dataset_dir,
@@ -454,7 +467,7 @@ def extract_embeddings(
     with open(meta_file) as f:
         meta = json.load(f)
 
-    trianing_meta_f = dataset_dir.parent / "training-meta.json"
+    trianing_meta_f = dataset_dir / "training-meta.json"
     with trianing_meta_f.open("r") as f:
         training_meta = json.load(f)
     labels = training_meta.get("labels", [])
