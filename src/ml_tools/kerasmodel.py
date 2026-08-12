@@ -431,34 +431,28 @@ class KerasModel(Interpreter):
             # delta-T against velocity are done upstream in the tf.data
             # pipeline (thermaldataset.reconstruct_absolute_time and
             # get_frame_mask_v2), so the branches below are plain slices.
-            mask_input = layers.Input(shape=(5, 5, 3), name="input_mask")
+            mask_input = layers.Input(shape=(5, 5, 2), name="input_mask")
             input_image = {"input_image": input_image, "input_mask": mask_input}
 
-            # =====================================================================
-            # FULLY SYNCHRONIZED SYMMETRIC METADATA ENGINE
-            # =====================================================================
-            # mask_input Shape: (None, 5, 5, 7) - Perfectly matching the visual 5x5 footprint
-
-            # Layer 1: Local Dimensional Projection (1x1 Kernel)
-            # Prepares the 7 channels by mixing them locally within each individual tile cell
-            m_embed = layers.Conv2D(
-                64, 
-                (1, 1), 
-                activation="swish", 
-                padding="same", 
-                name="metadata_local_projection"
+            # 1. Light local projection of your 2 temporal indicators
+            t_project = layers.Dense(
+                16, activation="swish", name="temporal_projection"
             )(mask_input)
+            t_embed = layers.Dense(32, activation="swish", name="temporal_embedding")(
+                t_project
+            )
 
-            # Layer 2: Symmetric Receptive Field Matcher (3x3 Kernel)
-            # Uses a symmetric (3,3) kernel to mirror the exact spatial blending 
-            # patterns occurring inside your EfficientNet visual backbone!
+            # 2. Match the spatial receptive field of the visual backbone
+            # A 3x3 kernel here blends the time and presence markers across adjacent tiles cleanly
             time_embedding = layers.Conv2D(
-                128, 
-                (3, 3), # Locked back to symmetric to align with image feature maps
-                activation="swish", 
-                padding="same", 
-                name="metadata_symmetric_receptive_engine"
-            )(m_embed) # Output Footprint: (None, 5, 5, 128) - Flawless structural
+                64,  # Shrunk from 128 to 64 to keep the metadata lane tightly constrained
+                (3, 3),
+                activation="swish",
+                padding="same",
+                name="temporal_spatial_matcher",
+            )(
+                t_embed
+            )  # Output Shape: (None, 5, 5, 64)
 
             # --- Feature Fusion (Maintains your exact native dimensions) ---
             image_features = layers.MaxPooling2D(

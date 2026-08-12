@@ -91,7 +91,8 @@ def main():
     hdb_load(
         args.output.with_name(f"{args.output.stem}-features.npy"),
         new_labels,
-        filter_labels,)
+        filter_labels,
+    )
     return
     run_umap(
         args.model,
@@ -101,10 +102,13 @@ def main():
     )
     return
 
-def hdb_load( features_file, labels, filter_labels=None):
+
+def hdb_load(features_file, labels, filter_labels=None):
 
     features = np.load(features_file)
-    labels_file = features_file.with_name(f"{features_file.stem.replace("-features","-labels")}.npy")
+    labels_file = features_file.with_name(
+        f"{features_file.stem.replace("-features","-labels")}.npy"
+    )
     true_labels = np.load(labels_file)
     tracks_file = features_file.with_name(
         f"{features_file.stem.replace("-features","-tracks")}.npy"
@@ -121,15 +125,15 @@ def hdb_load( features_file, labels, filter_labels=None):
 
     logging.info("Features are %s labels %s", features.shape, true_labels.shape)
 
-
     embedding_file = features_file.with_name(
         f"{features_file.stem.replace('-features', '-umap2d')}.npy"
     )
     embedding = np.load(embedding_file)
     import joblib
+
     hdb_file = features_file.with_name(features_file.stem + "-hdb.pkl")
     # clusterer = joblib.load(hdb_file)
-# 2. Cluster with HDBSCAN
+    # 2. Cluster with HDBSCAN
     # The lower the min_cluster_size and min_samples, the more granular the detection
     clusterer = hdbscan.HDBSCAN(
         min_cluster_size=30,
@@ -139,8 +143,8 @@ def hdb_load( features_file, labels, filter_labels=None):
     clusterer.fit(embedding)
     joblib.dump(clusterer, hdb_file)
 
+    find_mislabeled_points(clusterer, true_labels, tracks, features_file)
 
-    find_mislabeled_points(clusterer, true_labels, tracks,features_file)
 
 def run_umap(model_file, features_file, labels, filter_labels=None):
     import numpy as np
@@ -156,7 +160,9 @@ def run_umap(model_file, features_file, labels, filter_labels=None):
         meta = json.load(f)
     # labels = meta.get("labels", [])
     features = np.load(features_file)
-    labels_file = features_file.with_name(f"{features_file.stem.replace("-features","-labels")}.npy")
+    labels_file = features_file.with_name(
+        f"{features_file.stem.replace("-features","-labels")}.npy"
+    )
     true_labels = np.load(labels_file)
     tracks_file = features_file.with_name(
         f"{features_file.stem.replace("-features","-tracks")}.npy"
@@ -177,7 +183,6 @@ def run_umap(model_file, features_file, labels, filter_labels=None):
     reducer = umap.UMAP(n_neighbors=45, min_dist=0.0, n_components=6, metric="cosine")
     embedding = reducer.fit_transform(features)  # Notice: y is NOT passed here
 
-
     embedding_file = features_file.with_name(
         f"{features_file.stem.replace('-features', '-umap2d')}.npy"
     )
@@ -195,11 +200,12 @@ def run_umap(model_file, features_file, labels, filter_labels=None):
     )
     clusterer.fit(embedding)
     import joblib
+
     hdb_file = features_file.with_name(features_file.stem + "-hdb.pkl")
 
     joblib.dump(clusterer, hdb_file)
 
-    find_mislabeled_points(clusterer, true_labels, tracks,features_file)
+    find_mislabeled_points(clusterer, true_labels, tracks, features_file)
     # 3. Detect Anomalies
     # HDBSCAN assigns -1 to points that do not fall into any cluster
     anomaly_labels = clusterer.labels_
@@ -288,7 +294,7 @@ def run_umap(model_file, features_file, labels, filter_labels=None):
     fig.savefig(features_file.with_suffix(".jpg"), dpi=600, bbox_inches="tight")
 
 
-def find_mislabeled_points(clusterer, y_true, tracks,features_file):
+def find_mislabeled_points(clusterer, y_true, tracks, features_file):
     probabilities = clusterer.probabilities_
     hdbscan_labels = clusterer.labels_
     n_clusters = len(set(hdbscan_labels)) - (1 if -1 in hdbscan_labels else 0)
@@ -354,7 +360,7 @@ def find_mislabeled_points(clusterer, y_true, tracks,features_file):
     ]
     mismatch_file = features_file.with_name(features_file.stem + "-mismatch.csv")
 
-    print("saving mismatches to ",mismatch_file)
+    print("saving mismatches to ", mismatch_file)
     mismatch_df.to_csv(mismatch_file, index=False)
 
 

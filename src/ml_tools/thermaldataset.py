@@ -40,6 +40,7 @@ insect = None
 fp = None
 USE_VELOCITY = False
 
+
 # labels can be any subset of this, prevents new labels being trained on until we explicitly add them to here
 def get_acceptable_labels(remapped_labels):
     # logging.warning("Need to add remapped labels into acceptable labels")
@@ -325,7 +326,7 @@ def tile_input(x, use_velocity):
     if use_velocity:
         mask = tf.reshape(x["input_mask"], (5, 5, 7))
     else:
-        mask = tf.reshape(x["input_mask"], (5, 5, 3))
+        mask = tf.reshape(x["input_mask"], (5, 5, 2))
 
     return {"input_image": input_image, "input_mask": mask}
 
@@ -644,10 +645,7 @@ def read_tfrecord(
                 default=off_mask_prob,
             )
 
-            if (
-                tf.random.uniform(shape=[], minval=0.0, maxval=1.0)
-                < mask_frames_prob
-            ):
+            if tf.random.uniform(shape=[], minval=0.0, maxval=1.0) < mask_frames_prob:
                 rgb_image, frame_indices = mask_random_frames(
                     rgb_image, frame_indices, record_frames
                 )
@@ -1424,7 +1422,7 @@ def get_frame_mask_v2(
             [normalised_delta, tf.zeros([padding_len], dtype=tf.float32)], axis=0
         )
 
-        mask =  tf.stack(
+        mask = tf.stack(
             [
                 time_mask,
                 presence_mask,
@@ -1438,10 +1436,10 @@ def get_frame_mask_v2(
         )
         return mask
     else:
-        dt_forward_mask = tf.concat(
-            [normalised_delta, tf.zeros([padding_len], dtype=tf.float32)], axis=0
-        )
-        return tf.stack([time_mask, presence_mask,dt_forward_mask], axis=1)
+        # dt_forward_mask = tf.concat(
+        #     [normalised_delta, tf.zeros([padding_len], dtype=tf.float32)], axis=0
+        # )
+        return tf.stack([time_mask, presence_mask], axis=1)
 
 
 @tf.function
