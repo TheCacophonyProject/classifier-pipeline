@@ -462,9 +462,6 @@ class KerasModel(Interpreter):
             # image_features = layers.Conv2D(512, (1, 1), activation="swish", name="visual_bottleneck")(image_features)
 
             image_features = tf.keras.layers.SpatialDropout2D(0.3)(image_features)
-            image_features = ModalityDropout(
-                self.params.image_modality_dropout, name="image_modality_dropout"
-            )(image_features)
 
             # 512 (Vision, post-bottleneck) + 128 (Metadata) = 640
             combined = layers.Concatenate(name="input_concat")(
