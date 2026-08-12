@@ -1043,9 +1043,16 @@ def main():
                             "is set but single_input path wasn't taken, skipping"
                         )
                     else:
-                        model.model_with_aux.load_weights(
-                            weights[0], by_name=True, skip_mismatch=True
-                        )
+                        # model.model and model.model_with_aux share the same
+                        # layer instances for every weight-bearing layer (see
+                        # build_model), so loading the checkpoint into
+                        # model.model - now rebuilt with matching topology -
+                        # also populates model_with_aux's shared layers.
+                        # by_name isn't used here since it's not supported for
+                        # the native Keras 3 .weights.h5 format this was
+                        # checkpointed in, and isn't needed anyway since the
+                        # topology now matches exactly.
+                        model.model.load_weights(weights[0])
                         real_metrics = metrics(model.params.multi_label)
                         zero_metrics = metrics(model.params.multi_label)
 
