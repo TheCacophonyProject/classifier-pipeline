@@ -290,7 +290,14 @@ def load_dataset(filenames, remap_lookup, labels, args):
         )
 
     if augment:
-        if not args.get("single_input", False):
+        # Jitter/cutmix defaults to following single_input (jitter for
+        # multi-input, cutmix for single-input) but can be overridden via
+        # use_jitter, e.g. to train a single_input baseline with the same
+        # augmentation as a multi-input run for a cleaner comparison.
+        use_jitter = args.get("use_jitter")
+        if use_jitter is None:
+            use_jitter = not args.get("single_input", False)
+        if use_jitter:
             logging.info("Doing jitter")
             dataset = prepare_jitter_dataset(
                 dataset,

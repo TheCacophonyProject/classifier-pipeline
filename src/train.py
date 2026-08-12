@@ -64,6 +64,13 @@ def load_config():
         help="Warming down, running without training augment on a low learning rate",
     )
     parser.add_argument(
+        "--jitter",
+        action="store_true",
+        help="Force jitter augmentation even with --single-input (cutmix is the "
+        "single-input default), e.g. for a baseline matching a multi-input run's "
+        "augmentation",
+    )
+    parser.add_argument(
         "name",
         default="unnammed",
         help="Name of training job",
@@ -90,6 +97,7 @@ def main():
         single_input=args.single_input,
         test=args.test,
         phase2=args.phase2,
+        use_jitter=args.jitter,
     )
 
 

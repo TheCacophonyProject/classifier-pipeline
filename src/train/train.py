@@ -50,6 +50,7 @@ def train_model(
     single_input=False,
     test=False,
     phase2=False,
+    use_jitter=False,
 ):
     init_logging()
     """Trains a model with the given hyper parameters."""
@@ -88,6 +89,7 @@ def train_model(
             single_input=single_input,
             test=test,
             phase2=phase2,
+            use_jitter=use_jitter,
         )
     except KeyboardInterrupt:
         pass

@@ -728,14 +728,16 @@ class KerasModel(Interpreter):
         single_input=True,
         test=False,
         phase2=False,
+        use_jitter=False,
     ):
         logging.info(
-            "%s Training model for %s epochs with weights %s with single input as: %s phase2 %s",
+            "%s Training model for %s epochs with weights %s with single input as: %s phase2 %s use_jitter %s",
             run_name,
             epochs,
             weights,
             single_input,
             phase2,
+            use_jitter,
         )
         if test:
             logging.info("Running in test, small datasets of 100")
@@ -820,6 +822,7 @@ class KerasModel(Interpreter):
             downsize_fp=True,
             rebalance=rebalance,
             single_input=single_input,
+            use_jitter=use_jitter or None,
             epoch_size=100 if test else None,
             current_epoch=CURRENT_EPOCH,
         )
