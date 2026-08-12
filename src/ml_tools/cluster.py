@@ -333,7 +333,12 @@ def find_mislabeled_points(clusterer, y_true, tracks,features_file):
             for label, percentage in other_labels[other_labels > 0.20].items():
                 print(f"    Other label '{label}' is {percentage:.1%}")
             ambiguous_clusters.append(cluster_id)
-            cluster_to_class_map[cluster_id] = "Ambiguous / Mixed Cluster"
+            label_breakdown = ", ".join(
+                f"{label}:{pct:.0%}"
+                for label, pct in label_counts.items()
+                if pct > 0.20
+            )
+            cluster_to_class_map[cluster_id] = f"Ambiguous: {label_breakdown}"
         else:
             cluster_to_class_map[cluster_id] = majority_label
 
