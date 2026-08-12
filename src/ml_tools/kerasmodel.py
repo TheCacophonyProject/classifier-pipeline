@@ -1028,6 +1028,29 @@ class KerasModel(Interpreter):
                 tf.keras.callbacks.LearningRateScheduler(stage_3_lr_scheduler)
             )
 
+            # Carry stage 1's EarlyStopping state into stage 2 - otherwise
+            # its on_train_begin() reset (fired when stage 2's fit() call
+            # below starts) forgets any plateau found while the backbone
+            # was still frozen, and stage 2 can run for a long time only
+            # ever comparing against its own epochs.
+            early_stopping = next(
+                (
+                    c
+                    for c in checkpoints
+                    if isinstance(c, tf.keras.callbacks.EarlyStopping)
+                ),
+                None,
+            )
+            if early_stopping is not None:
+                checkpoints.append(
+                    CarryOverEarlyStopping(
+                        early_stopping,
+                        best=early_stopping.best,
+                        wait=early_stopping.wait,
+                        best_weights=early_stopping.best_weights,
+                    )
+                )
+
             logging.info(
                 "Phase2 stage 2: unfreezing channel_aligner and "
                 "efficientnetv2-b3, fine tuning at %s for remaining %s epochs",
@@ -1263,6 +1286,7 @@ class KerasModel(Interpreter):
                 # ),
                 mode=stop_on[1],
                 restore_best_weights=True,
+                verbose=1,
             )
             checkpoints.append(earlyStopping)
 
@@ -2264,6 +2288,39 @@ class EpochTrackerCallback(tf.keras.callbacks.Callback):
         # Note: 'epoch' passed by Keras starts at 0, so epoch 0 finished means we move to 1
         CURRENT_EPOCH.assign(epoch + 1)
         logging.info("CURRENT_EPOCH assigned to %s", epoch + 1)
+
+
+class CarryOverEarlyStopping(tf.keras.callbacks.Callback):
+    """Re-seeds an EarlyStopping callback's best/wait/best_weights right
+    after Keras resets them in its own on_train_begin, so a plateau
+    detected in an earlier fit() call (e.g. phase2's frozen-backbone stage)
+    isn't forgotten when a later fit() call (e.g. the unfrozen fine-tuning
+    stage) begins. Without this, EarlyStopping starts a fresh "best" from
+    whatever the new stage's first epoch scores, and can run for a long
+    time comparing only against that, never recognising that an earlier
+    stage already found a better optimum.
+
+    Must be placed after the target EarlyStopping instance in the
+    callbacks list passed to fit() - Keras calls on_train_begin in list
+    order, so this needs to run second to override the reset."""
+
+    def __init__(self, early_stopping, best, wait, best_weights):
+        super().__init__()
+        self.early_stopping = early_stopping
+        self.best = best
+        self.wait = wait
+        self.best_weights = best_weights
+
+    def on_train_begin(self, logs=None):
+        self.early_stopping.best = self.best
+        self.early_stopping.wait = self.wait
+        self.early_stopping.best_weights = self.best_weights
+        logging.info(
+            "Carried over EarlyStopping state into new fit() stage: "
+            "best=%s wait=%s",
+            self.best,
+            self.wait,
+        )
 
 
 import tensorflow as tf
