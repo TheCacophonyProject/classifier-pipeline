@@ -187,6 +187,20 @@ class HyperParams(dict):
         return self.get("metadata_margin", 0.05)
 
     @property
+    def metadata_margin_zero_weight(self):
+        # Weight on a direct classification loss for the zeroed-metadata
+        # branch itself (in addition to the margin term). Without this, the
+        # zeroed branch has no ground-truth supervision at all - only the
+        # relative margin constraint - so the cheapest way to satisfy the
+        # margin is to make the zeroed branch's predictions arbitrarily bad
+        # (BCE is unbounded for confident-wrong predictions) rather than
+        # making the real branch genuinely better using metadata. This
+        # grounds the zeroed branch as an honest best-effort "no metadata"
+        # baseline, so the margin then tests real improvement over that
+        # baseline instead of over a sabotaged one.
+        return self.get("metadata_margin_zero_weight", 1.0)
+
+    @property
     def phase2_freeze_epochs(self):
         # Number of epochs to keep the phase1 backbone (channel_aligner +
         # base model) frozen at the start of phase2 training, so the freshly

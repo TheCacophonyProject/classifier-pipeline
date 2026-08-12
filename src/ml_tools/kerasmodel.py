@@ -1810,7 +1810,18 @@ def metadata_margin_loss(params):
     least `params.metadata_margin` lower-loss than the same example
     predicted with metadata zeroed out. Directly trains the fusion head to
     use the metadata branch, rather than relying on that emerging as a
-    side effect of modality dropout."""
+    side effect of modality dropout.
+
+    The zeroed branch also gets its own direct classification loss
+    (weighted by params.metadata_margin_zero_weight), since it otherwise has
+    no ground-truth supervision at all - only the margin constraint - and
+    the cheapest way to satisfy a pure margin is to make the zeroed
+    branch's predictions arbitrarily bad (BCE/CCE is unbounded for
+    confident-wrong predictions) rather than making the real branch
+    genuinely better. Grounding the zeroed branch as an honest best-effort
+    "no metadata" baseline makes the margin a meaningful test of real
+    improvement over that baseline, not over a sabotaged one.
+    """
     if params.multi_label:
         per_example_loss = tf.keras.losses.BinaryCrossentropy(
             from_logits=True,
@@ -1823,12 +1834,14 @@ def metadata_margin_loss(params):
             reduction=tf.keras.losses.Reduction.NONE,
         )
     margin = params.metadata_margin
+    zero_weight = params.metadata_margin_zero_weight
 
     def loss_fn(y_true, y_pred):
         # y_pred: (batch, 2, num_classes) - [:, 0] real metadata, [:, 1] zeroed
         real_loss = per_example_loss(y_true, y_pred[:, 0])
         zero_loss = per_example_loss(y_true, y_pred[:, 1])
-        return tf.nn.relu(margin - (zero_loss - real_loss))
+        margin_term = tf.nn.relu(margin - (zero_loss - real_loss))
+        return margin_term + zero_weight * zero_loss
 
     return loss_fn
 
