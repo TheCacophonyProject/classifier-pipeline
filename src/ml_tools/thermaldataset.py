@@ -38,8 +38,7 @@ LAST_JITTER_STAGE = tf.Variable(
 
 insect = None
 fp = None
-USE_VELOCITY = True
-
+USE_VELOCITY = False
 
 # labels can be any subset of this, prevents new labels being trained on until we explicitly add them to here
 def get_acceptable_labels(remapped_labels):
@@ -326,7 +325,7 @@ def tile_input(x, use_velocity):
     if use_velocity:
         mask = tf.reshape(x["input_mask"], (5, 5, 7))
     else:
-        mask = tf.reshape(x["input_mask"], (5, 5, 2))
+        mask = tf.reshape(x["input_mask"], (5, 5, 3))
 
     return {"input_image": input_image, "input_mask": mask}
 
@@ -1358,6 +1357,8 @@ def get_frame_mask_v2(
     presence_mask = tf.concat(
         [tf.fill([num_valid], 1.0), tf.fill([25 - num_valid], 0.0)], axis=0
     )
+    padding_len = 25 - num_valid + 1
+
     if use_velocity:
         centre_x = centre_x[:num_valid]
         x_delta = centre_x[1:] - centre_x[:-1]
@@ -1391,7 +1392,6 @@ def get_frame_mask_v2(
         rotated_vel_y = tf.clip_by_value(rotated_vel_y / UNIFIED_MAX_DIST, -1.0, 1.0)
 
         # Synchronise trailing pads to eliminate sequence lag
-        padding_len = 25 - num_valid + 1
         x_mask = tf.concat(
             [rotated_vel_x, tf.zeros([padding_len], dtype=tf.float32)], axis=0
         )
@@ -1438,7 +1438,10 @@ def get_frame_mask_v2(
         )
         return mask
     else:
-        return tf.stack([time_mask, presence_mask], axis=1)
+        dt_forward_mask = tf.concat(
+            [normalised_delta, tf.zeros([padding_len], dtype=tf.float32)], axis=0
+        )
+        return tf.stack([time_mask, presence_mask,dt_forward_mask], axis=1)
 
 
 @tf.function

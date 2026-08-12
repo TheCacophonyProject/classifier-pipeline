@@ -431,7 +431,7 @@ class KerasModel(Interpreter):
             # delta-T against velocity are done upstream in the tf.data
             # pipeline (thermaldataset.reconstruct_absolute_time and
             # get_frame_mask_v2), so the branches below are plain slices.
-            mask_input = layers.Input(shape=(5, 5, 7), name="input_mask")
+            mask_input = layers.Input(shape=(5, 5, 3), name="input_mask")
             input_image = {"input_image": input_image, "input_mask": mask_input}
 
             # =====================================================================
@@ -465,7 +465,7 @@ class KerasModel(Interpreter):
                 pool_size=(2, 2), name="preserve_tiny_anomalies"
             )(x)
             # BOTTLENECK
-            image_features = layers.Conv2D(512, (1, 1), activation="swish", name="visual_bottleneck")(image_features)
+            # image_features = layers.Conv2D(512, (1, 1), activation="swish", name="visual_bottleneck")(image_features)
 
             image_features = tf.keras.layers.SpatialDropout2D(0.3)(image_features)
             image_features = ModalityDropout(
@@ -942,7 +942,7 @@ class KerasModel(Interpreter):
             logging.info(
                 "Phase2 stage 2: unfreezing channel_aligner and "
                 "efficientnetv2-b3, fine tuning at %s for remaining %s epochs",
-                2e-5,
+                2e-6,
                 epochs - phase2_freeze_epochs,
             )
             self.model.get_layer("channel_aligner").trainable = True
