@@ -44,8 +44,10 @@ class CPTVRecorder(Recorder):
                 self.headers,
                 self.location_config,
                 self.device_config,
+                datetime.fromtimestamp(frame_time)
                 background_frame,
                 preview_frames,
+
             ),
         )
         self.rec_p.start()
@@ -64,6 +66,7 @@ def record(
     headers,
     location_config,
     device_config,
+        rec_dt ,
     background_frame=None,
     init_frames=None,
     name="CPTVRecorder",
@@ -74,7 +77,11 @@ def record(
         logging.info("%s Recorder %s started", name, filename.resolve())
         f = open(filename, "wb")
         writer = CPTVWriter(f)
-        writer.timestamp = datetime.now()
+        if rec_dt is None:
+            writer.timestamp = datetime.now()
+        else:
+            writer.timestamp = rec_dt
+
         writer.latitude = location_config.latitude
         writer.longitude = location_config.longitude
         writer.preview_secs = preview_secs

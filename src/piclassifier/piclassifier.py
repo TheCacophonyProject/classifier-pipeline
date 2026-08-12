@@ -968,6 +968,9 @@ class PiClassifier(Processor):
             )
             self.rec_time += time.time() - s_r
             if self.recording:
+                if self.classify and self.classifier:
+                    # set the seed to be recording start time so that the predictions can be reproduced
+                    self.classifier.seed = received_at
                 if self.tracking_events:
                     self.service.recording(
                         received_at,
