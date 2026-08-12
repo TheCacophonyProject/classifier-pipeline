@@ -1436,18 +1436,18 @@ def get_frame_mask_v2(
             ],
             axis=1,
         )
-        mask =  tf.stack(
-            [
-                tf.zeros_like(time_mask),
-                presence_mask,
-                tf.zeros_like(width_mask),
-                tf.zeros_like(height_mask),
-                tf.zeros_like(x_mask),
-                tf.zeros_like(y_mask),
-                tf.zeros_like(dt_forward_mask),
-            ],
-            axis=1,
-        )
+        # mask =  tf.stack(
+        #     [
+        #         tf.zeros_like(time_mask),
+        #         presence_mask,
+        #         tf.zeros_like(width_mask),
+        #         tf.zeros_like(height_mask),
+        #         tf.zeros_like(x_mask),
+        #         tf.zeros_like(y_mask),
+        #         tf.zeros_like(dt_forward_mask),
+        #     ],
+        #     axis=1,
+        # )
         return mask
     else:
         return tf.stack([time_mask, presence_mask], axis=1)
