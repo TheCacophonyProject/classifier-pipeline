@@ -47,6 +47,12 @@ def parse_args():
         help="Only run umap part",
     )
 
+    parser.add_argument(
+        "--train-isoforest",
+        action="store_true",
+        help="Train an IsolationForest novelty detector on the extracted features",
+    )
+
     args = parser.parse_args()
     return args
 
@@ -87,6 +93,12 @@ def main():
     logging.info("Loaded labels %s", new_labels)
     filter_labels = ["false-positive"]
 
+    if args.train_isoforest:
+        train_isolation_forest(
+            args.output.with_name(f"{args.output.stem}-features.npy")
+        )
+        return
+
     print("USING HDB TESTING")
     hdb_load(
         args.output.with_name(f"{args.output.stem}-features.npy"),
@@ -100,6 +112,22 @@ def main():
         filter_labels,
     )
     return
+
+def train_isolation_forest(features_file):
+    from sklearn.ensemble import IsolationForest
+    import joblib
+
+    features = np.load(features_file)
+    logging.info("Training IsolationForest on features %s", features.shape)
+
+    iso_forest = IsolationForest(n_estimators=200, contamination="auto", random_state=42)
+    iso_forest.fit(features)
+
+    iso_file = features_file.with_name(features_file.stem + "-isoforest.pkl")
+    joblib.dump(iso_forest, iso_file)
+    logging.info("Saved IsolationForest to %s", iso_file)
+    return iso_forest
+
 
 def hdb_load( features_file, labels, filter_labels=None):
 
@@ -357,10 +385,43 @@ def find_mislabeled_points(clusterer, y_true, tracks,features_file):
         cluster_to_class_map[cluster_id]
         for cluster_id in mismatch_df["hdbscan_cluster"]
     ]
+
+    # Group occurrences of the same track together, collecting their
+    # confidences and mapped_to labels into arrays.
+    grouped_df = (
+        mismatch_df.groupby("tracks")
+        .agg(
+            y_true=("y_true", "first"),
+            hdbscan_cluster=("hdbscan_cluster", list),
+            confidence=("confidence", list),
+            mapped_to=("mapped_to", list),
+        )
+        .reset_index()
+    )
+
+    def best_confidence_per_label(mapped_to, confidence):
+        # Keep only the highest-confidence occurrence of each distinct label,
+        # sorted alphabetically by label so mapped_to and confidence stay aligned
+        best = {}
+        for label, conf in zip(mapped_to, confidence):
+            if label not in best or conf > best[label]:
+                best[label] = conf
+        sorted_items = sorted(best.items(), key=lambda item: item[0])
+        labels = [label for label, _ in sorted_items]
+        confidences = [conf for _, conf in sorted_items]
+        return pd.Series({"mapped_to": labels, "confidence": confidences})
+
+    grouped_df[["mapped_to", "confidence"]] = grouped_df.apply(
+        lambda row: best_confidence_per_label(row["mapped_to"], row["confidence"]),
+        axis=1,
+    )
+
+    grouped_df = grouped_df.sort_values(by="mapped_to", key=lambda col: col.map(tuple))
+
     mismatch_file = features_file.with_name(features_file.stem + "-mismatch.csv")
 
     print("saving mismatches to ",mismatch_file)
-    mismatch_df.to_csv(mismatch_file, index=False)
+    grouped_df.to_csv(mismatch_file, index=False)
 
 
 def extract_embeddings(
