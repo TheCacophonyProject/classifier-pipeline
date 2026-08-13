@@ -791,8 +791,8 @@ class KerasModel(Interpreter):
                     self.model.get_layer("channel_aligner").trainable = False
                     self.model.get_layer("efficientnetv2-b3").trainable = False
                 else:
-                    self.model.load_weights(weights, by_name=True, skip_mismatch=True)
-
+                    self.model.load_weights(weights)
+                    
             # self.model.load_weights(weights)
 
         self.model.summary()
