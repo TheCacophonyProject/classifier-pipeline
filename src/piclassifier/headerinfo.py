@@ -19,6 +19,7 @@ class HeaderInfo:
     FRAME_SIZE = "FrameSize"
     SERIAL = "CameraSerial"
     FIRMWARE = "Firmware"
+    SOURCE = "Source"
 
     res_x = attr.ib()
     res_y = attr.ib()
@@ -29,6 +30,7 @@ class HeaderInfo:
     pixel_bits = attr.ib()
     serial = attr.ib()
     firmware = attr.ib()
+    source = attr.ib(default=None)
 
     @classmethod
     def parse_header(cls, raw_string):
@@ -43,6 +45,8 @@ class HeaderInfo:
             frame_size=raw.get(HeaderInfo.FRAME_SIZE),
             pixel_bits=raw.get(HeaderInfo.PIXEL_BITS),
             firmware=raw.get(HeaderInfo.FIRMWARE),
+            source=raw.get(HeaderInfo.SOURCE),
+
         )
         headers.firmware = str(headers.firmware)
         if headers.res_x and headers.res_y:

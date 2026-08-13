@@ -40,10 +40,14 @@ class Processor(ABC):
             model_labels,
             self.get_and_update_thumbnail,
             thumbnail_dir,
+            self.parse_file
         )
 
     @abstractmethod
     def take_snapshot(self): ...
+
+    @abstractmethod
+    def parse_file(self, file): ...
 
     @abstractmethod
     def process_frame(self, lepton_frame): ...

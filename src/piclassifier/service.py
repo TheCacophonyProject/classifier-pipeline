@@ -25,6 +25,7 @@ class Service(dbus.service.Object):
         labels,
         get_thumbnail,
         thumbnail_dir,
+        parse_file,
     ):
         super().__init__(dbus, DBUS_PATH)
         self.get_frame = get_frame
@@ -33,6 +34,7 @@ class Service(dbus.service.Object):
         self.take_snapshot = take_snapshot_fn
         self.labels = labels
         self.thumbnail_dir = thumbnail_dir
+        self.parse_file = parse_file
 
     @dbus.service.method(
         DBUS_NAME,
@@ -59,6 +61,16 @@ class Service(dbus.service.Object):
         logging.debug("Sending headers %s", headers)
         return headers
 
+
+    @dbus.service.method(
+        DBUS_NAME,
+        in_signature="sii",
+    )
+    def ParseFile(self, file,fps, seed):
+        threading.Thread(
+            target=self.parse_file, args=(file, fps, seed), daemon=True
+        ).start()
+    
     @dbus.service.method(
         DBUS_NAME,
         in_signature="i",
@@ -236,7 +248,7 @@ class Service(dbus.service.Object):
 
 class SnapshotService:
     def __init__(
-        self, get_frame, headers, take_snapshot_fn, labels, get_thumbnail, thumbnail_dir
+        self, get_frame, headers, take_snapshot_fn, labels, get_thumbnail, thumbnail_dir,parse_file
     ):
         DBusGMainLoop(set_as_default=True)
         dbus.mainloop.glib.threads_init()
@@ -250,6 +262,7 @@ class SnapshotService:
                 labels,
                 get_thumbnail,
                 thumbnail_dir,
+                parse_file
             ),
         )
         self.t.start()
@@ -259,7 +272,7 @@ class SnapshotService:
         self.loop.quit()
 
     def run_server(
-        self, get_frame, headers, take_snapshot_fn, labels, get_thumbnail, thumbnail_dir
+        self, get_frame, headers, take_snapshot_fn, labels, get_thumbnail, thumbnail_dir,parse_file
     ):
         try:
             session_bus = dbus.SystemBus(mainloop=DBusGMainLoop())
@@ -272,6 +285,7 @@ class SnapshotService:
                 labels,
                 get_thumbnail,
                 thumbnail_dir,
+                parse_file
             )
             self.service.ServiceStarted()
             self.loop.run()

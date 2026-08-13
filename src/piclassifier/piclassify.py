@@ -19,14 +19,11 @@ from .eventreporter import log_event
 from piclassifier.monitorconfig import monitor_file
 from pathlib import Path
 from piclassifier import utils
+from .signals import STOP_SIGNAL, SKIP_SIGNAL, SNAPSHOT_SIGNAL, PARSING_FILE, PARSED
 
 SOCKET_NAME = "/var/run/lepton-frames"
 VOSPI_DATA_SIZE = 160
 TELEMETRY_PACKET_COUNT = 4
-STOP_SIGNAL = "stop"
-
-SKIP_SIGNAL = "skip"
-SNAPSHOT_SIGNAL = "snap"
 
 restart_pending = False
 connected = False
@@ -268,58 +265,6 @@ def parse_ir(file, config, thermal_config, preview_type, fps):
     pi_classifier.disconnected()
 
 
-def preview_socket(headers, frame_queue):
-    import yaml
-
-    # convert casing
-    python_dic = headers.__dict__
-    go_dic = {}
-    for k, v in python_dic.items():
-        new_key = f"{k[0].upper()}{k[1:]}"
-        try:
-            under_index = new_key.index("_")
-            new_key = f"{new_key[:under_index]}{new_key[under_index+1].upper()}{new_key[under_index+2:]}"
-        except:
-            pass
-        go_dic[new_key] = v
-    header_bytes = yaml.dump(go_dic).encode()
-    header_bytes += b"\nclear"
-
-    while True:
-        try:
-            # connect to management socket
-            frameSocket = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-            frameSocket.connect("/var/spool/managementd")
-            logging.info("Connected to management interface")
-            frameSocket.send(header_bytes)
-            telemetry_bytes = bytearray(640)
-            # if we need this can add the correct info
-            while True:
-                frame = frame_queue.get()
-                if isinstance(frame, str):
-                    if frame == STOP_SIGNAL:
-                        return
-                if frame is None:
-                    logging.info("Disconnected")
-                    break
-                frame_bytes = frame.pix.byteswap().tobytes()
-                frame_bytes = telemetry_bytes + frame_bytes
-                frameSocket.send(frame_bytes)
-        except:
-            # logging.error("Failed to connect to /var/spool/managementd", exc_info=True)
-            try:
-                # empty the queue
-                items = frame_queue.qsize()
-                items = max(items, 1)
-                for _ in range(items):
-                    item = frame_queue.get(100)
-                    if isinstance(item, str):
-                        if item == STOP_SIGNAL:
-                            return
-            except:
-                pass
-            # could not connect wait a few seconds
-            time.sleep(2)
 
 
 def parse_cptv(file, config, thermal_config_file, preview_type, fps, seed):
@@ -341,11 +286,12 @@ def parse_cptv(file, config, thermal_config_file, preview_type, fps, seed):
         pixel_bits=16,
         serial="",
         firmware="",
+        source = file,
     )
 
     frame_queue = multiprocessing.Queue()
     preview_process = multiprocessing.Process(
-        target=preview_socket,
+        target=utils.preview_socket,
         args=(
             headers,
             frame_queue,
@@ -411,7 +357,7 @@ def parse_cptv(file, config, thermal_config_file, preview_type, fps, seed):
         if preview_process.is_alive():
             logging.info("Killing preview process")
             try:
-                kill_process_with_timeout(preview_process)
+                utils.kill_process_with_timeout(preview_process)
             except:
                 pass
         if started_classifier:
@@ -427,19 +373,20 @@ def parse_cptv(file, config, thermal_config_file, preview_type, fps, seed):
         if preview_process.is_alive():
             logging.info("Killing preview process")
             try:
-                kill_process_with_timeout(preview_process)
+                utils.kill_process_with_timeout(preview_process)
             except:
                 pass
         raise ex
 
 
-def get_processor(process_queue, config, thermal_config, headers):
+def get_processor(process_queue, response_queue,config, thermal_config, headers):
     from .piclassifier import run_classifier
 
     p_processor = multiprocessing.Process(
         target=run_classifier,
         args=(
             process_queue,
+            response_queue,
             config,
             thermal_config,
             headers,
@@ -511,7 +458,7 @@ def ir_camera(config, thermal_config, process_queue):
                 if processor.is_alive():
                     logging.info("Killing process")
                     try:
-                        kill_process_with_timeout(processor)
+                        utils.kill_process_with_timeout(processor)
                     except:
                         pass
                 break
@@ -552,7 +499,7 @@ def ir_camera(config, thermal_config, process_queue):
     finally:
         if processor is not None:
             time.sleep(5)
-            kill_process_with_timeout(processor)
+            utils.kill_process_with_timeout(processor)
 
     return frames
 
@@ -650,61 +597,19 @@ def delete_stale_thumbnails(output_dir):
 # return -1
 
 
-def kill_process_with_timeout(process, timeout=30):
-    # for some reason process.kill hangs sometimes
-    kill_thread = Thread(target=kill_process, args=(process,),daemon=True)
-    kill_thread.start()
-    try:
-        kill_thread.join(timeout)
-        if kill_thread.is_alive():
-            logging.error("Kill thread didn't terminate, should terminate when parent process terminates")
-    except:
-        logging.error("Kill thread didnt terminate", exc_info=True)
-
-
-def kill_process(process):
-    pid = process.pid
-    logging.info("Killing process %s", pid)
-    try:
-        parent = psutil.Process(pid)
-        # 1. Filter out Zombies and Uninterruptible Sleep (D-state) processes instantly
-        try:
-            status = parent.status()
-            if status == psutil.STATUS_ZOMBIE:
-                logging.info("PID %s is a Zombie; skipping signal.", pid)
-                return
-            if status == 'uninterruptible-sleep': # D-state
-                logging.warning("PID %s is stuck in D-state (I/O hang). kill -9 will fail.", pid)
-        except psutil.NoSuchProcess:
-            return
-        
-        children = parent.children()
-        for child in children:
-            if child.is_running():
-                kill_process(child)
-        psutil.wait_procs(children, timeout=5)
-        if parent.is_running():
-            try:
-                parent.kill()
-                logging.info("Killed %s",process.pid)
-            except:
-                logging.error("Could not kill process %s ", parent.pid, exc_info=True)
-            parent.wait(5)
-    except:
-        logging.error("Could not kill process", exc_info=True)
 
 
 def handle_connection(connection, config, thermal_config_file, process_queue):
     from .cameras import lepton3
     from ml_tools.rectangle import Rectangle
-
+    from queue import Empty
     headers, extra_b = handle_headers(connection)
     thermal_config = ThermalConfig.load_from_file(thermal_config_file, headers.model)
     logging.info(
         "parsed camera headers %s running with config %s", headers, thermal_config
     )
-
-    processor = get_processor(process_queue, config, thermal_config, headers)
+    response_queue = multiprocessing.Queue()
+    processor = get_processor(process_queue,response_queue, config, thermal_config, headers)
     processor.start()
 
     edge = config.tracking["thermal"].edge_pixels
@@ -713,6 +618,7 @@ def handle_connection(connection, config, thermal_config_file, process_queue):
     )
     raw_frame = lepton3.Lepton3(headers)
     read = 0
+    parsing_file = False
     try:
         while True:
             if restart_pending:
@@ -722,7 +628,7 @@ def handle_connection(connection, config, thermal_config_file, process_queue):
                 # this potentially loops on indefinately on an error if the error is to do with the headers
                 logging.info("Processor stopped restarting")
                 processor = get_processor(
-                    process_queue, config, thermal_config, headers
+                    process_queue, response_queue,config, thermal_config, headers
                 )
                 processor.start()
             if extra_b is not None:
@@ -747,6 +653,16 @@ def handle_connection(connection, config, thermal_config_file, process_queue):
                 pass
             read += 1
 
+            if parsing_file:
+                try:
+                    message = response_queue.get(False,0)
+                    if message == PARSED:
+                        parsing_file = False
+                        logging.info("Finished parsing file")
+                except Empty:
+                    pass
+                continue
+
             frame = raw_frame.parse(data)
             frame.received_at = time.time()
             cropped_frame = crop_rectangle.subimage(frame.pix)
@@ -763,6 +679,17 @@ def handle_connection(connection, config, thermal_config_file, process_queue):
             else:
                 process_queue.put((frame, time.time()))
 
+            if process_queue.qsize() > 9:
+                # check if there is a reason frames have slowed down
+                try:
+                    message = response_queue.get(False,0)
+                    if message == PARSING_FILE:
+                        parsing_file = True
+                        clear_queue(process_queue)
+                        logging.info("Parsing file so will not process any more frames")
+                except Empty:
+                    pass
+
     finally:
         if processor.is_alive:
             process_queue.put(STOP_SIGNAL)
@@ -771,6 +698,17 @@ def handle_connection(connection, config, thermal_config_file, process_queue):
             if processor.is_alive():
                 logging.info("Killing process")
                 try:
-                    kill_process_with_timeout(processor)
+                    utils.kill_process_with_timeout(processor)
                 except:
                     pass
+
+
+def clear_queue(q):
+    """Removes all items from a multiprocessing Queue."""
+    from queue import Empty
+
+    try:
+        while True:
+            q.get_nowait()
+    except Empty:
+        pass

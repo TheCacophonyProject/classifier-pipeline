@@ -18,10 +18,8 @@ from piclassifier.attiny import set_recording_state
 from pathlib import Path
 from functools import partial
 from piclassifier import utils
+from .signals import PARSING_FILE, PARSED, SNAPSHOT_SIGNAL, STOP_SIGNAL, SKIP_SIGNAL
 
-SNAPSHOT_SIGNAL = "snap"
-STOP_SIGNAL = "stop"
-SKIP_SIGNAL = "skip"
 track_extractor = None
 clip = None
 fp_model = None
@@ -29,7 +27,7 @@ classifier = None
 
 
 def run_classifier(
-    frame_queue, config, thermal_config, headers, classify=True, detect_after=None
+    frame_queue,response_queue, config, thermal_config, headers, classify=True, detect_after=None
 ):
     init_logging()
     pi_classifier = None
@@ -50,6 +48,16 @@ def run_classifier(
                     pi_classifier.take_snapshot()
             else:
                 pi_classifier.process_frame(frame[0], frame[1])
+            if pi_classifier.parsing_file :
+                
+                response_queue.put(PARSING_FILE)
+                while pi_classifier.parsing_file:
+                    logging.info("Waiting for parse file to finish")
+                    time.sleep(10)
+                response_queue.put(PARSED)
+
+
+                
     except:
         logging.error("Error running classifier restarting ..", exc_info=True)
         if pi_classifier is not None:
@@ -90,6 +98,8 @@ class PiClassifier(Processor):
         preview_type=None,
         seed=None,
     ):
+        self.parsing_file = False
+        self.initialised = False
         self.seed = seed
         self.constant_recorder = None
         global output_dir
@@ -97,7 +107,7 @@ class PiClassifier(Processor):
         # ensure thumb dir is made
         thumbnail_dir = Path(output_dir) / "thumbnails"
         thumbnail_dir.mkdir(exist_ok=True)
-
+        self.processing_frame = False
         self._output_dir = thermal_config.recorder.output_dir
         self.headers = headers
         self.classifier = None
@@ -170,7 +180,114 @@ class PiClassifier(Processor):
         self.meta_dir = os.path.join(thermal_config.recorder.output_dir)
         if not os.path.exists(self.meta_dir):
             os.makedirs(self.meta_dir)
+        self.parsing_file = False
+        self.initialised = True
 
+    def parse_file(self,file,fps,seed):
+        max_sleep = 30
+        slept = 0
+        while not self.initialised:
+            logging.info("Trying to parse file but not initialized waiting 1 second")
+            time.sleep(1)
+            slept +=1
+            if slept >= max_sleep:
+                logging.info("Processor failed to become ready initialized %s",self.initialised)
+        if self.parsing_file:
+            logging.info("Already parsing file so not parsing %s",file)
+            return
+
+        try:
+            slept = 0
+            self.parsing_file = True
+            while self.processing_frame:
+                logging.info("Trying to parse file but processesor is busy")
+                time.sleep(1)
+                slept +=1
+                if slept >= max_sleep:
+                    logging.info("Processor failed to become ready process frame is %s",self.processing_frame)
+                    return
+            self.reset()
+            logging.info("Parsing %s",file)
+            from cptv_rs_python_bindings import CptvReader
+            from cptv import Frame
+            from multiprocessing import Queue,Process
+            from .headerinfo import HeaderInfo
+            frame_queue = Queue()
+            telemetry_size = 160 * 4
+            reader = CptvReader(str(file))
+            header = reader.get_header()
+            headers = HeaderInfo(
+                res_x=header.x_resolution,
+                res_y=header.y_resolution,
+                fps=9,
+                brand=header.brand if header.brand else None,
+                model=header.model if header.model else None,
+                frame_size=header.x_resolution * header.y_resolution * 2 + telemetry_size,
+                pixel_bits=16,
+                serial="",
+                firmware="",
+                source = file,
+            )
+            preview_process = Process(
+                target=utils.preview_socket,
+                args=(
+                    headers,
+                    frame_queue,
+                ),
+            )
+            preview_process.start()
+            if self.classify and self.classifier:
+                if seed >=0:
+                    self.classifier.seed = seed 
+                else:
+                    self.classifier.seed = reader.timestamp
+
+            while True:
+                frame = reader.next_frame()
+
+                if frame is None:
+                    break
+                # to get extra properties and allow pickling convert to cptv.Frame
+                frame = Frame(
+                    frame.pix,
+                    timedelta(milliseconds=frame.time_on),
+                    timedelta(milliseconds=frame.last_ffc_time),
+                    frame.temp_c,
+                    frame.last_ffc_temp_c,
+                    frame.background_frame,
+                )
+
+                frame_queue.put(frame)
+
+                frame.ffc_imminent = False
+                frame.ffc_status = 0
+
+                if frame.background_frame:
+                    self.motion_detector._background._background = frame.pix
+                    continue
+                try:
+                    self.process_frame(frame, time.time())
+                except:
+                    logging.error("Could not process frame from file ",exc_info=True)
+                if fps is not None:
+                    time.sleep(1.0 / fps)
+
+            frame_queue.put(STOP_SIGNAL)
+
+            while self.recorder is not None and self.recorder.recording:
+                logging.info("Trying to end parse file but still recording so waiting 5 seconds")
+                time.sleep(5)
+            preview_process.join(7)
+            if preview_process.is_alive():
+                logging.info("Killing preview process")
+                try:
+                    utils.kill_process_with_timeout(preview_process)
+                except:
+                    pass
+        except:
+            logging.error("Could not parse file %s",exc_info=True)
+        self.parsing_file = False
+        self.processing_frame = False
     def init_ir_recorders(self, thermal_config):
         recording_stopping_callback = partial(
             on_recording_stopping,
@@ -895,8 +1012,8 @@ class PiClassifier(Processor):
                 {},
                 self.motion_detector.num_frames,
             )
-
-    def disconnected(self):
+        
+    def reset(self):
         self.motion_detector.disconnected()
         if self.recorder.recording and self.tracking_events:
             self.recording = False
@@ -907,6 +1024,9 @@ class PiClassifier(Processor):
             self.constant_recorder.force_stop()
 
         self.end_clip()
+
+    def disconnected(self):
+        self.reset()
         self.service.quit()
 
     def skip_frame(self):
@@ -925,6 +1045,7 @@ class PiClassifier(Processor):
         return True
 
     def process_frame(self, lepton_frame, received_at):
+        self.processing_frame = True
         import time
 
         start = time.time()
@@ -959,7 +1080,6 @@ class PiClassifier(Processor):
         ):
             s_r = time.time()
             preview_frames = self.motion_detector.preview_frames()
-            bak = self.motion_detector.background
             self.recording = self.recorder.start_recording(
                 self.motion_detector.background,
                 preview_frames,
@@ -968,9 +1088,9 @@ class PiClassifier(Processor):
             )
             self.rec_time += time.time() - s_r
             if self.recording:
-                if self.classify and self.classifier:
+                if self.classify and self.classifier and not self.parsing_file:
                     # set the seed to be recording start time so that the predictions can be reproduced
-                    self.classifier.seed = received_at
+                    self.classifier.seed = int(received_at * 1000000)
                 if self.tracking_events:
                     self.service.recording(
                         received_at,
@@ -1106,7 +1226,7 @@ class PiClassifier(Processor):
             self.total_time = 0
             self.rec_time = 0
         self.fps_timer.add(time.time() - start)
-
+        self.processing_frame = False
     def create_mp4(self):
         from ml_tools.previewer import Previewer
 

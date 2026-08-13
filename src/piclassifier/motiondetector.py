@@ -191,6 +191,11 @@ class WeightedBackground:
         if init_average is not None:
             self.average = init_average
 
+    def reset(self):
+        self._background = None
+        self.background_weight.fill(0)
+        self.init_average = None
+        
     def get_average(self):
         return self.average
 

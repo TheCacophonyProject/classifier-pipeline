@@ -44,10 +44,9 @@ class CPTVRecorder(Recorder):
                 self.headers,
                 self.location_config,
                 self.device_config,
-                datetime.fromtimestamp(frame_time)
+                datetime.fromtimestamp(frame_time),
                 background_frame,
                 preview_frames,
-
             ),
         )
         self.rec_p.start()

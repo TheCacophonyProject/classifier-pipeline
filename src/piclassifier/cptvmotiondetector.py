@@ -131,6 +131,8 @@ class CPTVMotionDetector(MotionDetector):
         if not self.config.one_diff_only:
             self.diff_window.reset()
         self.processed = 0
+        self._background.reset()
+        self.running_mean = None
 
     def process_frame(self, cptv_frame, force_process=False):
         prev_ffc = self.ffc_affected

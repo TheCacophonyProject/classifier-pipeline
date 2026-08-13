@@ -109,11 +109,12 @@ class Recorder(ABC):
     def stop_recording(self, frame_time):
         start = time.time()
         self.rec_time += time.time() - start
-        self.recording = False
         final_name = self.final_name()
         logging.info("%s Waiting for recorder to finish", self.name)
         self.frame_q.put(0)
         self.rec_p.join()
+        self.recording = False
+
         self.frame_q = multiprocessing.Queue()
         self.rec_p = None
         logging.info(

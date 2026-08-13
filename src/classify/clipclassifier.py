@@ -259,7 +259,7 @@ class ClipClassifier:
         location = meta_data.get("location")
         logging.info("getting classified with %s", location)
         classifier = self.get_classifier(model, location)
-        classifier.seed = clip.video_start_time * 1000000
+        classifier.seed = int(clip.video_start_time.timestamp() * 1000000) #micro seconds
         predictions = Predictions(classifier.labels, model, classifier.thresholds)
         predictions.model_load_time = time.time() - start
 
