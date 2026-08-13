@@ -1346,6 +1346,8 @@ class KerasModel(Interpreter):
         raw_class_confidences = []
         labels = self.labels.copy()
         labels.append("Nothing")
+        totals_row = np.zeros(len(labels))
+
         for y_true, pred in pred_per_track.values():
             pred.normalize_score()
             preds = np.array([p.prediction for p in pred.predictions])
@@ -1362,6 +1364,7 @@ class KerasModel(Interpreter):
                 logging.info("Have multiple labels %s", ll)
             covered_preds = set()
             for y in y_true:
+                totals_row[y]+=1
                 if y in preds:
                     idx = y
                     covered_preds.add(idx)
@@ -1423,7 +1426,7 @@ class KerasModel(Interpreter):
             np.save(f, true_categories)
             np.save(f, results)
             np.save(f, raw_class_confidences)
-
+            np.save(f,len(pred_per_track))
         if thresholds_per_label is not None:
             thresholds_per_label = np.array(thresholds_per_label)
             thresholds_per_label[thresholds_per_label < 0.5] = 0.5
@@ -1435,6 +1438,7 @@ class KerasModel(Interpreter):
                 conf_mask = confidences < lbl_thresh
                 preds[pred_mask & conf_mask] = len(labels) - 1
             cm = confusion_matrix(true_categories, preds, labels=np.arange(len(labels)))
+            cm = np.concatenate((cm,totals_row),axis = 0)
             # Log the confusion matrix as an image summary.
             figure = plot_confusion_matrix(cm, class_names=labels)
             fscore_file = filename.parent / f"{filename.stem}-fscore"
@@ -1446,6 +1450,8 @@ class KerasModel(Interpreter):
         # set these to None
         preds[confidences < threshold] = len(labels) - 1
         cm = confusion_matrix(true_categories, preds, labels=np.arange(len(labels)))
+        cm = np.concatenate((cm,totals_row),axis = 0)
+
         # Log the confusion matrix as an image summary.
         figure = plot_confusion_matrix(cm, class_names=labels)
         out_file = filename.parent / f"{filename.stem}-{round(100*threshold)}%"
