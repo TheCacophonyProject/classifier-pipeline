@@ -198,7 +198,11 @@ def preprocess_file(classifier, filename):
         current_frame_num += 1
     i = 0
     for track_id, data in track_data.items():
+<<<<<<< HEAD
         print("Track id is", track_id)
+=======
+        # print("Track id is", track_id)
+>>>>>>> 958e4fae (add novelty)
         if track_id != 4:
             continue
         i += 1
