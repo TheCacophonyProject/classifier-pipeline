@@ -11,6 +11,11 @@ import logging
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--weights", type=Path, help="model file")
+    parser.add_argument(
+        "--all-labels",
+        action="store_true",
+        help="Generate a gradcam image for every label, not just the top prediction",
+    )
 
     parser.add_argument("model", type=Path, help="model file")
     parser.add_argument("source", type=Path, help="cptv file with txt")
@@ -46,7 +51,7 @@ def make_gradcam_heatmap(
         model.inputs,
         [model.get_layer(last_conv_layer_name).output, model.output],
     )
-    grad_model.summary()
+    # grad_model.summary()
     with tf.GradientTape() as tape:
         conv_outputs, predictions = grad_model(img_array)
         loss = predictions[:, class_index]
@@ -77,6 +82,35 @@ def overlay_heatmap_on_channel(channel, heatmap, alpha=0.4):
     heat_rgb = cm.jet(heatmap_up)[..., :3]  # (H, W, 3)
     blended = (1 - alpha) * np.stack([ch_norm] * 3, axis=-1) + alpha * heat_rgb
     return (np.clip(blended, 0, 1) * 255).astype(np.uint8)
+
+
+def save_gradcam_for_label(
+    model, pred_image, pred_mask, label_index, label, pred_score, out_path, channel_names
+):
+    heatmap = make_gradcam_heatmap(
+        model,
+        {
+            "input_image": np.expand_dims(pred_image, 0),
+            "input_mask": np.expand_dims(pred_mask, 0),
+        },
+        class_index=label_index,
+        last_conv_layer_name="conv2d_1",
+    )
+
+    fig, axes = plt.subplots(1, 3, figsize=(12, 4), squeeze=False)
+    fig.suptitle(f"{label} ({pred_score*100:.1f}%)", fontsize=12)
+
+    for ci, ch_name in enumerate(channel_names):
+        vis = overlay_heatmap_on_channel(pred_image[..., ci], heatmap)
+        ax = axes[0][ci]
+        ax.imshow(vis)
+        ax.set_title(ch_name, fontsize=9)
+        ax.axis("off")
+
+    plt.tight_layout()
+    plt.savefig(out_path, dpi=150)
+    plt.close(fig)
+    print(f"Saved → {out_path}")
 
 
 def preprocess_file(classifier, filename):
@@ -175,7 +209,6 @@ def preprocess_file(classifier, filename):
                     classifier.params.frame_size,
                     region,
                     clip.crop_rectangle,
-                    thermal_median,
                 )
                 pre_f.thermal *= 255
                 pre_f.thermal_norm *= 255
@@ -197,6 +230,9 @@ def preprocess_file(classifier, filename):
     i = 0
     for track_id, data in track_data.items():
         print("Track id is", track_id)
+        if track_id != 4:
+            continue
+        i += 1
         i += 1
         pred_frames = data["pred_frames"]
         pred_frame_numbers = []
@@ -278,32 +314,35 @@ def main():
             print(f"  {label}: {pred[i]*100:.1f}%")
         top_i = int(np.argmax(pred))
         top_label = labels[top_i]
-        heatmap = make_gradcam_heatmap(
-            model,
-            {
-                "input_image": np.expand_dims(pred_image, 0),
-                "input_mask": np.expand_dims(pred_mask, 0),
-            },
-            class_index=top_i,
-            last_conv_layer_name="conv2d_1",
-        )
 
-        fig, axes = plt.subplots(1, 3, figsize=(12, 4), squeeze=False)
-        fig.suptitle(
-            f"{top_label} ({pred[top_i]*100:.1f}%) — {args.source.name}", fontsize=12
-        )
-
-        for ci, ch_name in enumerate(channel_names):
-            vis = overlay_heatmap_on_channel(pred_image[..., ci], heatmap)
-            ax = axes[0][ci]
-            ax.imshow(vis)
-            ax.set_title(ch_name, fontsize=9)
-            ax.axis("off")
-
-        plt.tight_layout()
-        out_path = args.source.parent / f"{args.source.stem}-gradcam.png"
-        plt.savefig(out_path, dpi=150)
-        print(f"Saved → {out_path}")
+        if args.all_labels:
+            for label_i, label in enumerate(labels):
+                out_path = (
+                    args.source.parent
+                    / f"{args.source.stem}-gradcam-{label}.png"
+                )
+                save_gradcam_for_label(
+                    model,
+                    pred_image,
+                    pred_mask,
+                    label_i,
+                    label,
+                    pred[label_i],
+                    out_path,
+                    channel_names,
+                )
+        else:
+            out_path = args.source.parent / f"{args.source.stem}-gradcam.png"
+            save_gradcam_for_label(
+                model,
+                pred_image,
+                pred_mask,
+                top_i,
+                top_label,
+                pred[top_i],
+                out_path,
+                channel_names,
+            )
         break
         # plt.show()
 

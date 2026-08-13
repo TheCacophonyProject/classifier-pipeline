@@ -1172,7 +1172,8 @@ def random_sections(
 
     chunks = min(window_frames, chunks)
     chunk_size = window_frames / chunks
-
+    chunk_size = 12/ 25 * 9
+    print(num_frames,"Window frames", window_frames,"Chunks",chunks, "size", chunk_size)
     if samples > num_windows:
         # this is our labels that we have low samples for
         extra_samples = samples - num_windows
@@ -1279,6 +1280,7 @@ def random_sections(
         segments.append(segment)
         if len(segments) == samples:
             break
+    print("Got ", len(segments))
     return segments
 
 
