@@ -89,6 +89,7 @@ class KerasModel(Interpreter):
             self.data_type = train_config.type
         self.labels = labels
         self.preprocess_fn = None
+        self.model_with_aux = None
         self.validate = None
         self.train = None
         self.test = None
@@ -434,32 +435,45 @@ class KerasModel(Interpreter):
             mask_input = layers.Input(shape=(5, 5, 2), name="input_mask")
             input_image = {"input_image": input_image, "input_mask": mask_input}
 
-            # 1. Light local projection of your 2 temporal indicators
-            t_project = layers.Dense(
-                16, activation="swish", name="temporal_projection"
+            # =====================================================================
+            # FULLY SYNCHRONIZED SYMMETRIC METADATA ENGINE
+            # =====================================================================
+            # mask_input Shape: (None, 5, 5, 7) - Perfectly matching the visual 5x5 footprint
+
+            # Layer 1: Local Dimensional Projection (1x1 Kernel)
+            # Prepares the 7 channels by mixing them locally within each individual tile cell
+            m_embed = layers.Conv2D(
+                64,
+                (1, 1),
+                activation="swish",
+                padding="same",
+                name="metadata_local_projection",
             )(mask_input)
             t_embed = layers.Dense(32, activation="swish", name="temporal_embedding")(
                 t_project
             )
 
-            # 2. Match the spatial receptive field of the visual backbone
-            # A 3x3 kernel here blends the time and presence markers across adjacent tiles cleanly
+            # Layer 2: Symmetric Receptive Field Matcher (3x3 Kernel)
+            # Uses a symmetric (3,3) kernel to mirror the exact spatial blending
+            # patterns occurring inside your EfficientNet visual backbone!
             time_embedding = layers.Conv2D(
-                64,  # Shrunk from 128 to 64 to keep the metadata lane tightly constrained
-                (3, 3),
+                128,
+                (3, 3),  # Locked back to symmetric to align with image feature maps
                 activation="swish",
                 padding="same",
-                name="temporal_spatial_matcher",
+                name="metadata_symmetric_receptive_engine",
             )(
-                t_embed
-            )  # Output Shape: (None, 5, 5, 64)
+                m_embed
+            )  # Output Footprint: (None, 5, 5, 128) - Flawless structural
 
             # --- Feature Fusion (Maintains your exact native dimensions) ---
             image_features = layers.MaxPooling2D(
                 pool_size=(2, 2), name="preserve_tiny_anomalies"
             )(x)
             # BOTTLENECK
-            # image_features = layers.Conv2D(512, (1, 1), activation="swish", name="visual_bottleneck")(image_features)
+            image_features = layers.Conv2D(
+                512, (1, 1), activation="swish", name="visual_bottleneck"
+            )(image_features)
 
             image_features = tf.keras.layers.SpatialDropout2D(0.3)(image_features)
 
@@ -468,27 +482,74 @@ class KerasModel(Interpreter):
                 [image_features, time_embedding]
             )  # Shape: (None, 5, 5, 640)
 
+            # Named instances (rather than inline calls) so the same
+            # weights can be re-applied to a zeroed-metadata copy of the
+            # input below, for the auxiliary metadata-margin loss.
+            fuse_conv1 = layers.Conv2D(
+                256, (1, 1), activation="swish", padding="same", name="fusion_conv1"
+            )
+            fuse_conv2 = layers.Conv2D(
+                256, (3, 3), activation="swish", padding="same", name="fusion_conv2"
+            )
+
             # 1. Compress channel depth from 640 to 256 using 1x1 convolution
-            x = layers.Conv2D(256, (1, 1), activation="swish", padding="same")(combined)
+            x = fuse_conv1(combined)
 
             # Mix the combined space-time features together
-            x = layers.Conv2D(256, (3, 3), activation="swish", padding="same")(x)
+            x = fuse_conv2(x)
 
-        x = tf.keras.layers.GlobalAveragePooling2D()(x)
+        gap = tf.keras.layers.GlobalAveragePooling2D()
+        x = gap(x)
 
+        drop_layer = None
         if dropout:
             logging.info("Using dropout of %s", dropout)
-            x = tf.keras.layers.Dropout(dropout)(x)
+            drop_layer = tf.keras.layers.Dropout(dropout)
+            x = drop_layer(x)
 
         activation = "softmax"
         if self.params.multi_label:
             # will need to add this in after training
             activation = None
         logging.info("Using %s activation", activation)
-        preds = tf.keras.layers.Dense(
+        final_dense = tf.keras.layers.Dense(
             len(self.labels), activation=activation, name="prediction"
-        )(x)
+        )
+        preds = final_dense(x)
         self.model = tf.keras.models.Model(input_image, outputs=preds)
+
+        self.model_with_aux = None
+        if not single_input and self.params.metadata_margin_weight > 0:
+            # Re-run the same (weight-shared) fusion+head layers on a copy
+            # of the input with metadata zeroed, and expose both
+            # predictions as a second output so a training-only auxiliary
+            # loss can directly penalise the model whenever using real
+            # metadata isn't measurably better than not having it - see
+            # metadata_margin_loss(). self.model (above) is untouched and
+            # remains the single-output model used for saving/inference.
+            zero_time_embedding = layers.Lambda(
+                tf.zeros_like, name="zeroed_metadata_embedding"
+            )(time_embedding)
+            combined_zero = layers.Concatenate(name="input_concat_zeroed")(
+                [image_features, zero_time_embedding]
+            )
+            x_zero = fuse_conv1(combined_zero)
+            x_zero = fuse_conv2(x_zero)
+            x_zero = gap(x_zero)
+            if drop_layer is not None:
+                x_zero = drop_layer(x_zero)
+            preds_zero = final_dense(x_zero)
+
+            metadata_margin_output = layers.Lambda(
+                lambda preds: tf.stack(preds, axis=1), name="metadata_margin"
+            )([preds, preds_zero])
+            self.model_with_aux = tf.keras.models.Model(
+                input_image,
+                outputs={
+                    "prediction": preds,
+                    "metadata_margin": metadata_margin_output,
+                },
+            )
 
         base_model.trainable = self.params.base_training
         return self.model
@@ -792,7 +853,7 @@ class KerasModel(Interpreter):
                     self.model.get_layer("efficientnetv2-b3").trainable = False
                 else:
                     self.model.load_weights(weights)
-                    
+
             # self.model.load_weights(weights)
 
         self.model.summary()
@@ -856,9 +917,54 @@ class KerasModel(Interpreter):
             self.class_weights,
         )
 
+        use_metadata_margin = (
+            fine_tune is None and not single_input and self.model_with_aux is not None
+        )
+        training_model = self.model_with_aux if use_metadata_margin else self.model
+        if use_metadata_margin:
+            logging.info(
+                "Using metadata-margin auxiliary loss (weight=%s, margin=%s)",
+                self.params.metadata_margin_weight,
+                self.params.metadata_margin,
+            )
+            self.train = self.train.map(
+                lambda x, y: (x, {"prediction": y, "metadata_margin": y}),
+                num_parallel_calls=tf.data.AUTOTUNE,
+            )
+            self.validate = self.validate.map(
+                lambda x, y: (x, {"prediction": y, "metadata_margin": y}),
+                num_parallel_calls=tf.data.AUTOTUNE,
+            )
+
+        def compile_training_model(opt):
+            if use_metadata_margin:
+                training_model.compile(
+                    optimizer=opt,
+                    loss={
+                        "prediction": loss(self.params),
+                        "metadata_margin": metadata_margin_loss(self.params),
+                    },
+                    loss_weights={
+                        "prediction": 1.0,
+                        "metadata_margin": self.params.metadata_margin_weight,
+                    },
+                    metrics={"prediction": metrics(self.params.multi_label)},
+                )
+            else:
+                training_model.compile(
+                    optimizer=opt,
+                    loss=loss(self.params),
+                    metrics={"prediction": metrics(self.params.multi_label)},
+                )
+
         self.save(run_name, fine_tune=fine_tune, rebalance=rebalance)
 
-        checkpoints = self.checkpoints(run_name, warmup_epochs=2, fine_tuning=warm_down)
+        checkpoints = self.checkpoints(
+            run_name,
+            warmup_epochs=2,
+            fine_tuning=warm_down,
+            metric_prefix="prediction_" if use_metadata_margin else "",
+        )
 
         # Phase2 loads a good pretrained backbone (channel_aligner +
         # efficientnetv2-b3) from phase1 and, when single_input is False,
@@ -903,11 +1009,7 @@ class KerasModel(Interpreter):
             optimizer_fn = optimizer(
                 self.params, steps, self.epochs, fine_tune=fine_tune is not None
             )
-        self.model.compile(
-            optimizer=optimizer_fn,
-            loss=loss(self.params),
-            metrics={"prediction": metrics(self.params.multi_label)},
-        )
+        compile_training_model(optimizer_fn)
 
         if phase2_freeze_epochs > 0:
             logging.info(
@@ -915,7 +1017,7 @@ class KerasModel(Interpreter):
                 "channel_aligner and efficientnetv2-b3 frozen",
                 phase2_freeze_epochs,
             )
-            history = self.model.fit(
+            history = training_model.fit(
                 self.train,
                 validation_data=self.validate,
                 epochs=phase2_freeze_epochs,
@@ -933,6 +1035,29 @@ class KerasModel(Interpreter):
                 tf.keras.callbacks.LearningRateScheduler(stage_3_lr_scheduler)
             )
 
+            # Carry stage 1's EarlyStopping state into stage 2 - otherwise
+            # its on_train_begin() reset (fired when stage 2's fit() call
+            # below starts) forgets any plateau found while the backbone
+            # was still frozen, and stage 2 can run for a long time only
+            # ever comparing against its own epochs.
+            early_stopping = next(
+                (
+                    c
+                    for c in checkpoints
+                    if isinstance(c, tf.keras.callbacks.EarlyStopping)
+                ),
+                None,
+            )
+            if early_stopping is not None:
+                checkpoints.append(
+                    CarryOverEarlyStopping(
+                        early_stopping,
+                        best=early_stopping.best,
+                        wait=early_stopping.wait,
+                        best_weights=early_stopping.best_weights,
+                    )
+                )
+
             logging.info(
                 "Phase2 stage 2: unfreezing channel_aligner and "
                 "efficientnetv2-b3, fine tuning at %s for remaining %s epochs",
@@ -941,12 +1066,8 @@ class KerasModel(Interpreter):
             )
             self.model.get_layer("channel_aligner").trainable = True
             self.model.get_layer("efficientnetv2-b3").trainable = True
-            self.model.compile(
-                optimizer=tf.keras.optimizers.Adam(learning_rate=2e-5),
-                loss=loss(self.params),
-                metrics={"prediction": metrics(self.params.multi_label)},
-            )
-            history = self.model.fit(
+            compile_training_model(tf.keras.optimizers.Adam(learning_rate=2e-5))
+            history = training_model.fit(
                 self.train,
                 validation_data=self.validate,
                 epochs=epochs,
@@ -958,7 +1079,7 @@ class KerasModel(Interpreter):
             # for key, values in stage2_history.history.items():
             # history.history.setdefault(key, []).extend(values)
         else:
-            history = self.model.fit(
+            history = training_model.fit(
                 self.train,
                 validation_data=self.validate,
                 epochs=epochs,
@@ -1095,8 +1216,19 @@ class KerasModel(Interpreter):
         self.save(run_name, history=history, test_results=test_accuracy)
 
     def checkpoints(
-        self, run_name, fine_tuning=False, stop_on=("val_loss", "min"), warmup_epochs=2
+        self,
+        run_name,
+        fine_tuning=False,
+        stop_on=("val_loss", "min"),
+        warmup_epochs=2,
+        metric_prefix="",
     ):
+        # Keras prefixes per-output metric names with the output name once
+        # a model has more than one output (e.g. "val_acc_thresh" becomes
+        # "val_prediction_acc_thresh") - metric_prefix lets callers using
+        # the metadata-margin auxiliary output keep monitoring the right
+        # keys. The aggregate "val_loss" is never prefixed, so stop_on's
+        # default needs no change.
         checkpoint_file = self.checkpoint_folder / run_name / "cp.weights.h5"
 
         cp_callback = tf.keras.callbacks.ModelCheckpoint(
@@ -1128,9 +1260,9 @@ class KerasModel(Interpreter):
         checkpoint_acc = tf.keras.callbacks.ModelCheckpoint(
             val_acc,
             monitor=(
-                "val_acc_thresh"
+                f"val_{metric_prefix}acc_thresh"
                 if self.params.multi_label
-                else "val_categorical_accuracy"
+                else f"val_{metric_prefix}categorical_accuracy"
             ),
             verbose=1,
             save_best_only=True,
@@ -1142,7 +1274,7 @@ class KerasModel(Interpreter):
 
         checkpoint_recall = tf.keras.callbacks.ModelCheckpoint(
             val_precision,
-            monitor="val_recall",
+            monitor=f"val_{metric_prefix}recall",
             verbose=1,
             save_best_only=True,
             save_weights_only=True,
@@ -1161,6 +1293,7 @@ class KerasModel(Interpreter):
                 # ),
                 mode=stop_on[1],
                 restore_best_weights=True,
+                verbose=1,
             )
             checkpoints.append(earlyStopping)
 
@@ -1364,7 +1497,7 @@ class KerasModel(Interpreter):
                 logging.info("Have multiple labels %s", ll)
             covered_preds = set()
             for y in y_true:
-                totals_row[y]+=1
+                totals_row[y] += 1
                 if y in preds:
                     idx = y
                     covered_preds.add(idx)
@@ -1426,7 +1559,7 @@ class KerasModel(Interpreter):
             np.save(f, true_categories)
             np.save(f, results)
             np.save(f, raw_class_confidences)
-            np.save(f,len(pred_per_track))
+            np.save(f, len(pred_per_track))
         if thresholds_per_label is not None:
             thresholds_per_label = np.array(thresholds_per_label)
             thresholds_per_label[thresholds_per_label < 0.5] = 0.5
@@ -1438,7 +1571,7 @@ class KerasModel(Interpreter):
                 conf_mask = confidences < lbl_thresh
                 preds[pred_mask & conf_mask] = len(labels) - 1
             cm = confusion_matrix(true_categories, preds, labels=np.arange(len(labels)))
-            cm = np.concatenate((cm,totals_row),axis = 0)
+            cm = np.concatenate((cm, totals_row), axis=0)
             # Log the confusion matrix as an image summary.
             figure = plot_confusion_matrix(cm, class_names=labels)
             fscore_file = filename.parent / f"{filename.stem}-fscore"
@@ -1450,7 +1583,7 @@ class KerasModel(Interpreter):
         # set these to None
         preds[confidences < threshold] = len(labels) - 1
         cm = confusion_matrix(true_categories, preds, labels=np.arange(len(labels)))
-        cm = np.concatenate((cm,totals_row),axis = 0)
+        cm = np.concatenate((cm, totals_row), axis=0)
 
         # Log the confusion matrix as an image summary.
         figure = plot_confusion_matrix(cm, class_names=labels)
@@ -1706,6 +1839,48 @@ def loss(params):
     return tf.keras.losses.CategoricalCrossentropy(
         label_smoothing=params.label_smoothing,
     )
+
+
+def metadata_margin_loss(params):
+    """Auxiliary loss for the "metadata_margin" output (see build_model):
+    penalises the model whenever the real-metadata prediction isn't at
+    least `params.metadata_margin` lower-loss than the same example
+    predicted with metadata zeroed out. Directly trains the fusion head to
+    use the metadata branch, rather than relying on that emerging as a
+    side effect of modality dropout.
+
+    The zeroed branch also gets its own direct classification loss
+    (weighted by params.metadata_margin_zero_weight), since it otherwise has
+    no ground-truth supervision at all - only the margin constraint - and
+    the cheapest way to satisfy a pure margin is to make the zeroed
+    branch's predictions arbitrarily bad (BCE/CCE is unbounded for
+    confident-wrong predictions) rather than making the real branch
+    genuinely better. Grounding the zeroed branch as an honest best-effort
+    "no metadata" baseline makes the margin a meaningful test of real
+    improvement over that baseline, not over a sabotaged one.
+    """
+    if params.multi_label:
+        per_example_loss = tf.keras.losses.BinaryCrossentropy(
+            from_logits=True,
+            label_smoothing=params.label_smoothing,
+            reduction=tf.keras.losses.Reduction.NONE,
+        )
+    else:
+        per_example_loss = tf.keras.losses.CategoricalCrossentropy(
+            label_smoothing=params.label_smoothing,
+            reduction=tf.keras.losses.Reduction.NONE,
+        )
+    margin = params.metadata_margin
+    zero_weight = params.metadata_margin_zero_weight
+
+    def loss_fn(y_true, y_pred):
+        # y_pred: (batch, 2, num_classes) - [:, 0] real metadata, [:, 1] zeroed
+        real_loss = per_example_loss(y_true, y_pred[:, 0])
+        zero_loss = per_example_loss(y_true, y_pred[:, 1])
+        margin_term = tf.nn.relu(margin - (zero_loss - real_loss))
+        return margin_term + zero_weight * zero_loss
+
+    return loss_fn
 
 
 def optimizer(params, steps_per_epoch, epochs, fine_tune=False):
@@ -2126,6 +2301,38 @@ class EpochTrackerCallback(tf.keras.callbacks.Callback):
         # Note: 'epoch' passed by Keras starts at 0, so epoch 0 finished means we move to 1
         CURRENT_EPOCH.assign(epoch + 1)
         logging.info("CURRENT_EPOCH assigned to %s", epoch + 1)
+
+
+class CarryOverEarlyStopping(tf.keras.callbacks.Callback):
+    """Re-seeds an EarlyStopping callback's best/wait/best_weights right
+    after Keras resets them in its own on_train_begin, so a plateau
+    detected in an earlier fit() call (e.g. phase2's frozen-backbone stage)
+    isn't forgotten when a later fit() call (e.g. the unfrozen fine-tuning
+    stage) begins. Without this, EarlyStopping starts a fresh "best" from
+    whatever the new stage's first epoch scores, and can run for a long
+    time comparing only against that, never recognising that an earlier
+    stage already found a better optimum.
+
+    Must be placed after the target EarlyStopping instance in the
+    callbacks list passed to fit() - Keras calls on_train_begin in list
+    order, so this needs to run second to override the reset."""
+
+    def __init__(self, early_stopping, best, wait, best_weights):
+        super().__init__()
+        self.early_stopping = early_stopping
+        self.best = best
+        self.wait = wait
+        self.best_weights = best_weights
+
+    def on_train_begin(self, logs=None):
+        self.early_stopping.best = self.best
+        self.early_stopping.wait = self.wait
+        self.early_stopping.best_weights = self.best_weights
+        logging.info(
+            "Carried over EarlyStopping state into new fit() stage: " "best=%s wait=%s",
+            self.best,
+            self.wait,
+        )
 
 
 import tensorflow as tf

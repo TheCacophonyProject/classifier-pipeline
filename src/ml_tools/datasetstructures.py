@@ -1158,7 +1158,7 @@ def random_sections(
     fps = 9
     num_frames = frame_indices[-1] - frame_indices[0]
     filtered_start = frame_indices[0]
-    # logging.info("%s Got frames %s num frames %s %s",label,len(frame_indices),num_frames, frame_indices)
+    # logging.info("%s Got frames %s num frames %s %ps",label,len(frame_indices),num_frames, frame_indices)
 
     frame_indices = list(frame_indices.copy())
     samples, num_windows, stride_offset = get_samples_by_label_urgency(

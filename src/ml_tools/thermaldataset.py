@@ -15,6 +15,8 @@ from ml_tools.frame import TrackChannels
 from pathlib import Path
 from ml_tools.tools import saveclassify_image
 
+tf.config.set_soft_device_placement(True)
+
 # tf.config.run_functions_eagerly(True)
 # seed = 1341
 # tf.random.set_seed(seed)
@@ -100,6 +102,26 @@ def get_excluded():
         # "sheep",
         # "wombat",
     ]
+
+
+def load_excluded_tracks(filename="exclude.txt"):
+    path = Path(filename)
+    if not path.exists():
+        logging.warning(
+            "Exclude tracks file %s not found, not excluding any tracks", path
+        )
+        return None
+    with open(path, "r") as f:
+        track_ids = [int(line.strip()) for line in f if line.strip()]
+    logging.info("Loaded %s excluded tracks from %s", len(track_ids), path)
+    keys = tf.constant(track_ids, dtype=tf.int32)
+    values = tf.ones_like(keys, dtype=tf.int32)
+
+    return tf.lookup.StaticHashTable(
+        initializer=tf.lookup.KeyValueTensorInitializer(keys=keys, values=values),
+        default_value=False,
+        name="excluded_tracks",
+    )
 
 
 def get_remapped(multi_label=False):
@@ -232,7 +254,8 @@ def load_dataset(filenames, remap_lookup, labels, args):
             only_features=only_features,
             one_hot=one_hot,
             extra_label_map=extra_label_map,
-            include_track=args.get("include_track", False),
+            include_track=True,
+            # args.get("include_track", False),
             num_frames=args.get("num_frames", 25),
             channels=args.get(
                 "channels",
@@ -258,6 +281,18 @@ def load_dataset(filenames, remap_lookup, labels, args):
 
     dataset = dataset.filter(filter_nan)
 
+    logging.info("Filtering tracks that have been considered misclassified by umap")
+    excluded_tracks_table = load_excluded_tracks()
+    if excluded_tracks_table is not None:
+        filter_bad_tracks = lambda x, y: tf.math.logical_not(
+            tf.cast(excluded_tracks_table.lookup(y["label"][1]), tf.bool)
+        )
+        dataset = dataset.filter(filter_bad_tracks)
+    if not args.get("include_track", False):
+        dataset = dataset.map(
+            lambda x, y: (x, {"label": y["label"][0], "num_frames": y["num_frames"]}),
+            num_parallel_calls=tf.data.AUTOTUNE,
+        )
     # if features are missing they wil be 0 size
     if args.get("only_features"):
         filter_none = lambda x, y: tf.size(x) > 0
@@ -1441,6 +1476,18 @@ def get_frame_mask_v2(
             ],
             axis=1,
         )
+        # mask =  tf.stack(
+        #     [
+        #         tf.zeros_like(time_mask),
+        #         presence_mask,
+        #         tf.zeros_like(width_mask),
+        #         tf.zeros_like(height_mask),
+        #         tf.zeros_like(x_mask),
+        #         tf.zeros_like(y_mask),
+        #         tf.zeros_like(dt_forward_mask),
+        #     ],
+        #     axis=1,
+        # )
         return mask
     else:
         # dt_forward_mask = tf.concat(
