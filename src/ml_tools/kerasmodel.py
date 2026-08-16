@@ -443,30 +443,34 @@ class KerasModel(Interpreter):
             # Layer 1: Local Dimensional Projection (1x1 Kernel)
             # Prepares the 7 channels by mixing them locally within each individual tile cell
             m_embed = layers.Conv2D(
-                64, 
-                (1, 1), 
-                activation="swish", 
-                padding="same", 
-                name="metadata_local_projection"
+                64,
+                (1, 1),
+                activation="swish",
+                padding="same",
+                name="metadata_local_projection",
             )(mask_input)
 
             # Layer 2: Symmetric Receptive Field Matcher (3x3 Kernel)
-            # Uses a symmetric (3,3) kernel to mirror the exact spatial blending 
+            # Uses a symmetric (3,3) kernel to mirror the exact spatial blending
             # patterns occurring inside your EfficientNet visual backbone!
             time_embedding = layers.Conv2D(
-                128, 
-                (3, 3), # Locked back to symmetric to align with image feature maps
-                activation="swish", 
-                padding="same", 
-                name="metadata_symmetric_receptive_engine"
-            )(m_embed) # Output Footprint: (None, 5, 5, 128) - Flawless structural
+                128,
+                (3, 3),  # Locked back to symmetric to align with image feature maps
+                activation="swish",
+                padding="same",
+                name="metadata_symmetric_receptive_engine",
+            )(
+                m_embed
+            )  # Output Footprint: (None, 5, 5, 128) - Flawless structural
 
             # --- Feature Fusion (Maintains your exact native dimensions) ---
             image_features = layers.MaxPooling2D(
                 pool_size=(2, 2), name="preserve_tiny_anomalies"
             )(x)
             # BOTTLENECK
-            image_features = layers.Conv2D(512, (1, 1), activation="swish", name="visual_bottleneck")(image_features)
+            image_features = layers.Conv2D(
+                512, (1, 1), activation="swish", name="visual_bottleneck"
+            )(image_features)
 
             image_features = tf.keras.layers.SpatialDropout2D(0.3)(image_features)
             image_features = ModalityDropout(
@@ -2316,8 +2320,7 @@ class CarryOverEarlyStopping(tf.keras.callbacks.Callback):
         self.early_stopping.wait = self.wait
         self.early_stopping.best_weights = self.best_weights
         logging.info(
-            "Carried over EarlyStopping state into new fit() stage: "
-            "best=%s wait=%s",
+            "Carried over EarlyStopping state into new fit() stage: " "best=%s wait=%s",
             self.best,
             self.wait,
         )

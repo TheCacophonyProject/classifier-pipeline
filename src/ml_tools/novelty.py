@@ -268,17 +268,16 @@ def main():
     # model = build_model(metadata, old_model)
     old_model.summary()
     model = old_model
-    from modelevaluate import has_sigmoid_output,add_sigmoid_output
+    from modelevaluate import has_sigmoid_output, add_sigmoid_output
+
     if not has_sigmoid_output(model):
         model = add_sigmoid_output(model)
 
     model_with_features = tf.keras.models.Model(
-        model.inputs,
-        [model.output,model.get_layer("global_average_pooling2d").output]
+        model.inputs, [model.output, model.get_layer("global_average_pooling2d").output]
     )
 
-
-    print("Prediction on ",data["input_image"].shape)
+    print("Prediction on ", data["input_image"].shape)
     output = model_with_features.predict(data)
 
     import joblib
@@ -288,9 +287,9 @@ def main():
 
     features = output[1]
     # 4. Use the reloaded model for predictions
-    print("CNN Out is ",features.shape)
+    print("CNN Out is ", features.shape)
     predictions = iso_forest.predict(features)
-    print("Iso forest gives ",predictions)
+    print("Iso forest gives ", predictions)
 
 
 if __name__ == "__main__":
