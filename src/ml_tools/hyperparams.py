@@ -177,7 +177,8 @@ class HyperParams(dict):
         # training signal for the fusion head to actually use the metadata
         # branch, rather than hoping it emerges from modality dropout
         # alone. 0 disables the auxiliary head entirely.
-        return self.get("metadata_margin_weight", 0.2)
+        # if using 0.2 is a good start
+        return self.get("metadata_margin_weight", 0.0)
 
     @property
     def metadata_margin(self):
