@@ -254,7 +254,8 @@ def load_dataset(filenames, remap_lookup, labels, args):
             only_features=only_features,
             one_hot=one_hot,
             extra_label_map=extra_label_map,
-            include_track=args.get("include_track", False),
+            include_track=True,
+            # args.get("include_track", False),
             num_frames=args.get("num_frames", 25),
             channels=args.get(
                 "channels",
@@ -287,10 +288,11 @@ def load_dataset(filenames, remap_lookup, labels, args):
             tf.cast(excluded_tracks_table.lookup(y["label"][1]), tf.bool)
         )
         dataset = dataset.filter(filter_bad_tracks)
-    dataset = dataset.map(
-        lambda x, y: (x, {"label": y["label"][0], "num_frames": y["num_frames"]}),
-        num_parallel_calls=tf.data.AUTOTUNE,
-    )
+    if not args.get("include_track", False):
+        dataset = dataset.map(
+            lambda x, y: (x, {"label": y["label"][0], "num_frames": y["num_frames"]}),
+            num_parallel_calls=tf.data.AUTOTUNE,
+        )
     # if features are missing they wil be 0 size
     if args.get("only_features"):
         filter_none = lambda x, y: tf.size(x) > 0
