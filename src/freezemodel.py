@@ -1,4 +1,5 @@
 import argparse
+import json
 import os
 import numpy as np
 
@@ -41,15 +42,21 @@ def convert_model(args):
     else:
         model = tf.keras.models.load_model(args.model, compile=False)
 
-    if args.sigmoid:
-        probabilities = tf.keras.layers.Activation("sigmoid", name="sigmoid_output")(
-            model.output
-        )
 
-        # 5. Construct the final inference model
-        model = tf.keras.Model(inputs=model.inputs, outputs=probabilities)
-        print("Addied sigmoid")
+    from modelevaluate import has_activation, add_sigmoid_output
+    if not has_activation(model):
+        print("Added sigmoid output")
+        model = add_sigmoid_output(model)
         model.summary()
+    # if args.sigmoid:
+    #     probabilities = tf.keras.layers.Activation("sigmoid", name="sigmoid_output")(
+    #         model.output
+    #     )
+
+    #     # 5. Construct the final inference model
+    #     model = tf.keras.Model(inputs=model.inputs, outputs=probabilities)
+    #     print("Addied sigmoid")
+    #     model.summary()
     print(time.time() - a, " to load model")
     # return
     model.trainable = False
@@ -102,6 +109,20 @@ def convert_model(args):
 
     if meta_file.exists():
         shutil.copy(meta_file, frozen_meta)
+
+        if args.thresholds:
+            with open(args.thresholds) as f:
+                original_thresholds = json.load(f)
+            clipped_thresholds = {
+                label: min(max(value, 0.5), 0.8)
+                for label, value in original_thresholds.items()
+            }
+            with open(frozen_meta) as f:
+                meta = json.load(f)
+            meta["thresholds"] = clipped_thresholds
+            meta["original_thresholds"] = original_thresholds
+            with open(frozen_meta, "w") as f:
+                json.dump(meta, f, indent=4)
 
 
 def get_input_sig(model):
@@ -158,6 +179,11 @@ def parse_args():
         "-m",
         "--model",
         help="Directory where meta data of the model you want to convert is stored",
+    )
+    parser.add_argument(
+        "-t",
+        "--thresholds",
+        help="JSON file of per label thresholds, values are clipped to 0.5 - 0.8 and saved into the frozen model meta data",
     )
 
     return parser.parse_args()

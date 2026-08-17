@@ -40,7 +40,7 @@ class Interpreter(ABC):
         self.thresholds_per_label = metadata.get("thresholds")
         self.preprocess_fn = self.get_preprocess_fn()
         self.preprocess_v2 = metadata.get("v2_preprocess", False)
-
+        self.single_input = metadata.get("single_input",True)
         from ml_tools.interpreter import get_mappings
 
         parent_mappings = {}

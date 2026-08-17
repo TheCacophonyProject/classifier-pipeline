@@ -501,11 +501,13 @@ worker_model = None
 after_date = None
 
 
-def has_sigmoid_output(model):
+def has_activation(model):
     activation = getattr(model.layers[-1], "activation", None)
     if activation is None:
         return False
-    return getattr(activation, "__name__", None) == "sigmoid"
+    activation = getattr(activation, "__name__", None)
+    logging.info("Activation is %s ",activation)
+    return  activation in ["sigmoid","softmax"]
 
 
 def add_sigmoid_output(model):
@@ -529,7 +531,7 @@ def init_worker(model_file, weights, date):
             worker_model.model.load_weights(weights)
         after_date = date
 
-        if not has_sigmoid_output(worker_model.model):
+        if not has_activation(worker_model.model):
             worker_model.model = add_sigmoid_output(worker_model.model)
         worker_model.model.summary()
     except:
@@ -1127,7 +1129,7 @@ def main():
                         for m in zero_metrics:
                             logging.info(f"  {m.name}: {m.result().numpy():.4f}")
                 return
-            if not has_sigmoid_output(model.model):
+            if not has_activation(model.model):
                 model.model = add_sigmoid_output(model.model)
             model.model.summary()
             logging.info("Loading val files to get best thresholds")

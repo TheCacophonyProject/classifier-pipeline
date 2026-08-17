@@ -163,7 +163,7 @@ def hdb_load( features_file, labels, filter_labels=None):
     # 2. Cluster with HDBSCAN
     # The lower the min_cluster_size and min_samples, the more granular the detection
     clusterer = hdbscan.HDBSCAN(
-        min_cluster_size=30,
+        min_cluster_size=100,
         min_samples=3,
         gen_min_span_tree=True,
     )
@@ -326,6 +326,8 @@ def find_mislabeled_points(clusterer, y_true, tracks, features_file):
     hdbscan_labels = clusterer.labels_
     n_clusters = len(set(hdbscan_labels)) - (1 if -1 in hdbscan_labels else 0)
     print(f"HDBSCAN found {n_clusters} clusters")
+    noise_pct = (hdbscan_labels == -1).mean() * 100
+    print(f"Noise points: {noise_pct:.1f}%")
     # Create a summary dataframe for easier inspection
     results = pd.DataFrame(
         {
@@ -428,6 +430,14 @@ def find_mislabeled_points(clusterer, y_true, tracks, features_file):
     print("saving mismatches to ",mismatch_file)
     grouped_df.to_csv(mismatch_file, index=False)
 
+    cluster_map_df = pd.DataFrame(
+        sorted(cluster_to_class_map.items()),
+        columns=["cluster_id", "mapped_class"],
+    )
+    with open(mismatch_file, "a") as f:
+        f.write("\ncluster_to_class_map\n")
+        cluster_map_df.to_csv(f, index=False)
+
     # Tracks whose mismatches were never explained away by an ambiguous
     # cluster are the ones most likely to be genuinely mislabeled.
     no_ambiguous_df = grouped_df[
@@ -440,6 +450,9 @@ def find_mislabeled_points(clusterer, y_true, tracks, features_file):
     with open(mismatched_tracks_file, "w") as f:
         for track in no_ambiguous_df["tracks"]:
             f.write(f"{track}\n")
+        f.write("\ncluster_to_class_map\n")
+        for cluster_id, mapped_class in sorted(cluster_to_class_map.items()):
+            f.write(f"{cluster_id}: {mapped_class}\n")
 
 
 def extract_embeddings(
