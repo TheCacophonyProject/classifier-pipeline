@@ -422,27 +422,22 @@ class Interpreter(ABC):
                 else:
                     frame = clip.get_frame(region.frame_number)
                     result = preprocess_frame_v2(
-                        frame, self.params.frame_size, region, clip.crop_rectangle
+                        frame, self.params.frame_size, region, clip.crop_rectangle,enlarge = True,new_max = 255.0
                     )
                     if result is None:
                         track_data[region.frame_number] = None
                         continue
                     cropped_frame, _, _ = result
-                    # comes as normalized 0-1
-                    cropped_frame.thermal *= 255
-                    cropped_frame.thermal_norm *= 255
-                    cropped_frame.filtered *= 255
                 track_data[region.frame_number] = cropped_frame
                 segment_data.append(cropped_frame.copy())
             input_image = preprocess_movement(
                 segment_data,
                 self.params.square_width,
-                self.params.frame_size,
+                self.params.frame_size*2,
                 self.params.channels,
                 self.preprocess_fn,
                 sample=f"Clip-{clip.get_id()}-track-{track.get_id()}",
                 pad_with=0,  # dont repeat frames
-                enlarge=True,
             )
             if input_image is None:
                 logging.warn("No frames to predict on")

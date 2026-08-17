@@ -184,7 +184,7 @@ def create_tf_example(sample, data, features, labels, country_code):
         assert r.frame_number == f
 
     original_roi = np.uint8([r.to_ltwh() for r in track_bounds])
-
+    
     centre_x = np.float32([r.centroid[0] for r in track_bounds])
     centre_y = np.float32([r.centroid[1] for r in track_bounds])
 
@@ -409,6 +409,7 @@ def get_data(source_file, excluded_tags, extra_args):
                             region,
                             crop_rectangle,
                             original_dim=mosaic_dim,
+                            enlarge = False,
                         )
                         if result is None:
                             by_frame_number[frame_number] = None

@@ -314,6 +314,11 @@ class Frame:
         if self.mask is not None:
             self.mask = resize_cv(self.mask, dim, interpolation=interpolation)
 
+    def clip(self,min =0,max = 255):
+        np.clip(self.thermal, min,max, out=self.thermal)
+        np.clip(self.filtered, min,max, out=self.filtered)
+        np.clip(self.thermal_norm, min,max, out=self.thermal_norm)
+
     def rotate(self, degrees):
         if self.thermal is not None:
             self.thermal = rotate(self.thermal, degrees)
