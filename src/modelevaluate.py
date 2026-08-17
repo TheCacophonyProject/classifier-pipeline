@@ -593,10 +593,14 @@ def load_clip_data(cptv_file):
             )
             output = None
             num_preds = None
-            if len(preprocessed) > 0 and len(preprocessed["input_image"]) > 0:
+            if len(preprocessed) > 0 and (
+                worker_model.single_input or len(preprocessed["input_image"]) > 0
+            ):
 
-                preprocess_data["input_image"].extend(preprocessed["input_image"])
-                if not worker_model.single_input:
+                if worker_model.single_input:
+                    preprocess_data["input_image"].extend(preprocessed)
+                else:
+                    preprocess_data["input_image"].extend(preprocessed["input_image"])
 
                     preprocess_data["input_mask"].extend(preprocessed["input_mask"])
                 num_preds = len(preprocessed["input_image"])

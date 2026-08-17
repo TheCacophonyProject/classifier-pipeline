@@ -40,7 +40,7 @@ class Interpreter(ABC):
         self.thresholds_per_label = metadata.get("thresholds")
         self.preprocess_fn = self.get_preprocess_fn()
         self.preprocess_v2 = metadata.get("v2_preprocess", False)
-        self.single_input = metadata.get("single_input",True)
+        self.single_input = metadata.get("single_input", True)
         from ml_tools.interpreter import get_mappings
 
         parent_mappings = {}
@@ -283,7 +283,7 @@ class Interpreter(ABC):
                 filter_by_fp=False,
                 min_segments=args.get("min_segments"),
                 seed=self.seed,
-                min_frames = args.get("min_frames")
+                # min_frames = args.get("min_frames")
             )
             return segments
         else:
@@ -407,7 +407,9 @@ class Interpreter(ABC):
             filtered_norm_limits = (min_diff, max_diff)
         return thermal_norm_limits, filtered_norm_limits
 
-    def preprocess_segments_v2(self, clip, track, segments, predict_from_last=None,    single_input = True):
+    def preprocess_segments_v2(
+        self, clip, track, segments, predict_from_last=None, single_input=True
+    ):
         from ml_tools.preprocess import preprocess_frame_v2, preprocess_movement
 
         track_data = {}
@@ -422,7 +424,12 @@ class Interpreter(ABC):
                 else:
                     frame = clip.get_frame(region.frame_number)
                     result = preprocess_frame_v2(
-                        frame, self.params.frame_size, region, clip.crop_rectangle,enlarge = True,new_max = 255.0
+                        frame,
+                        self.params.frame_size,
+                        region,
+                        clip.crop_rectangle,
+                        enlarge=True,
+                        new_max=255.0,
                     )
                     if result is None:
                         track_data[region.frame_number] = None
@@ -433,7 +440,7 @@ class Interpreter(ABC):
             input_image = preprocess_movement(
                 segment_data,
                 self.params.square_width,
-                self.params.frame_size*2,
+                self.params.frame_size * 2,
                 self.params.channels,
                 self.preprocess_fn,
                 sample=f"Clip-{clip.get_id()}-track-{track.get_id()}",

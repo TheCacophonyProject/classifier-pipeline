@@ -430,7 +430,7 @@ def split_by_file(dataset, config, split_file, base_dir, make_val=False, seed=No
                 pass
                 # logging.warn("No source file %s found for %s", f, name)
         datasets.append(split_dataset)
-    
+
     print_counts(*datasets)
     if make_val:
         train, val, _ = split_randomly(datasets[0], config, None, use_test=False)
@@ -864,7 +864,7 @@ def main():
         print("Splitting data set into train / validation")
 
         if args.save_master_only is not None:
-            logging.info("Saving master dataset to %s",args.save_master_only)
+            logging.info("Saving master dataset to %s", args.save_master_only)
             datasets = [master_dataset]
         else:
             datasets = split_randomly(master_dataset, config, args.date, test_clips)

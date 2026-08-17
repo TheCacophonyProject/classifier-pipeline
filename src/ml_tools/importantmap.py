@@ -85,7 +85,14 @@ def overlay_heatmap_on_channel(channel, heatmap, alpha=0.4):
 
 
 def save_gradcam_for_label(
-    model, pred_image, pred_mask, label_index, label, pred_score, out_path, channel_names
+    model,
+    pred_image,
+    pred_mask,
+    label_index,
+    label,
+    pred_score,
+    out_path,
+    channel_names,
 ):
     heatmap = make_gradcam_heatmap(
         model,
@@ -318,8 +325,7 @@ def main():
         if args.all_labels:
             for label_i, label in enumerate(labels):
                 out_path = (
-                    args.source.parent
-                    / f"{args.source.stem}-gradcam-{label}.png"
+                    args.source.parent / f"{args.source.stem}-gradcam-{label}.png"
                 )
                 save_gradcam_for_label(
                     model,

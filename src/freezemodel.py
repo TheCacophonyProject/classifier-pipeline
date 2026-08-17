@@ -105,7 +105,7 @@ def convert_model(args):
             print(model.summary())
 
             model.save(out_dir / "saved_model.keras")
-            frozen_meta = out_dir /"saved_model.json"
+            frozen_meta = out_dir / "saved_model.json"
 
     if meta_file.exists():
         shutil.copy(meta_file, frozen_meta)
@@ -155,7 +155,7 @@ def parse_args():
         "--freeze",
         help="freeze model with weights here",
     )
-    
+
     parser.add_argument(
         "-e",
         "--export",

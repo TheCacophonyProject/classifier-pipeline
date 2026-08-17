@@ -665,7 +665,7 @@ class KerasModel(Interpreter):
         model_stats["type"] = self.data_type
         model_stats["remapped_labels"] = self.remapped_labels
         model_stats["excluded_labels"] = self.excluded_labels
-        model_stats["v2_preprocess"]= True
+        model_stats["v2_preprocess"] = True
         if self.remapped is not None:
             model_stats["remapped"] = self.remapped
         if self.class_weights is not None:

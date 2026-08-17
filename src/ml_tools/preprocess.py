@@ -61,8 +61,8 @@ def preprocess_frame_v2(
     region,
     crop_rectangle,
     original_dim=None,  # represent if we are taking extra padding
-    enlarge = True, # when building a dataset this will be false as resize happens on train time
-    new_max = 1,
+    enlarge=True,  # when building a dataset this will be false as resize happens on train time
+    new_max=1,
 ):
     import math
     from ml_tools.imageprocessing import adapt_hist, normalize, apply_fair_clahe
@@ -294,11 +294,11 @@ def preprocess_frame_v2(
     # cv2.waitKey()
     if enlarge:
         cropped_frame.resize(
-            (out_dim*2, out_dim*2),
+            (out_dim * 2, out_dim * 2),
             interpolation=cv2.INTER_CUBIC,
         )
-        cropped_frame.clip(0,1)
-    if new_max!=1:
+        cropped_frame.clip(0, 1)
+    if new_max != 1:
         cropped_frame.thermal *= new_max
         cropped_frame.thermal_norm *= new_max
         cropped_frame.filtered *= new_max
@@ -415,6 +415,7 @@ def preprocess_movement(
     enlarge=False,
 ):
     from ml_tools.imageprocessing import square_clip
+
     frame_types = {}
     data = []
     frame_samples = None

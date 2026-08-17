@@ -1070,7 +1070,7 @@ def get_segment_indices(
     frame_to_closest_valid,
     short_track,
     vel_x,
-    vel_y
+    vel_y,
 ):
     segment_frames = []
     seg_regions = []
@@ -1079,7 +1079,7 @@ def get_segment_indices(
     max_chunk_gap = 2
     stopped_early = False
     MOVEMENT_THRESH = 2
-    
+
     # pass in velocities and for short clips can dynamically set chink size such that velocity meets the threshold or is chunk_size apart
     for chunk in range(chunks):
         if short_track and chunk > 0:
@@ -1087,14 +1087,18 @@ def get_segment_indices(
             skip = 0
             movement_x = 0
             movement_y = 0
-            while skip < chunk_size and (movement_x + movement_y) < MOVEMENT_THRESH and (region_index < len(regions)-1):
+            while (
+                skip < chunk_size
+                and (movement_x + movement_y) < MOVEMENT_THRESH
+                and (region_index < len(regions) - 1)
+            ):
                 # vel_x index 0 is actually the second frame , as 0 is 0
-                if region_index >0:
-                    movement_x +=  abs(vel_x[region_index])
-                    movement_y +=  abs(vel_y[region_index])
-                region_index+=1
-                skip+=1
-            if region_index >= len(regions)-1:
+                if region_index > 0:
+                    movement_x += abs(vel_x[region_index])
+                    movement_y += abs(vel_y[region_index])
+                region_index += 1
+                skip += 1
+            if region_index >= len(regions) - 1:
                 break
             start = regions[region_index].frame_number
         else:
@@ -1145,7 +1149,7 @@ def get_segment_indices(
                 break
             continue
         skipped_chunks = 0
-        if short_track and chunk> 0 :
+        if short_track and chunk > 0:
             # chunk 0 can be the phase
             offset = 0
         else:
@@ -1178,15 +1182,15 @@ def random_sections(
     rec_time,
     seed=None,
     max_samples=5,
-    min_frames = 25 // 4,
-    min_segments = None
+    min_frames=25 // 4,
+    min_segments=None,
 ):
 
     # TODO Pass this in when trianing, inference level it is not needed
     min_frames = int(25 / 4.0)
     rng = np.random.default_rng(seed=seed)
     chunks = 25
-    chunk_size = 12/ 25 * 9
+    chunk_size = 12 / 25 * 9
 
     window_length_seconds = 12
     fps = 9
@@ -1261,7 +1265,6 @@ def random_sections(
 
     vel_y = centre_y[1:] - centre_y[:-1]
 
-
     for window_start in chosen_windows:
         segment_frames, seg_regions, mass, last_index, stopped_early = (
             get_segment_indices(
@@ -1284,15 +1287,19 @@ def random_sections(
             )
         )
         # if stopped_early and (len(segment_frames) < 25 // 4):
-            # logging.warning(
-            #     "Could not find frames that are close enough together for source %s track %s with window start %s  for chunk size %s",
-            #     source_file,
-            #     track_id,
-            #     window_start + start_frame,
-            #     chunk_size,
-            # )
-            # continue
-        if min_segments is None and len(segment_frames) < min_frames and num_frames > min_frames:
+        # logging.warning(
+        #     "Could not find frames that are close enough together for source %s track %s with window start %s  for chunk size %s",
+        #     source_file,
+        #     track_id,
+        #     window_start + start_frame,
+        #     chunk_size,
+        # )
+        # continue
+        if (
+            min_segments is None
+            and len(segment_frames) < min_frames
+            and num_frames > min_frames
+        ):
             # logging.warning(
             #     "Not enough segment frames %s for source %s track %s with window start %s already added %s",
             #     len(segment_frames),
@@ -1495,8 +1502,8 @@ def get_segments(
                     rec_time,
                     seed,
                     max_samples=max_segments,
-                    min_frames = min_frames,
-                    min_segments = min_segments,
+                    min_frames=min_frames,
+                    min_segments=min_segments,
                 )
                 segments.extend(new_segments)
                 continue
