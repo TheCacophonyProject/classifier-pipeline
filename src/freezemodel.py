@@ -104,8 +104,8 @@ def convert_model(args):
             print("saving model to", out_dir / args.model.name)
             print(model.summary())
 
-            model.save(out_dir / args.model.name)
-            frozen_meta = out_dir / meta_file.name
+            model.save(out_dir / "saved_model.keras")
+            frozen_meta = out_dir /"saved_model.json"
 
     if meta_file.exists():
         shutil.copy(meta_file, frozen_meta)
@@ -155,11 +155,7 @@ def parse_args():
         "--freeze",
         help="freeze model with weights here",
     )
-    parser.add_argument(
-        "--sigmoid",
-        action="store_true",
-        help="Add sigmoid layer",
-    )
+    
     parser.add_argument(
         "-e",
         "--export",

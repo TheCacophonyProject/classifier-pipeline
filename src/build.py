@@ -85,9 +85,11 @@ def parse_args():
         default=None,
         help="Defaults to number of cores",
     )
+    parser.add_argument("--save-master-only", help="Save master only")
 
     args = parser.parse_args()
-
+    if args.save_master_only is not None:
+        args.save_master_only = Path(args.save_master_only)
     if args.date:
         # if args.date == "None":
         #     args.date = None
@@ -428,7 +430,7 @@ def split_by_file(dataset, config, split_file, base_dir, make_val=False, seed=No
                 pass
                 # logging.warn("No source file %s found for %s", f, name)
         datasets.append(split_dataset)
-
+    
     print_counts(*datasets)
     if make_val:
         train, val, _ = split_randomly(datasets[0], config, None, use_test=False)
@@ -715,6 +717,7 @@ def rough_balance(datasets):
             np.random.shuffle(by_labels)
             for i in range(samples_to_remove):
                 dataset.remove_sample(by_labels[i])
+
     print_counts(*datasets)
 
 
@@ -813,7 +816,10 @@ def main():
         raw=False if args.ext == ".hdf5" else True,
         ext=args.ext,
     )
-    base_dir = Path(config.base_folder)
+    if args.save_master_only:
+        base_dir = Path(args.save_master_only)
+    else:
+        base_dir = Path(config.base_folder)
     record_dir = base_dir / "training-data"
     record_dir.mkdir(parents=True, exist_ok=True)
 
@@ -857,16 +863,20 @@ def main():
         print()
         print("Splitting data set into train / validation")
 
-        datasets = split_randomly(master_dataset, config, args.date, test_clips)
-        rough_balance(datasets)
+        if args.save_master_only is not None:
+            logging.info("Saving master dataset to %s",args.save_master_only)
+            datasets = [master_dataset]
+        else:
+            datasets = split_randomly(master_dataset, config, args.date, test_clips)
+            rough_balance(datasets)
         validate_datasets(datasets, test_clips, args.date)
         dump_split_ids(
             datasets,
             args.seed,
             record_dir / "datasplit.json",
         )
-
-    print_counts(*datasets)
+    if not args.save_master_only:
+        print_counts(*datasets)
     print("split data")
     import psutil, os
 
