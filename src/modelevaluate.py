@@ -598,12 +598,13 @@ def load_clip_data(cptv_file):
             ):
 
                 if worker_model.single_input:
+                    num_preds = len(preprocessed)
                     preprocess_data["input_image"].extend(preprocessed)
                 else:
                     preprocess_data["input_image"].extend(preprocessed["input_image"])
 
                     preprocess_data["input_mask"].extend(preprocessed["input_mask"])
-                num_preds = len(preprocessed["input_image"])
+                    num_preds = len(preprocessed["input_image"])
             data.append(
                 [
                     f"{track.clip_id}-{track.get_id()}",
