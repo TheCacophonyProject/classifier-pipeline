@@ -506,8 +506,8 @@ def has_activation(model):
     if activation is None:
         return False
     activation = getattr(activation, "__name__", None)
-    logging.info("Activation is %s ",activation)
-    return  activation in ["sigmoid","softmax"]
+    logging.info("Activation is %s ", activation)
+    return activation in ["sigmoid", "softmax"]
 
 
 def add_sigmoid_output(model):
@@ -576,7 +576,11 @@ def load_clip_data(cptv_file):
     for track in clip.tracks:
         try:
             samples = worker_model.frames_for_prediction(
-                clip, track, frames_per_classify=25, dont_filter=True, min_segments=1
+                clip,
+                track,
+                frames_per_classify=25,
+                dont_filter=True,
+                min_segments=1,
             )
 
             frames, preprocessed, masses = worker_model.preprocess(
@@ -590,8 +594,11 @@ def load_clip_data(cptv_file):
             output = None
             num_preds = None
             if len(preprocessed) > 0 and len(preprocessed["input_image"]) > 0:
+
                 preprocess_data["input_image"].extend(preprocessed["input_image"])
-                preprocess_data["input_mask"].extend(preprocessed["input_mask"])
+                if not worker_model.single_input:
+
+                    preprocess_data["input_mask"].extend(preprocessed["input_mask"])
                 num_preds = len(preprocessed["input_image"])
             data.append(
                 [
@@ -605,8 +612,11 @@ def load_clip_data(cptv_file):
         except:
             logging.error("Could not load %s", clip.clip_id, exc_info=True)
     if len(preprocess_data["input_image"]) > 0:
-        preprocess_data["input_image"] = np.array(preprocess_data["input_image"])
-        preprocess_data["input_mask"] = np.array(preprocess_data["input_mask"])
+        if worker_model.single_input:
+            preprocess_data = np.array(preprocess_data["input_image"])
+        else:
+            preprocess_data["input_image"] = np.array(preprocess_data["input_image"])
+            preprocess_data["input_mask"] = np.array(preprocess_data["input_mask"])
         output = worker_model.predict(preprocess_data)
         pred_pos = 0
         for i in range(len(data)):

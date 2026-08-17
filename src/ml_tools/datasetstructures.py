@@ -1068,6 +1068,9 @@ def get_segment_indices(
     mass_history,
     last_index,
     frame_to_closest_valid,
+    short_track,
+    vel_x,
+    vel_y
 ):
     segment_frames = []
     seg_regions = []
@@ -1075,9 +1078,27 @@ def get_segment_indices(
     skipped_chunks = 0
     max_chunk_gap = 2
     stopped_early = False
-
+    MOVEMENT_THRESH = 2
+    
+    # pass in velocities and for short clips can dynamically set chink size such that velocity meets the threshold or is chunk_size apart
     for chunk in range(chunks):
-        start = window_start + int(chunk * chunk_size) + filtered_start
+        if short_track and chunk > 0:
+            # start can be next index that velocity is > thresh
+            skip = 0
+            movement_x = 0
+            movement_y = 0
+            while skip < chunk_size and (movement_x + movement_y) < MOVEMENT_THRESH and (region_index < len(regions)-1):
+                # vel_x index 0 is actually the second frame , as 0 is 0
+                if region_index >0:
+                    movement_x +=  abs(vel_x[region_index])
+                    movement_y +=  abs(vel_y[region_index])
+                region_index+=1
+                skip+=1
+            if region_index >= len(regions)-1:
+                break
+            start = regions[region_index].frame_number
+        else:
+            start = window_start + int(chunk * chunk_size) + filtered_start
         end = start + int(chunk_size)
         valid_frames = []
         prev_f = None
@@ -1124,12 +1145,19 @@ def get_segment_indices(
                 break
             continue
         skipped_chunks = 0
-        offset = rng.integers(low=0, high=len(valid_frames))
+        if short_track and chunk> 0 :
+            # chunk 0 can be the phase
+            offset = 0
+        else:
+            offset = rng.integers(low=0, high=len(valid_frames))
         frame_num = valid_frames[offset]
         frame_indices[frame_to_closest_valid[frame_num]] = -1
         assert frame_num not in frame_indices
         segment_frames.append(frame_num)
-        seg_regions.append(regions[frame_num - start_frame])
+        region_index = frame_num - start_frame
+
+        seg_regions.append(regions[region_index])
+
         assert seg_regions[-1].frame_number == frame_num
         mass += mass_history[frame_num - start_frame]
     return segment_frames, seg_regions, mass, last_index, stopped_early
@@ -1150,10 +1178,16 @@ def random_sections(
     rec_time,
     seed=None,
     max_samples=5,
+    min_frames = 25 // 4,
+    min_segments = None
 ):
+
+    # TODO Pass this in when trianing, inference level it is not needed
     min_frames = int(25 / 4.0)
     rng = np.random.default_rng(seed=seed)
     chunks = 25
+    chunk_size = 12/ 25 * 9
+
     window_length_seconds = 12
     fps = 9
     num_frames = frame_indices[-1] - frame_indices[0]
@@ -1170,9 +1204,8 @@ def random_sections(
         num_windows, num_windows * (window_frames // 2), step=window_frames // 2
     )
 
-    chunks = min(window_frames, chunks)
-    chunk_size = window_frames / chunks
-    chunk_size = 12/ 25 * 9
+    # chunks = min(window_frames, chunks)
+    # chunk_size = window_frames / chunks
     print(num_frames,"Window frames", window_frames,"Chunks",chunks, "size", chunk_size)
     if samples > num_windows:
         # this is our labels that we have low samples for
@@ -1221,6 +1254,13 @@ def random_sections(
     np.sort(windows)
     chosen_windows = np.sort(chosen_windows)
     chosen_windows = np.concatenate([chosen_windows, windows])
+    centre_x = np.float32([r.centroid[0] for r in regions])
+    centre_y = np.float32([r.centroid[1] for r in regions])
+
+    vel_x = centre_x[1:] - centre_x[:-1]
+
+    vel_y = centre_y[1:] - centre_y[:-1]
+
 
     for window_start in chosen_windows:
         segment_frames, seg_regions, mass, last_index, stopped_early = (
@@ -1238,9 +1278,12 @@ def random_sections(
                 mass_history,
                 last_index,
                 frame_to_closest_valid,
+                num_frames < window_length_seconds * fps,
+                vel_x,
+                vel_y,
             )
         )
-        if stopped_early and (len(segment_frames) < 25 // 4):
+        # if stopped_early and (len(segment_frames) < 25 // 4):
             # logging.warning(
             #     "Could not find frames that are close enough together for source %s track %s with window start %s  for chunk size %s",
             #     source_file,
@@ -1248,8 +1291,8 @@ def random_sections(
             #     window_start + start_frame,
             #     chunk_size,
             # )
-            continue
-        if len(segment_frames) < min_frames and num_frames > min_frames:
+            # continue
+        if min_segments is None and len(segment_frames) < min_frames and num_frames > min_frames:
             # logging.warning(
             #     "Not enough segment frames %s for source %s track %s with window start %s already added %s",
             #     len(segment_frames),
@@ -1280,7 +1323,6 @@ def random_sections(
         segments.append(segment)
         if len(segments) == samples:
             break
-    print("Got ", len(segments))
     return segments
 
 
@@ -1453,6 +1495,8 @@ def get_segments(
                     rec_time,
                     seed,
                     max_samples=max_segments,
+                    min_frames = min_frames,
+                    min_segments = min_segments,
                 )
                 segments.extend(new_segments)
                 continue

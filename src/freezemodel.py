@@ -42,8 +42,8 @@ def convert_model(args):
     else:
         model = tf.keras.models.load_model(args.model, compile=False)
 
-
     from modelevaluate import has_activation, add_sigmoid_output
+
     if not has_activation(model):
         print("Added sigmoid output")
         model = add_sigmoid_output(model)

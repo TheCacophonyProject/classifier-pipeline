@@ -283,6 +283,7 @@ class Interpreter(ABC):
                 filter_by_fp=False,
                 min_segments=args.get("min_segments"),
                 seed=self.seed,
+                min_frames = args.get("min_frames")
             )
             return segments
         else:
@@ -406,7 +407,7 @@ class Interpreter(ABC):
             filtered_norm_limits = (min_diff, max_diff)
         return thermal_norm_limits, filtered_norm_limits
 
-    def preprocess_segments_v2(self, clip, track, segments, predict_from_last=None):
+    def preprocess_segments_v2(self, clip, track, segments, predict_from_last=None,    single_input = True):
         from ml_tools.preprocess import preprocess_frame_v2, preprocess_movement
 
         track_data = {}
@@ -446,15 +447,20 @@ class Interpreter(ABC):
             if input_image is None:
                 logging.warn("No frames to predict on")
                 continue
+            if single_input:
+                preprocessed.setdefault("input_image", []).append(input_image)
 
-            input_mask = get_frame_mask(segment.frame_indices)
-            preprocessed.setdefault("input_image", []).append(input_image)
-            preprocessed.setdefault("input_mask", []).append(input_mask)
+            if not single_input:
+                input_mask = get_frame_mask(segment.frame_indices)
+                preprocessed.setdefault("input_mask", []).append(input_mask)
             masses.append(segment.mass)
 
         if len(preprocessed) > 0:
-            preprocessed["input_image"] = np.array(preprocessed["input_image"])
-            preprocessed["input_mask"] = np.array(preprocessed["input_mask"])
+            if single_input:
+                preprocessed = np.array(preprocessed["input_image"])
+            else:
+                preprocessed["input_image"] = np.array(preprocessed["input_image"])
+                preprocessed["input_mask"] = np.array(preprocessed["input_mask"])
 
         return [s.frame_indices for s in segments], preprocessed, masses
 
