@@ -484,7 +484,7 @@ class Track:
         segment_width,
         segment_frame_spacing=9,
         repeats=1,
-        min_frames=0,
+        min_frames=1,
         segment_frames=None,
         segment_types=[SegmentType.ALL_RANDOM],
         from_last=None,

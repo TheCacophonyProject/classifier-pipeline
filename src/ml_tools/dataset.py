@@ -92,6 +92,7 @@ class Dataset:
             self.max_segments = config.build.max_segments
             self.country = config.build.country
             self.max_frames = config.build.max_frames
+            self.segment_min_frames = config.build.segment_min_frames
         else:
             self.country = "NZ"
             self.tag_precedence = BuildConfig.DEFAULT_GROUPS
@@ -104,6 +105,7 @@ class Dataset:
             # number of seconds segments are spaced apart
             self.segment_spacing = 1
             self.segment_min_avg_mass = 10
+            self.segment_min_frames = 25 // 4
             self.min_frame_mass = 16
             self.max_frames = 75
         self.country_rectangle = BuildConfig.COUNTRY_LOCATIONS.get(self.country)
@@ -221,6 +223,7 @@ class Dataset:
             filter_by_lq=self.filter_by_lq,
             is_ir=self.type == "IR",
             seed=seed,
+            min_frames=self.segment_min_frames,
         )
         sample_id = 1
         import psutil
@@ -713,6 +716,7 @@ def load_clip_multi(
     filter_by_lq=False,
     is_ir=False,
     seed=None,
+    min_frames=0,
 ):
     filtered_stats = {}
     if raw:
@@ -770,6 +774,7 @@ def load_clip_multi(
                     if seed is None
                     else seed + track_header.clip_id + track_header.track_id
                 ),
+                min_frames=min_frames,
             )
             filtered_stats.setdefault("segment_mass", 0)
             filtered_stats["segment_mass"] += track_header.filtered_stats[

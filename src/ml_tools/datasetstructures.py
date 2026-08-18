@@ -398,10 +398,10 @@ class TrackHeader:
         filter_by_fp=True,
         min_segments=None,
         seed=None,
+        min_frames=0,
     ):
         if segment_frames is not None:
             raise Exception("Have not implement this path")
-        min_frames = segment_width / 4.0
         if self.label in BuildConfig.NO_MIN_FRAMES:
             # try and always get one for these
             min_frames = 0
@@ -1079,7 +1079,8 @@ def get_segment_indices(
     max_chunk_gap = 2
     stopped_early = False
     MOVEMENT_THRESH = 2
-
+    frame_num = 0
+    start = window_start + filtered_start
     # pass in velocities and for short clips can dynamically set chink size such that velocity meets the threshold or is chunk_size apart
     for chunk in range(chunks):
         if short_track and chunk > 0:
@@ -1102,10 +1103,17 @@ def get_segment_indices(
                 break
             start = regions[region_index].frame_number
         else:
-            start = window_start + int(chunk * chunk_size) + filtered_start
-        end = start + int(chunk_size)
+            if chunk > 0:
+                start = end + 1
+
+                # ensure offset is atleast 2 frames away
+                # logging.info("previous end was %s Diff from %s to %s ",end, start, frame_num)
+                start = max(start, frame_num + 2)
+
+        end = start + math.ceil(chunk_size)
         valid_frames = []
         prev_f = None
+        # logging.info("%s Choosing %s - %s  start frame %s",window_start,start,end,frame_num)
         if start in frame_to_closest_valid:
             start_index = frame_to_closest_valid[start]
         elif last_index is not None:
@@ -1127,26 +1135,27 @@ def get_segment_indices(
             if f >= end:
                 break
 
+        # dont thinks this matters just get what we can just get what we can for 12 seconds
         if len(valid_frames) == 0:
-            # logging.warning(
-            #     "Could not find a valid frame chunk %s - %s source %s track %s",
-            #     start,
-            #     end,
-            #     source_file,
-            #     track_id,
-            # )
-            skipped_chunks += 1
-            if skipped_chunks >= max_chunk_gap:
-                # logging.warning(
-                #     "Could not find frames that are close enough together for source %s track %s with window start %s for chunk size %s consecutive skipped chunks %s",
-                #     source_file,
-                #     track_id,
-                #     window_start + start_frame,
-                #     chunk_size,
-                #     skipped_chunks,
-                # )
-                stopped_early = True
-                break
+            #     # logging.warning(
+            #     #     "Could not find a valid frame chunk %s - %s source %s track %s",
+            #     #     start,
+            #     #     end,
+            #     #     source_file,
+            #     #     track_id,
+            #     # )
+            #     skipped_chunks += 1
+            #     if skipped_chunks >= max_chunk_gap:
+            #         # logging.warning(
+            #         #     "Could not find frames that are close enough together for source %s track %s with window start %s for chunk size %s consecutive skipped chunks %s",
+            #         #     source_file,
+            #         #     track_id,
+            #         #     window_start + start_frame,
+            #         #     chunk_size,
+            #         #     skipped_chunks,
+            #         # )
+            #         stopped_early = True
+            #         break
             continue
         skipped_chunks = 0
         if short_track and chunk > 0:
@@ -1159,7 +1168,6 @@ def get_segment_indices(
         assert frame_num not in frame_indices
         segment_frames.append(frame_num)
         region_index = frame_num - start_frame
-
         seg_regions.append(regions[region_index])
 
         assert seg_regions[-1].frame_number == frame_num
@@ -1182,12 +1190,10 @@ def random_sections(
     rec_time,
     seed=None,
     max_samples=5,
-    min_frames=25 // 4,
+    min_frames=1,
     min_segments=None,
 ):
-
-    # TODO Pass this in when trianing, inference level it is not needed
-    min_frames = int(25 / 4.0)
+    min_frames = max(min_frames,1)
     rng = np.random.default_rng(seed=seed)
     chunks = 25
     chunk_size = 12 / 25 * 9
@@ -1204,9 +1210,8 @@ def random_sections(
     )
     window_frames = min(window_length_seconds * fps, num_frames)
     upsampled = False
-    windows = np.arange(
-        num_windows, num_windows * (window_frames // 2), step=window_frames // 2
-    )
+    windows = np.arange(0, num_windows * (window_frames // 2), step=window_frames // 2)
+    # logging.info("Windows are %s frames %s windows %s",num_windows,window_frames, windows)
 
     # chunks = min(window_frames, chunks)
     # chunk_size = window_frames / chunks
@@ -1239,6 +1244,8 @@ def random_sections(
         #     stride_offset,
         # )
     else:
+        # logging.info("Stride offset is %s",stride_offset)
+
         if stride_offset > 0:
             random_offset = rng.integers(low=0, high=stride_offset + 1)
             windows += random_offset
@@ -1252,7 +1259,6 @@ def random_sections(
     last_index = None
     # # might need to try more than once if there are large gaps at some window starts which causes no segments to be added
     # while len(segments)!= samples and len(windows)>0:
-
     chosen_windows = windows[:samples]
     windows = windows[samples:]
     np.sort(windows)
@@ -1264,7 +1270,6 @@ def random_sections(
     vel_x = centre_x[1:] - centre_x[:-1]
 
     vel_y = centre_y[1:] - centre_y[:-1]
-
     for window_start in chosen_windows:
         segment_frames, seg_regions, mass, last_index, stopped_early = (
             get_segment_indices(
@@ -1296,7 +1301,8 @@ def random_sections(
         # )
         # continue
         if (
-            min_segments is None
+            min_segments is not None
+            and len(segments) >= min_segments
             and len(segment_frames) < min_frames
             and num_frames > min_frames
         ):

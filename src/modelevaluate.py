@@ -15,7 +15,7 @@ import time
 import matplotlib.ticker as mtick
 from config.config import Config
 import os
-
+import psutil
 import json
 
 # from config.config import Config
@@ -191,6 +191,7 @@ def load_args():
     parser.add_argument("-c", "--config-file", help="Path to config file to use")
 
     parser.add_argument("-d", "--date", help="Use clips after this")
+    parser.add_argument("--source-file", help="Use split for evaluation")
 
     parser.add_argument("--split-file", help="Use split for evaluation")
     parser.add_argument(
@@ -235,6 +236,8 @@ def load_args():
     if args.date:
         args.date = parse_date(args.date)
         args.date = args.date.replace(tzinfo=pytz.UTC)
+    if args.source_file is not None:
+        args.source_file = Path(args.source_file)
     return args
 
 
@@ -506,7 +509,6 @@ def has_activation(model):
     if activation is None:
         return False
     activation = getattr(activation, "__name__", None)
-    logging.info("Activation is %s ", activation)
     return activation in ["sigmoid", "softmax"]
 
 
@@ -541,6 +543,7 @@ def init_worker(model_file, weights, date):
 def load_clip_data(cptv_file):
     # for clip in dataset.clips:
     reason = {}
+    cptv_file = Path(cptv_file)
 
     try:
         clip_db = RawDatabase(cptv_file)
@@ -565,6 +568,7 @@ def load_clip_data(cptv_file):
         logging.info("No tracks after filtering %s", cptv_file)
         return None
     clip_db.load_frames()
+
     segment_frame_spacing = int(round(clip.frames_per_second))
     thermal_medians = []
     for f in clip_db.frames:
@@ -573,6 +577,7 @@ def load_clip_data(cptv_file):
     data = []
     # this wont work for old models that dont use multi inputs, but dont think that matters
     preprocess_data = {"input_image": [], "input_mask": []}
+    worker_model.seed = clip_db.timestamp
     for track in clip.tracks:
         try:
             samples = worker_model.frames_for_prediction(
@@ -635,7 +640,7 @@ def load_clip_data(cptv_file):
             # print(len(preds),"Setting data preds ",pred_pos,"-", num_preds+pred_pos, " total preds are ", len(output))
             pred_pos += num_preds
 
-    return data
+    return (cptv_file, data)
 
 
 def load_split_file(split_file):
@@ -654,6 +659,7 @@ def evaluate_dir(
     split_dataset="test",
     threshold=0.5,
     after_date=None,
+    source_file=None,
 ):
     # is faster to run multiple models on CPU
     os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
@@ -696,16 +702,20 @@ def evaluate_dir(
             split_dataset,
             files[:2],
         )
+    elif source_file is not None:
+        with source_file.open("r") as f:
+            files = json.load(f)
     else:
         files = list(dir.glob(f"**/*cptv"))
     files.sort()
-    # files = files[:1]
+    # files = files[:3]
+    logging.info("Files are %s", files)
     start = time.time()
     processed = 0
     # quite faster with just one process for loading and using main process for predicting
 
     pool = Pool(
-        processes=8,
+        processes=psutil.cpu_count(logical=False),
         initializer=init_worker,
         initargs=(
             model_file,
@@ -717,6 +727,7 @@ def evaluate_dir(
     raw_preds = []
     raw_confs = []
     raw_class_confidences = []
+    source_files = []
     try:
 
         stats = {"correct": [], "incorrect": [], "low-confidence": []}
@@ -724,9 +735,11 @@ def evaluate_dir(
             if processed % 100 == 0:
                 logging.info("Processed %s / %s", processed, len(files))
             processed += 1
-            if clip_data is None:
+            if clip_data is None or isinstance(clip_data, str):
                 continue
-            for data in clip_data:
+            source_file = clip_data[0]
+            source_files.append(source_file)
+            for data in clip_data[1]:
                 label = data[1]
                 output = data[3]
                 if output is None:
@@ -783,7 +796,6 @@ def evaluate_dir(
                     )
                 else:
                     stats["correct"].append(data[0])
-
     except KeyboardInterrupt:
         print("KeyboardInterrupt detected. Terminating pool...")
         pool.terminate()
@@ -793,6 +805,14 @@ def evaluate_dir(
         pool.close()  # Ensure resources are released
         pool.join()
 
+    source_files.sort()
+    filename = confusion_file
+
+    source_file = filename.parent / f"{filename.stem}-source.json"
+    logging.info("Saving source files to %s", source_file)
+    with source_file.open("w") as f:
+        json.dump([str(s) for s in source_files], f, indent=4)
+
     stats_f = confusion_file.parent / "stats.json"
     logging.info("Stats saved in %s", stats_f)
 
@@ -800,7 +820,6 @@ def evaluate_dir(
         json.dump(stats, f)
 
     model.labels.append("None")
-    filename = confusion_file
     raw_preds_i = [model.labels.index(pred) for pred in raw_preds]
     y_true_i = [
         model.labels.index(y_t) if y_t in model.labels else -1 for y_t in y_true
@@ -966,6 +985,7 @@ def main():
                 args.dataset,
                 threshold=args.threshold,
                 after_date=args.date,
+                source_file=args.source_file,
             )
         elif args.dataset:
             model = get_interpreter_from_path(model_file)

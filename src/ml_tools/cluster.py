@@ -114,6 +114,7 @@ def main():
     )
     return
 
+
 def train_isolation_forest(features_file):
     from sklearn.ensemble import IsolationForest
     import joblib
@@ -121,7 +122,9 @@ def train_isolation_forest(features_file):
     features = np.load(features_file)
     logging.info("Training IsolationForest on features %s", features.shape)
 
-    iso_forest = IsolationForest(n_estimators=200, contamination="auto", random_state=42)
+    iso_forest = IsolationForest(
+        n_estimators=200, contamination="auto", random_state=42
+    )
     iso_forest.fit(features)
 
     iso_file = features_file.with_name(features_file.stem + "-isoforest.pkl")
@@ -130,7 +133,7 @@ def train_isolation_forest(features_file):
     return iso_forest
 
 
-def hdb_load( features_file, labels, filter_labels=None):
+def hdb_load(features_file, labels, filter_labels=None):
 
     features = np.load(features_file)
     labels_file = features_file.with_name(
@@ -427,7 +430,7 @@ def find_mislabeled_points(clusterer, y_true, tracks, features_file):
 
     mismatch_file = features_file.with_name(features_file.stem + "-mismatch.csv")
 
-    print("saving mismatches to ",mismatch_file)
+    print("saving mismatches to ", mismatch_file)
     grouped_df.to_csv(mismatch_file, index=False)
 
     cluster_map_df = pd.DataFrame(

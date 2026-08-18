@@ -51,6 +51,7 @@ class RawDatabase:
         self.model = None
         self.crop_rectangle = Rectangle(1, 1, 160 - 2, 120 - 2)
         self.clip_id = None
+        self.timestamp = None
 
     def frames_kept(self):
         return None
@@ -100,6 +101,7 @@ class RawDatabase:
         frame_i = 0
         reader = CptvReader(str(self.file))
         header = reader.get_header()
+        self.timestamp = header.timestamp
 
         background_alg = None
         self.frames = []

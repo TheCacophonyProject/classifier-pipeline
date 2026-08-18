@@ -31,6 +31,8 @@ class BuildConfig(DefaultConfig):
     banned_clips = attr.ib()
     segment_length = attr.ib()
     segment_spacing = attr.ib()
+    segment_min_frames = attr.ib()
+
     segment_min_avg_mass = attr.ib()
     min_frame_mass = attr.ib()
     filter_by_lq = attr.ib()
@@ -92,6 +94,7 @@ class BuildConfig(DefaultConfig):
             country=build["country"],
             use_segments=build["use_segments"],
             max_frames=build["max_frames"],
+            segment_min_frames=build["segment_min_frames"],
         )
 
     @classmethod
@@ -102,6 +105,7 @@ class BuildConfig(DefaultConfig):
             segment_length=25,
             segment_spacing=1,
             segment_min_avg_mass=4,
+            segment_min_frames=25 // 4,
             min_frame_mass=4,
             filter_by_lq=False,
             max_segments=3,

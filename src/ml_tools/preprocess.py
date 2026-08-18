@@ -450,14 +450,14 @@ def preprocess_movement(
     data = np.stack(data, axis=2)
     #
     # # # # # # for testing
-    global index
-    index += 1
-    from ml_tools.tools import saveclassify_image
+    # global index
+    # index += 1
+    # from ml_tools.tools import saveclassify_image
 
-    saveclassify_image(
-        np.uint8(data),
-        f"samples/{sample}-{index}",
-    )
+    # saveclassify_image(
+    #     np.uint8(data),
+    #     f"samples/{sample}-{index}",
+    # )
 
     if enlarge:
         data = cv2.resize(

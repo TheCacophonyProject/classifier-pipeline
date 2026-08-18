@@ -359,6 +359,7 @@ def get_data(source_file, excluded_tags, extra_args):
                     max_segments=extra_args.get("max_segments"),
                     frame_min_mass=extra_args.get("min_mass"),
                     filter_by_fp=extra_args.get("filter_by_fp"),
+                    seed=db.timestamp,
                 )
             else:
                 filter_by_lq = extra_args.get("filter_by_lq", False)
