@@ -1080,10 +1080,11 @@ def get_segment_indices(
     stopped_early = False
     MOVEMENT_THRESH = 2
     frame_num = 0
+    region_index = None
     start = window_start + filtered_start
     # pass in velocities and for short clips can dynamically set chink size such that velocity meets the threshold or is chunk_size apart
     for chunk in range(chunks):
-        if short_track and chunk > 0:
+        if short_track and chunk > 0 and region_index is not None:
             # start can be next index that velocity is > thresh
             skip = 0
             movement_x = 0

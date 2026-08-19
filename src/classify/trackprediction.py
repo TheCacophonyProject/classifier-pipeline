@@ -196,7 +196,10 @@ class TrackPrediction:
     def get_normalized_score(self):
         score = None
         if self.class_best_score is not None:
-            if self.multi_label:
+            if self.normalized:
+                score = self.class_best_score
+            
+            elif self.multi_label:
                 score = self.class_best_score / self.num_predictions
             else:
                 score = self.class_best_score / np.sum(self.class_best_score)
@@ -208,7 +211,7 @@ class TrackPrediction:
         # need to inverstigate on a test set,what gives the best results.
         # correct way would be to calculate the max for each prediction and divide by the sum of that
         # per pred (np.sum(p.prediction) ** 2) * p.mass
-        if self.class_best_score is not None and self.normalized is not True:
+        if self.class_best_score is not None and not  self.normalized:
             if self.multi_label:
                 self.class_best_score = self.class_best_score / self.num_predictions
             else:
@@ -375,12 +378,42 @@ class TrackPrediction:
     def num_frames(self):
         return self.num_frames_classified
 
-    def predicted_tag(self):
+
+
+
+    def predicted_tags(self, thresholds_per_label=None,group_by_parents = True,fallback_to_most_confident = True):
+        tag = None
+        if self.multi_label and self.class_best_score is not None and self.parent_mappings is not None:
+            best_score = self.get_normalized_score()
+            if thresholds_per_label is not None:
+                if isinstance(thresholds_per_label, list):
+                    thresholds = thresholds_per_label
+                else:
+                    thresholds = [
+                        thresholds_per_label.get(l, DEFAULT_THRESHOLD)
+                        for l in self.labels
+                    ]
+                indices = np.where(best_score >= thresholds)[0]
+            else:
+                indices = np.where(best_score >= DEFAULT_THRESHOLD)[0]
+            if group_by_parents:
+                tag = most_specific_tag(self.labels, indices, self.parent_mappings)
+            elif len(indices)>0:
+                return np.array(self.labels)[indices]
+        if tag is None and fallback_to_most_confident:
+            tag = self.most_confident_tag()
+        elif tag is None:
+            return []
+        return [tag]
+
+    
+    def most_confident_tag(self):
         index = self.best_label_index
         if index is None:
             return None
-        return self.labels[index]
-
+        tag = self.labels[index]
+        return tag
+    
     def class_confidences(self):
         confidences = {}
         if self.class_best_score is None:
@@ -497,42 +530,48 @@ class TrackPrediction:
         self.normalize_score()
         best_score = self.class_best_score
         tag = None
-        if self.multi_label:
-            if thresholds_per_label is not None:
-                if isinstance(thresholds_per_label, list):
-                    thresholds = thresholds_per_label
-                else:
-                    thresholds = [
-                        thresholds_per_label.get(l, DEFAULT_THRESHOLD)
-                        for l in self.labels
-                    ]
-                indices = np.where(best_score >= thresholds)[0]
-            else:
-                thresholds = None
-                indices = np.where(best_score >= DEFAULT_THRESHOLD)[0]
-            tag = most_specific_tag(self.labels, indices, self.parent_mappings)
+        tag = self.predicted_tags(thresholds_per_label,group_by_parents=True)
+        # if self.multi_label:
+            # if thresholds_per_label is not None:
+            #     if isinstance(thresholds_per_label, list):
+            #         thresholds = thresholds_per_label
+            #     else:
+            #         thresholds = [
+            #             thresholds_per_label.get(l, DEFAULT_THRESHOLD)
+            #             for l in self.labels
+            #         ]
+            #     indices = np.where(best_score >= thresholds)[0]
+            # else:
+            #     thresholds = None
+            #     indices = np.where(best_score >= DEFAULT_THRESHOLD)[0]
+            # tag = most_specific_tag(self.labels, indices, self.parent_mappings)
 
-            if tag is not None:
-                if tag in self.labels:
-                    index = self.labels.index(tag)
-                    threshold = thresholds[index] if thresholds else DEFAULT_THRESHOLD
-                    confidence = best_score[index]
-                else:
-                    threshold = DEFAULT_THRESHOLD
-                    confidence = self.max_score
+            # if tag is not None:
+            #     if tag in self.labels:
+            #         index = self.labels.index(tag)
+            #         threshold = thresholds[index] if thresholds else DEFAULT_THRESHOLD
+            #         confidence = best_score[index]
+            #     else:
+            #         threshold = DEFAULT_THRESHOLD
+            #         confidence = self.max_score
         # always get a label if none of the labels meet the thresholds just choose argmax
-        if tag is None:
-            tag = self.predicted_tag()
-            if thresholds_per_label is not None:
-                # if old style list
-                if isinstance(thresholds_per_label, list):
-                    threshold = thresholds_per_label[self.best_label_index]
-                else:
-                    threshold = thresholds_per_label[self.predicted_tag()]
+        # if tag is None:
+            # tag = self.most_confident_tag()
+        if thresholds_per_label is not None:
+            # if old style list
+            if isinstance(thresholds_per_label, list):
+                threshold = thresholds_per_label[self.best_label_index]
             else:
-                threshold = DEFAULT_THRESHOLD
-            # GP makes api pick up the label this will change when logic is moved to API
-            confidence = self.max_score if self.max_score else 0
+                threshold = thresholds_per_label.get(tag,DEFAULT_THRESHOLD)
+        else:
+            threshold = DEFAULT_THRESHOLD
+
+        confidence = None
+        # not always the most confident label as thresholds differ per label
+        if tag in self.labels:
+            index = self.labels.index(tag)
+            confidence = float(self.class_best_score[index])
+     
         prediction_meta["tag"] = tag
 
         prediction_meta["threshold_used"] = threshold

@@ -597,7 +597,8 @@ class PiClassifier(Processor):
                 track_prediction, model_id = self.get_best_prediction(track.get_id())
                 if track_prediction is None:
                     continue
-                if track_prediction.predicted_tag() != "false-positive":
+                predicted_tags = track_prediction.predicted_tag(thresholds_per_label = self.predictions[model_id].thresholds_per_label,group_by_parents = False) 
+                if  "false-positive" not in predicted_tags:
                     track_prediction.tracking = True
                     self.monitored_tracks[track.get_id()] = track
                 elif track_prediction.tracking:
@@ -639,14 +640,16 @@ class PiClassifier(Processor):
         for track in active_tracks:
             if self.fp_model is not None:
                 pred, model_id = self.get_best_prediction(track.get_id())
+                predicted_tags = pred.predicted_tag(thresholds_per_label = self.fp_model.thresholds_per_label, group_by_parents=False)
+
                 logging.debug(
                     "track %s -%s - %s",
                     track.get_id(),
-                    pred.predicted_tag(),
+                    predicted_tags,
                     pred.normalized_best_score(),
                 )
                 if pred is not None:
-                    if pred.predicted_tag() == "false-positive":
+                    if "false-positive" in predicted_tags:
                         confidence = pred.normalized_best_score()
 
                         if confidence >= 0.7:
@@ -723,13 +726,13 @@ class PiClassifier(Processor):
                 pred, model_id = self.get_best_prediction(track.get_id())
                 if pred is not None and pred.max_score is not None:
                     confidence = round(100 * pred.max_score)
-                    tag = pred.predicted_tag()
+                    tags = pred.predicted_tag(thresholds_per_label = self.predictions[model_id].thresholds_per_label, group_by_parents=False)
             regions = track.bounds_history
             if track.thumb_info is None:
                 track.thumb_info = ThumbInfo(track.get_id())
             track.thumb_info.predicted_confidence = confidence
-            track.thumb_info.predicted_tag = tag
-
+            track.thumb_info.predicted_tags = tags
+            track.thumb_info.is_fp = "false-positive" in tags
             i = len(regions) - 1
             first_loop = True
             # go reverse and break when reach already checked frame
@@ -772,8 +775,8 @@ class PiClassifier(Processor):
                 best_contour is None
                 or track.thumb_info.score() > best_contour.score()
                 or (
-                    track.thumb_info.predicted_tag != "false-positive"
-                    and best_contour.predicted_tag == "false-positive"
+                    not track.thumb_info.is_fp
+                    and best_contour.is_fp
                 )
             ):
                 best_contour = track.thumb_info

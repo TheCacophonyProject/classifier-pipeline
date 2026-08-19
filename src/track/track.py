@@ -334,10 +334,10 @@ class ThumbInfo:
         self.thumb = None
         self.thumb_frame = None
         self.last_frame_check = None
-        self.predicted_tag = None
+        self.predicted_tags = None
         self.predicted_confidence = None
         self.track_id = track_id
-
+        self.is_fp = False
     # score thumbs based on not being false positive having priority
     # then if sure of the prediction (above 80%) choose the most confidence
     # and then choose the one with more points
@@ -347,8 +347,8 @@ class ThumbInfo:
         score = self.points
         score_offset = 100000
 
-        if self.predicted_tag is not None:
-            if self.predicted_tag != "false-positive":
+        if self.predicted_tags is not None:
+            if not self.is_fp:
                 score = score + 1000 * score_offset
                 if self.predicted_confidence > confidence_threshold:
                     confidence = self.predicted_confidence
@@ -1042,7 +1042,7 @@ class Track:
             tag
             for tag in track_tags
             if not tag.get("automatic", False)
-            and tag.get("confidence", 0) >= min_confidence
+            and tag.get("confidence", 0) is not None and tag.get("confidence", 0) >= min_confidence
         ]
 
         if not track_tags:
@@ -1064,8 +1064,8 @@ class Track:
                     tag = None
                 else:
                     # choose most specific
-                    path_one = tag.get("path")
-                    path_two = track_tag.get("path")
+                    path_one = tag.get("path","")
+                    path_two = track_tag.get("path","")
                     # longer path is more specific..
                     if len(path_two) > len(path_one):
                         tag = track_tag

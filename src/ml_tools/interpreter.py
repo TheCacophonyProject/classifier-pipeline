@@ -38,6 +38,7 @@ class Interpreter(ABC):
         self.mapped_labels = metadata.get("mapped_labels")
         self.label_probabilities = metadata.get("label_probabilities")
         self.thresholds_per_label = metadata.get("thresholds")
+        logging.info("Thresholds are %s",self.thresholds_per_label)
         self.preprocess_fn = self.get_preprocess_fn()
         self.preprocess_v2 = metadata.get("v2_preprocess", False)
         self.single_input = metadata.get("single_input", True)
@@ -207,7 +208,7 @@ class Interpreter(ABC):
             and len(set(prediction_frames[0])) < self.params.square_width**2 / 4
         ):
             # if we don't have many frames to get a good prediction, lets assume only false-positive is a good prediction and filter the rest to a maximum of 0.5
-            if track_prediction.predicted_tag() != "false-positive":
+            if track_prediction.predicted_tags() != "false-positive":
                 track_prediction.cap_confidences(0.5)
         return track_prediction
 

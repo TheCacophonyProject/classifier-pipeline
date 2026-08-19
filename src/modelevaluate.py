@@ -25,7 +25,7 @@ import json
 #     get_dataset,
 #     get_excluded,
 # )
-from classify.trackprediction import TrackPrediction
+from classify.trackprediction import TrackPrediction, DEFAULT_THRESHOLD
 
 from ml_tools import tools
 from ml_tools.rawdb import RawDatabase
@@ -708,7 +708,6 @@ def evaluate_dir(
     else:
         files = list(dir.glob(f"**/*cptv"))
     files.sort()
-    # files = files[:3]
     logging.info("Files are %s", files)
     start = time.time()
     processed = 0
@@ -756,6 +755,7 @@ def evaluate_dir(
                     model.labels,
                     smooth_preds=False,
                     multi_label=model.params.multi_label,
+                    parent_mappings=model.parent_mappings,
                 )
                 masses = np.array(data[4])
                 masses = masses[:, None]
@@ -767,23 +767,38 @@ def evaluate_dir(
                 # else:
                 prediction.classified_track(output, data[2], masses)
                 y_true.append(label_mapping.get(label, label))
-                predicted_labels = [prediction.predicted_tag()]
-                confidence = prediction.max_score
-                raw_preds.append(prediction.predicted_tag())
+                predicted_labels = prediction.predicted_tags(model.thresholds_per_label)
+                tag = predicted_labels[0] if len(predicted_labels) > 0 else None
+                threshold = model.thresholds_per_label.get(tag, DEFAULT_THRESHOLD)
+
+                confidence = None
+                # not always the most confident label as thresholds differ per label
+                if tag in prediction.labels:
+                    index = prediction.labels.index(tag)
+                    confidence = float(prediction.class_best_score[index])
+                if confidence is None:
+                    confidence = prediction.max_score
+
+                raw_preds.append(tag)
                 raw_confs.append(confidence)
                 raw_class_confidences.append(prediction.class_best_score)
-
+                logging.debug(
+                    "Prediction %s becomes %s with %s and threshold %s",
+                    np.round(100 * prediction.class_best_score),
+                    tag,
+                    confidence,
+                    threshold,
+                )
                 predicted_tag = "None"
-                if confidence < threshold:
+                if confidence is not None and confidence < threshold:
                     y_pred.append("unidentified")
                 elif len(predicted_labels) == 0:
                     y_pred.append("None")
                 else:
-                    logging.info("Predicted  %s", predicted_labels)
                     predicted_tag = ",".join(predicted_labels)
                     y_pred.append(predicted_tag)
                 if y_pred[-1] != y_true[-1]:
-                    if predicted_labels[0] == y_true[-1]:
+                    if tag == y_true[-1]:
                         stats["low-confidence"].append(data[0])
                     else:
                         stats["incorrect"].append(data[0])
@@ -836,8 +851,8 @@ def evaluate_dir(
         np.save(f, y_true_i)
         np.save(f, raw_preds_i)
         np.save(f, raw_class_confidences)
-    print("Y true ", y_true_i)
-    print(raw_preds_i)
+    # print("Y true ", y_true_i)
+    # print(raw_preds_i)
     # thresholds found from best_score
     thresholds_per_label = model.thresholds_per_label
 
@@ -851,7 +866,7 @@ def evaluate_dir(
         conf_mask = confidences < threshold
         preds[pred_mask & conf_mask] = "None"
 
-    print("Y true is", y_true, preds)
+    # print("Y true is", y_true, preds)
     cm = confusion_matrix(y_true, preds, labels=model.labels)
 
     # Log the confusion matrix as an image summary.
