@@ -12,13 +12,14 @@ DEFAULT_THRESHOLD = 0.8
 
 
 class Predictions:
-    def __init__(self, labels, model, thresholds_per_label, parent_mappings=None):
+    def __init__(self, labels, model, thresholds_per_label, parent_mappings=None,scale_thresholds = False):
         self.labels = labels
         self.prediction_per_track = {}
         self.model = model
         self.model_load_time = None
         self.thresholds_per_label = thresholds_per_label
         self.parent_mappings = parent_mappings
+        self.scale_thresholds = scale_thresholds
 
     def get_or_create_prediction(self, track, keep_all=True, smooth_preds=False):
         prediction = self.prediction_per_track.setdefault(
@@ -30,6 +31,7 @@ class Predictions:
                 start_frame=track.start_frame,
                 smooth_preds=smooth_preds,
                 parent_mappings=self.parent_mappings,
+                scale_thresholds=self.scale_thresholds
             ),
         )
         return prediction
@@ -105,6 +107,7 @@ class TrackPrediction:
         smooth_preds=False,
         multi_label=False,
         parent_mappings=None,
+        scale_thresholds = False,
     ):
         try:
             fp_index = labels.index("false-positive")
@@ -127,6 +130,7 @@ class TrackPrediction:
         self.normalized = False
         self.smooth_preds = smooth_preds
         self.multi_label = multi_label
+        self.scale_thresholds = scale_thresholds
 
     def cap_confidences(self, max_confidence):
         max_score = np.sum(self.class_best_score)
@@ -151,7 +155,10 @@ class TrackPrediction:
         index = 0
         self.num_predictions = len(predictions)
         for prediction, frames, mass in zip(predictions, prediction_frames, masses):
-            self.num_frames_classified += len(prediction_frames)
+            if isinstance(frames,int):
+                self.num_frames_classified += frames
+            else:
+                self.num_frames_classified += len(frames)
             prediction = Prediction(
                 prediction,
                 (
@@ -351,6 +358,8 @@ class TrackPrediction:
         :param classes: Name of class for each label.
         :return:
         """
+
+        # TODO this is out of date and should use thresholds etc
         score = self.max_score
         if score is None:
             return None
@@ -523,13 +532,13 @@ class TrackPrediction:
         ]
         return guesses
 
+
     def get_metadata(self, thresholds_per_label):
         prediction_meta = {}
         if self.classify_time is not None:
             prediction_meta["classify_time"] = round(self.classify_time, 1)
         self.normalize_score()
         best_score = self.class_best_score
-        tag = None
         tag = self.predicted_tags(thresholds_per_label,group_by_parents=True)
         # if self.multi_label:
             # if thresholds_per_label is not None:
@@ -557,14 +566,18 @@ class TrackPrediction:
         # always get a label if none of the labels meet the thresholds just choose argmax
         # if tag is None:
             # tag = self.most_confident_tag()
-        if thresholds_per_label is not None:
+        tag = tag[0] if len(tag)!=0 else None
+        threshold = DEFAULT_THRESHOLD
+ 
+        if thresholds_per_label is not None and tag is not None:
             # if old style list
             if isinstance(thresholds_per_label, list):
                 threshold = thresholds_per_label[self.best_label_index]
             else:
                 threshold = thresholds_per_label.get(tag,DEFAULT_THRESHOLD)
-        else:
-            threshold = DEFAULT_THRESHOLD
+
+        if self.scale_thresholds:
+            threshold = get_scaled_thresh(threshold,self.num_frames_classified)
 
         confidence = None
         # not always the most confident label as thresholds differ per label
@@ -671,3 +684,21 @@ def most_specific_tag(labels, indices, parent_mappings):
                 None, label, final_depth, other_label, other_depth, parent_mappings
             )
     return final_tag
+
+
+
+def get_scaled_thresh(threshold, num_frames, max_frames = 25, k = 4, max_threshold = 0.96):
+    if num_frames < max_frames:
+        missing_fraction = (max_frames - num_frames) / (max_frames-1)
+        scaling_factor = missing_fraction**2
+        range = max(0, max_threshold - threshold)
+        extra_thresh = scaling_factor * range
+        logging.debug(
+            "Have frames %s missing %s threshold is %s becomes %s",
+            num_frames,
+            scaling_factor,
+            threshold,
+            threshold + extra_thresh,
+        )
+        threshold += extra_thresh
+    return threshold
