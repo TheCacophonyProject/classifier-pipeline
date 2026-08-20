@@ -771,7 +771,7 @@ def evaluate_dir(
                 predicted_labels = prediction.predicted_tags(model.thresholds_per_label)
                 tag = predicted_labels[0] if len(predicted_labels) > 0 else None
                 threshold = model.thresholds_per_label.get(tag, DEFAULT_THRESHOLD)
-                frames = len(np.array(data[2]).ravel())
+                frames = sum([len(frames) for frames in data[2]])
                 if frames < 25:
                     missing_fraction = (25 - frames) / 24
                     k = 4
