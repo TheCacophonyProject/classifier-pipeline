@@ -10,6 +10,7 @@ Some tools to evaluate a model
 
 import argparse
 import logging
+import math
 import sys
 import time
 import matplotlib.ticker as mtick
@@ -770,7 +771,24 @@ def evaluate_dir(
                 predicted_labels = prediction.predicted_tags(model.thresholds_per_label)
                 tag = predicted_labels[0] if len(predicted_labels) > 0 else None
                 threshold = model.thresholds_per_label.get(tag, DEFAULT_THRESHOLD)
+                frames = len(np.array(data[2]).ravel())
+                if frames < 25:
+                    missing_fraction = (25 - frames) / 24
+                    k = 4
+                    scaling_factor = missing_fraction**2
+                    max_threshold = 0.96
+                    range = max(0, max_threshold - threshold)
+                    extra_thresh = scaling_factor * range
+                    logging.info(
+                        "Have frames %s missing %s threshold is %s becomes %s",
+                        frames,
+                        scaling_factor,
+                        threshold,
+                        threshold + extra_thresh,
+                    )
+                    threshold += extra_thresh
 
+                # scale the threshold linearly between 90% and  threshold based of the number of frames
                 confidence = None
                 # not always the most confident label as thresholds differ per label
                 if tag in prediction.labels:
@@ -778,12 +796,11 @@ def evaluate_dir(
                     confidence = float(prediction.class_best_score[index])
                 if confidence is None:
                     confidence = prediction.max_score
-
                 raw_preds.append(tag)
                 raw_confs.append(confidence)
                 raw_class_confidences.append(prediction.class_best_score)
-                logging.debug(
-                    "Prediction %s becomes %s with %s and threshold %s",
+                logging.info(
+                    "Prediction %s is %s with %s and threshold %s",
                     np.round(100 * prediction.class_best_score),
                     tag,
                     confidence,
@@ -835,6 +852,11 @@ def evaluate_dir(
         json.dump(stats, f)
 
     model.labels.append("None")
+    for pred in raw_preds:
+        if pred not in model.labels:
+            model.labels.append(pred)
+            logging.info("Adding label %s", pred)
+
     raw_preds_i = [model.labels.index(pred) for pred in raw_preds]
     y_true_i = [
         model.labels.index(y_t) if y_t in model.labels else -1 for y_t in y_true
@@ -848,6 +870,7 @@ def evaluate_dir(
     npy_file = filename.parent / f"{filename.stem}-raw.npy"
     logging.info("Saving %s", npy_file)
     with npy_file.open("wb") as f:
+        np.save(f, np.array(model.labels))
         np.save(f, y_true_i)
         np.save(f, raw_preds_i)
         np.save(f, raw_class_confidences)
