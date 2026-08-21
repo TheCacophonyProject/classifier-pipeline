@@ -222,9 +222,16 @@ def main():
 
             if new_file.exists():
                 try:
+                    
+
                     meta_f = new_file.with_suffix(".txt")
-                    shutil.move(new_file, output_dir / new_file.name)
-                    shutil.move(meta_f, output_dir / meta_f.name)
+                    if "-test" in new_file.stem:
+                        logging.info("Test recording %s deleting it now", new_file)
+                        new_file.unlink(True)
+                        meta_f.unlink(True)
+                    else:
+                        shutil.move(new_file, output_dir / new_file.name)
+                        shutil.move(meta_f, output_dir / meta_f.name)
                 except:
                     logging.error(
                         "Error Moving %s to processing", new_file, exc_info=True

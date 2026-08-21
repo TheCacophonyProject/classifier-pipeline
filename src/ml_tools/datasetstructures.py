@@ -1046,7 +1046,6 @@ def get_segments(
         frame_indices = np.array(frame_indices)
 
         rng = np.random.default_rng(seed=seed)
-
         if segment_type == SegmentType.ELONGATION:
             crop_rectangle = Rectangle(1, 1, 160 - 2, 120 - 2)
             border_regions = []
@@ -1196,7 +1195,7 @@ def get_segments(
 
                         frame_indices = segment_indices[mask]
                         frame_indices = np.uint32(frame_indices)
-                        np.random.shuffle(frame_indices)
+                        rng.shuffle(frame_indices)
 
                 # always get atleast one segment, not doing annymore
                 if (

@@ -417,6 +417,7 @@ class ClipClassifier:
         #     return False
 
         filename = Path(filename)
+        seed = None
         if has_metadata:
             # get segments here, or frames
             # only extra data for segments
@@ -438,6 +439,9 @@ class ClipClassifier:
                 self.config.build.tag_precedence,
             )
             track_extractor.init_clip(clip)
+            seed = meta_data.get("seed")
+            if seed is not None:
+                logging.info("Metadata has supplied seed %s for %s",seed,filename)
         else:
             meta_data = {}
             from track.trackextractor import extract_file
@@ -447,7 +451,9 @@ class ClipClassifier:
                 filename, self.config, False, max_frames=45, save_meta=True
             )
             rec_end = datetime.fromisoformat(meta_data["end_time"])
-
+            if "-test" in filename.stem:
+                logging.info("Setting seed to 0 as is a test file")
+                seed = 0
         logging.info(
             "Tracked file cpu is %s mem is %s system mem %s",
             psutil.cpu_percent(),
@@ -461,7 +467,10 @@ class ClipClassifier:
         classifier_is_ready = not classifier.run_over_network
         predictions = Predictions(classifier.labels, model, classifier.thresholds)
         predictions.model_load_time = time.time() - start
-        classifier.seed = clip.video_start_time * 1000000
+        if seed is None:
+            classifier.seed = int(clip.video_start_time.timestamp() * 1000000)
+        else:
+            classifier.seed = seed
         track_samples = {}
         track_data = {}
         track_length = 0

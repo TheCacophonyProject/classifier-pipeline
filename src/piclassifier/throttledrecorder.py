@@ -7,6 +7,8 @@ from datetime import datetime
 
 class ThrottledRecorder(Recorder):
     def __init__(self, recorder, thermal_config, headers, on_recording_stopping):
+        self.postprocess = thermal_config.motion.postprocess
+
         self.bucket_size = thermal_config.throttler.bucket_size * headers.fps
         self.throttling = False
         self.tokens = self.bucket_size
@@ -22,6 +24,10 @@ class ThrottledRecorder(Recorder):
         self.throttled_at = None
         self.constant_recorder = False
 
+    @property
+    def on_recording_stopping(self):
+        return self.recorder.on_recording_stopping
+    
     def final_name(self):
         return self.recorder.final_name()
 
@@ -169,8 +175,8 @@ class ThrottledRecorder(Recorder):
             self.last_rec = frame_time
             self.recorder.stop_recording(frame_time)
 
-    def new_temp_name(self, frame_time):
-        return self.recorder.new_temp_name(frame_time)
+    def new_temp_name(self, frame_time,test = False):
+        return self.recorder.new_temp_name(frame_time,test = test)
 
     def throttle(self, frame_time):
         logging.info("Throttling")

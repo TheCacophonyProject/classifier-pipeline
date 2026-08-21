@@ -134,10 +134,10 @@ class CPTVMotionDetector(MotionDetector):
         self._background.reset()
         self.running_mean = None
 
-    def process_frame(self, cptv_frame, force_process=False):
+    def process_frame(self, cptv_frame):
         prev_ffc = self.ffc_affected
         self.ffc_affected = is_affected_by_ffc(cptv_frame)
-        if self.can_record() or force_process:
+        if self.can_record():
             self.thermal_window.add(cptv_frame, self.ffc_affected)
             oldest_thermal = self.thermal_window.oldest
             if oldest_thermal is not None:

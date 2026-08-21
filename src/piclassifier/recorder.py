@@ -20,7 +20,7 @@ class Recorder(ABC):
         on_recording_stopping=None,
         file_suffix=None,
     ):
-
+        self.postprocess = thermal_config.motion.postprocess
         self.file_suffix = file_suffix
         self.file_extention = file_extention
         self.name = name
@@ -33,7 +33,6 @@ class Recorder(ABC):
             self.output_dir.mkdir(parents=True, exist_ok=True)
         if thermal_config.motion.run_classifier and thermal_config.motion.postprocess:
             self.output_dir = self.output_dir / "postprocess"
-
         self.temp_dir = self.output_dir / TEMP_DIR
         self.temp_dir.mkdir(parents=True, exist_ok=True)
         self.motion = thermal_config.motion
@@ -155,7 +154,7 @@ class Recorder(ABC):
             free_percent = stat[2] / stat[0]
 
     def start_recording(
-        self, background_frame, preview_frames, temp_thresh, frame_time
+        self, background_frame, preview_frames, temp_thresh, frame_time,test = False
     ):
         if self.constant_recorder:
             self.delete_excess()
@@ -167,7 +166,7 @@ class Recorder(ABC):
 
         self.frames = 0
 
-        self.filename = self.new_temp_name(frame_time)
+        self.filename = self.new_temp_name(frame_time,test = test)
         started = self.new_recording(
             background_frame, preview_frames, temp_thresh, frame_time
         )
@@ -186,10 +185,13 @@ class Recorder(ABC):
 
         return True
 
-    def new_temp_name(self, frame_time):
+    def new_temp_name(self, frame_time,test = False):
         file_name = datetime.fromtimestamp(frame_time).strftime("%Y-%m-%d--%H-%M-%S")
         if self.file_suffix is not None:
             file_name = f"{file_name}{self.file_suffix}"
+        if test:
+            file_name = f"{file_name}-test"
+
         return self.temp_dir / f"{file_name}{self.file_extention}"
 
     @abstractmethod

@@ -25,7 +25,8 @@ clip = None
 fp_model = None
 classifier = None
 
-
+CAMERA_SOURCE = "camera"
+FILE_SOURCE = "file"
 def run_classifier(
     frame_queue,response_queue, config, thermal_config, headers, classify=True, detect_after=None
 ):
@@ -47,7 +48,7 @@ def run_classifier(
                 elif frame == SNAPSHOT_SIGNAL:
                     pi_classifier.take_snapshot()
             else:
-                pi_classifier.process_frame(frame[0], frame[1])
+                pi_classifier.process_frame(frame[0], frame[1],CAMERA_SOURCE)
             if pi_classifier.parsing_file :
                 
                 response_queue.put(PARSING_FILE)
@@ -207,6 +208,20 @@ class PiClassifier(Processor):
                     logging.info("Processor failed to become ready process frame is %s",self.processing_frame)
                     return
             self.reset()
+            self.motion_detector.force_record = True
+
+            original_recorder = None
+            if not self.recorder.postprocess:
+                from .dummyrecorder import DummyRecorder
+
+                original_recorder = self.recorder
+                self.recorder = DummyRecorder(
+                    None,
+                    self.headers,
+                    on_recording_stopping=original_recorder.on_recording_stopping,
+                )
+                self.recorder.min_frames = original_recorder.min_frames
+                self.recorder.max_frames = original_recorder.max_frames
             logging.info("Parsing %s",file)
             from cptv_rs_python_bindings import CptvReader
             from cptv import Frame
@@ -226,7 +241,7 @@ class PiClassifier(Processor):
                 pixel_bits=16,
                 serial="",
                 firmware="",
-                source = file,
+                source = str(file),
             )
             preview_process = Process(
                 target=utils.preview_socket,
@@ -240,7 +255,9 @@ class PiClassifier(Processor):
                 if seed >=0:
                     self.classifier.seed = seed 
                 else:
-                    self.classifier.seed = reader.timestamp
+                    self.classifier.seed = header.timestamp
+            if self.fp_model is not None:
+                self.fp_model.seed =self.classifier.seed
 
             while True:
                 frame = reader.next_frame()
@@ -266,10 +283,10 @@ class PiClassifier(Processor):
                     self.motion_detector._background._background = frame.pix
                     continue
                 try:
-                    self.process_frame(frame, time.time())
+                    self.process_frame(frame, time.time(),FILE_SOURCE)
                 except:
                     logging.error("Could not process frame from file ",exc_info=True)
-                if fps is not None:
+                if fps is not None and fps >0:
                     time.sleep(1.0 / fps)
 
             frame_queue.put(STOP_SIGNAL)
@@ -286,8 +303,13 @@ class PiClassifier(Processor):
                     pass
         except:
             logging.error("Could not parse file %s",exc_info=True)
+        self.motion_detector.force_record = False
+            
+        if original_recorder is not None:
+            self.recorder = original_recorder
+        self.reset()
         self.parsing_file = False
-        self.processing_frame = False
+        
     def init_ir_recorders(self, thermal_config):
         recording_stopping_callback = partial(
             on_recording_stopping,
@@ -496,7 +518,7 @@ class PiClassifier(Processor):
             except ValueError:
                 self.fp_index = None
         if fp_config is not None:
-            self.fp_model = get_interpreter(fp_config, load_model=load_model)
+            self.fp_model = get_interpreter(fp_config, load_model=load_model,seed = self.seed)
             global fp_model
             fp_model = self.fp_model
             self.predictions[self.fp_model.id] = Predictions(
@@ -1014,6 +1036,7 @@ class PiClassifier(Processor):
             )
         
     def reset(self):
+        self.classified_consec = 0
         self.motion_detector.disconnected()
         if self.recorder.recording and self.tracking_events:
             self.recording = False
@@ -1035,7 +1058,7 @@ class PiClassifier(Processor):
 
     def take_snapshot(self):
         started = self.snapshot_recorder.start_recording(
-            None, [], self.motion_detector.temp_thresh, time.time()
+            None, [], self.motion_detector.temp_thresh, time.time(),test = self.parsing_file
         )
         if not started:
             logging.info("Already taking snapshot recording")
@@ -1044,7 +1067,9 @@ class PiClassifier(Processor):
         self.snapshot_recorder.write_until = 2 * self.headers.fps
         return True
 
-    def process_frame(self, lepton_frame, received_at):
+    def process_frame(self, lepton_frame, received_at,source):
+        if self.parsing_file and source == CAMERA_SOURCE:
+            return
         self.processing_frame = True
         import time
 
@@ -1085,12 +1110,15 @@ class PiClassifier(Processor):
                 preview_frames,
                 self.motion_detector.temp_thresh,
                 received_at,
+                test = self.parsing_file
             )
             self.rec_time += time.time() - s_r
             if self.recording:
                 if self.classify and self.classifier and not self.parsing_file:
                     # set the seed to be recording start time so that the predictions can be reproduced
                     self.classifier.seed = int(received_at * 1000000)
+                    if self.fp_model is not None:
+                        self.fp_model.seed = int(received_at * 1000000)
                 if self.tracking_events:
                     self.service.recording(
                         received_at,
@@ -1323,6 +1351,7 @@ def on_recording_stopping(
         set_recording_state(False)
     if "-snap" in filename.stem:
         return
+
     global clip, track_extractor, predictions
     if clip and track_extractor:
         # save thumbs
@@ -1370,6 +1399,10 @@ def on_recording_stopping(
         meta_data["algorithm"] = {}
         meta_data["algorithm"]["tracker_version"] = f"PI-{track_extractor.VERSION}"
         meta_data["metadata_source"] = "PI"
+        if "-test" in filename.stem:
+            # this is a test recording always use the same seed
+            meta_data["seed"] = 0
+            
         if clip.thumb_info is not None:
             meta_data["thumbnail"] = clip.thumb_info.to_metadata()
         if predictions is not None:
