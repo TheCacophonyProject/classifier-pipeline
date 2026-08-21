@@ -721,7 +721,7 @@ class PiClassifier(Processor):
 
         for track in tracks:
             confidence = None
-            tag = None
+            tags = None
             if predictions is not None:
                 pred, model_id = self.get_best_prediction(track.get_id())
                 if pred is not None and pred.max_score is not None:
