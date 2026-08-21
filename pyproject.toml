@@ -71,4 +71,4 @@ packages = [ "src/piclassifier", "src/config", "src/track", "src/ml_tools","src/
 [tool.pytest.ini_options]
 pythonpath = "src"
 log_cli = true
-log_cli_level = "WARNING"
+log_cli_level = "INFO"
