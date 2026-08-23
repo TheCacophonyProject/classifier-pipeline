@@ -74,6 +74,8 @@ class Recorder(ABC):
         self.rec_time += time.time() - start
 
     def can_record(self, frame_time):
+        if self.output_dir is None:
+            return True
         _, _, free = shutil.disk_usage(self.output_dir)
         free = free * 0.000001
         if free <= self.min_disk_space_mb:

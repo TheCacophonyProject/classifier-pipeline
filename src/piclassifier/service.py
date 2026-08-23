@@ -265,11 +265,23 @@ class SnapshotService:
                 parse_file
             ),
         )
+        self.t.daemon = True
         self.t.start()
-        self.service = None
 
+
+
+    def update_service(self,get_frame, headers, take_snapshot_fn, labels, get_thumbnail, thumbnail_dir,parse_file):
+        self.service.get_frame = get_frame
+        self.service.headers = headers
+        self.service.take_snapshot = take_snapshot_fn
+        self.service.labels = labels
+        self.service.get_thumbnail = get_thumbnail
+        self.service.thumbnail_dir = thumbnail_dir
+        self.service.parse_file = parse_file
+        
     def quit(self):
         self.loop.quit()
+        self.service = None
 
     def run_server(
         self, get_frame, headers, take_snapshot_fn, labels, get_thumbnail, thumbnail_dir,parse_file

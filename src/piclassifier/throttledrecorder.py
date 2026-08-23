@@ -25,6 +25,14 @@ class ThrottledRecorder(Recorder):
         self.constant_recorder = False
 
     @property
+    def min_frames(self):
+        return self.recorder.min_frames
+
+    @property
+    def max_frames(self):
+        return self.recorder.max_frames
+    
+    @property
     def on_recording_stopping(self):
         return self.recorder.on_recording_stopping
     

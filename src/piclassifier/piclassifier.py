@@ -28,27 +28,31 @@ classifier = None
 CAMERA_SOURCE = "camera"
 FILE_SOURCE = "file"
 def run_classifier(
-    frame_queue,response_queue, config, thermal_config, headers, classify=True, detect_after=None
+    frame_queue,response_queue, config, thermal_config, headers, classify=True
 ):
+    from .headerinfo import HeaderInfo
+
     init_logging()
     pi_classifier = None
     try:
         pi_classifier = PiClassifier(
-            config, thermal_config, headers, classify, detect_after
+            config, thermal_config, headers, classify
         )
         while True:
-            frame = frame_queue.get()
-            if isinstance(frame, str):
-                if frame == STOP_SIGNAL:
+            item = frame_queue.get()
+            if isinstance(item, str):
+                if item == STOP_SIGNAL:
                     logging.info("PiClassifier received stop signal")
                     pi_classifier.disconnected()
                     return
-                if frame == "skip":
+                if item == "skip":
                     pi_classifier.skip_frame()
-                elif frame == SNAPSHOT_SIGNAL:
+                elif item == SNAPSHOT_SIGNAL:
                     pi_classifier.take_snapshot()
+            elif isinstance(item,HeaderInfo):
+                pi_classifier.update_headers(item)
             else:
-                pi_classifier.process_frame(frame[0], frame[1],CAMERA_SOURCE)
+                pi_classifier.process_frame(item[0], item[1],CAMERA_SOURCE)
             if pi_classifier.parsing_file :
                 
                 response_queue.put(PARSING_FILE)
@@ -95,7 +99,6 @@ class PiClassifier(Processor):
         thermal_config,
         headers,
         classify,
-        detect_after=None,
         preview_type=None,
         seed=None,
     ):
@@ -108,6 +111,8 @@ class PiClassifier(Processor):
         # ensure thumb dir is made
         thumbnail_dir = Path(output_dir) / "thumbnails"
         thumbnail_dir.mkdir(exist_ok=True)
+        super().__init__(thumbnail_dir)
+
         self.processing_frame = False
         self._output_dir = thermal_config.recorder.output_dir
         self.headers = headers
@@ -155,34 +160,35 @@ class PiClassifier(Processor):
         if self.classify and self.do_tracking:
             self.init_classifiers(config.classify.models, preview_type)
         # call after model is setup
-        super().__init__(thumbnail_dir)
-
+        self.service.update_service_labels()
+        
         if self.fp_model is not None:
             self.fp_model.load_model()
         if self.classifier is not None and not self.classifier.run_over_network:
             self.classifier.load_model()
 
-        if self.headers.model == "IR":
-            self.init_ir(thermal_config)
-        else:
-            self.init_thermal(thermal_config, detect_after)
+        self.thermal_config = thermal_config
+        self.init_thermal()
 
-        edge = self.tracking_config.edge_pixels
-        self.crop_rectangle = Rectangle(
-            edge, edge, headers.res_x - 2 * edge, headers.res_y - 2 * edge
-        )
         global track_extractor
         track_extractor = self.track_extractor
-
-        self.motion = thermal_config.motion
-        self.min_frames = thermal_config.recorder.min_secs * headers.fps
-        self.max_frames = thermal_config.recorder.max_secs * headers.fps
 
         self.meta_dir = os.path.join(thermal_config.recorder.output_dir)
         if not os.path.exists(self.meta_dir):
             os.makedirs(self.meta_dir)
         self.parsing_file = False
         self.initialised = True
+
+    def update_headers(self,headers):
+        from .cptvmotiondetector import CPTVMotionDetector
+
+        self.headers = headers
+        self.init_recorders()
+        self.motion_detector = CPTVMotionDetector(
+            self.thermal_config,
+            self.tracking_config.motion.dynamic_thresh,
+            self.headers,
+        )
 
     def parse_file(self,file,fps,seed):
         max_sleep = 30
@@ -252,7 +258,7 @@ class PiClassifier(Processor):
             )
             preview_process.start()
             if self.classify and self.classifier:
-                if seed >=0:
+                if seed is not None and seed >=0:
                     self.classifier.seed = seed 
                 else:
                     self.classifier.seed = header.timestamp
@@ -309,96 +315,25 @@ class PiClassifier(Processor):
             self.recorder = original_recorder
         self.reset()
         self.parsing_file = False
-        
-    def init_ir_recorders(self, thermal_config):
-        recording_stopping_callback = partial(
-            on_recording_stopping,
-            output_dir=self._output_dir,
-            service=self.service,
-            tracking_events=self.tracking_events,
-        )
 
-        from .irrecorder import IRRecorder
 
-        if not thermal_config.recorder.disable_recordings:
-            self.recorder = IRRecorder(
-                thermal_config,
-                self.headers,
-                on_recording_stopping=recording_stopping_callback,
-            )
-
-        # dont want snaps getting postprocess
-        postprocess = thermal_config.motion.postprocess
-        thermal_config.motion.postprocess = False
-        self.snapshot_recorder = IRRecorder(
-            thermal_config,
-            self.headers,
-            on_recording_stopping=recording_stopping_callback,
-            name="IR Snapshot",
-        )
-        thermal_config.motion.postprocess = postprocess
-
-        if thermal_config.recorder.constant_recorder:
-            self.constant_recorder = IRRecorder(
-                thermal_config,
-                self.headers,
-                on_recording_stopping=recording_stopping_callback,
-                name="IR Constant",
-                constant_recorder=True,
-            )
-
-    def init_ir_tracking(self, thermal_config):
-        from track.irtrackextractor import IRTrackExtractor
-
-        logging.info("Running on IR")
-        PiClassifier.SKIP_FRAMES = 3
-        self.track_extractor = IRTrackExtractor(
-            self.config.tracking,
-            cache_to_disk=self.config.classify.cache_to_disk,
-            keep_frames=False,
-            verbose=self.config.verbose,
-            calc_stats=False,
-            scale=0.25,
-            on_trapped=on_track_trapped,
-            update_background=False,
-            trap_size=thermal_config.device_setup.trap_size,
-            from_pi=True,
-        )
-        self.tracking_config = self.config.tracking.get(IRTrackExtractor.TYPE)
-
-        self.type = IRTrackExtractor.TYPE
-
-    def init_ir(self, thermal_config):
-        from .irmotiondetector import IRMotionDetector
-
-        logging.info("Running on IR")
-        if self.do_tracking:
-            self.init_ir_tracking(thermal_config)
-        self.init_ir_recorders(thermal_config)
-        self.type = "IR"
-        self.motion_detector = IRMotionDetector(
-            thermal_config,
-            self.headers,
-        )
-
-    def init_thermal(self, thermal_config, detect_after):
+    def init_thermal(self):
         from .cptvmotiondetector import CPTVMotionDetector
 
         logging.info("Running on Thermal")
         self.tracking_config = self.config.tracking.get("thermal")
 
         if self.do_tracking:
-            self.init_tracking(thermal_config)
-        self.init_recorders(thermal_config)
+            self.init_tracking()
+        self.init_recorders()
         self.type = "thermal"
         self.motion_detector = CPTVMotionDetector(
-            thermal_config,
+            self.thermal_config,
             self.tracking_config.motion.dynamic_thresh,
             self.headers,
-            detect_after=detect_after,
         )
 
-    def init_recorders(self, thermal_config):
+    def init_recorders(self):
         recording_stopping_callback = partial(
             on_recording_stopping,
             output_dir=self._output_dir,
@@ -406,11 +341,11 @@ class PiClassifier(Processor):
             tracking_events=self.tracking_events,
         )
 
-        if thermal_config.recorder.disable_recordings:
+        if self.thermal_config.recorder.disable_recordings:
             from .dummyrecorder import DummyRecorder
 
             self.recorder = DummyRecorder(
-                thermal_config,
+                self.thermal_config,
                 self.headers,
                 on_recording_stopping=recording_stopping_callback,
             )
@@ -418,44 +353,44 @@ class PiClassifier(Processor):
             from .cptvrecorder import CPTVRecorder
 
             self.recorder = CPTVRecorder(
-                thermal_config,
+                self.thermal_config,
                 self.headers,
                 on_recording_stopping=recording_stopping_callback,
             )
 
-        if thermal_config.throttler.activate:
+        if self.thermal_config.throttler.activate:
             from .throttledrecorder import ThrottledRecorder
 
             self.recorder = ThrottledRecorder(
                 self.recorder,
-                thermal_config,
+                self.thermal_config,
                 self.headers,
                 on_recording_stopping=recording_stopping_callback,
             )
 
         # dont want snaps getting reprocessed
-        postprocess = thermal_config.motion.postprocess
-        thermal_config.motion.postprocess = False
+        postprocess = self.thermal_config.motion.postprocess
+        self.thermal_config.motion.postprocess = False
         self.snapshot_recorder = CPTVRecorder(
-            thermal_config,
+            self.thermal_config,
             self.headers,
             on_recording_stopping=recording_stopping_callback,
             constant_recorder=False,
             name="CPTV Snapshot",
             file_suffix="-snap",
         )
-        thermal_config.motion.postprocess = postprocess
+        self.thermal_config.motion.postprocess = postprocess
 
-        if thermal_config.recorder.constant_recorder:
+        if self.thermal_config.recorder.constant_recorder:
             self.constant_recorder = CPTVRecorder(
-                thermal_config,
+                self.thermal_config,
                 self.headers,
                 on_recording_stopping=recording_stopping_callback,
                 name="CPTV Constant",
                 constant_recorder=True,
             )
 
-    def init_tracking(self, thermal_config, detect_after=None):
+    def init_tracking(self):
         from track.cliptrackextractor import ClipTrackExtractor
 
         self.track_extractor = ClipTrackExtractor(

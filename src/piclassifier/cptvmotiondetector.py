@@ -13,14 +13,14 @@ from ml_tools.rectangle import Rectangle
 
 class CPTVMotionDetector(MotionDetector):
     FFC_PERIOD = timedelta(seconds=9.9)
-    BACKGROUND_WEIGHT_ADD = 0.1
+    BACKGROUND_WEIGHT_ADD = 1 
     MEAN_FRAMES = 45
 
     def __init__(self, thermal_config, dynamic_thresh, headers, detect_after=None):
         super().__init__(thermal_config, headers)
         self.headers = headers
-        if headers.model and headers.model.lower() == "lepton3.5":
-            CPTVMotionDetector.BACKGROUND_WEIGHT_ADD = 1
+        if headers.model and headers.model.lower() == "lepton3":
+            CPTVMotionDetector.BACKGROUND_WEIGHT_ADD = 0.1
         self.config = thermal_config.motion
         self.location_config = thermal_config.location
         self.num_preview_frames = thermal_config.recorder.preview_secs * headers.fps

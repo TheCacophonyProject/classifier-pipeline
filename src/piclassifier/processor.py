@@ -33,6 +33,10 @@ class Processor(ABC):
         if self.fp_model is not None:
             model_labels[self.fp_model.id] = self.fp_model.labels
 
+        # TODO test this works
+        if len(model_labels) == 0:
+            model_labels = None
+
         self.service = SnapshotService(
             self.get_recent_frame,
             self.headers,
@@ -42,6 +46,14 @@ class Processor(ABC):
             thumbnail_dir,
             self.parse_file
         )
+
+    def update_service_labels(self):
+        model_labels = {}
+        if self.classifier is not None:
+            model_labels[self.classifier.id] = self.classifier.labels
+        if self.fp_model is not None:
+            model_labels[self.fp_model.id] = self.fp_model.labels
+        self.service.service.labels = model_labels
 
     @abstractmethod
     def take_snapshot(self): ...
