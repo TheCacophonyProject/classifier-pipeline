@@ -292,9 +292,11 @@ class SnapshotService:
         DBusGMainLoop(set_as_default=True)
         dbus.mainloop.glib.threads_init()
         self.loop = GLib.MainLoop()
-        self.t = threading.Thread(
-            target=self.run_server,
-            args=(
+        try:
+            session_bus = dbus.SystemBus(mainloop=DBusGMainLoop())
+
+            self.service = Service(
+                session_bus,
                 get_frame,
                 headers,
                 take_snapshot_fn,
@@ -304,10 +306,16 @@ class SnapshotService:
                 parse_file,
                 is_parsing_file,
                 classifier_loaded,
-            ),
-        )
-        self.t.daemon = True
-        self.t.start()
+            )
+      
+            self.t = threading.Thread(
+                target=self.run_server,
+            )
+            self.t.daemon = True
+            self.t.start()
+        except:
+            logging.error("Couldn't run dbus server at %s %s", DBUS_NAME, session_bus)
+        
 
     def update_service(
         self,
@@ -333,35 +341,12 @@ class SnapshotService:
 
     def run_server(
         self,
-        get_frame,
-        headers,
-        take_snapshot_fn,
-        labels,
-        get_thumbnail,
-        thumbnail_dir,
-        parse_file,
-        is_parsing_file,
-        classifier_loaded,
     ):
         try:
-            session_bus = dbus.SystemBus(mainloop=DBusGMainLoop())
-            name = dbus.service.BusName(DBUS_NAME, session_bus)
-            self.service = Service(
-                session_bus,
-                get_frame,
-                headers,
-                take_snapshot_fn,
-                labels,
-                get_thumbnail,
-                thumbnail_dir,
-                parse_file,
-                is_parsing_file,
-                classifier_loaded,
-            )
             self.service.ServiceStarted()
             self.loop.run()
         except:
-            logging.error("Couldn't run dbus server at %s %s", DBUS_NAME, session_bus)
+            logging.error("Couldn't run loop",exc_info=True)
 
     def tracking(
         self,
