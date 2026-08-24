@@ -15,6 +15,10 @@ DBUS_NAME = "org.cacophony.thermalrecorder"
 DBUS_PATH = "/org/cacophony/thermalrecorder"
 
 
+class ParseFileError(dbus.exceptions.DBusException):
+    _dbus_error_name = DBUS_NAME + ".ParseFileError"
+
+
 class Service(dbus.service.Object):
     def __init__(
         self,
@@ -26,6 +30,7 @@ class Service(dbus.service.Object):
         get_thumbnail,
         thumbnail_dir,
         parse_file,
+        is_parsing_file,
     ):
         super().__init__(dbus, DBUS_PATH)
         self.get_frame = get_frame
@@ -35,6 +40,7 @@ class Service(dbus.service.Object):
         self.labels = labels
         self.thumbnail_dir = thumbnail_dir
         self.parse_file = parse_file
+        self.is_parsing_file = is_parsing_file
 
     @dbus.service.method(
         DBUS_NAME,
@@ -61,15 +67,26 @@ class Service(dbus.service.Object):
         logging.debug("Sending headers %s", headers)
         return headers
 
-
+    @dbus.service.method(
+        DBUS_NAME,
+        out_signature="s",
+    )
+    def ParsingFile(self):
+        parsing_file = self.is_parsing_file()
+        return parsing_file if parsing_file is not None else ""
+    
     @dbus.service.method(
         DBUS_NAME,
         in_signature="sii",
     )
     def ParseFile(self, file,fps, seed):
+        parsing_file = self.is_parsing_file()
+        if parsing_file is not None:
+            raise ParseFileError(f"Already parsing {parsing_file}")
         threading.Thread(
             target=self.parse_file, args=(file, fps, seed), daemon=True
         ).start()
+        return "Parsing file"
     
     @dbus.service.method(
         DBUS_NAME,
@@ -248,7 +265,7 @@ class Service(dbus.service.Object):
 
 class SnapshotService:
     def __init__(
-        self, get_frame, headers, take_snapshot_fn, labels, get_thumbnail, thumbnail_dir,parse_file
+        self, get_frame, headers, take_snapshot_fn, labels, get_thumbnail, thumbnail_dir,parse_file,is_parsing_file
     ):
         DBusGMainLoop(set_as_default=True)
         dbus.mainloop.glib.threads_init()
@@ -262,7 +279,8 @@ class SnapshotService:
                 labels,
                 get_thumbnail,
                 thumbnail_dir,
-                parse_file
+                parse_file,
+                is_parsing_file
             ),
         )
         self.t.daemon = True
@@ -284,7 +302,7 @@ class SnapshotService:
         self.service = None
 
     def run_server(
-        self, get_frame, headers, take_snapshot_fn, labels, get_thumbnail, thumbnail_dir,parse_file
+        self, get_frame, headers, take_snapshot_fn, labels, get_thumbnail, thumbnail_dir,parse_file,is_parsing_file
     ):
         try:
             session_bus = dbus.SystemBus(mainloop=DBusGMainLoop())
@@ -297,7 +315,8 @@ class SnapshotService:
                 labels,
                 get_thumbnail,
                 thumbnail_dir,
-                parse_file
+                parse_file,
+                is_parsing_file,
             )
             self.service.ServiceStarted()
             self.loop.run()

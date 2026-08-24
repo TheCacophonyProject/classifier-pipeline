@@ -140,7 +140,7 @@ def main():
 
     sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     sock.bind(SOCKET_NAME)
-    sock.settimeout(3 * 60)  # 3 minutes
+    sock.settimeout(1 * 60) 
     sock.listen(1)
     global connected
 
@@ -154,12 +154,12 @@ def main():
             connected = True
             logging.info("connection from %s", client_address)
             log_event("camera-connected", {"type": "thermal"})
-            handle_connection(
+            handle_connection(processor,
                 connection, config, args.thermal_config_file, process_queue,response_queue
             )
         except socket.timeout:
             logging.error("Socket %s timeout error", SOCKET_NAME, exc_info=True)
-            return
+            continue
 
         except Exception as ex:
             log_event("camera-disconnected", ex)
@@ -170,8 +170,16 @@ def main():
                 connection.close()
             except:
                 pass
-        connected = False
-
+    if processor.is_alive:
+        process_queue.put(STOP_SIGNAL)
+        # give it time to clean up, seems to take a while if classifier is running
+        processor.join(50)
+        if processor.is_alive():
+            logging.info("Killing process")
+            try:
+                utils.kill_process_with_timeout(processor)
+            except:
+                pass
 
 def file_changed(event):
     logging.info("Received file changed event %s restarting", event)
@@ -355,10 +363,12 @@ def delete_stale_thumbnails(output_dir):
 
 
 
-def handle_connection(connection, config, thermal_config_file, process_queue,response_queue):
+def handle_connection(processor,connection, config, thermal_config_file, process_queue,response_queue):
     from .cameras import lepton3
     from ml_tools.rectangle import Rectangle
     from queue import Empty
+    # sometimes the headers are never received
+    connection.settimeout(20) 
     headers, extra_b = handle_headers(connection)
     thermal_config = ThermalConfig.load_from_file(thermal_config_file, headers.model)
     logging.info(
@@ -414,6 +424,7 @@ def handle_connection(connection, config, thermal_config_file, process_queue,res
                     if message == PARSED:
                         parsing_file = False
                         logging.info("Finished parsing file")
+                        process_queue.put(headers)
                 except Empty:
                     pass
                 continue
@@ -456,7 +467,6 @@ def handle_connection(connection, config, thermal_config_file, process_queue,res
                     utils.kill_process_with_timeout(processor)
                 except:
                     pass
-
 
 def clear_queue(q):
     """Removes all items from a multiprocessing Queue."""

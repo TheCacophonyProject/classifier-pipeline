@@ -94,7 +94,6 @@ def preview_socket(headers, frame_queue):
                     item = frame_queue.get(100)
                     if isinstance(item, str):
                         if item == STOP_SIGNAL:
-                            print("GOT STOP")
                             return
             except:
                 pass

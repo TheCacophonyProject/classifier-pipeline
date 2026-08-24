@@ -106,19 +106,19 @@ class PiClassifier(Processor):
         self.initialised = False
         self.seed = seed
         self.constant_recorder = None
+        self.headers = headers
         global output_dir
         output_dir = thermal_config.recorder.output_dir
         # ensure thumb dir is made
         thumbnail_dir = Path(output_dir) / "thumbnails"
         thumbnail_dir.mkdir(exist_ok=True)
+        self.classifier = None
+        self.fp_model = None
         super().__init__(thumbnail_dir)
 
         self.processing_frame = False
         self._output_dir = thermal_config.recorder.output_dir
-        self.headers = headers
-        self.classifier = None
         self.classifier_initialised = False
-        self.fp_model = None
         self.frame_num = 0
         self.clip = None
         self.prev_clip = None
@@ -160,7 +160,7 @@ class PiClassifier(Processor):
         if self.classify and self.do_tracking:
             self.init_classifiers(config.classify.models, preview_type)
         # call after model is setup
-        self.service.update_service_labels()
+        self.update_service_labels()
         
         if self.fp_model is not None:
             self.fp_model.load_model()
@@ -189,7 +189,9 @@ class PiClassifier(Processor):
             self.tracking_config.motion.dynamic_thresh,
             self.headers,
         )
-
+    def is_parsing_file(self):
+        return self.headers.source if self.parsing_file else None
+    
     def parse_file(self,file,fps,seed):
         max_sleep = 30
         slept = 0
@@ -202,10 +204,13 @@ class PiClassifier(Processor):
         if self.parsing_file:
             logging.info("Already parsing file so not parsing %s",file)
             return
-
+        pre_headers = self.headers
         try:
             slept = 0
             self.parsing_file = True
+            if self.classify:
+                self.startup_classifier()
+            self.wait_for_classifier()
             while self.processing_frame:
                 logging.info("Trying to parse file but processesor is busy")
                 time.sleep(1)
@@ -214,20 +219,8 @@ class PiClassifier(Processor):
                     logging.info("Processor failed to become ready process frame is %s",self.processing_frame)
                     return
             self.reset()
-            self.motion_detector.force_record = True
 
-            original_recorder = None
-            if not self.recorder.postprocess:
-                from .dummyrecorder import DummyRecorder
 
-                original_recorder = self.recorder
-                self.recorder = DummyRecorder(
-                    None,
-                    self.headers,
-                    on_recording_stopping=original_recorder.on_recording_stopping,
-                )
-                self.recorder.min_frames = original_recorder.min_frames
-                self.recorder.max_frames = original_recorder.max_frames
             logging.info("Parsing %s",file)
             from cptv_rs_python_bindings import CptvReader
             from cptv import Frame
@@ -249,6 +242,23 @@ class PiClassifier(Processor):
                 firmware="",
                 source = str(file),
             )
+
+            
+
+            self.update_headers(headers)
+            if not self.recorder.postprocess:
+                from .dummyrecorder import DummyRecorder
+
+                self.recorder = DummyRecorder(
+                    None,
+                    self.headers,
+                    on_recording_stopping=self.recorder.on_recording_stopping,
+                )
+                self.recorder.min_frames = self.recorder.min_frames
+                self.recorder.max_frames = self.recorder.max_frames
+                
+            self.motion_detector.force_record = True
+
             preview_process = Process(
                 target=utils.preview_socket,
                 args=(
@@ -296,6 +306,7 @@ class PiClassifier(Processor):
                     time.sleep(1.0 / fps)
 
             frame_queue.put(STOP_SIGNAL)
+            self.reset()
 
             while self.recorder is not None and self.recorder.recording:
                 logging.info("Trying to end parse file but still recording so waiting 5 seconds")
@@ -310,10 +321,10 @@ class PiClassifier(Processor):
         except:
             logging.error("Could not parse file %s",exc_info=True)
         self.motion_detector.force_record = False
-            
-        if original_recorder is not None:
-            self.recorder = original_recorder
+
         self.reset()
+        self.update_headers(pre_headers)
+
         self.parsing_file = False
 
 
@@ -516,7 +527,7 @@ class PiClassifier(Processor):
             t.received_at = received_at
 
     def wait_for_classifier(self):
-        if not self.classifier.run_over_network:
+        if not self.classify or not self.classifier.run_over_network:
                 return
         from classify.clipclassifier import wait_for_classifier
 
@@ -1227,7 +1238,7 @@ class PiClassifier(Processor):
             )
             if self.classify:
                 for pred in self.predictions.values():
-                    logging.info("Pred for model %s", pred.model)
+                    logging.info("Pred for model %s", pred.model.name)
                     for t_id, prediction in pred.prediction_per_track.items():
                         if prediction.max_score:
                             logging.info(

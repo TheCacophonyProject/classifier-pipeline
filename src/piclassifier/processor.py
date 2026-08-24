@@ -44,7 +44,8 @@ class Processor(ABC):
             model_labels,
             self.get_and_update_thumbnail,
             thumbnail_dir,
-            self.parse_file
+            self.parse_file,
+            self.is_parsing_file
         )
 
     def update_service_labels(self):
