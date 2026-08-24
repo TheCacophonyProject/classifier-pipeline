@@ -22,7 +22,6 @@ class ParseFileError(dbus.exceptions.DBusException):
 class Service(dbus.service.Object):
     def __init__(
         self,
-        dbus,
         get_frame,
         headers,
         take_snapshot_fn,
@@ -33,7 +32,6 @@ class Service(dbus.service.Object):
         is_parsing_file,
         classifier_loaded=True,
     ):
-        super().__init__(dbus, DBUS_PATH)
         self.get_frame = get_frame
         self.get_thumbnail = get_thumbnail
         self.headers = headers
@@ -43,6 +41,11 @@ class Service(dbus.service.Object):
         self.parse_file = parse_file
         self.is_parsing_file = is_parsing_file
         self.classifier_loaded = classifier_loaded
+
+    def start_service(self,dbus):
+        super().__init__(dbus, DBUS_PATH)
+        self.ServiceStarted()
+
 
     def update_labels(self, labels):
         self.labels = labels
@@ -292,30 +295,25 @@ class SnapshotService:
         DBusGMainLoop(set_as_default=True)
         dbus.mainloop.glib.threads_init()
         self.loop = GLib.MainLoop()
-        try:
-            session_bus = dbus.SystemBus(mainloop=DBusGMainLoop())
-
-            self.service = Service(
-                session_bus,
-                get_frame,
-                headers,
-                take_snapshot_fn,
-                labels,
-                get_thumbnail,
-                thumbnail_dir,
-                parse_file,
-                is_parsing_file,
-                classifier_loaded,
-            )
-      
-            self.t = threading.Thread(
-                target=self.run_server,
-            )
-            self.t.daemon = True
-            self.t.start()
-        except:
-            logging.error("Couldn't run dbus server at %s %s", DBUS_NAME, session_bus)
-        
+       
+        self.service = Service(
+            get_frame,
+            headers,
+            take_snapshot_fn,
+            labels,
+            get_thumbnail,
+            thumbnail_dir,
+            parse_file,
+            is_parsing_file,
+            classifier_loaded,
+        )
+    
+        self.t = threading.Thread(
+            target=self.run_server,
+        )
+        self.t.daemon = True
+        self.t.start()
+    
 
     def update_service(
         self,
@@ -343,7 +341,8 @@ class SnapshotService:
         self,
     ):
         try:
-            self.service.ServiceStarted()
+            session_bus = dbus.SystemBus(mainloop=DBusGMainLoop())
+            self.service.start_service(session_bus)
             self.loop.run()
         except:
             logging.error("Couldn't run loop",exc_info=True)
