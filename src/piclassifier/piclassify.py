@@ -46,9 +46,6 @@ def parse_args():
     parser.add_argument(
         "--thermal-config-file", help="Path to pi-config file (config.toml) to use"
     )
-    parser.add_argument(
-        "--ir", action="count", help="Path to pi-config file (config.toml) to use"
-    )
 
     parser.add_argument(
         "--seed",
@@ -106,23 +103,6 @@ def main():
         )
         snapshot_thread.daemon = True
         snapshot_thread.start()
-    if args.ir or thermal_config.device_setup.ir:
-        while True:
-            if restart_pending:
-                break
-            try:
-                read = ir_camera(config, thermal_config, process_queue)
-                if read == 0:
-                    logging.error("Error reading camera try again in 10")
-                    time.sleep(10)
-                else:
-                    log_event("camera-disconnected", f"read {read} frames")
-            except Exception as ex:
-                log_event("camera-disconnected", ex)
-                logging.error("Error reading camera try again in 10", exc_info=True)
-                time.sleep(10)
-        return
-
     try:
         os.unlink(SOCKET_NAME)
     except OSError:
@@ -205,70 +185,11 @@ def file_changed(event):
 def parse_file(file, config, thermal_config, preview_type, fps, seed):
     from config.timewindow import TimeWindow, RelAbsTime
 
-    _, ext = os.path.splitext(file)
     thermal_config.recorder.rec_window = rec_window = TimeWindow(
         RelAbsTime(""), RelAbsTime(""), None, None, 0
     )
 
-    if ext == ".cptv":
-        parse_cptv(file, config, thermal_config, preview_type, fps, seed)
-    else:
-        parse_ir(file, config, thermal_config, preview_type, fps)
-    
-
-def parse_ir(file, config, thermal_config, preview_type, fps):
-    from piclassifier import irmotiondetector
-    from .piclassifier import PiClassifier
-
-    import cv2
-
-    irmotiondetector.MIN_FRAMES = 0
-    count = 0
-    vidcap = cv2.VideoCapture(file)
-    while True:
-        if fps is not None:
-            time.sleep(1 / fps)
-        success, image = vidcap.read()
-        if not success:
-            break
-        # gray = cv2.resize(gray, (640, 480))
-        if count == 0:
-            res_y, res_x = image.shape[:2]
-            headers = HeaderInfo(
-                res_x=res_x,
-                res_y=res_y,
-                fps=10,
-                brand=None,
-                model="IR",
-                frame_size=res_y * res_x,
-                pixel_bits=8,
-                serial="",
-                firmware="",
-            )
-
-            pi_classifier = PiClassifier(
-                config,
-                thermal_config,
-                headers,
-                thermal_config.motion.run_classifier,
-                preview_type,
-            )
-            gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-            pi_classifier.motion_detector._background._background = np.float32(gray)
-            pi_classifier.motion_detector._background.update_background(
-                gray, learning_rate=1
-            )
-            pi_classifier.motion_detector._background._frames = 1000
-            count += 1
-            # assume this has been run over 1000 frames
-            continue
-        # frame = Frame(image, None, None, None, None)
-        # frame.received_at = time.time()
-        pi_classifier.process_frame(image, time.time())
-        count += 1
-    vidcap.release()
-    pi_classifier.disconnected()
-
+    parse_cptv(file, config, thermal_config, preview_type, fps, seed)
 
 
 
@@ -337,94 +258,6 @@ def handle_headers(connection):
                 left_over = left_over[5:]
             break
     return HeaderInfo.parse_header(headers.decode()), left_over
-
-
-def ir_camera(config, thermal_config, process_queue):
-    import cv2
-
-    FPS = 10
-    logging.info("Starting ir video capture")
-    cap = cv2.VideoCapture(0)
-    cap.set(cv2.CAP_PROP_FPS, FPS)
-    frames = 0
-    try:
-        res_x = cap.get(cv2.CAP_PROP_FRAME_WIDTH)
-        res_y = cap.get(cv2.CAP_PROP_FRAME_HEIGHT)
-        headers = HeaderInfo(
-            res_x=int(res_x),
-            res_y=int(res_y),
-            fps=FPS,
-            brand=None,
-            model="IR",
-            frame_size=res_y * res_x,
-            pixel_bits=8,
-            serial="",
-            firmware="",
-        )
-
-        global connected
-        connected = True
-        processor = get_processor(process_queue, config, thermal_config, headers)
-        processor.start()
-        drop_frame = None
-        dropped = 0
-        start_dropping = None
-
-        while True:
-            if restart_pending:
-                logging.info(
-                    "Restarting as config changed QSize is %s", process_queue.qsize()
-                )
-                process_queue.put(STOP_SIGNAL)
-                # give it time to clean up
-                processor.join(5)
-                if processor.is_alive():
-                    logging.info("Killing process")
-                    try:
-                        utils.kill_process_with_timeout(processor)
-                    except:
-                        pass
-                break
-            returned, frame = cap.read()
-            if not processor.is_alive():
-                logging.info("Processor stopped, restarting %s", processor.is_alive())
-                processor = get_processor(
-                    process_queue, config, thermal_config, headers
-                )
-                processor.start()
-            if not returned:
-                logging.info("no frame from video capture")
-                process_queue.put(STOP_SIGNAL)
-                break
-            frames += 1
-            if frames == 1:
-                log_event("camera-connected", {"type": "IR"})
-            if drop_frame is not None and (frames - start_dropping) % drop_frame == 0:
-                logging.info("Dropping frame due to slow processing")
-                dropped += 1
-            else:
-                process_queue.put((frame, time.time()))
-            qsize = process_queue.qsize()
-            if qsize > headers.fps * 4 and (
-                drop_frame is None or frames > (start_dropping + drop_frame)
-            ):
-                # drop every 9th frame
-                if drop_frame is None:
-                    drop_frame = 9
-                else:
-                    drop_frame = drop_frame - 1
-                # drop first frame
-                start_dropping = frames + 1
-                logging.info("Dropping every %s frame as qsize %s", drop_frame, qsize)
-            elif qsize < headers.fps * 3:
-                drop_frame = None
-                start_dropping = None
-    finally:
-        if processor is not None:
-            time.sleep(5)
-            utils.kill_process_with_timeout(processor)
-
-    return frames
 
 
 def next_snapshot(window, prev_window_type=None):
