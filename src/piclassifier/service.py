@@ -342,7 +342,7 @@ class SnapshotService:
     ):
         try:
             session_bus = dbus.SystemBus(mainloop=DBusGMainLoop())
-            dbus.service.BusName(DBUS_NAME, session_bus)
+            name = dbus.service.BusName(DBUS_NAME, session_bus)
             self.service.start_service(session_bus)
             self.loop.run()
         except:
