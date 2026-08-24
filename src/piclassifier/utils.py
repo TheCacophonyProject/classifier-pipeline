@@ -2,6 +2,7 @@ import subprocess
 import logging
 import time
 
+
 def run_cmd(cmd):
     try:
         result = subprocess.run(
@@ -42,6 +43,7 @@ def toggle_network_classifier(enable):
 def is_service_running(service_name):
     result = subprocess.run(["systemctl", "is-active", "--quiet", service_name])
     return result.returncode == 0
+
 
 def preview_socket(headers, frame_queue):
     import yaml
@@ -101,24 +103,25 @@ def preview_socket(headers, frame_queue):
             time.sleep(2)
 
 
-
-
-
 def kill_process_with_timeout(process, timeout=30):
     from threading import Thread
+
     # for some reason process.kill hangs sometimes
-    kill_thread = Thread(target=kill_process, args=(process,),daemon=True)
+    kill_thread = Thread(target=kill_process, args=(process,), daemon=True)
     kill_thread.start()
     try:
         kill_thread.join(timeout)
         if kill_thread.is_alive():
-            logging.error("Kill thread didn't terminate, should terminate when parent process terminates")
+            logging.error(
+                "Kill thread didn't terminate, should terminate when parent process terminates"
+            )
     except:
         logging.error("Kill thread didnt terminate", exc_info=True)
 
 
 def kill_process(process):
     import psutil
+
     pid = process.pid
     logging.info("Killing process %s", pid)
     try:
@@ -129,11 +132,13 @@ def kill_process(process):
             if status == psutil.STATUS_ZOMBIE:
                 logging.info("PID %s is a Zombie; skipping signal.", pid)
                 return
-            if status == 'uninterruptible-sleep': # D-state
-                logging.warning("PID %s is stuck in D-state (I/O hang). kill -9 will fail.", pid)
+            if status == "uninterruptible-sleep":  # D-state
+                logging.warning(
+                    "PID %s is stuck in D-state (I/O hang). kill -9 will fail.", pid
+                )
         except psutil.NoSuchProcess:
             return
-        
+
         children = parent.children()
         for child in children:
             if child.is_running():
@@ -142,7 +147,7 @@ def kill_process(process):
         if parent.is_running():
             try:
                 parent.kill()
-                logging.info("Killed %s",process.pid)
+                logging.info("Killed %s", process.pid)
             except:
                 logging.error("Could not kill process %s ", parent.pid, exc_info=True)
             parent.wait(5)

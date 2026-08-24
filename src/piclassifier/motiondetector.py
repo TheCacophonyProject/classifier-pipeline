@@ -141,7 +141,9 @@ class MotionDetector(ABC):
         """Tracker type IR or Thermal"""
 
     def can_record(self):
-        return self.force_record or (self.rec_window.inside_window() and not self.use_low_power_mode)
+        return self.force_record or (
+            self.rec_window.inside_window() and not self.use_low_power_mode
+        )
 
     @abstractmethod
     def disconnected(self):
@@ -195,7 +197,7 @@ class WeightedBackground:
         self._background = None
         self.background_weight.fill(0)
         self.init_average = None
-        
+
     def get_average(self):
         return self.average
 

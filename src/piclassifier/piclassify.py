@@ -72,11 +72,11 @@ def main():
 
     config = Config.load_from_file(args.config_file)
     thermal_config = ThermalConfig.load_from_file(args.thermal_config_file)
-        
+
     thermal_config.recorder.rec_window.set_location(
-            *thermal_config.location.get_lat_long(use_default=True),
-            thermal_config.location.altitude,
-        )
+        *thermal_config.location.get_lat_long(use_default=True),
+        thermal_config.location.altitude,
+    )
     if args.file:
         return parse_file(
             args.file, config, thermal_config, args.preview_type, args.fps, args.seed
@@ -87,7 +87,6 @@ def main():
     )
     monitor_thread.daemon = True
     monitor_thread.start()
-    
 
     process_queue = multiprocessing.Queue()
 
@@ -110,7 +109,6 @@ def main():
             raise
     logging.info("running as thermal")
 
-
     # try not run classifier unless we are inside a recording window
     # enable_network_classifier = (
     #     model is not None and thermal_config.motion.run_classifier
@@ -129,18 +127,18 @@ def main():
     if not success and thermal_config.motion.postprocess:
         raise Exception("Could not start up postprocessor")
 
-
-
     response_queue = multiprocessing.Queue()
 
     # TODO this will break things if we ever have different resolution or FPS
     headers = default_headers()
-    processor = get_processor(process_queue,response_queue, config, thermal_config,headers)
+    processor = get_processor(
+        process_queue, response_queue, config, thermal_config, headers
+    )
     processor.start()
 
     sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     sock.bind(SOCKET_NAME)
-    sock.settimeout(1 * 60) 
+    sock.settimeout(1 * 60)
     sock.listen(1)
     global connected
 
@@ -154,8 +152,13 @@ def main():
             connected = True
             logging.info("connection from %s", client_address)
             log_event("camera-connected", {"type": "thermal"})
-            handle_connection(processor,
-                connection, config, args.thermal_config_file, process_queue,response_queue
+            handle_connection(
+                processor,
+                connection,
+                config,
+                args.thermal_config_file,
+                process_queue,
+                response_queue,
             )
         except socket.timeout:
             logging.error("Socket %s timeout error", SOCKET_NAME, exc_info=True)
@@ -181,6 +184,7 @@ def main():
             except:
                 pass
 
+
 def file_changed(event):
     logging.info("Received file changed event %s restarting", event)
     global restart_pending
@@ -200,10 +204,8 @@ def parse_file(file, config, thermal_config, preview_type, fps, seed):
     parse_cptv(file, config, thermal_config, preview_type, fps, seed)
 
 
-
 def parse_cptv(file, config, thermal_config, preview_type, fps, seed):
     from .piclassifier import PiClassifier
-
 
     # this doesnt matter since it will get read from file later
     telemetry_size = 160 * 4
@@ -213,11 +215,11 @@ def parse_cptv(file, config, thermal_config, preview_type, fps, seed):
         fps=9,
         brand=None,
         model=None,
-        frame_size=120*160* 2 + telemetry_size,
+        frame_size=120 * 160 * 2 + telemetry_size,
         pixel_bits=16,
         serial="",
         firmware="",
-        source = file,
+        source=file,
     )
     pi_classifier = PiClassifier(
         config,
@@ -226,12 +228,12 @@ def parse_cptv(file, config, thermal_config, preview_type, fps, seed):
         thermal_config.motion.run_classifier,
         preview_type,
     )
-    pi_classifier.parse_file(file,fps,seed)
+    pi_classifier.parse_file(file, fps, seed)
     pi_classifier.service.quit()
     print("ALL DONE")
 
 
-def get_processor(process_queue, response_queue,config, thermal_config, headers):
+def get_processor(process_queue, response_queue, config, thermal_config, headers):
     from .piclassifier import run_classifier
 
     p_processor = multiprocessing.Process(
@@ -361,14 +363,15 @@ def delete_stale_thumbnails(output_dir):
 # return -1
 
 
-
-
-def handle_connection(processor,connection, config, thermal_config_file, process_queue,response_queue):
+def handle_connection(
+    processor, connection, config, thermal_config_file, process_queue, response_queue
+):
     from .cameras import lepton3
     from ml_tools.rectangle import Rectangle
     from queue import Empty
+
     # sometimes the headers are never received
-    connection.settimeout(20) 
+    connection.settimeout(20)
     headers, extra_b = handle_headers(connection)
     thermal_config = ThermalConfig.load_from_file(thermal_config_file, headers.model)
     logging.info(
@@ -393,7 +396,7 @@ def handle_connection(processor,connection, config, thermal_config_file, process
                 # this potentially loops on indefinately on an error if the error is to do with the headers
                 logging.info("Processor stopped restarting")
                 processor = get_processor(
-                    process_queue, response_queue,config, thermal_config, headers
+                    process_queue, response_queue, config, thermal_config, headers
                 )
                 processor.start()
             if extra_b is not None:
@@ -419,8 +422,9 @@ def handle_connection(processor,connection, config, thermal_config_file, process
             read += 1
 
             if parsing_file:
+                # need to keep reading from data socket in the mean time so just do a quick check
                 try:
-                    message = response_queue.get(False,0)
+                    message = response_queue.get(False, 0)
                     if message == PARSED:
                         parsing_file = False
                         logging.info("Finished parsing file")
@@ -448,7 +452,7 @@ def handle_connection(processor,connection, config, thermal_config_file, process
             if process_queue.qsize() > 9:
                 # check if there is a reason frames have slowed down
                 try:
-                    message = response_queue.get(False,0)
+                    message = response_queue.get(False, 0)
                     if message == PARSING_FILE:
                         parsing_file = True
                         clear_queue(process_queue)
@@ -468,6 +472,7 @@ def handle_connection(processor,connection, config, thermal_config_file, process
                 except:
                     pass
 
+
 def clear_queue(q):
     """Removes all items from a multiprocessing Queue."""
     from queue import Empty
@@ -479,7 +484,6 @@ def clear_queue(q):
         pass
 
 
-
 def default_headers():
     telemetry_size = 160 * 4
 
@@ -489,7 +493,7 @@ def default_headers():
         fps=9,
         brand=None,
         model=None,
-        frame_size=120*160* 2 + telemetry_size,
+        frame_size=120 * 160 * 2 + telemetry_size,
         pixel_bits=16,
         serial="",
         firmware="",

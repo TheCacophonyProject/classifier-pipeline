@@ -46,7 +46,6 @@ class HeaderInfo:
             pixel_bits=raw.get(HeaderInfo.PIXEL_BITS),
             firmware=raw.get(HeaderInfo.FIRMWARE),
             source=raw.get(HeaderInfo.SOURCE),
-
         )
         headers.firmware = str(headers.firmware)
         if headers.res_x and headers.res_y:

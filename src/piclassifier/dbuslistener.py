@@ -87,7 +87,7 @@ def tracking_reprocessed(
     model_id,
     rec_end,
 ):
-    rec_end = datetime.fromtimestamp(rec_end/ 1000)
+    rec_end = datetime.fromtimestamp(rec_end / 1000)
     logging.info(
         "Received post processing event for recording ended at %s clip %s track %s prediction of %s with %s%% confidence at region %s",
         rec_end,
@@ -114,6 +114,18 @@ def tracking_reprocessed(
         )
 
 
+def labelsUpdated():
+    logging.info("Labels Updated")
+    bus = dbus.SystemBus()
+    dbus_object = bus.get_object(DBUS_NAME, DBUS_PATH)
+    try:
+        global model_labels
+        model_labels = dbus_object.ClassificationLabels()
+        logging.info("Updated labels %s", model_labels)
+    except:
+        logging.error("Could not get labels %s", exc_info=True)
+
+
 # helper class to run dbus in background
 class TrackingService:
     def __init__(self):
@@ -136,8 +148,16 @@ class TrackingService:
             print("Failed to initialize D-Bus object: '%s'" % str(e))
             sys.exit(2)
         global model_labels
-        model_labels = dbus_object.ClassificationLabels()
+        try:
+            model_labels = dbus_object.ClassificationLabels()
+        except:
+            pass
 
+        bus.add_signal_receiver(
+            labelsUpdated,
+            dbus_interface=DBUS_NAME,
+            signal_name="LabelsUpdated",
+        )
         bus.add_signal_receiver(
             tracking,
             dbus_interface=DBUS_NAME,

@@ -65,7 +65,7 @@ def record(
     headers,
     location_config,
     device_config,
-        rec_dt ,
+    rec_dt,
     background_frame=None,
     init_frames=None,
     name="CPTVRecorder",

@@ -13,7 +13,7 @@ from ml_tools.rectangle import Rectangle
 
 class CPTVMotionDetector(MotionDetector):
     FFC_PERIOD = timedelta(seconds=9.9)
-    BACKGROUND_WEIGHT_ADD = 1 
+    BACKGROUND_WEIGHT_ADD = 1
     MEAN_FRAMES = 45
 
     def __init__(self, thermal_config, dynamic_thresh, headers, detect_after=None):

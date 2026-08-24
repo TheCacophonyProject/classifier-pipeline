@@ -60,8 +60,10 @@ class DirWatcher(FileSystemEventHandler):
         if not event.is_directory:
             event_file = Path(event.src_path)
             if event_file.suffix == ".cptv":
-                if event_file.with_suffix(".txt").exists() or event_file.stem.endswith(
-                    "-track"
+                if (
+                    event_file.with_suffix(".txt").exists()
+                    or event_file.stem.endswith("-track")
+                    or event_file.stem.endswith("-track-test")
                 ):
                     self._queue_file(event_file)
             elif event_file.suffix == ".txt":
@@ -222,7 +224,6 @@ def main():
 
             if new_file.exists():
                 try:
-                    
 
                     meta_f = new_file.with_suffix(".txt")
                     if "-test" in new_file.stem:

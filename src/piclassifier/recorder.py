@@ -21,6 +21,7 @@ class Recorder(ABC):
         file_suffix=None,
     ):
         self.postprocess = thermal_config.motion.postprocess
+        self.do_tracking = thermal_config.motion.do_tracking
         self.file_suffix = file_suffix
         self.file_extention = file_extention
         self.name = name
@@ -156,7 +157,7 @@ class Recorder(ABC):
             free_percent = stat[2] / stat[0]
 
     def start_recording(
-        self, background_frame, preview_frames, temp_thresh, frame_time,test = False
+        self, background_frame, preview_frames, temp_thresh, frame_time, test=False
     ):
         if self.constant_recorder:
             self.delete_excess()
@@ -168,7 +169,7 @@ class Recorder(ABC):
 
         self.frames = 0
 
-        self.filename = self.new_temp_name(frame_time,test = test)
+        self.filename = self.new_temp_name(frame_time, test=test)
         started = self.new_recording(
             background_frame, preview_frames, temp_thresh, frame_time
         )
@@ -187,10 +188,12 @@ class Recorder(ABC):
 
         return True
 
-    def new_temp_name(self, frame_time,test = False):
+    def new_temp_name(self, frame_time, test=False):
         file_name = datetime.fromtimestamp(frame_time).strftime("%Y-%m-%d--%H-%M-%S")
         if self.file_suffix is not None:
             file_name = f"{file_name}{self.file_suffix}"
+        if self.postprocess and not self.do_tracking:
+            file_name = f"{file_name}-track"
         if test:
             file_name = f"{file_name}-test"
 

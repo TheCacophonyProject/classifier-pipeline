@@ -23,19 +23,14 @@ from .service import SnapshotService
 
 
 class Processor(ABC):
-    def __init__(
-        self,
-        thumbnail_dir,
-    ):
-        model_labels = {}
-        if self.classifier is not None:
-            model_labels[self.classifier.id] = self.classifier.labels
-        if self.fp_model is not None:
-            model_labels[self.fp_model.id] = self.fp_model.labels
-
-        # TODO test this works
-        if len(model_labels) == 0:
-            model_labels = None
+    def __init__(self, thumbnail_dir, classifier_loaded=True):
+        model_labels = None
+        if classifier_loaded:
+            model_labels = {}
+            if self.classifier is not None:
+                model_labels[self.classifier.id] = self.classifier.labels
+            if self.fp_model is not None:
+                model_labels[self.fp_model.id] = self.fp_model.labels
 
         self.service = SnapshotService(
             self.get_recent_frame,
@@ -45,7 +40,8 @@ class Processor(ABC):
             self.get_and_update_thumbnail,
             thumbnail_dir,
             self.parse_file,
-            self.is_parsing_file
+            self.is_parsing_file,
+            classifier_loaded,
         )
 
     def update_service_labels(self):
@@ -55,6 +51,7 @@ class Processor(ABC):
         if self.fp_model is not None:
             model_labels[self.fp_model.id] = self.fp_model.labels
         self.service.service.labels = model_labels
+        self.service.service.update_labels(model_labels)
 
     @abstractmethod
     def take_snapshot(self): ...

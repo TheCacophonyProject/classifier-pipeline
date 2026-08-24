@@ -13,12 +13,11 @@ class DummyRecorder(Recorder):
 
     def new_recording(self, background_frame, preview_frames, temp_thresh, frame_time):
         self.frames = 0
-        self.start_recording(background_frame,preview_frames,temp_thresh,frame_time)
+        self.start_recording(background_frame, preview_frames, temp_thresh, frame_time)
         return True
 
     def final_name(self):
-        return  ""
-
+        return ""
 
     def process_frame(self, movement_detected, cptv_frame, received_at):
         if self.recording:
@@ -40,7 +39,7 @@ class DummyRecorder(Recorder):
         self.frames += 1
 
     def start_recording(
-        self, background_frame, preview_frames, temp_thresh, frame_time, test = False
+        self, background_frame, preview_frames, temp_thresh, frame_time, test=False
     ):
         if self.recording:
             return False
