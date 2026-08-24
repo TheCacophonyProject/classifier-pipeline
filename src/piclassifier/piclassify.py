@@ -82,13 +82,23 @@ def main():
             args.file, config, thermal_config, args.preview_type, args.fps, args.seed
         )
 
+
+    process_queue = multiprocessing.Queue()
+    response_queue = multiprocessing.Queue()
+
+    # TODO this will break things if we ever have different resolution or FPS
+    headers = default_headers()
+    processor = get_processor(
+        process_queue, response_queue, config, thermal_config, headers
+    )
+    processor.start()
+
     monitor_thread = Thread(
         target=monitor_file, args=(file_changed, thermal_config.config_file)
     )
     monitor_thread.daemon = True
     monitor_thread.start()
 
-    process_queue = multiprocessing.Queue()
 
     # get a cloned window so we dont update it
     if not thermal_config.recorder.use_low_power_mode:
@@ -127,14 +137,6 @@ def main():
     if not success and thermal_config.motion.postprocess:
         raise Exception("Could not start up postprocessor")
 
-    response_queue = multiprocessing.Queue()
-
-    # TODO this will break things if we ever have different resolution or FPS
-    headers = default_headers()
-    processor = get_processor(
-        process_queue, response_queue, config, thermal_config, headers
-    )
-    processor.start()
 
     sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     sock.bind(SOCKET_NAME)
