@@ -50,8 +50,11 @@ class Service(dbus.service.Object):
     def update_labels(self, labels):
         self.labels = labels
         self.classifier_loaded = True
-        self.LabelsUpdated()
-
+        try:
+            self.LabelsUpdated()
+        except:
+            logging.error("Could run labels updated",exc_info=True)
+        
     @dbus.service.method(
         DBUS_NAME,
         in_signature="",
