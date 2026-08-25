@@ -2135,8 +2135,8 @@ class StepWarmupCallback(Callback):
         self.total_warmup_steps = warmup_epochs * steps_per_epoch
         self.global_step = 0
         self.last_lr = None
-        self.medium_epoch
-        self.heavy_epoch
+        self.medium_epoch = medium_epoch
+        self.heavy_epoch = heavy_epoch
 
     def on_train_batch_begin(self, batch, logs=None):
 
