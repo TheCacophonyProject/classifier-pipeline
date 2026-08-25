@@ -52,7 +52,11 @@ def parse_args():
         action="store_true",
         help="Train an IsolationForest novelty detector on the extracted features",
     )
-
+    parser.add_argument(
+        "--hdbs-only",
+        action="store_true",
+        help="Re run hdbs on umap",
+    )
     args = parser.parse_args()
     return args
 
@@ -80,7 +84,7 @@ def main():
         "weka",
         "chicken",
     ]
-    if not args.only_umap:
+    if not args.only_umap and not args.hdbs_only:
         new_labels = extract_embeddings(
             args.dataset,
             args.model,
@@ -100,12 +104,13 @@ def main():
         return
 
     # print("USING HDB TESTING")
-    # hdb_load(
-    #     args.output.with_name(f"{args.output.stem}-features.npy"),
-    #     new_labels,
-    #     filter_labels,
-    # )
-    # return
+    if args.hdbs_only:
+        hdbs_load(
+            args.output.with_name(f"{args.output.stem}-features.npy"),
+            new_labels,
+            filter_labels,
+        )
+        return
     run_umap(
         args.model,
         args.output.with_name(f"{args.output.stem}-features.npy"),
@@ -133,7 +138,7 @@ def train_isolation_forest(features_file):
     return iso_forest
 
 
-def hdb_load(features_file, labels, filter_labels=None):
+def hdbs_load(features_file, labels, filter_labels=None):
 
     features = np.load(features_file)
     labels_file = features_file.with_name(
@@ -324,6 +329,11 @@ def run_umap(model_file, features_file, labels, filter_labels=None):
     fig.savefig(features_file.with_suffix(".jpg"), dpi=600, bbox_inches="tight")
 
 
+# These labels are treated as one group when working out whether a majority
+# label dominates a cluster, since bird/chicken/penguin can be visually similar.
+BIRD_FAMILY_LABELS = {"bird", "chicken", "penguin","weka"}
+
+
 def find_mislabeled_points(clusterer, y_true, tracks, features_file):
     probabilities = clusterer.probabilities_
     hdbscan_labels = clusterer.labels_
@@ -332,11 +342,16 @@ def find_mislabeled_points(clusterer, y_true, tracks, features_file):
     noise_pct = (hdbscan_labels == -1).mean() * 100
     print(f"Noise points: {noise_pct:.1f}%")
     # Create a summary dataframe for easier inspection
+    track_ids = tracks[:, 0]
+    source_ids = tracks[:, 1]
+
     results = pd.DataFrame(
         {
             "index": range(len(y_true)),
             "y_true": y_true,
             "tracks": tracks,
+            "source_ids": source_ids,
+
             "hdbscan_cluster": hdbscan_labels,
             "confidence": probabilities,
         }
@@ -350,6 +365,13 @@ def find_mislabeled_points(clusterer, y_true, tracks, features_file):
     mismatch_flags = []
     cluster_to_class_map = {-1: "Anomaly"}
     ambiguous_clusters = []
+    # Total occurrences of each label across the whole dataset, used to work out
+    # what share of a label's points ended up in any given cluster.
+    total_label_counts = results["y_true"].value_counts()
+    # Tally, per label, what percentage of its points landed in each cluster.
+    label_cluster_tally = {label: {} for label in total_label_counts.index}
+    # Tally, per cluster, what percentage of that cluster each label makes up.
+    cluster_label_tally = {}
     for cluster_id in results["hdbscan_cluster"].unique():
         if cluster_id == -1:
             continue
@@ -361,34 +383,106 @@ def find_mislabeled_points(clusterer, y_true, tracks, features_file):
         label_counts = cluster_subset["y_true"].value_counts(normalize=True)
         majority_label = label_counts.index[0]
         majority_percentage = label_counts.iloc[0]
+        cluster_label_tally[cluster_id] = label_counts.to_dict()
+
+        # bird/chicken/penguin can be visually similar, so let them combine to
+        # form a majority even when no single one of them dominates alone.
+        bird_family_percentage = label_counts[
+            label_counts.index.isin(BIRD_FAMILY_LABELS)
+        ].sum()
+        is_bird_family_majority = bird_family_percentage > majority_percentage
+        if is_bird_family_majority:
+            majority_label = "bird/chicken/penguin"
+            majority_percentage = bird_family_percentage
 
         # If the top label doesn't dominate (e.g., less than 70% of the cluster), flag it
-        if majority_percentage < 0.70:
-            print(
-                f"⚠️ Cluster {cluster_id} is ambiguous! Top label '{majority_label}' is only {majority_percentage:.1%}"
+        other_labels = label_counts.iloc[1:]
+
+        ambiguous_clusters.append(cluster_id)
+
+        # For each label present in this cluster, what fraction of that label's
+        # total occurrences in the whole dataset landed here.
+        label_cluster_counts = cluster_subset["y_true"].value_counts()
+        label_coverage = (
+            label_cluster_counts / total_label_counts.reindex(label_cluster_counts.index)
+        ).sort_values(ascending=False)
+        for label, pct in label_coverage.items():
+            label_cluster_tally[label][cluster_id] = pct
+        label_breakdown = ", ".join(
+            f"{label}:{pct:.1%} of label, {label_counts[label]:.1%} of cluster"
+            for label, pct in sorted(
+                label_coverage.items(), key=lambda item: label_counts[item[0]], reverse=True
             )
-            other_labels = label_counts.iloc[1:]
+            if label_counts[label] > 0.20 or pct > 0.50
+        )
+
+        
+        # A soft majority isn't actually ambiguous if this cluster is where most of
+        # that label's data lives; only flag it when neither signal is strong.
+        if is_bird_family_majority:
+            majority_coverage = label_coverage[
+                label_coverage.index.isin(BIRD_FAMILY_LABELS)
+            ].sum()
+        else:
+            majority_coverage = label_coverage[majority_label]
+        if majority_percentage < 0.70 and majority_coverage < 0.50:
+            print(
+                f"⚠️ Cluster {cluster_id} is ambiguous! Top label '{majority_label}' is only "
+                f"{majority_percentage:.1%} of the cluster and {majority_coverage:.1%} of its own data"
+            )
             for label, percentage in other_labels[other_labels > 0.20].items():
                 print(f"    Other label '{label}' is {percentage:.1%}")
-            ambiguous_clusters.append(cluster_id)
-            label_breakdown = ", ".join(
-                f"{label}:{pct:.0%}"
-                for label, pct in label_counts.items()
-                if pct > 0.20
-            )
             cluster_to_class_map[cluster_id] = f"Ambiguous: {label_breakdown}"
         else:
-            cluster_to_class_map[cluster_id] = majority_label
+            cluster_to_class_map[cluster_id] = label_breakdown
 
-        # Find the dominant (majority) true label in this density cluster
-        majority_true_label = cluster_subset["y_true"].mode()[0]
+        # Find the dominant (majority) true label in this density cluster. When
+        # bird/chicken/penguin combine to form the majority, any of the three counts.
+        if is_bird_family_majority:
+            is_majority_label = cluster_subset["y_true"].isin(BIRD_FAMILY_LABELS)
+        else:
+            majority_true_label = cluster_subset["y_true"].mode()[0]
+            is_majority_label = cluster_subset["y_true"] == majority_true_label
+
+        # A label whose data mostly lives in this cluster isn't really foreign here
+        # either, even if it isn't the (combined) majority label.
+        is_majority_label = is_majority_label | (
+            cluster_subset["y_true"].map(label_coverage) > 0.50
+        )
 
         # Flag points in this cluster that contradict the majority label with high certainty
         intruders = cluster_subset[
-            (cluster_subset["y_true"] != majority_true_label)
-            & (cluster_subset["confidence"] > 0.8)
+            (~is_majority_label) & (cluster_subset["confidence"] > 0.8)
         ]
         mismatch_flags.append(intruders)
+
+    # Also tally noise (cluster -1) so the per-label breakdown accounts for all points.
+    noise_subset = results[results["hdbscan_cluster"] == -1]
+    noise_label_counts = noise_subset["y_true"].value_counts()
+    noise_coverage = noise_label_counts / total_label_counts.reindex(noise_label_counts.index)
+    for label, pct in noise_coverage.items():
+        label_cluster_tally[label][-1] = pct
+    cluster_label_tally[-1] = noise_subset["y_true"].value_counts(normalize=True).to_dict()
+
+    print("\nPer-label cluster distribution:")
+    for label in total_label_counts.index:
+        breakdown = ", ".join(
+            f"cluster {cluster_id}: {pct:.1%}"
+            for cluster_id, pct in sorted(
+                label_cluster_tally[label].items(), key=lambda item: item[1], reverse=True
+            )
+        )
+        print(f"  {label}: {breakdown}")
+
+    print("\nPer-cluster label composition:")
+    for cluster_id in sorted(cluster_label_tally):
+        breakdown = ", ".join(
+            f"{label}: {pct:.1%}"
+            for label, pct in sorted(
+                cluster_label_tally[cluster_id].items(), key=lambda item: item[1], reverse=True
+            )
+        )
+        print(f"  Cluster {cluster_id}: {breakdown}")
 
     mismatch_df = pd.concat(mismatch_flags)
     mismatch_df["mapped_to"] = [
@@ -402,6 +496,7 @@ def find_mislabeled_points(clusterer, y_true, tracks, features_file):
         mismatch_df.groupby("tracks")
         .agg(
             y_true=("y_true", "first"),
+            source_ids=("source_ids", list),
             hdbscan_cluster=("hdbscan_cluster", list),
             confidence=("confidence", list),
             mapped_to=("mapped_to", list),
@@ -440,7 +535,24 @@ def find_mislabeled_points(clusterer, y_true, tracks, features_file):
     with open(mismatch_file, "a") as f:
         f.write("\ncluster_to_class_map\n")
         cluster_map_df.to_csv(f, index=False)
-
+        f.write("\nPer-label cluster distribution\n")
+        for label in total_label_counts.index:
+            breakdown = ", ".join(
+                f"cluster {cluster_id}: {pct:.1%}"
+                for cluster_id, pct in sorted(
+                    label_cluster_tally[label].items(), key=lambda item: item[1], reverse=True
+                )
+            )
+            f.write(f"{label}: {breakdown}\n")
+        f.write("\nPer-cluster label composition\n")
+        for cluster_id in sorted(cluster_label_tally):
+            breakdown = ", ".join(
+                f"{label}: {pct:.1%}"
+                for label, pct in sorted(
+                    cluster_label_tally[cluster_id].items(), key=lambda item: item[1], reverse=True
+                )
+            )
+            f.write(f"Cluster {cluster_id}: {breakdown}\n")
     # Tracks whose mismatches were never explained away by an ambiguous
     # cluster are the ones most likely to be genuinely mislabeled.
     no_ambiguous_df = grouped_df[
@@ -451,11 +563,29 @@ def find_mislabeled_points(clusterer, y_true, tracks, features_file):
     mismatched_tracks_file = features_file.with_name("mismatched-tracks.txt")
     print("saving mismatched tracks to ", mismatched_tracks_file)
     with open(mismatched_tracks_file, "w") as f:
-        for track in no_ambiguous_df["tracks"]:
-            f.write(f"{track}\n")
+        for track,source in zip(no_ambiguous_df["tracks"],no_ambiguous_df["source_ids"]):
+            f.write(f"{track}-{source}\n")
         f.write("\ncluster_to_class_map\n")
         for cluster_id, mapped_class in sorted(cluster_to_class_map.items()):
             f.write(f"{cluster_id}: {mapped_class}\n")
+        f.write("\nPer-label cluster distribution\n")
+        for label in total_label_counts.index:
+            breakdown = ", ".join(
+                f"cluster {cluster_id}: {pct:.1%}"
+                for cluster_id, pct in sorted(
+                    label_cluster_tally[label].items(), key=lambda item: item[1], reverse=True
+                )
+            )
+            f.write(f"{label}: {breakdown}\n")
+        f.write("\nPer-cluster label composition\n")
+        for cluster_id in sorted(cluster_label_tally):
+            breakdown = ", ".join(
+                f"{label}: {pct:.1%}"
+                for label, pct in sorted(
+                    cluster_label_tally[cluster_id].items(), key=lambda item: item[1], reverse=True
+                )
+            )
+            f.write(f"Cluster {cluster_id}: {breakdown}\n")
 
 
 def extract_embeddings(
@@ -542,9 +672,15 @@ def extract_embeddings(
     true_labels = []
     bird_index = labels.index("bird")
     tracks = []
+    source_ids = []
     for _, batch_y in dataset:
         track_batch = batch_y[1]
+        source_batch = batch_y[2]
+        sources = [int(b.decode('utf-8')) for b in source_batch.numpy()]
+
         tracks.extend(track_batch)
+        source_ids.extend(sources)
+
         label_batch = batch_y[0]
         for y in label_batch:
             non_zero = np.nonzero(y.numpy())[0]
@@ -557,6 +693,7 @@ def extract_embeddings(
                 y = non_zero[0]
             true_labels.append(y)
     tracks = np.array(tracks)
+    source_ids = np.array(source_ids)
     true_labels = np.array(true_labels)
     output_predictions = output_file.with_name(f"{output_file.stem}-features.npy")
     output_labels = output_file.with_name(f"{output_file.stem}-labels.npy")
@@ -566,7 +703,7 @@ def extract_embeddings(
     np.save(output_predictions, predictions)
     np.save(output_labels, true_labels)
     np.save(new_labels_out, new_labels)
-    np.save(tracks_out, tracks)
+    np.save(tracks_out, np.stack((tracks,source_ids),axis=1))
 
     logging.info("New labls are %s", new_labels)
     logging.info(
