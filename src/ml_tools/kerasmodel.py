@@ -926,7 +926,7 @@ class KerasModel(Interpreter):
             self.phase2(epochs)
         else:
             
-
+            self.compile_training_model(optimizer_fn)
             history = self.model.fit(
                 self.train,
                 validation_data=self.validate,
