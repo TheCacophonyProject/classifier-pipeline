@@ -926,7 +926,6 @@ class KerasModel(Interpreter):
             self.phase2(epochs)
         else:
             
-            self.checkpoints(optimizer_fn)
 
             history = self.model.fit(
                 self.train,
