@@ -252,10 +252,10 @@ class ClipClassifier:
     def classify_clip(self, clip, model, meta_data, reuse_frames=None):
         start = time.time()
         location = meta_data.get("location")
-        logging.info("getting classified with %s", location)
+        logging.debug("getting classifier with location %s", location)
         classifier = self.get_classifier(model, location)
         predictions = Predictions(
-            classifier.labels, model, classifier.thresholds_per_label
+            classifier.labels, model, classifier.thresholds_per_label,scale_thresholds = classifier.scale_thresholds,
         )
         predictions.model_load_time = time.time() - start
 
@@ -439,7 +439,7 @@ class ClipClassifier:
         classifier = self.get_classifier(model)
         classifier_is_ready = not classifier.run_over_network
         predictions = Predictions(
-            classifier.labels, model, classifier.thresholds_per_label
+            classifier.labels, model, classifier.thresholds_per_label,scale_thresholds = classifier.scale_thresholds,
         )
         predictions.model_load_time = time.time() - start
 

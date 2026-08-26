@@ -89,7 +89,6 @@ class KerasModel(Interpreter):
             self.data_type = train_config.type
         self.labels = labels
         self.preprocess_fn = None
-        self.model_with_aux = None
         self.validate = None
         self.train = None
         self.test = None
@@ -482,21 +481,15 @@ class KerasModel(Interpreter):
                 [image_features, time_embedding]
             )  # Shape: (None, 5, 5, 640)
 
-            # Named instances (rather than inline calls) so the same
-            # weights can be re-applied to a zeroed-metadata copy of the
-            # input below, for the auxiliary metadata-margin loss.
-            fuse_conv1 = layers.Conv2D(
-                256, (1, 1), activation="swish", padding="same", name="fusion_conv1"
-            )
-            fuse_conv2 = layers.Conv2D(
-                256, (3, 3), activation="swish", padding="same", name="fusion_conv2"
-            )
-
             # 1. Compress channel depth from 640 to 256 using 1x1 convolution
-            x = fuse_conv1(combined)
+            x = layers.Conv2D(
+                256, (1, 1), activation="swish", padding="same", name="fusion_conv1"
+            )(combined)
 
             # Mix the combined space-time features together
-            x = fuse_conv2(x)
+            x = layers.Conv2D(
+                256, (3, 3), activation="swish", padding="same", name="fusion_conv2"
+            )(x)
 
         gap = tf.keras.layers.GlobalAveragePooling2D()
         x = gap(x)
@@ -517,39 +510,6 @@ class KerasModel(Interpreter):
         )
         preds = final_dense(x)
         self.model = tf.keras.models.Model(input_image, outputs=preds)
-
-        self.model_with_aux = None
-        if not single_input and self.params.metadata_margin_weight > 0:
-            # Re-run the same (weight-shared) fusion+head layers on a copy
-            # of the input with metadata zeroed, and expose both
-            # predictions as a second output so a training-only auxiliary
-            # loss can directly penalise the model whenever using real
-            # metadata isn't measurably better than not having it - see
-            # metadata_margin_loss(). self.model (above) is untouched and
-            # remains the single-output model used for saving/inference.
-            zero_time_embedding = layers.Lambda(
-                tf.zeros_like, name="zeroed_metadata_embedding"
-            )(time_embedding)
-            combined_zero = layers.Concatenate(name="input_concat_zeroed")(
-                [image_features, zero_time_embedding]
-            )
-            x_zero = fuse_conv1(combined_zero)
-            x_zero = fuse_conv2(x_zero)
-            x_zero = gap(x_zero)
-            if drop_layer is not None:
-                x_zero = drop_layer(x_zero)
-            preds_zero = final_dense(x_zero)
-
-            metadata_margin_output = layers.Lambda(
-                lambda preds: tf.stack(preds, axis=1), name="metadata_margin"
-            )([preds, preds_zero])
-            self.model_with_aux = tf.keras.models.Model(
-                input_image,
-                outputs={
-                    "prediction": preds,
-                    "metadata_margin": metadata_margin_output,
-                },
-            )
 
         base_model.trainable = self.params.base_training
         return self.model
@@ -918,45 +878,8 @@ class KerasModel(Interpreter):
             self.class_weights,
         )
 
-        use_metadata_margin = (
-            fine_tune is None and not single_input and self.model_with_aux is not None
-        )
-        training_model = self.model_with_aux if use_metadata_margin else self.model
-        if use_metadata_margin:
-            logging.info(
-                "Using metadata-margin auxiliary loss (weight=%s, margin=%s)",
-                self.params.metadata_margin_weight,
-                self.params.metadata_margin,
-            )
-            self.train = self.train.map(
-                lambda x, y: (x, {"prediction": y, "metadata_margin": y}),
-                num_parallel_calls=tf.data.AUTOTUNE,
-            )
-            self.validate = self.validate.map(
-                lambda x, y: (x, {"prediction": y, "metadata_margin": y}),
-                num_parallel_calls=tf.data.AUTOTUNE,
-            )
 
-        def compile_training_model(opt):
-            if use_metadata_margin:
-                training_model.compile(
-                    optimizer=opt,
-                    loss={
-                        "prediction": loss(self.params),
-                        "metadata_margin": metadata_margin_loss(self.params),
-                    },
-                    loss_weights={
-                        "prediction": 1.0,
-                        "metadata_margin": self.params.metadata_margin_weight,
-                    },
-                    metrics={"prediction": metrics(self.params.multi_label)},
-                )
-            else:
-                training_model.compile(
-                    optimizer=opt,
-                    loss=loss(self.params),
-                    metrics={"prediction": metrics(self.params.multi_label)},
-                )
+
 
         self.save(run_name, fine_tune=fine_tune, rebalance=rebalance)
 
@@ -964,29 +887,10 @@ class KerasModel(Interpreter):
             run_name,
             warmup_epochs=2,
             fine_tuning=warm_down,
-            metric_prefix="prediction_" if use_metadata_margin else "",
         )
 
-        # Phase2 loads a good pretrained backbone (channel_aligner +
-        # efficientnetv2-b3) from phase1 and, when single_input is False,
-        # also attaches a large freshly initialised metadata-fusion head.
-        # Training everything at once from epoch 0 lets the random head's
-        # large early gradients drag the backbone away from its phase1
-        # optimum, so validation peaks at epoch 1 and degrades from there.
-        # Freeze the backbone for a few epochs so the new head stabilises
-        # first, then unfreeze and fine tune the whole model at a low LR.
-        phase2_freeze_epochs = 0
-        if phase2 and fine_tune is None and weights is not None and not warm_down:
-            phase2_freeze_epochs = min(epochs, self.params.phase2_freeze_epochs)
 
-        def fit_callbacks():
-            return [
-                tf.keras.callbacks.TensorBoard(
-                    self.log_dir, write_graph=True, write_images=True
-                ),
-                *checkpoints,
-            ]
-
+        
         if warm_down:
             optimizer_fn = tf.keras.optimizers.Adam(
                 learning_rate=self.params.fine_tune_learning_rate
@@ -997,96 +901,39 @@ class KerasModel(Interpreter):
                 self.params.fine_tune_learning_rate,
             )
         else:
-            if fine_tune is None:
-                logging.info("Adding layer stepwarmup callback")
 
-                warmup_callback = StepWarmupCallback(
-                    target_lr=self.params.learning_rate,
-                    warmup_epochs=2,
-                    steps_per_epoch=steps,
-                )
-                checkpoints.append(warmup_callback)
-
+            logging.info("Adding layer stepwarmup callback")
+            from ml_tools.thermaldataset import (
+                JITTER_HEAVY_STAGE_EPOCH,
+                JITTER_MEDIUM_STAGE_EPOCH,
+            )
             optimizer_fn = optimizer(
                 self.params, steps, self.epochs, fine_tune=fine_tune is not None
             )
-        compile_training_model(optimizer_fn)
+            warmup_callback = StepWarmupCallback(
+                target_lr=self.params.fine_tune_learning_rate if use_jitter else self.params.learning_rate ,
+                warmup_epochs=2,
+                steps_per_epoch=steps,
+                medium_epoch =JITTER_MEDIUM_STAGE_EPOCH,
+                heavy_epoch = JITTER_HEAVY_STAGE_EPOCH
+            )
+            checkpoints.append(warmup_callback)
 
-        if phase2_freeze_epochs > 0:
-            logging.info(
-                "Phase2 stage 1: training new head only for %s epochs with "
-                "channel_aligner and efficientnetv2-b3 frozen",
-                phase2_freeze_epochs,
-            )
-            history = training_model.fit(
-                self.train,
-                validation_data=self.validate,
-                epochs=phase2_freeze_epochs,
-                shuffle=False,
-                class_weight=self.class_weights,
-                callbacks=fit_callbacks(),
-            )
+            
 
-            # drop the warmup callback, it already ramped to target_lr and
-            # would otherwise override the low fine-tuning LR below
-            checkpoints = [
-                c for c in checkpoints if not isinstance(c, StepWarmupCallback)
-            ]
-            checkpoints.append(
-                tf.keras.callbacks.LearningRateScheduler(stage_3_lr_scheduler)
-            )
-
-            # Carry stage 1's EarlyStopping state into stage 2 - otherwise
-            # its on_train_begin() reset (fired when stage 2's fit() call
-            # below starts) forgets any plateau found while the backbone
-            # was still frozen, and stage 2 can run for a long time only
-            # ever comparing against its own epochs.
-            early_stopping = next(
-                (
-                    c
-                    for c in checkpoints
-                    if isinstance(c, tf.keras.callbacks.EarlyStopping)
-                ),
-                None,
-            )
-            if early_stopping is not None:
-                checkpoints.append(
-                    CarryOverEarlyStopping(
-                        early_stopping,
-                        best=early_stopping.best,
-                        wait=early_stopping.wait,
-                        best_weights=early_stopping.best_weights,
-                    )
-                )
-
-            logging.info(
-                "Phase2 stage 2: unfreezing channel_aligner and "
-                "efficientnetv2-b3, fine tuning at %s for remaining %s epochs",
-                2e-6,
-                epochs - phase2_freeze_epochs,
-            )
-            self.model.get_layer("channel_aligner").trainable = True
-            self.model.get_layer("efficientnetv2-b3").trainable = True
-            compile_training_model(tf.keras.optimizers.Adam(learning_rate=2e-5))
-            history = training_model.fit(
-                self.train,
-                validation_data=self.validate,
-                epochs=epochs,
-                initial_epoch=phase2_freeze_epochs,
-                shuffle=False,
-                class_weight=self.class_weights,
-                callbacks=fit_callbacks(),
-            )
-            # for key, values in stage2_history.history.items():
-            # history.history.setdefault(key, []).extend(values)
+        if phase2:
+            # not used but kept incase revisited
+            self.phase2(epochs)
         else:
-            history = training_model.fit(
+            
+            self.compile_training_model(optimizer_fn)
+            history = self.model.fit(
                 self.train,
                 validation_data=self.validate,
                 epochs=epochs,
                 shuffle=False,
                 class_weight=self.class_weights,
-                callbacks=fit_callbacks(),
+                callbacks=checkpoints,
             )
 
         history = history.history
@@ -1126,7 +973,89 @@ class KerasModel(Interpreter):
             fine_tune=fine_tune,
             single_input=single_input,
         )
+    def compile_training_model(self,opt):
+        self.model.compile(
+            optimizer=opt,
+            loss=loss(self.params),
+            metrics={"prediction": metrics(self.params.multi_label)},
+        )
+    def phase2(self,epochs):
+        logging.info(
+            "Phase2 stage 1: training new head only for %s epochs with "
+            "channel_aligner and efficientnetv2-b3 frozen",
+            phase2_freeze_epochs,
+        )
 
+        # Phase2 loads a good pretrained backbone (channel_aligner +
+        # efficientnetv2-b3) from phase1 and, when single_input is False,
+        # also attaches a large freshly initialised metadata-fusion head.
+        # Training everything at once from epoch 0 lets the random head's
+        # large early gradients drag the backbone away from its phase1
+        # optimum, so validation peaks at epoch 1 and degrades from there.
+        # Freeze the backbone for a few epochs so the new head stabilises
+        # first, then unfreeze and fine tune the whole model at a low LR.
+        phase2_freeze_epochs = 0
+        phase2_freeze_epochs = min(epochs, self.params.phase2_freeze_epochs)
+
+        history = self.model.fit(
+            self.train,
+            validation_data=self.validate,
+            epochs=phase2_freeze_epochs,
+            shuffle=False,
+            class_weight=self.class_weights,
+            callbacks=self.checkpoints(),
+        )
+
+        # drop the warmup callback, it already ramped to target_lr and
+        # would otherwise override the low fine-tuning LR below
+        checkpoints = [
+            c for c in checkpoints if not isinstance(c, StepWarmupCallback)
+        ]
+        checkpoints.append(
+            tf.keras.callbacks.LearningRateScheduler(stage_3_lr_scheduler)
+        )
+
+        # Carry stage 1's EarlyStopping state into stage 2 - otherwise
+        # its on_train_begin() reset (fired when stage 2's fit() call
+        # below starts) forgets any plateau found while the backbone
+        # was still frozen, and stage 2 can run for a long time only
+        # ever comparing against its own epochs.
+        early_stopping = next(
+            (
+                c
+                for c in checkpoints
+                if isinstance(c, tf.keras.callbacks.EarlyStopping)
+            ),
+            None,
+        )
+        if early_stopping is not None:
+            checkpoints.append(
+                CarryOverEarlyStopping(
+                    early_stopping,
+                    best=early_stopping.best,
+                    wait=early_stopping.wait,
+                    best_weights=early_stopping.best_weights,
+                )
+            )
+
+        logging.info(
+            "Phase2 stage 2: unfreezing channel_aligner and "
+            "efficientnetv2-b3, fine tuning at %s for remaining %s epochs",
+            2e-6,
+            epochs - phase2_freeze_epochs,
+        )
+        self.model.get_layer("channel_aligner").trainable = True
+        self.model.get_layer("efficientnetv2-b3").trainable = True
+        self.compile_training_model(tf.keras.optimizers.Adam(learning_rate=2e-5))
+        history = self.model.fit(
+            self.train,
+            validation_data=self.validate,
+            epochs=epochs,
+            initial_epoch=phase2_freeze_epochs,
+            shuffle=False,
+            class_weight=self.class_weights,
+            callbacks=self.checkpoints(),
+        )
     def phase1_weights(self, weights):
         weights = Path(weights)
         # 1. Build your small Phase 1 architecture layout
@@ -1222,14 +1151,7 @@ class KerasModel(Interpreter):
         fine_tuning=False,
         stop_on=("val_loss", "min"),
         warmup_epochs=2,
-        metric_prefix="",
     ):
-        # Keras prefixes per-output metric names with the output name once
-        # a model has more than one output (e.g. "val_acc_thresh" becomes
-        # "val_prediction_acc_thresh") - metric_prefix lets callers using
-        # the metadata-margin auxiliary output keep monitoring the right
-        # keys. The aggregate "val_loss" is never prefixed, so stop_on's
-        # default needs no change.
         checkpoint_file = self.checkpoint_folder / run_name / "cp.weights.h5"
 
         cp_callback = tf.keras.callbacks.ModelCheckpoint(
@@ -1261,9 +1183,9 @@ class KerasModel(Interpreter):
         checkpoint_acc = tf.keras.callbacks.ModelCheckpoint(
             val_acc,
             monitor=(
-                f"val_{metric_prefix}acc_thresh"
+                "val_acc_thresh"
                 if self.params.multi_label
-                else f"val_{metric_prefix}categorical_accuracy"
+                else "val_categorical_accuracy"
             ),
             verbose=1,
             save_best_only=True,
@@ -1275,13 +1197,15 @@ class KerasModel(Interpreter):
 
         checkpoint_recall = tf.keras.callbacks.ModelCheckpoint(
             val_precision,
-            monitor=f"val_{metric_prefix}recall",
+            monitor="val_recall",
             verbose=1,
             save_best_only=True,
             save_weights_only=True,
             mode="max",
         )
-        checkpoints = [checkpoint_acc, checkpoint_loss, cp_callback]
+        checkpoints = [ tf.keras.callbacks.TensorBoard(
+                            self.log_dir, write_graph=True, write_images=True
+                        ),checkpoint_acc, checkpoint_loss, cp_callback]
         if not fine_tuning:
             earlyStopping = tf.keras.callbacks.EarlyStopping(
                 start_from_epoch=5,
@@ -1842,48 +1766,6 @@ def loss(params):
     )
 
 
-def metadata_margin_loss(params):
-    """Auxiliary loss for the "metadata_margin" output (see build_model):
-    penalises the model whenever the real-metadata prediction isn't at
-    least `params.metadata_margin` lower-loss than the same example
-    predicted with metadata zeroed out. Directly trains the fusion head to
-    use the metadata branch, rather than relying on that emerging as a
-    side effect of modality dropout.
-
-    The zeroed branch also gets its own direct classification loss
-    (weighted by params.metadata_margin_zero_weight), since it otherwise has
-    no ground-truth supervision at all - only the margin constraint - and
-    the cheapest way to satisfy a pure margin is to make the zeroed
-    branch's predictions arbitrarily bad (BCE/CCE is unbounded for
-    confident-wrong predictions) rather than making the real branch
-    genuinely better. Grounding the zeroed branch as an honest best-effort
-    "no metadata" baseline makes the margin a meaningful test of real
-    improvement over that baseline, not over a sabotaged one.
-    """
-    if params.multi_label:
-        per_example_loss = tf.keras.losses.BinaryCrossentropy(
-            from_logits=True,
-            label_smoothing=params.label_smoothing,
-            reduction=tf.keras.losses.Reduction.NONE,
-        )
-    else:
-        per_example_loss = tf.keras.losses.CategoricalCrossentropy(
-            label_smoothing=params.label_smoothing,
-            reduction=tf.keras.losses.Reduction.NONE,
-        )
-    margin = params.metadata_margin
-    zero_weight = params.metadata_margin_zero_weight
-
-    def loss_fn(y_true, y_pred):
-        # y_pred: (batch, 2, num_classes) - [:, 0] real metadata, [:, 1] zeroed
-        real_loss = per_example_loss(y_true, y_pred[:, 0])
-        zero_loss = per_example_loss(y_true, y_pred[:, 1])
-        margin_term = tf.nn.relu(margin - (zero_loss - real_loss))
-        return margin_term + zero_weight * zero_loss
-
-    return loss_fn
-
-
 def optimizer(params, steps_per_epoch, epochs, fine_tune=False):
     if fine_tune:
         logging.info(
@@ -2243,7 +2125,7 @@ from tensorflow.keras.callbacks import Callback
 
 
 class StepWarmupCallback(Callback):
-    def __init__(self, target_lr, warmup_epochs, steps_per_epoch):
+    def __init__(self, target_lr, warmup_epochs, steps_per_epoch,medium_epoch,heavy_epoch):
         super(StepWarmupCallback, self).__init__()
         self.target_lr = target_lr
         self.warmup_epochs = warmup_epochs
@@ -2252,20 +2134,18 @@ class StepWarmupCallback(Callback):
         self.total_warmup_steps = warmup_epochs * steps_per_epoch
         self.global_step = 0
         self.last_lr = None
+        self.medium_epoch = medium_epoch
+        self.heavy_epoch = heavy_epoch
 
     def on_train_batch_begin(self, batch, logs=None):
-        from ml_tools.thermaldataset import (
-            JITTER_HEAVY_STAGE_EPOCH,
-            JITTER_MEDIUM_STAGE_EPOCH,
-        )
 
         # Only run adjustments during the warmup phase
         if self.global_step < self.total_warmup_steps:
             # Linear scaling formula2
             lr = (self.global_step / self.total_warmup_steps) * self.target_lr
-        elif self.global_step <= (JITTER_MEDIUM_STAGE_EPOCH + 1) * self.steps_per_epoch:
+        elif self.global_step <= (self.medium_epoch + 1) * self.steps_per_epoch:
             lr = self.target_lr
-        elif self.global_step <= (JITTER_HEAVY_STAGE_EPOCH + 1) * self.steps_per_epoch:
+        elif self.global_step <= (self.heavy_epoch + 1) * self.steps_per_epoch:
             lr = self.target_lr * 0.1
         else:
             lr = self.target_lr * 0.01

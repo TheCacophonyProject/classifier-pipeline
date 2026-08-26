@@ -38,10 +38,10 @@ class Interpreter(ABC):
         self.mapped_labels = metadata.get("mapped_labels")
         self.label_probabilities = metadata.get("label_probabilities")
         self.thresholds_per_label = metadata.get("thresholds")
-        logging.info("Thresholds are %s",self.thresholds_per_label)
         self.preprocess_fn = self.get_preprocess_fn()
         self.preprocess_v2 = metadata.get("v2_preprocess", False)
         self.single_input = metadata.get("single_input", True)
+        self.scale_thresholds = metadata.get("scale_thresholds",False)
         from ml_tools.interpreter import get_mappings
 
         parent_mappings = {}
@@ -197,6 +197,7 @@ class Interpreter(ABC):
             smooth_preds=self.params.smooth_predictions,
             multi_label=self.params.multi_label,
             parent_mappings=self.parent_mappings,
+            scale_thresholds=self.scale_thresholds
         )
         track_prediction.classified_track(
             output,

@@ -100,7 +100,6 @@ def version_number(tag):
     v_index = tag.rindex("v")
     version = float(tag[v_index + 1 :])
     version = int(10 * version)
-    print("tag ", version, tag)
 
     return version
 

@@ -32,8 +32,6 @@ class HyperParams(dict):
         self["smooth_predictions"] = self.smooth_predictions
         self["channels"] = self.channels
         self["image_modality_dropout"] = self.image_modality_dropout
-        self["metadata_margin_weight"] = self.metadata_margin_weight
-        self["metadata_margin"] = self.metadata_margin
 
     @property
     def channels(self):
@@ -158,7 +156,7 @@ class HyperParams(dict):
 
     @property
     def fine_tune_learning_rate(self):
-        return self.get("fine_tune_learning_rate", 0.00001)
+        return self.learning_rate * 0.1
 
     @property
     def image_modality_dropout(self):
@@ -168,37 +166,6 @@ class HyperParams(dict):
         # starvation of the lower-capacity metadata branch by the dominant
         # image branch. 0 disables it.
         return self.get("image_modality_dropout", 0.15)
-
-    @property
-    def metadata_margin_weight(self):
-        # Weight of the auxiliary loss that penalises the model whenever a
-        # prediction made with real metadata isn't measurably better than
-        # the same prediction made with metadata zeroed out - a direct
-        # training signal for the fusion head to actually use the metadata
-        # branch, rather than hoping it emerges from modality dropout
-        # alone. 0 disables the auxiliary head entirely.
-        return self.get("metadata_margin_weight", 0.2)
-
-    @property
-    def metadata_margin(self):
-        # Required loss improvement (zeroed-metadata loss minus
-        # real-metadata loss) before the margin term is satisfied and
-        # stops contributing gradient.
-        return self.get("metadata_margin", 0.05)
-
-    @property
-    def metadata_margin_zero_weight(self):
-        # Weight on a direct classification loss for the zeroed-metadata
-        # branch itself (in addition to the margin term). Without this, the
-        # zeroed branch has no ground-truth supervision at all - only the
-        # relative margin constraint - so the cheapest way to satisfy the
-        # margin is to make the zeroed branch's predictions arbitrarily bad
-        # (BCE is unbounded for confident-wrong predictions) rather than
-        # making the real branch genuinely better using metadata. This
-        # grounds the zeroed branch as an honest best-effort "no metadata"
-        # baseline, so the margin then tests real improvement over that
-        # baseline instead of over a sabotaged one.
-        return self.get("metadata_margin_zero_weight", 1.0)
 
     @property
     def phase2_freeze_epochs(self):

@@ -365,7 +365,7 @@ class PiClassifier(Processor):
                 self.frames_per_classify * 2 if not preview_type else None
             )
             self.predictions[model.id] = Predictions(
-                self.classifier.labels, model, self.classifier.thresholds_per_label
+                self.classifier.labels, model, self.classifier.thresholds_per_label,scale_thresholds = classifier.scale_thresholds,
             )
             self.num_labels = len(self.classifier.labels)
             logging.info(
@@ -386,7 +386,7 @@ class PiClassifier(Processor):
             global fp_model
             fp_model = self.fp_model
             self.predictions[self.fp_model.id] = Predictions(
-                self.fp_model.labels, fp_config, self.fp_model.thresholds
+                self.fp_model.labels, fp_config, self.fp_model.thresholds,scale_thresholds = classifier.scale_thresholds,
             )
 
     def new_clip(self, preview_frames, received_at):
@@ -597,7 +597,7 @@ class PiClassifier(Processor):
                 track_prediction, model_id = self.get_best_prediction(track.get_id())
                 if track_prediction is None:
                     continue
-                predicted_tags = track_prediction.predicted_tag(thresholds_per_label = self.predictions[model_id].thresholds_per_label,group_by_parents = False) 
+                predicted_tags = track_prediction.predicted_tags(thresholds_per_label = self.predictions[model_id].thresholds_per_label,group_by_parents = False) 
                 if  "false-positive" not in predicted_tags:
                     track_prediction.tracking = True
                     self.monitored_tracks[track.get_id()] = track
@@ -721,18 +721,18 @@ class PiClassifier(Processor):
 
         for track in tracks:
             confidence = None
-            tag = None
+            tags = None
             if predictions is not None:
                 pred, model_id = self.get_best_prediction(track.get_id())
                 if pred is not None and pred.max_score is not None:
                     confidence = round(100 * pred.max_score)
-                    tags = pred.predicted_tag(thresholds_per_label = self.predictions[model_id].thresholds_per_label, group_by_parents=False)
+                    tags = pred.predicted_tags(thresholds_per_label = self.predictions[model_id].thresholds_per_label, group_by_parents=False)
             regions = track.bounds_history
             if track.thumb_info is None:
                 track.thumb_info = ThumbInfo(track.get_id())
             track.thumb_info.predicted_confidence = confidence
             track.thumb_info.predicted_tags = tags
-            track.thumb_info.is_fp = "false-positive" in tags
+            track.thumb_info.is_fp = tags is not None and "false-positive" in tags
             i = len(regions) - 1
             first_loop = True
             # go reverse and break when reach already checked frame

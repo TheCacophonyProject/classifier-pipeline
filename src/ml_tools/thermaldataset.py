@@ -587,7 +587,9 @@ def read_tfrecord(
             )
     if include_track:
         tfrecord_format["image/track_id"] = tf.io.FixedLenFeature((), tf.int64, -1)
-        tfrecord_format["image/avg_mass"] = tf.io.FixedLenFeature((), tf.int64, -1)
+        # tfrecord_format["image/avg_mass"] = tf.io.FixedLenFeature((), tf.int64, -1)
+        tfrecord_format["image/source_id"] =  tf.io.FixedLenFeature([], tf.string)
+
     if include_features or only_features:
         tfrecord_format["image/features"] = tf.io.FixedLenSequenceFeature(
             [36 * 5 + 8], dtype=tf.float32, allow_missing=True
@@ -761,8 +763,9 @@ def read_tfrecord(
     if include_track:
 
         track_id = tf.cast(example["image/track_id"], tf.int32)
-        avg_mass = tf.cast(example["image/avg_mass"], tf.int32)
-        label = (label, track_id, avg_mass)
+        # avg_mass = tf.cast(example["image/avg_mass"], tf.int32)
+        source_id = example["image/source_id"]
+        label = (label, track_id, source_id)
     if not include_features and not only_features:
         return {"input_image": rgb_image, "input_mask": mask}, {
             "label": label,
