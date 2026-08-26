@@ -1311,9 +1311,9 @@ def best_threshold_for_ds(model, labels, dataset, filename):
 
     # sklearn.metrics.auc(
     y_pred = model.predict(dataset.map(
-            lambda x, y: (x, y[0]),
+            lambda x, _: x,
             num_parallel_calls=tf.data.AUTOTUNE,
-        ))
+        ))  
 
     # true_categories = [y[0] for x, y in dataset]
     # logging.info("Shape is %s", true_categories.shape)
@@ -1322,7 +1322,10 @@ def best_threshold_for_ds(model, labels, dataset, filename):
 
     true_categories = []
     track_ids = []
-    for x, y in dataset:
+    for y in dataset.map(
+            lambda _, y: y,
+            num_parallel_calls=tf.data.AUTOTUNE,
+        ):
         true_categories.extend(y[0].numpy())
         # dataset_y[0]
         track_ids.extend(y[1].numpy())

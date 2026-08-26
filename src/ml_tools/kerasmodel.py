@@ -1366,9 +1366,10 @@ class KerasModel(Interpreter):
         true_categories = []
         track_ids = []
         avg_mass = []
-        x_data = []
-        for x, y in dataset:
-            x_data.append(x)
+        for y in dataset.map(
+            lambda _, y: y,
+            num_parallel_calls=tf.data.AUTOTUNE,
+        ):
             true_categories.extend(y[0].numpy())
             # dataset_y[0]
             track_ids.extend(y[1].numpy())
@@ -1383,7 +1384,10 @@ class KerasModel(Interpreter):
                 pass
             else:
                 true_categories = np.int64(tf.argmax(true_categories, axis=1))
-        y_pred = self.model.predict(np.array(x_data))
+        y_pred = self.model.predict(dataset.map(
+            lambda x, _: x,
+            num_parallel_calls=tf.data.AUTOTUNE,
+        ))  
         pred_per_track = {}
         # if self.params.multi_label:
         # predicted_categori/es = []
