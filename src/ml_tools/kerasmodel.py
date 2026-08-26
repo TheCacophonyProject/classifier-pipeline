@@ -1365,7 +1365,6 @@ class KerasModel(Interpreter):
         )
         true_categories = []
         track_ids = []
-        avg_mass = []
         for y in dataset.map(
             lambda _, y: y,
             num_parallel_calls=tf.data.AUTOTUNE,
@@ -1373,7 +1372,6 @@ class KerasModel(Interpreter):
             true_categories.extend(y[0].numpy())
             # dataset_y[0]
             track_ids.extend(y[1].numpy())
-            avg_mass.extend(np.zeros(y[1]))
         if len(true_categories) > 1:
             if self.params.multi_label:
                 # multi = []
@@ -1395,7 +1393,7 @@ class KerasModel(Interpreter):
         # predicted_categories.append(tf.where(p >= 0.8).numpy().ravel())
         # predicted_categories = np.int64(predicted_categories)
 
-        for y, track_id, mass, p in zip(true_categories, track_ids, avg_mass, y_pred):
+        for y, track_id, p in zip(true_categories, track_ids, y_pred):
             # if self.params.multi_label:
             #     y_max = np.argmax(y)
             # else:
@@ -1403,7 +1401,7 @@ class KerasModel(Interpreter):
             track_pred = pred_per_track.setdefault(
                 track_id, (np.nonzero(y)[0], TrackPrediction(track_id, self.labels))
             )
-            track_pred[1].classified_frame(None, p, mass)
+            track_pred[1].classified_frame(None, p, 0)
         flat_y = []
         results = []
         confidences = []
@@ -1436,6 +1434,7 @@ class KerasModel(Interpreter):
                     confidences.append(no_smoothing[y])
                     raw_class_confidences.append(no_smoothing)
                     flat_y.append(y)
+                    
                     if len(y_true) > 1:
                         logging.info(
                             "Pred %s for %s confs %s",
@@ -1502,25 +1501,23 @@ class KerasModel(Interpreter):
                 conf_mask = confidences < lbl_thresh
                 preds[pred_mask & conf_mask] = len(labels) - 1
             cm = confusion_matrix(true_categories, preds, labels=np.arange(len(labels)))
-            cm = np.concatenate((cm, totals_row), axis=0)
             # Log the confusion matrix as an image summary.
-            figure = plot_confusion_matrix(cm, class_names=labels)
+            figure = plot_confusion_matrix(cm, class_names=labels,totals_row=totals_row)
             fscore_file = filename.parent / f"{filename.stem}-fscore"
             plt.savefig(fscore_file.with_suffix(".png"), format="png")
-            np.save(fscore_file.with_suffix(".npy"), cm)
+            np.save(fscore_file.with_suffix(".npy"), np.vstack((cm, totals_row)))
 
         preds = results.copy()
 
         # set these to None
         preds[confidences < threshold] = len(labels) - 1
         cm = confusion_matrix(true_categories, preds, labels=np.arange(len(labels)))
-        cm = np.concatenate((cm, totals_row), axis=0)
 
         # Log the confusion matrix as an image summary.
-        figure = plot_confusion_matrix(cm, class_names=labels)
+        figure = plot_confusion_matrix(cm, class_names=labels,totals_row=totals_row)
         out_file = filename.parent / f"{filename.stem}-{round(100*threshold)}%"
         plt.savefig(out_file.with_suffix(".png"), format="png")
-        np.save(out_file.with_suffix(".npy"), cm)
+        np.save(out_file.with_suffix(".npy"), np.vstack((cm, totals_row)))
 
     def confusion_tfrecords(self, dataset, filename):
         true_categories = tf.concat([y for x, y in dataset], axis=0)
@@ -1681,7 +1678,7 @@ class KerasModel(Interpreter):
 
 
 # from tensorflow examples
-def plot_confusion_matrix(cm, class_names, title="Confusion Matrix"):
+def plot_confusion_matrix(cm, class_names, title="Confusion Matrix",totals_row = None):
     """
     Returns a matplotlib figure containing the plotted confusion matrix.
 
@@ -1691,15 +1688,24 @@ def plot_confusion_matrix(cm, class_names, title="Confusion Matrix"):
     """
     plt.clf()
     figure = plt.figure(figsize=(16, 16))
-    plt.imshow(cm, interpolation="nearest", cmap=plt.cm.Blues)
+    tick_marks = np.arange(len(class_names))
+
+    if totals_row is not None:
+        plt.imshow(np.vstack((cm,totals_row)), interpolation="nearest", cmap=plt.cm.Blues)
+    else:
+        plt.imshow(cm, interpolation="nearest", cmap=plt.cm.Blues)
+
     plt.title(title)
     plt.colorbar()
-    tick_marks = np.arange(len(class_names))
+    
     plt.xticks(tick_marks, class_names, rotation=90)
     ylabels = []
     for i, label in enumerate(class_names):
         ylabel = f"{label} ({np.sum(cm[i])})"
         ylabels.append(ylabel)
+    if totals_row is not None:
+        tick_marks = np.arange(len(class_names)+1)
+        ylabels.append("totals")
     plt.yticks(tick_marks, ylabels)
 
     # Use white text if squares are dark; otherwise black.
@@ -1715,7 +1721,11 @@ def plot_confusion_matrix(cm, class_names, title="Confusion Matrix"):
     for i, j in itertools.product(range(cm.shape[0]), range(cm.shape[1])):
         color = "white" if counts[i, j] > threshold else "black"
         plt.text(j, i, cm[i, j], horizontalalignment="center", color=color)
-
+    if totals_row is not None:
+        i = len(cm)
+        for j,count in enumerate(totals_row):
+            color = "white" if count> threshold else "black"
+            plt.text(j, i, count, horizontalalignment="center", color=color)   
     plt.tight_layout()
     plt.ylabel("True label")
     plt.xlabel("Predicted label")
