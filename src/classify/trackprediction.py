@@ -31,7 +31,8 @@ class Predictions:
                 start_frame=track.start_frame,
                 smooth_preds=smooth_preds,
                 parent_mappings=self.parent_mappings,
-                scale_thresholds=self.scale_thresholds
+                scale_thresholds=self.scale_thresholds,
+                thresholds_per_label = self.thresholds_per_label
             ),
         )
         return prediction
@@ -108,7 +109,9 @@ class TrackPrediction:
         multi_label=False,
         parent_mappings=None,
         scale_thresholds = False,
+        thresholds_per_label = None
     ):
+        self.thresholds_per_label = thresholds_per_label
         try:
             fp_index = labels.index("false-positive")
         except ValueError:
@@ -300,7 +303,7 @@ class TrackPrediction:
             if self.smooth_preds:
                 self.class_best_score += smoothed_prediction
             else:
-                self.class_best_score = predictions
+                self.class_best_score += predictions
 
     def get_priority(self, frame_number):
         if self.tracking:
@@ -327,8 +330,6 @@ class TrackPrediction:
         )
         return priority
 
-    def get_prediction(self):
-        return self.description()
 
     def get_classified_footer(self, frame_number=None):
         if len(self.predictions) == 0 or not self.keep_all:
@@ -359,6 +360,8 @@ class TrackPrediction:
         :return:
         """
 
+        tag, confidence, threshold = self.prediction_with_confidence()
+        return f"{tag} {confidence:.0%} {threshold:.0%}"
         # TODO this is out of date and should use thresholds etc
         score = self.max_score
         if score is None:
@@ -532,49 +535,45 @@ class TrackPrediction:
         ]
         return guesses
 
+    def prediction_with_confidence(self):
+        score = self.get_normalized_score()
+        tag = self.predicted_tags(self.thresholds_per_label,group_by_parents=True)
+        tag = tag[0] if len(tag)!=0 else None
+        threshold = DEFAULT_THRESHOLD
+    
+        if self.thresholds_per_label is not None and tag is not None:
+            # if old style list
+            if isinstance(self.thresholds_per_label, list):
+                threshold = self.thresholds_per_label[self.best_label_index]
+            else:
+                threshold = self.thresholds_per_label.get(tag,DEFAULT_THRESHOLD)
 
-    def get_metadata(self, thresholds_per_label):
+        if self.scale_thresholds:
+            threshold = get_scaled_thresh(threshold,self.num_frames_classified)
+
+        confidence = None
+        # not always the most confident label as thresholds differ per label
+        if tag in self.labels:
+            index = self.labels.index(tag)
+            confidence = float(score[index])
+        
+        return tag,confidence,threshold
+    
+    def get_metadata(self):
         prediction_meta = {}
         if self.classify_time is not None:
             prediction_meta["classify_time"] = round(self.classify_time, 1)
         self.normalize_score()
-        best_score = self.class_best_score
-        tag = self.predicted_tags(thresholds_per_label,group_by_parents=True)
-        # if self.multi_label:
-            # if thresholds_per_label is not None:
-            #     if isinstance(thresholds_per_label, list):
-            #         thresholds = thresholds_per_label
-            #     else:
-            #         thresholds = [
-            #             thresholds_per_label.get(l, DEFAULT_THRESHOLD)
-            #             for l in self.labels
-            #         ]
-            #     indices = np.where(best_score >= thresholds)[0]
-            # else:
-            #     thresholds = None
-            #     indices = np.where(best_score >= DEFAULT_THRESHOLD)[0]
-            # tag = most_specific_tag(self.labels, indices, self.parent_mappings)
-
-            # if tag is not None:
-            #     if tag in self.labels:
-            #         index = self.labels.index(tag)
-            #         threshold = thresholds[index] if thresholds else DEFAULT_THRESHOLD
-            #         confidence = best_score[index]
-            #     else:
-            #         threshold = DEFAULT_THRESHOLD
-            #         confidence = self.max_score
-        # always get a label if none of the labels meet the thresholds just choose argmax
-        # if tag is None:
-            # tag = self.most_confident_tag()
+        tag = self.predicted_tags(self.thresholds_per_label,group_by_parents=True)
         tag = tag[0] if len(tag)!=0 else None
         threshold = DEFAULT_THRESHOLD
  
-        if thresholds_per_label is not None and tag is not None:
+        if self.thresholds_per_label is not None and tag is not None:
             # if old style list
-            if isinstance(thresholds_per_label, list):
-                threshold = thresholds_per_label[self.best_label_index]
+            if isinstance(self.thresholds_per_label, list):
+                threshold = self.thresholds_per_label[self.best_label_index]
             else:
-                threshold = thresholds_per_label.get(tag,DEFAULT_THRESHOLD)
+                threshold = self.thresholds_per_label.get(tag,DEFAULT_THRESHOLD)
 
         if self.scale_thresholds:
             threshold = get_scaled_thresh(threshold,self.num_frames_classified)

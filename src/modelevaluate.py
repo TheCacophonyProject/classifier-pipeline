@@ -1319,12 +1319,10 @@ def best_threshold_for_ds(model, labels, dataset, filename):
 
     true_categories = []
     track_ids = []
-    avg_mass = []
     for x, y in dataset:
         true_categories.extend(y[0].numpy())
         # dataset_y[0]
         track_ids.extend(y[1].numpy())
-        avg_mass.extend(y[2].numpy())
     true_categories = np.array(true_categories)
     true_categories = np.int64(tf.argmax(true_categories, axis=1))
 
@@ -1332,12 +1330,12 @@ def best_threshold_for_ds(model, labels, dataset, filename):
     pred_per_track = {}
 
     flat_y = []
-    for y, track_id, mass, p in zip(true_categories, track_ids, avg_mass, y_pred):
+    for y, track_id, p in zip(true_categories, track_ids, y_pred):
         y_max = y
         track_pred = pred_per_track.setdefault(
             track_id, (y_max, TrackPrediction(track_id, labels))
         )
-        track_pred[1].classified_frame(None, p, mass)
+        track_pred[1].classified_frame(None, p, 0)
 
     confidences = []
     y_pred = []
