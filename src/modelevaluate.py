@@ -82,9 +82,14 @@ def model_score(cm, labels):
     if "None" in labels:
         none_index = labels.index("None")
 
-    if "unidentified" in labels:
-        unid_index = labels.index("unidentified")
+    # if "unidentified" in labels:
+        # unid_index = labels.index("unidentified")
+    labels.append("all")
+    labels.append("mammal")
+    print("Labels are ",labels, " none index is ",none_index, len(cm),len(labels))
     total_score = 0
+    other_animals_total = 0
+    none_total = 0
     for l_i, l in enumerate(labels):
         # if l in ["static", "animal", "deer", "sheep"]:
         # continue
@@ -98,7 +103,10 @@ def model_score(cm, labels):
             none_acc = cm[l_i][none_index]
         if unid_index:
             unid_acc = cm[l_i][unid_index]
+        
         other_animals = np.sum(cm[l_i]) - (fp_acc + none_acc + unid_acc + accuracy)
+        none_total += none_acc
+        other_animals_total += other_animals
         if np.sum(cm[l_i]) == 0:
             other_animals = 0
         if l == "bird":
@@ -124,10 +132,10 @@ def model_score(cm, labels):
             score = accuracy * 1
 
         print(
-            f"score for {l} is {round(score,1)} none {round(unid_acc,1)} other animals {round(other_animals,1)}"
+            f"score for {l} is {round(score,1)} none {round(none_acc,1)} other animals {round(other_animals,1)} fp {fp_acc}"
         )
         total_score += score
-    logging.info("Model accuracy score is %s", total_score)
+    logging.info("Model accuracy score is %s none %s other %s", total_score, none_total, other_animals_total)
 
 
 def get_mappings(label_paths):
