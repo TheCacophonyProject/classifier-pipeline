@@ -1,13 +1,16 @@
 import argparse
 import json
 import os
+
+# Works around https://github.com/tensorflow/tensorflow/issues/62217:
+# "TypeError: this __dict__ descriptor does not support '_DictWrapper'
+# objects" from wrapt's C extension during tf.function tracing (hit by
+# model.export()/TFLite conversion). Must be set before tensorflow import.
+os.environ.setdefault("WRAPT_DISABLE_EXTENSIONS", "true")
 import numpy as np
 
 import shutil
 
-import tensorflow as tf
-from config.config import Config
-import pickle
 from pathlib import Path
 import shutil
 from ml_tools.interpreter import LiteInterpreter
@@ -20,17 +23,28 @@ LITE_MODEL_NAME = "converted_model.tflite"
 
 def run_model(args):
     model = LiteInterpreter(args.model)
-    input_data = np.array(np.random.random_sample(model.shape()[1:]), dtype=np.float32)
+    _, input_shape = model.shape()
+    print("Model shape is ", input_shape)
+
+    input_data = np.array(np.random.random_sample(input_shape), dtype=np.float32)
     prediction = model.predict(input_data)
     print("model pass 1 predicted", prediction)
-    input_data = np.array(np.random.random_sample(model.shape()[1:]), dtype=np.float32)
+    input_data = np.array(np.random.random_sample(input_shape), dtype=np.float32)
     prediction = model.predict(input_data)
     print("model pass 2 predicted", prediction)
 
 
 def convert_model(args):
+
+    import tensorflow as tf
+
+    tf.get_logger().setLevel("ERROR")
+    import logging
+
+    logging.getLogger("absl").setLevel(logging.ERROR)
     print("Loading: ", args.model)
-    args.model = Path(args.model)
+    args.model = Path(args.model).expanduser()
+
     model_dir = args.model.parent
     lite_dir = model_dir / "tflite"
     import time
@@ -64,11 +78,28 @@ def convert_model(args):
 
     if args.weights:
         print("using weights ", args.weights)
-        model.load_weights(args.weights)
+        weights = Path(args.weights).expanduser()
+        model.load_weights(weights)
     if args.convert:
-        out_dir = Path(args.convert)
+        out_dir = Path(args.convert).expanduser()
         out_dir.mkdir(parents=True, exist_ok=True)
-        converter = tf.lite.TFLiteConverter.from_keras_model(model)
+
+        # Keras 3 models break tf.lite.TFLiteConverter.from_keras_model()
+        # (it relies on a legacy-Keras call-context shim that no longer
+        # resolves), so export to a SavedModel dir and convert from that.
+        saved_model_dir = out_dir / "saved_model_tmp"
+        if saved_model_dir.exists():
+            shutil.rmtree(saved_model_dir)
+        export_archive = tf.keras.export.ExportArchive()
+        export_archive.track(model)
+        export_archive.add_endpoint(
+            name="serve",
+            fn=model.call,
+            input_signature=get_input_sig(model),
+        )
+        export_archive.write_out(str(saved_model_dir))
+
+        converter = tf.lite.TFLiteConverter.from_saved_model(str(saved_model_dir))
         # converter.target_spec.supported_ops = [
         #     tf.lite.OpsSet.TFLITE_BUILTINS,  # enable TensorFlow Lite ops.
         #     tf.lite.OpsSet.SELECT_TF_OPS,  # enable TensorFlow ops.
@@ -77,6 +108,7 @@ def convert_model(args):
         converter.optimizations = [tf.lite.Optimize.DEFAULT]
 
         tflite_model = converter.convert()
+        shutil.rmtree(saved_model_dir)
         print("saving model to ", out_dir / args.model.stem)
         out_dir.mkdir(parents=True, exist_ok=True)
         with (out_dir / args.model.stem).open("wb") as f:
@@ -84,7 +116,7 @@ def convert_model(args):
         frozen_meta = out_dir / meta_file.name
 
     elif args.freeze or args.export:
-        out_dir = Path(args.freeze)
+        out_dir = Path(args.freeze).expanduser()
         out_dir.mkdir(parents=True, exist_ok=True)
 
         if args.export:
@@ -101,7 +133,7 @@ def convert_model(args):
             frozen_meta = out_dir / "saved_model.json"
 
         else:
-            print("saving model to", out_dir / args.model.name)
+            print("saving model to", out_dir / "saved_model.keras")
             print(model.summary())
 
             model.save(out_dir / "saved_model.keras")
@@ -111,10 +143,11 @@ def convert_model(args):
         shutil.copy(meta_file, frozen_meta)
 
         if args.thresholds:
-            with open(args.thresholds) as f:
+            thresholds = Path(args.thresholds).expanduser()
+            with open(thresholds) as f:
                 original_thresholds = json.load(f)
             clipped_thresholds = {
-                label: min(max(value, 0.5), 0.8)
+                label: 0.8 if value == 0.0 else min(max(value, 0.5), 0.8)
                 for label, value in original_thresholds.items()
             }
             with open(frozen_meta) as f:

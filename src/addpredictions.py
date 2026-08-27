@@ -106,7 +106,7 @@ def evaluate_dir(
                     tracks = meta_data.get("tracks", [])
                 for track in tracks:
                     if track["id"] == track_id:
-                        track["fp_model_predictions"] = prediction.get_metadata(None)
+                        track["fp_model_predictions"] = prediction.get_metadata()
                         break
             meta_file = cptv_file.with_suffix(".txt")
             with meta_file.open("w") as t:

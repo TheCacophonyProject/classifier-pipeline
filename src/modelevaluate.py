@@ -82,11 +82,7 @@ def model_score(cm, labels):
     if "None" in labels:
         none_index = labels.index("None")
 
-    # if "unidentified" in labels:
-        # unid_index = labels.index("unidentified")
-    labels.append("all")
-    labels.append("mammal")
-    print("Labels are ",labels, " none index is ",none_index, len(cm),len(labels))
+    print("Labels are ", labels, " none index is ", none_index, len(cm), len(labels))
     total_score = 0
     other_animals_total = 0
     none_total = 0
@@ -103,7 +99,7 @@ def model_score(cm, labels):
             none_acc = cm[l_i][none_index]
         if unid_index:
             unid_acc = cm[l_i][unid_index]
-        
+
         other_animals = np.sum(cm[l_i]) - (fp_acc + none_acc + unid_acc + accuracy)
         none_total += none_acc
         other_animals_total += other_animals
@@ -135,7 +131,12 @@ def model_score(cm, labels):
             f"score for {l} is {round(score,1)} none {round(none_acc,1)} other animals {round(other_animals,1)} fp {fp_acc}"
         )
         total_score += score
-    logging.info("Model accuracy score is %s none %s other %s", total_score, none_total, other_animals_total)
+    logging.info(
+        "Model accuracy score is %s none %s other %s",
+        total_score,
+        none_total,
+        other_animals_total,
+    )
 
 
 def get_mappings(label_paths):
@@ -765,6 +766,7 @@ def evaluate_dir(
                     smooth_preds=False,
                     multi_label=model.params.multi_label,
                     parent_mappings=model.parent_mappings,
+                    thresholds_per_label=model.thresholds_per_label,
                 )
                 masses = np.array(data[4])
                 masses = masses[:, None]
@@ -776,34 +778,7 @@ def evaluate_dir(
                 # else:
                 prediction.classified_track(output, data[2], masses)
                 y_true.append(label_mapping.get(label, label))
-                predicted_labels = prediction.predicted_tags(model.thresholds_per_label)
-                tag = predicted_labels[0] if len(predicted_labels) > 0 else None
-                threshold = model.thresholds_per_label.get(tag, DEFAULT_THRESHOLD)
-                frames = sum([len(frames) for frames in data[2]])
-                if frames < 25:
-                    missing_fraction = (25 - frames) / 24
-                    k = 4
-                    scaling_factor = missing_fraction**2
-                    max_threshold = 0.96
-                    range = max(0, max_threshold - threshold)
-                    extra_thresh = scaling_factor * range
-                    logging.info(
-                        "Have frames %s missing %s threshold is %s becomes %s",
-                        frames,
-                        scaling_factor,
-                        threshold,
-                        threshold + extra_thresh,
-                    )
-                    threshold += extra_thresh
-
-                # scale the threshold linearly between 90% and  threshold based of the number of frames
-                confidence = None
-                # not always the most confident label as thresholds differ per label
-                if tag in prediction.labels:
-                    index = prediction.labels.index(tag)
-                    confidence = float(prediction.class_best_score[index])
-                if confidence is None:
-                    confidence = prediction.max_score
+                tag, confidence, threshold = prediction.prediction_with_confidence()
                 raw_preds.append(tag)
                 raw_confs.append(confidence)
                 raw_class_confidences.append(prediction.class_best_score)
@@ -814,14 +789,13 @@ def evaluate_dir(
                     confidence,
                     threshold,
                 )
-                predicted_tag = "None"
+                # predicted_tag = "None"
                 if confidence is not None and confidence < threshold:
                     y_pred.append("unidentified")
-                elif len(predicted_labels) == 0:
+                elif tag is None:
                     y_pred.append("None")
                 else:
-                    predicted_tag = ",".join(predicted_labels)
-                    y_pred.append(predicted_tag)
+                    y_pred.append(tag)
                 if y_pred[-1] != y_true[-1]:
                     if tag == y_true[-1]:
                         stats["low-confidence"].append(data[0])
@@ -904,7 +878,7 @@ def evaluate_dir(
     figure = plot_confusion_matrix(cm, class_names=model.labels)
     smoothing_file = filename.parent / f"{filename.stem}-fscore"
     plt.savefig(smoothing_file.with_suffix(".png"), format="png")
-    np.save(smoothing_file.with_suffix(".npy"), cm)
+    np.savez(smoothing_file.with_suffix(".npz"), cm=cm, labels=np.array(model.labels))
 
     logging.info("Fscore model score ")
     model_score(cm, model.labels)
@@ -918,7 +892,10 @@ def evaluate_dir(
         figure = plot_confusion_matrix(cm, class_names=model.labels)
         smoothing_file = filename.parent / f"{filename.stem}-{round(100*threshold)}%"
         plt.savefig(smoothing_file.with_suffix(".png"), format="png")
-        np.save(smoothing_file.with_suffix(".npy"), cm)
+        np.savez(
+            smoothing_file.with_suffix(".npz"), cm=cm, labels=np.array(model.labels)
+        )
+
         logging.info("%s model score ", threshold)
 
         model_score(cm, model.labels)
@@ -928,7 +905,7 @@ def evaluate_dir(
     cm = confusion_matrix(y_true, y_pred, labels=model.labels)
     npy_file = confusion_file.with_suffix(".npy")
     logging.info("Saving %s", npy_file)
-    np.save(str(npy_file), cm)
+    np.savez(npy_file, cm=cm, labels=np.array(model.labels))
 
     # Log the confusion matrix as an image summary.
     figure = plot_confusion_matrix(cm, class_names=model.labels)
@@ -1310,10 +1287,12 @@ def best_threshold_for_ds(model, labels, dataset, filename):
     import tensorflow as tf
 
     # sklearn.metrics.auc(
-    y_pred = model.predict(dataset.map(
+    y_pred = model.predict(
+        dataset.map(
             lambda x, _: x,
             num_parallel_calls=tf.data.AUTOTUNE,
-        ))  
+        )
+    )
 
     # true_categories = [y[0] for x, y in dataset]
     # logging.info("Shape is %s", true_categories.shape)
@@ -1323,9 +1302,9 @@ def best_threshold_for_ds(model, labels, dataset, filename):
     true_categories = []
     track_ids = []
     for y in dataset.map(
-            lambda _, y: y,
-            num_parallel_calls=tf.data.AUTOTUNE,
-        ):
+        lambda _, y: y,
+        num_parallel_calls=tf.data.AUTOTUNE,
+    ):
         true_categories.extend(y[0].numpy())
         # dataset_y[0]
         track_ids.extend(y[1].numpy())

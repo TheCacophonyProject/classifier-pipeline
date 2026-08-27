@@ -393,16 +393,16 @@ class TrackPrediction:
 
 
 
-    def predicted_tags(self, thresholds_per_label=None,group_by_parents = True,fallback_to_most_confident = True):
+    def predicted_tags(self,group_by_parents = True,fallback_to_most_confident = True):
         tag = None
         if self.multi_label and self.class_best_score is not None and self.parent_mappings is not None:
             best_score = self.get_normalized_score()
-            if thresholds_per_label is not None:
-                if isinstance(thresholds_per_label, list):
-                    thresholds = thresholds_per_label
+            if self.thresholds_per_label is not None:
+                if isinstance(self.thresholds_per_label, list):
+                    thresholds = self.thresholds_per_label
                 else:
                     thresholds = [
-                        thresholds_per_label.get(l, DEFAULT_THRESHOLD)
+                        self.thresholds_per_label.get(l, DEFAULT_THRESHOLD)
                         for l in self.labels
                     ]
                 indices = np.where(best_score >= thresholds)[0]

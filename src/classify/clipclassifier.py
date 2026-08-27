@@ -326,7 +326,6 @@ class ClipClassifier:
                 if prediction is None:
                     continue
                 prediction_meta = prediction.get_metadata(
-                    predictions.thresholds_per_label
                 )
                 prediction_meta["model_id"] = model_id
                 if self.keep_original_predictions:

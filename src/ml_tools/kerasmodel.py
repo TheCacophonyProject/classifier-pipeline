@@ -1407,7 +1407,7 @@ class KerasModel(Interpreter):
         confidences = []
         raw_class_confidences = []
         labels = self.labels.copy()
-        labels.append("Nothing")
+        labels.append("None")
         totals_row = np.zeros(len(labels))
 
         for y_true, pred in pred_per_track.values():
@@ -1505,7 +1505,7 @@ class KerasModel(Interpreter):
             figure = plot_confusion_matrix(cm, class_names=labels,totals_row=totals_row)
             fscore_file = filename.parent / f"{filename.stem}-fscore"
             plt.savefig(fscore_file.with_suffix(".png"), format="png")
-            np.save(fscore_file.with_suffix(".npy"), np.vstack((cm, totals_row)))
+            np.savez(fscore_file.with_suffix(".npz"), cm = np.vstack((cm, totals_row)),labels = labels)
 
         preds = results.copy()
 
@@ -1517,7 +1517,7 @@ class KerasModel(Interpreter):
         figure = plot_confusion_matrix(cm, class_names=labels,totals_row=totals_row)
         out_file = filename.parent / f"{filename.stem}-{round(100*threshold)}%"
         plt.savefig(out_file.with_suffix(".png"), format="png")
-        np.save(out_file.with_suffix(".npy"), np.vstack((cm, totals_row)))
+        np.savez(out_file.with_suffix(".npz"), cm = np.vstack((cm, totals_row)),labels = labels)
 
     def confusion_tfrecords(self, dataset, filename):
         true_categories = tf.concat([y for x, y in dataset], axis=0)
