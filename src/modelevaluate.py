@@ -67,6 +67,7 @@ land_birds = [
 # basic formula to give a number to compare models
 def model_score(cm, labels):
     labels = labels.copy()
+    labels = list(labels)
     if "None" not in labels:
         labels.append("None")
 
@@ -947,11 +948,17 @@ def main():
             args.model_score,
             args.model_metadata,
         )
-        with open(args.model_metadata, "r") as t:
-            # add in some metadata stats
-            model_meta = json.load(t)
+        labels = None
         cm = np.load(args.model_score)
-        model_score(cm, model_meta["labels"])
+        if Path(args.model_score).suffix ==".npz":
+            labels = cm["labels"]
+            cm = cm["cm"]
+        if labels is None:
+            logging.info("No labels could be found in npz file so loading model metadata")
+            with open(args.model_metadata, "r") as t:
+                # add in some metadata stats
+                model_meta = json.load(t)
+        model_score(cm, labels)
         return
     weight = None
     if args.model_file:
