@@ -584,7 +584,7 @@ class PiClassifier(Processor):
                 logging.info(
                     "Track %s is predicted as %s took %s track frames %s",
                     track,
-                    track_prediction.get_prediction(),
+                    track_prediction.description(),
                     time.time() - start,
                     len(track),
                 )
@@ -597,7 +597,7 @@ class PiClassifier(Processor):
                 track_prediction, model_id = self.get_best_prediction(track.get_id())
                 if track_prediction is None:
                     continue
-                predicted_tags = track_prediction.predicted_tags(thresholds_per_label = self.predictions[model_id].thresholds_per_label,group_by_parents = False) 
+                predicted_tags = track_prediction.predicted_tags(group_by_parents = False) 
                 if  "false-positive" not in predicted_tags:
                     track_prediction.tracking = True
                     self.monitored_tracks[track.get_id()] = track
@@ -726,7 +726,7 @@ class PiClassifier(Processor):
                 pred, model_id = self.get_best_prediction(track.get_id())
                 if pred is not None and pred.max_score is not None:
                     confidence = round(100 * pred.max_score)
-                    tags = pred.predicted_tags(thresholds_per_label = self.predictions[model_id].thresholds_per_label, group_by_parents=False)
+                    tags = pred.predicted_tags( group_by_parents=False)
             regions = track.bounds_history
             if track.thumb_info is None:
                 track.thumb_info = ThumbInfo(track.get_id())
