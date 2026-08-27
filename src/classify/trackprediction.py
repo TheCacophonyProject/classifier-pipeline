@@ -537,7 +537,7 @@ class TrackPrediction:
 
     def prediction_with_confidence(self):
         score = self.get_normalized_score()
-        tag = self.predicted_tags(self.thresholds_per_label,group_by_parents=True)
+        tag = self.predicted_tags(group_by_parents=True)
         tag = tag[0] if len(tag)!=0 else None
         threshold = DEFAULT_THRESHOLD
     
@@ -564,7 +564,7 @@ class TrackPrediction:
         if self.classify_time is not None:
             prediction_meta["classify_time"] = round(self.classify_time, 1)
         self.normalize_score()
-        tag = self.predicted_tags(self.thresholds_per_label,group_by_parents=True)
+        tag = self.predicted_tags(group_by_parents=True)
         tag = tag[0] if len(tag)!=0 else None
         threshold = DEFAULT_THRESHOLD
  
