@@ -73,6 +73,9 @@ class PiClassifier(Processor):
     # after every MAX_CONSEC frames skip this many frames
     # this gives the cpu a break
 
+    # if we dont classify only skip 9 frames
+    SHORT_SKIP_FRAMES = 9
+
     # try classify a non fp track every X frames
     SKIP_FRAMES = 25
     # only do another full classification on the same track after this many frames
@@ -359,21 +362,23 @@ class PiClassifier(Processor):
                 * self.classifier.params.square_width
             )
             if self.frames_per_classify > 1:
-                self.predict_from_last = self.frames_per_classify * 2
+                self.predict_from_last = 9*12
 
             self.max_keep_frames = (
                 self.frames_per_classify * 2 if not preview_type else None
             )
+            self.max_keep_frames = 12*9
             self.predictions[model.id] = Predictions(
                 self.classifier.labels, model, self.classifier.thresholds_per_label,scale_thresholds = classifier.scale_thresholds,
             )
             self.num_labels = len(self.classifier.labels)
-            logging.info(
-                "Ignoring segment types %s and using ALL_RANDOM",
-                self.classifier.params.segment_types,
-            )
+            # if                 self.classifier.params.segment_types[0] != "ALL_RANDOM_SECTIONS":
+            # logging.info(
+            #     "Ignoring segment types %s and using ALL_RANDOM",
+            #     self.classifier.params.segment_types,
+            # )
 
-            self.classifier.params["segment_types"] = ["ALL_RANDOM"]
+            # self.classifier.params["segment_types"] = ["ALL_RANDOM"]
             logging.info("Labels are %s ", self.classifier.labels)
             global predictions
             predictions = self.predictions
@@ -386,7 +391,7 @@ class PiClassifier(Processor):
             global fp_model
             fp_model = self.fp_model
             self.predictions[self.fp_model.id] = Predictions(
-                self.fp_model.labels, fp_config, self.fp_model.thresholds,scale_thresholds = classifier.scale_thresholds,
+                self.fp_model.labels, fp_config, self.fp_model.thresholds_per_label,scale_thresholds = self.fp_model.scale_thresholds,
             )
 
     def new_clip(self, preview_frames, received_at):
@@ -539,7 +544,7 @@ class PiClassifier(Processor):
                 logging.debug(
                     "Track %s is predicted as %s took %s track frames %s",
                     track,
-                    track_prediction.get_prediction(),
+                    track_prediction.description(),
                     time.time() - start,
                     len(track),
                 )
@@ -550,8 +555,9 @@ class PiClassifier(Processor):
             and self.next_classify_frame <= self.clip.current_frame
         ):
             id_start = time.time()
-
-            self.next_classify_frame += PiClassifier.SKIP_FRAMES
+            # only do a short skip if we dont do any predictions
+            # this will be because we dont have enough frames
+            skip =  PiClassifier.SHORT_SKIP_FRAMES
             animal_tracks = self.get_active_animal_tracks_for_predicting()
             # filter based of fp model
             for i, track in enumerate(animal_tracks):
@@ -570,15 +576,26 @@ class PiClassifier(Processor):
                     num_predictions=1,
                     calculate_filtered=True,
                     last_frame_predicted=track_prediction.last_frame_classified,
+                    min_frames_for_prediction = 6,
                 )
                 if pred_result is None:
+                    logging.info("not prediction %s",track)
                     track_prediction.last_frame_classified = self.clip.current_frame
                     continue
                 prediction, frames, mass = pred_result
+                skip  = PiClassifier.SKIP_FRAMES
 
                 if prediction is None:
                     track_prediction.last_frame_classified = self.clip.current_frame
                     continue
+
+
+                #if previous prediction frames were less than 25 then this prediction makes up 100% of the final prediction
+                if track_prediction.previous_prediction_was_short():
+                    logging.info("Resetting as was short")
+                    track_prediction.reset()
+                    # track_prediction.scale_by_overlap(frames[0])
+                logging.info("Predicting with %s frames",len(frames[0]))
                 track_prediction.classified_frames(frames, prediction, mass)
 
                 logging.info(
@@ -591,6 +608,8 @@ class PiClassifier(Processor):
                 new_prediction = True
 
             self.identify_time += time.time() - id_start
+            logging.info("Skipping %s",skip)
+            self.next_classify_frame += skip
 
         for i, track in enumerate(active_tracks):
             if self.tracking_events:
@@ -640,7 +659,7 @@ class PiClassifier(Processor):
         for track in active_tracks:
             if self.fp_model is not None:
                 pred, model_id = self.get_best_prediction(track.get_id())
-                predicted_tags = pred.predicted_tag(thresholds_per_label = self.fp_model.thresholds_per_label, group_by_parents=False)
+                predicted_tags = pred.predicted_tags(  group_by_parents=False)
 
                 logging.debug(
                     "track %s -%s - %s",
@@ -1134,7 +1153,7 @@ class PiClassifier(Processor):
                     for t_id, prediction in pred.prediction_per_track.items():
                         if prediction.max_score:
                             logging.info(
-                                "Clip {} {} {}".format(
+                                "Clip {} {} {} ".format(
                                     self.clip.get_id(),
                                     t_id,
                                     prediction.description(),

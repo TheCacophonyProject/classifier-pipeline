@@ -15,11 +15,7 @@ from pathlib import Path
 import shutil
 from ml_tools.interpreter import LiteInterpreter
 
-MODEL_DIR = "../cptv-download/train/checkpoints"
-MODEL_NAME = "training-most-recent.sav"
-SAVED_DIR = "saved_model"
-LITE_MODEL_NAME = "converted_model.tflite"
-
+import tensorflow as tf
 
 def run_model(args):
     model = LiteInterpreter(args.model)
@@ -36,12 +32,6 @@ def run_model(args):
 
 def convert_model(args):
 
-    import tensorflow as tf
-
-    tf.get_logger().setLevel("ERROR")
-    import logging
-
-    logging.getLogger("absl").setLevel(logging.ERROR)
     print("Loading: ", args.model)
     args.model = Path(args.model).expanduser()
 
@@ -109,11 +99,13 @@ def convert_model(args):
 
         tflite_model = converter.convert()
         shutil.rmtree(saved_model_dir)
-        print("saving model to ", out_dir / args.model.stem)
         out_dir.mkdir(parents=True, exist_ok=True)
-        with (out_dir / args.model.stem).open("wb") as f:
+        model_file = out_dir/"converted_model.tflite"
+        print("saving model to ", model_file)
+
+        with model_file.open("wb") as f:
             f.write(tflite_model)
-        frozen_meta = out_dir / meta_file.name
+        frozen_meta = model_file.with_suffix(".json")
 
     elif args.freeze or args.export:
         out_dir = Path(args.freeze).expanduser()
@@ -140,6 +132,7 @@ def convert_model(args):
             frozen_meta = out_dir / "saved_model.json"
 
     if meta_file.exists():
+        print("Copying",meta_file, " to " , frozen_meta)
         shutil.copy(meta_file, frozen_meta)
 
         if args.thresholds:

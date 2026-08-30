@@ -129,11 +129,12 @@ class TrackPrediction:
         self.labels = labels
         self.classify_time = None
         self.tracking = False
-        self.masses = []
         self.normalized = False
         self.smooth_preds = smooth_preds
         self.multi_label = multi_label
         self.scale_thresholds = scale_thresholds
+        # TODO set this based of model
+        self.frames_per_prediction = 25
 
     def cap_confidences(self, max_confidence):
         max_score = np.sum(self.class_best_score)
@@ -236,10 +237,10 @@ class TrackPrediction:
         if not self.smooth_preds:
             total_pred = np.sum(predictions, axis=0)
 
-        self.num_predictions = len(predictions)
+        self.num_predictions += len(predictions)
 
         for frames, pred, mass in zip(frame_numbers, predictions, masses):
-            if isinstance(frames, list):
+            if isinstance(frames,  (list, np.ndarray)):
                 self.num_frames_classified += len(frames)
             else:
                 self.num_frames_classified += 1
@@ -272,11 +273,40 @@ class TrackPrediction:
         else:
             self.class_best_score += total_pred
 
+
+    def previous_prediction_was_short(self):
+        if self.num_predictions ==0:
+            return False
+        previous = self.predictions[-1]
+        logging.info("Previous prediction is %s num frames %s",previous,len(previous.frames))
+        return len(previous.frames) < self.frames_per_prediction
+    def scale_by_overlap(self,frames):
+        previous = self.predictions[-1]
+        first_frame =frames[0]
+        print("FIrst frmae ",first_frame)
+        for index, f in enumerate(previous.frames):
+            print(index)
+            if  first_frame  >(int(f)-5) :
+
+                break
+
+        logging.info("New preds over lap previous at %s %s previous frames %s ",first_frame, index, previous.frames)
+        # # scale prior prediction
+        # self.class_best_score -= previous.prediction
+        # previous.prediction
+
+    def reset(self):
+        self.predictions = []
+        self.class_best_score = np.zeros(self.class_best_score.shape)
+        self.num_predictions = 0
+        self.last_frame_classified = None
+        self.num_frames_classified = 0
+        self.normalized = False
+
     def classified_frame(self, frame_number, predictions, mass):
         self.last_frame_classified = frame_number
         self.num_frames_classified += 1
         self.num_predictions += 1
-        self.masses.append(mass)
         smoothed_prediction = None
         if self.smooth_preds:
             smoothed_prediction = predictions**2 * mass
@@ -361,7 +391,7 @@ class TrackPrediction:
         """
 
         tag, confidence, threshold = self.prediction_with_confidence()
-        return f"{tag} {confidence:.0%} {threshold:.0%}"
+        return f"{tag} {confidence:.0%} threshold: {threshold:.0%}"
         # TODO this is out of date and should use thresholds etc
         score = self.max_score
         if score is None:
