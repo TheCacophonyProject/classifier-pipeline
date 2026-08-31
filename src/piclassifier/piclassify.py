@@ -147,6 +147,7 @@ def main():
     while True:
         if restart_pending:
             sock.close()
+            logging.info("Restart pending exiting")
             break
         logging.info("waiting for a connection")
         try:
@@ -154,6 +155,7 @@ def main():
             connected = True
             logging.info("connection from %s", client_address)
             log_event("camera-connected", {"type": "thermal"})
+
             handle_connection(
                 processor,
                 connection,
@@ -162,6 +164,8 @@ def main():
                 process_queue,
                 response_queue,
             )
+
+
         except socket.timeout:
             logging.error("Socket %s timeout error", SOCKET_NAME, exc_info=True)
             continue
@@ -176,6 +180,7 @@ def main():
             except:
                 pass
     if processor.is_alive:
+        logging.info("Stopping processor because restart was pending")
         process_queue.put(STOP_SIGNAL)
         # give it time to clean up, seems to take a while if classifier is running
         processor.join(50)
@@ -365,6 +370,12 @@ def delete_stale_thumbnails(output_dir):
 # return -1
 
 
+import fcntl, termios, struct
+
+def bytes_queued(sock):
+    buf = struct.pack('i', 0)
+    return struct.unpack('i', fcntl.ioctl(sock.fileno(), termios.FIONREAD, buf))[0]
+
 def handle_connection(
     processor, connection, config, thermal_config_file, process_queue, response_queue
 ):
@@ -375,13 +386,14 @@ def handle_connection(
     # sometimes the headers are never received
     connection.settimeout(20)
     headers, extra_b = handle_headers(connection)
+    connection.settimeout(None)
+
     thermal_config = ThermalConfig.load_from_file(thermal_config_file, headers.model)
     logging.info(
         "parsed camera headers %s running with config %s", headers, thermal_config
     )
-    # processor = get_processor(process_queue,response_queue, config, thermal_config, headers)
-    # processor.start()
     process_queue.put(headers)
+
     edge = config.tracking["thermal"].edge_pixels
     crop_rectangle = Rectangle(
         edge, edge, headers.res_x - 2 * edge, headers.res_y - 2 * edge
@@ -394,6 +406,7 @@ def handle_connection(
             if restart_pending:
                 logging.info("Restarting as config changed")
                 break
+
             if not processor.is_alive():
                 # this potentially loops on indefinately on an error if the error is to do with the headers
                 logging.info("Processor stopped restarting")
@@ -406,9 +419,9 @@ def handle_connection(
                     headers.frame_size - len(extra_b), socket.MSG_WAITALL
                 )
                 extra_b = None
+
             else:
                 data = connection.recv(headers.frame_size, socket.MSG_WAITALL)
-
             if not data:
                 logging.info("disconnected from camera")
                 break
@@ -434,7 +447,6 @@ def handle_connection(
                 except Empty:
                     pass
                 continue
-
             frame = raw_frame.parse(data)
             frame.received_at = time.time()
             cropped_frame = crop_rectangle.subimage(frame.pix)
@@ -451,7 +463,7 @@ def handle_connection(
             else:
                 process_queue.put((frame, time.time()))
 
-            if process_queue.qsize() > 9:
+            if process_queue.qsize() > 20:
                 # check if there is a reason frames have slowed down
                 try:
                     message = response_queue.get(False, 0)
@@ -461,9 +473,12 @@ def handle_connection(
                         logging.info("Parsing file so will not process any more frames")
                 except Empty:
                     pass
-
+    except:
+        logging.error("Error handling connection",exc_info=True)
     finally:
         if processor.is_alive:
+            logging.info("Stopping processor because there was an issue in frame handling")
+
             process_queue.put(STOP_SIGNAL)
             # give it time to clean up, seems to take a while if classifier is running
             processor.join(50)
@@ -473,7 +488,8 @@ def handle_connection(
                     utils.kill_process_with_timeout(processor)
                 except:
                     pass
-
+        clear_queue(process_queue)
+        clear_queue(response_queue)
 
 def clear_queue(q):
     """Removes all items from a multiprocessing Queue."""
