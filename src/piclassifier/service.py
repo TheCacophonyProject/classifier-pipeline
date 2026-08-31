@@ -30,8 +30,10 @@ class Service(dbus.service.Object):
         thumbnail_dir,
         parse_file,
         is_parsing_file,
+        is_ready,
         classifier_loaded=True,
     ):
+        self.is_ready = is_ready
         self.get_frame = get_frame
         self.get_thumbnail = get_thumbnail
         self.headers = headers
@@ -57,7 +59,7 @@ class Service(dbus.service.Object):
         
     @dbus.service.method(
         DBUS_NAME,
-        in_signature="",
+    in_signature="",
         out_signature="a{si}",
     )
     def CameraInfo(self):
@@ -80,6 +82,14 @@ class Service(dbus.service.Object):
         logging.debug("Sending headers %s", headers)
         return headers
 
+
+    @dbus.service.method(
+        DBUS_NAME,
+        out_signature="b",
+    )
+    def IsReady(self):
+        return self.is_ready()
+    
     @dbus.service.method(
         DBUS_NAME,
         out_signature="s",
@@ -293,7 +303,9 @@ class SnapshotService:
         thumbnail_dir,
         parse_file,
         is_parsing_file,
-        classifier_loaded=True,
+        is_ready,
+                classifier_loaded=True,
+
     ):
         DBusGMainLoop(set_as_default=True)
         dbus.mainloop.glib.threads_init()
@@ -308,6 +320,7 @@ class SnapshotService:
             thumbnail_dir,
             parse_file,
             is_parsing_file,
+            is_ready,
             classifier_loaded,
         )
     

@@ -103,7 +103,11 @@ class Interpreter(ABC):
         frames, preprocessed, mass = self.preprocess(clip, track, samples, **args)
         if preprocessed is None or len(preprocessed) == 0:
             return None
-        prediction = self.predict(preprocessed)
+        try:
+            prediction = self.predict(preprocessed)
+        except:
+            logging.error("Could not predict", exc_info=True)
+            return None
         return prediction, frames, mass
 
     def preprocess(self, clip, track, samples, **args):

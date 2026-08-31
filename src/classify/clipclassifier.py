@@ -671,7 +671,7 @@ class ClipClassifier:
                         "Checking if classifier is ready at %s",
                         f"http://127.0.0.1:{classifier.port}/ready",
                     )
-                    classifier_is_ready = wait_for_classifier(
+                    classifier_is_ready = classify_ready(
                         f"http://127.0.0.1:{classifier.port}/ready"
                     )
                 try:
@@ -750,11 +750,13 @@ def country_by_location(lat, lng):
     return None
 
 
-def wait_for_classifier(url, timeout=45):
+def classify_ready(url, timeout=45):
     import requests
 
     start_time = time.time()
-    while time.time() < start_time + timeout:
+    attempt = 0
+    while time.time() < start_time + timeout or attempt ==0:
+        attempt +=1
         try:
             response = requests.get(url)
             if response.status_code == 200:

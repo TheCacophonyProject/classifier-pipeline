@@ -188,6 +188,11 @@ class PiClassifier(Processor):
             self.headers,
         )
 
+    def is_ready(self):
+        if self.classify and self.initialised:
+            return self.classifier_ready(0)
+        return self.initialised
+    
     def is_parsing_file(self):
         return self.headers.source if self.parsing_file else None
 
@@ -211,7 +216,7 @@ class PiClassifier(Processor):
             self.parsing_file = True
             if self.classify:
                 self.startup_classifier()
-            self.wait_for_classifier()
+            self.classifier_ready()
             while self.processing_frame:
                 logging.info("Trying to parse file but processesor is busy")
                 time.sleep(1)
@@ -532,17 +537,17 @@ class PiClassifier(Processor):
         for t in new_tracks:
             t.received_at = received_at
 
-    def wait_for_classifier(self):
+    def classifier_ready(self,timeout= 45):
         if not self.classify or not self.classifier.run_over_network:
-            return
-        from classify.clipclassifier import wait_for_classifier
+            return True
+        from classify.clipclassifier import classify_ready
 
         logging.info(
             "Checking if classifier is ready at %s",
             f"http://127.0.0.1:{self.classifier.port}/ready",
         )
-        classifier_is_ready = wait_for_classifier(
-            f"http://127.0.0.1:{self.classifier.port}/ready"
+        classifier_is_ready = classify_ready(
+            f"http://127.0.0.1:{self.classifier.port}/ready",timeout
         )
         return classifier_is_ready
 

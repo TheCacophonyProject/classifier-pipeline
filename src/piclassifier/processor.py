@@ -41,7 +41,9 @@ class Processor(ABC):
             thumbnail_dir,
             self.parse_file,
             self.is_parsing_file,
-            classifier_loaded,
+            self.is_ready,
+                        classifier_loaded,
+
         )
 
     def update_service_labels(self):
@@ -52,6 +54,9 @@ class Processor(ABC):
             model_labels[self.fp_model.id] = self.fp_model.labels
         self.service.service.labels = model_labels
         self.service.service.update_labels(model_labels)
+
+    @abstractmethod
+    def is_ready(self): ...
 
     @abstractmethod
     def take_snapshot(self): ...
