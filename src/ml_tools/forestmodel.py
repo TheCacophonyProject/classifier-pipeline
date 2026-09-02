@@ -166,7 +166,7 @@ class ForestModel(Interpreter):
             normalize=args.get("normalize", True),
             buf_len=self.buffer_length,
             last_frame_predicted=args.get("last_frame_predicted"),
-            seed = self.seed
+            seed=self.seed,
         )
         if result is None:
             return None
@@ -205,7 +205,7 @@ def process_track(
     scale=None,
     normalize=True,
     last_frame_predicted=None,
-    seed = None,
+    seed=None,
 ):
     background = clip.background
     all_frames = None

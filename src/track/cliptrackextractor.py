@@ -67,6 +67,7 @@ class ClipTrackExtractor(ClipTracker):
             max_frames=max_frames,
         )
 
+        self.from_pi = from_pi
         if from_pi:
             self.version = f"PI-{ClipTrackExtractor.VERSION}"
         else:
@@ -247,5 +248,9 @@ class ClipTrackExtractor(ClipTracker):
                     clip, component_details[1:], centroids[1:]
                 )
                 new_tracks = self._apply_region_matchings(clip, regions)
-            clip.region_history.append(regions)
+            if not self.from_pi:
+                # region_history is only consumed by offline thumbnail
+                # selection (classify.thumbnail.best_trackless_thumb); on the
+                # Pi it would just grow unbounded for the life of the clip
+                clip.region_history.append(regions)
         return new_tracks

@@ -259,7 +259,9 @@ class ClipClassifier:
         location = meta_data.get("location")
         logging.info("getting classified with %s", location)
         classifier = self.get_classifier(model, location)
-        classifier.seed = int(clip.video_start_time.timestamp() * 1000000) #micro seconds
+        classifier.seed = int(
+            clip.video_start_time.timestamp() * 1000000
+        )  # micro seconds
         predictions = Predictions(classifier.labels, model, classifier.thresholds)
         predictions.model_load_time = time.time() - start
 
@@ -441,7 +443,7 @@ class ClipClassifier:
             track_extractor.init_clip(clip)
             seed = meta_data.get("seed")
             if seed is not None:
-                logging.info("Metadata has supplied seed %s for %s",seed,filename)
+                logging.info("Metadata has supplied seed %s for %s", seed, filename)
         else:
             meta_data = {}
             from track.trackextractor import extract_file
@@ -725,7 +727,10 @@ class ClipClassifier:
                         dbus.Int64(int(1000 * rec_end.timestamp())),
                     )
                 except:
-                    logging.error("Could not send tracking reprocessed signal over dbus %s",exc_info=True)
+                    logging.error(
+                        "Could not send tracking reprocessed signal over dbus %s",
+                        exc_info=True,
+                    )
 
         models = [model]
         predictions_per_model = {model.id: predictions}
@@ -755,8 +760,8 @@ def classify_ready(url, timeout=45):
 
     start_time = time.time()
     attempt = 0
-    while time.time() < start_time + timeout or attempt ==0:
-        attempt +=1
+    while time.time() < start_time + timeout or attempt == 0:
+        attempt += 1
         try:
             response = requests.get(url)
             if response.status_code == 200:

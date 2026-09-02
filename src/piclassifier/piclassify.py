@@ -29,6 +29,7 @@ restart_pending = False
 connected = False
 ready_to_record = False
 
+
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--file", help="a test file to send", default=None)
@@ -82,7 +83,6 @@ def main():
             args.file, config, thermal_config, args.preview_type, args.fps, args.seed
         )
 
-
     process_queue = multiprocessing.Queue()
     response_queue = multiprocessing.Queue()
 
@@ -98,7 +98,6 @@ def main():
     )
     monitor_thread.daemon = True
     monitor_thread.start()
-
 
     # get a cloned window so we dont update it
     if not thermal_config.recorder.use_low_power_mode:
@@ -137,7 +136,6 @@ def main():
     if not success and thermal_config.motion.postprocess:
         raise Exception("Could not start up postprocessor")
 
-
     sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     sock.bind(SOCKET_NAME)
     sock.settimeout(1 * 60)
@@ -164,7 +162,6 @@ def main():
                 process_queue,
                 response_queue,
             )
-
 
         except socket.timeout:
             logging.error("Socket %s timeout error", SOCKET_NAME, exc_info=True)
@@ -374,9 +371,11 @@ def delete_stale_thumbnails(output_dir):
 
 import fcntl, termios, struct
 
+
 def bytes_queued(sock):
-    buf = struct.pack('i', 0)
-    return struct.unpack('i', fcntl.ioctl(sock.fileno(), termios.FIONREAD, buf))[0]
+    buf = struct.pack("i", 0)
+    return struct.unpack("i", fcntl.ioctl(sock.fileno(), termios.FIONREAD, buf))[0]
+
 
 def handle_connection(
     processor, connection, config, thermal_config_file, process_queue, response_queue
@@ -480,11 +479,13 @@ def handle_connection(
                     pass
 
     except:
-        logging.error("Error handling connection",exc_info=True)
+        logging.error("Error handling connection", exc_info=True)
     finally:
         ready_to_record = False
         if processor.is_alive:
-            logging.info("Stopping processor because there was an issue in frame handling")
+            logging.info(
+                "Stopping processor because there was an issue in frame handling"
+            )
 
             process_queue.put(STOP_SIGNAL)
             # give it time to clean up, seems to take a while if classifier is running
@@ -497,6 +498,7 @@ def handle_connection(
                     pass
         clear_queue(process_queue)
         clear_queue(response_queue)
+
 
 def clear_queue(q):
     """Removes all items from a multiprocessing Queue."""
@@ -524,7 +526,6 @@ def default_headers():
         firmware="",
     )
     return headers
-
 
 
 def print_memory_usage():
@@ -567,4 +568,3 @@ def print_memory_usage():
         swap.total / (1024 * 1024),
         swap.percent,
     )
-

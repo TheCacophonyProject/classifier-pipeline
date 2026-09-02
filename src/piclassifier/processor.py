@@ -42,8 +42,7 @@ class Processor(ABC):
             self.parse_file,
             self.is_parsing_file,
             self.is_ready,
-                        classifier_loaded,
-
+            classifier_loaded,
         )
 
     def update_service_labels(self):

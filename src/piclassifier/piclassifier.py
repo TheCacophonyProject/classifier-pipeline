@@ -139,7 +139,6 @@ class PiClassifier(Processor):
         self.clip = None
         self.prev_clip = None
         self.enable_per_track_information = False
-        self.rolling_track_classify = {}
         self.next_classify_frame = 0
         self.next_fp_classification_frame = 0
         self.classified_consec = 0
@@ -209,7 +208,7 @@ class PiClassifier(Processor):
         if self.classify and self.initialised:
             return self.classifier_ready(0)
         return self.initialised
-    
+
     def is_parsing_file(self):
         return self.headers.source if self.parsing_file else None
 
@@ -553,7 +552,7 @@ class PiClassifier(Processor):
         for t in new_tracks:
             t.received_at = received_at
 
-    def classifier_ready(self,timeout= 45):
+    def classifier_ready(self, timeout=45):
         if not self.classify or not self.classifier.run_over_network:
             return True
         from classify.clipclassifier import classify_ready
@@ -563,7 +562,7 @@ class PiClassifier(Processor):
             f"http://127.0.0.1:{self.classifier.port}/ready",
         )
         classifier_is_ready = classify_ready(
-            f"http://127.0.0.1:{self.classifier.port}/ready",timeout
+            f"http://127.0.0.1:{self.classifier.port}/ready", timeout
         )
         return classifier_is_ready
 

@@ -44,10 +44,9 @@ class Service(dbus.service.Object):
         self.is_parsing_file = is_parsing_file
         self.classifier_loaded = classifier_loaded
 
-    def start_service(self,dbus):
+    def start_service(self, dbus):
         super().__init__(dbus, DBUS_PATH)
         self.ServiceStarted()
-
 
     def update_labels(self, labels):
         self.labels = labels
@@ -55,11 +54,11 @@ class Service(dbus.service.Object):
         try:
             self.LabelsUpdated()
         except:
-            logging.error("Could run labels updated",exc_info=True)
-        
+            logging.error("Could run labels updated", exc_info=True)
+
     @dbus.service.method(
         DBUS_NAME,
-    in_signature="",
+        in_signature="",
         out_signature="a{si}",
     )
     def CameraInfo(self):
@@ -82,14 +81,13 @@ class Service(dbus.service.Object):
         logging.debug("Sending headers %s", headers)
         return headers
 
-
     @dbus.service.method(
         DBUS_NAME,
         out_signature="b",
     )
     def IsReady(self):
         return self.is_ready()
-    
+
     @dbus.service.method(
         DBUS_NAME,
         out_signature="s",
@@ -304,13 +302,12 @@ class SnapshotService:
         parse_file,
         is_parsing_file,
         is_ready,
-                classifier_loaded=True,
-
+        classifier_loaded=True,
     ):
         DBusGMainLoop(set_as_default=True)
         dbus.mainloop.glib.threads_init()
         self.loop = GLib.MainLoop()
-       
+
         self.service = Service(
             get_frame,
             headers,
@@ -323,13 +320,12 @@ class SnapshotService:
             is_ready,
             classifier_loaded,
         )
-    
+
         self.t = threading.Thread(
             target=self.run_server,
         )
         self.t.daemon = True
         self.t.start()
-    
 
     def update_service(
         self,
@@ -362,7 +358,7 @@ class SnapshotService:
             self.service.start_service(session_bus)
             self.loop.run()
         except:
-            logging.error("Couldn't run loop",exc_info=True)
+            logging.error("Couldn't run loop", exc_info=True)
 
     def tracking(
         self,
