@@ -435,7 +435,8 @@ def handle_connection(
             except:
                 pass
             read += 1
-
+            # if read % 90:
+            #     print_memory_usage()
             if parsing_file:
                 # need to keep reading from data socket in the mean time so just do a quick check
                 try:
@@ -473,6 +474,7 @@ def handle_connection(
                         logging.info("Parsing file so will not process any more frames")
                 except Empty:
                     pass
+
     except:
         logging.error("Error handling connection",exc_info=True)
     finally:
@@ -517,3 +519,47 @@ def default_headers():
         firmware="",
     )
     return headers
+
+
+
+def print_memory_usage():
+    process = psutil.Process(os.getpid())
+    main_rss = process.memory_info().rss
+    main_uss = process.memory_full_info().uss
+    total_rss = main_rss
+    total_uss = main_uss
+    logging.info(
+        "Memory usage pid %d (%s) %.1fMB rss %.1fMB uss",
+        process.pid,
+        process.name(),
+        main_rss / (1024 * 1024),
+        main_uss / (1024 * 1024),
+    )
+    children = process.children(recursive=True)
+    for child in children:
+        try:
+            child_rss = child.memory_info().rss
+            child_uss = child.memory_full_info().uss
+            total_rss += child_rss
+            total_uss += child_uss
+            logging.info(
+                "Memory usage pid %d (%s) %.1fMB rss %.1fMB uss",
+                child.pid,
+                child.name(),
+                child_rss / (1024 * 1024),
+                child_uss / (1024 * 1024),
+            )
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            continue
+    swap = psutil.swap_memory()
+    logging.info(
+        "Memory usage main %.1fMB total (with %d sub processes) %.1fMB uss %.1fMB swap used %.1fMB of %.1fMB (%.1f%%)",
+        main_rss / (1024 * 1024),
+        len(children),
+        total_rss / (1024 * 1024),
+        total_uss / (1024 * 1024),
+        swap.used / (1024 * 1024),
+        swap.total / (1024 * 1024),
+        swap.percent,
+    )
+

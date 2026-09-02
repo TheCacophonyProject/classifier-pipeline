@@ -70,9 +70,9 @@ def preview_socket(headers, frame_queue):
             frameSocket = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
             frameSocket.settimeout(5)
             frameSocket.connect("/var/spool/managementd")
-            frameSocket.settimeout(None)
             logging.info("Connected to management interface")
             frameSocket.send(header_bytes)
+            frameSocket.setblocking(False)
             telemetry_bytes = bytearray(640)
             # if we need this can add the correct info
             while True:
@@ -85,7 +85,11 @@ def preview_socket(headers, frame_queue):
                     break
                 frame_bytes = frame.pix.byteswap().tobytes()
                 frame_bytes = telemetry_bytes + frame_bytes
-                frameSocket.send(frame_bytes)
+                try:
+                    frameSocket.send(frame_bytes)
+                except BlockingIOError:
+                    # send buffer full, drop this frame and keep the connection alive
+                    pass
         except:
             logging.error("Failed to connect to /var/spool/managementd", exc_info=True)
             try:
@@ -93,7 +97,7 @@ def preview_socket(headers, frame_queue):
                 items = frame_queue.qsize()
                 items = max(items, 1)
                 for _ in range(items):
-                    item = frame_queue.get(100)
+                    item = frame_queue.get(block=False)
                     if isinstance(item, str):
                         if item == STOP_SIGNAL:
                             return

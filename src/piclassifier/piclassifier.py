@@ -6,6 +6,7 @@ import time
 import psutil
 import numpy as np
 import logging
+from queue import Queue, Full, Empty
 
 from .motiondetector import SlidingWindow
 from .processor import Processor
@@ -27,6 +28,20 @@ classifier = None
 
 CAMERA_SOURCE = "camera"
 FILE_SOURCE = "file"
+
+
+def put_asoldest(queue, item):
+    try:
+        queue.put_nowait(item)
+    except Full:
+        try:
+            queue.get_nowait()
+        except Empty:
+            pass
+        try:
+            queue.put_nowait(item)
+        except Full:
+            pass
 
 
 def run_classifier(
@@ -232,10 +247,9 @@ class PiClassifier(Processor):
             logging.info("Parsing %s", file)
             from cptv_rs_python_bindings import CptvReader
             from cptv import Frame
-            from multiprocessing import Queue, Process
             from .headerinfo import HeaderInfo
 
-            frame_queue = Queue()
+            frame_queue = Queue(maxsize=5)
             telemetry_size = 160 * 4
             reader = CptvReader(str(file))
             header = reader.get_header()
@@ -266,15 +280,17 @@ class PiClassifier(Processor):
                 self.recorder.max_frames = self.recorder.max_frames
 
             self.motion_detector.force_record = True
+            from threading import Thread
 
-            preview_process = Process(
+            preview_thread = Thread(
                 target=utils.preview_socket,
                 args=(
                     headers,
                     frame_queue,
                 ),
+                daemon=True,
             )
-            preview_process.start()
+            preview_thread.start()
             if self.classify and self.classifier:
                 if seed is not None and seed >= 0:
                     self.classifier.seed = seed
@@ -298,7 +314,7 @@ class PiClassifier(Processor):
                     frame.background_frame,
                 )
 
-                frame_queue.put(frame)
+                put_asoldest(frame_queue, frame)
 
                 frame.ffc_imminent = False
                 frame.ffc_status = 0
@@ -313,7 +329,7 @@ class PiClassifier(Processor):
                 if fps is not None and fps > 0:
                     time.sleep(1.0 / fps)
 
-            frame_queue.put(STOP_SIGNAL)
+            put_asoldest(frame_queue, STOP_SIGNAL)
             self.reset()
 
             while self.recorder is not None and self.recorder.recording:
@@ -321,13 +337,11 @@ class PiClassifier(Processor):
                     "Trying to end parse file but still recording so waiting 5 seconds"
                 )
                 time.sleep(5)
-            preview_process.join(7)
-            if preview_process.is_alive():
-                logging.info("Killing preview process")
-                try:
-                    utils.kill_process_with_timeout(preview_process)
-                except:
-                    pass
+            preview_thread.join(7)
+            if preview_thread.is_alive():
+                logging.info(
+                    "Preview thread did not stop in time, it will be abandoned"
+                )
         except:
             logging.error("Could not parse file %s", exc_info=True)
         self.motion_detector.force_record = False
