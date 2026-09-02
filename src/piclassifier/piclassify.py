@@ -27,7 +27,7 @@ TELEMETRY_PACKET_COUNT = 4
 
 restart_pending = False
 connected = False
-
+ready_to_record = False
 
 def parse_args():
     parser = argparse.ArgumentParser()
@@ -324,6 +324,8 @@ def take_snapshots(window, process_queue, output_dir):
         if time_until > 0:
             logging.info("Taking snapshot at %s", snap_time)
             time.sleep(time_until)
+        while not ready_to_record:
+            time.sleep(10)
         logging.info("Sending snapshot signal")
         process_queue.put(SNAPSHOT_SIGNAL)
         next_snap = next_snapshot(window, next_snap[1])
@@ -393,6 +395,8 @@ def handle_connection(
         "parsed camera headers %s running with config %s", headers, thermal_config
     )
     process_queue.put(headers)
+    global ready_to_record
+    ready_to_record = True
 
     edge = config.tracking["thermal"].edge_pixels
     crop_rectangle = Rectangle(
@@ -478,6 +482,7 @@ def handle_connection(
     except:
         logging.error("Error handling connection",exc_info=True)
     finally:
+        ready_to_record = False
         if processor.is_alive:
             logging.info("Stopping processor because there was an issue in frame handling")
 

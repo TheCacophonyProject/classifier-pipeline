@@ -130,7 +130,8 @@ class PiClassifier(Processor):
         self.classify = classify
 
         super().__init__(thumbnail_dir, False or not self.classify)
-
+        self.recorder = None
+        self.snapshot_recorder = None
         self.processing_frame = False
         self._output_dir = thermal_config.recorder.output_dir
         self.classifier_initialised = False
@@ -196,6 +197,7 @@ class PiClassifier(Processor):
         from .cptvmotiondetector import CPTVMotionDetector
 
         self.headers = headers
+        self.reset()
         self.init_recorders()
         self.motion_detector = CPTVMotionDetector(
             self.thermal_config,
@@ -1009,11 +1011,12 @@ class PiClassifier(Processor):
     def reset(self):
         self.classified_consec = 0
         self.motion_detector.disconnected()
-        if self.recorder.recording and self.tracking_events:
+        if self.recorder and self.recorder.recording and self.tracking_events:
             self.recording = False
             self.service.recording(time.time(), False)
         self.recorder.force_stop()
-        self.snapshot_recorder.force_stop()
+        if self.snapshot_recorder:
+            self.snapshot_recorder.force_stop()
         if self.constant_recorder is not None:
             self.constant_recorder.force_stop()
 
