@@ -187,7 +187,7 @@ class CPTVMotionDetector(MotionDetector):
                 self.triggered = 0
                 if prev_ffc:
                     self.thermal_window.non_ffc_index = self.thermal_window.last_index
-            elif self.processed > self.detect_after:
+            elif self.force_record or self.processed > self.detect_after:
                 cropped_frame = np.int32(self.crop_rectangle.subimage(cptv_frame.pix))
                 movement = self.detect(cropped_frame)
                 if movement:
