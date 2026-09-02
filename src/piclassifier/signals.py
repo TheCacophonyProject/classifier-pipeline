@@ -1,0 +1,5 @@
+STOP_SIGNAL = "stop"
+SKIP_SIGNAL = "skip"
+SNAPSHOT_SIGNAL = "snap"
+PARSING_FILE = "file"
+PARSED = "parsed"

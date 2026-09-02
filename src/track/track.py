@@ -24,9 +24,6 @@ from collections import namedtuple
 
 from ml_tools.rectangle import Rectangle
 from track.region import Region
-from .kalman import Kalman
-from ml_tools.tools import eucl_distance_sq
-from ml_tools.datasetstructures import get_segments, SegmentHeader, SegmentType
 import logging
 from track.tracker import Tracker
 
@@ -63,6 +60,8 @@ class RegionTracker(Tracker):
     VELOCITY_MULTIPLIER = 10
 
     def __init__(self, id, tracking_config, crop_rectangle=None):
+        from .kalman import Kalman
+
         self.track_id = id
         self.clear_run = 0
         self.kalman_tracker = Kalman()
@@ -485,7 +484,7 @@ class Track:
         repeats=1,
         min_frames=0,
         segment_frames=None,
-        segment_types=[SegmentType.ALL_RANDOM],
+        segment_types=None,
         from_last=None,
         max_segments=None,
         ffc_frames=None,
@@ -494,6 +493,8 @@ class Track:
         min_segments=1,
         seed=None,
     ):
+        from ml_tools.datasetstructures import get_segments, SegmentHeader
+
         if from_last is not None:
             if from_last == 0:
                 return []
@@ -740,6 +741,7 @@ class Track:
         that this is a good track. This should be done once tracking is finished
         # :return: a TrackMovementStatistics record
         """
+        from ml_tools.tools import eucl_distance_sq
 
         if len(self) <= 1:
             self.stats = TrackMovementStatistics()

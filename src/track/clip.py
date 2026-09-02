@@ -22,14 +22,11 @@ import logging
 import numpy as np
 import os
 import pytz
-import cv2
 
-from ml_tools.imageprocessing import normalize, detect_objects
 from ml_tools.rectangle import Rectangle
 from track.framebuffer import FrameBuffer
 from track.track import Track
 from track.region import Region
-from piclassifier.cptvmotiondetector import is_affected_by_ffc
 
 RES_X = 160
 RES_Y = 120
@@ -110,6 +107,8 @@ class Clip:
                 logging.info("Loading from cache")
                 # 1 / 0
                 return self.rescaled[1]
+        import cv2
+
         resized = cv2.resize(
             self.background,
             (dims),
@@ -238,6 +237,9 @@ class Clip:
         checking for connected components in the intital_diff frame
         (this is the maximum change between first frame and all other frames in the clip)
         """
+        import cv2
+        from ml_tools.imageprocessing import normalize, detect_objects
+
         # remove some noise
         initial_diff[initial_diff < self.background_thresh] = 0
         initial_diff[initial_diff > 255] = 255

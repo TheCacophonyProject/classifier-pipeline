@@ -13,14 +13,14 @@ from ml_tools.rectangle import Rectangle
 
 class CPTVMotionDetector(MotionDetector):
     FFC_PERIOD = timedelta(seconds=9.9)
-    BACKGROUND_WEIGHT_ADD = 0.1
+    BACKGROUND_WEIGHT_ADD = 1
     MEAN_FRAMES = 45
 
     def __init__(self, thermal_config, dynamic_thresh, headers, detect_after=None):
         super().__init__(thermal_config, headers)
         self.headers = headers
-        if headers.model and headers.model.lower() == "lepton3.5":
-            CPTVMotionDetector.BACKGROUND_WEIGHT_ADD = 1
+        if headers.model and headers.model.lower() == "lepton3":
+            CPTVMotionDetector.BACKGROUND_WEIGHT_ADD = 0.1
         self.config = thermal_config.motion
         self.location_config = thermal_config.location
         self.num_preview_frames = thermal_config.recorder.preview_secs * headers.fps
@@ -131,11 +131,13 @@ class CPTVMotionDetector(MotionDetector):
         if not self.config.one_diff_only:
             self.diff_window.reset()
         self.processed = 0
+        self._background.reset()
+        self.running_mean = None
 
-    def process_frame(self, cptv_frame, force_process=False):
+    def process_frame(self, cptv_frame):
         prev_ffc = self.ffc_affected
         self.ffc_affected = is_affected_by_ffc(cptv_frame)
-        if self.can_record() or force_process:
+        if self.can_record():
             self.thermal_window.add(cptv_frame, self.ffc_affected)
             oldest_thermal = self.thermal_window.oldest
             if oldest_thermal is not None:
@@ -185,7 +187,7 @@ class CPTVMotionDetector(MotionDetector):
                 self.triggered = 0
                 if prev_ffc:
                     self.thermal_window.non_ffc_index = self.thermal_window.last_index
-            elif self.processed > self.detect_after:
+            elif self.force_record or self.processed > self.detect_after:
                 cropped_frame = np.int32(self.crop_rectangle.subimage(cptv_frame.pix))
                 movement = self.detect(cropped_frame)
                 if movement:

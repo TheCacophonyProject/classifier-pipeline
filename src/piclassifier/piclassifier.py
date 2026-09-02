@@ -6,8 +6,7 @@ import time
 import psutil
 import numpy as np
 import logging
-from track.clip import Clip
-from track.track import ThumbInfo
+from queue import Queue, Full, Empty
 
 from .motiondetector import SlidingWindow
 from .processor import Processor
@@ -16,43 +15,67 @@ from ml_tools.logs import init_logging
 from ml_tools.rectangle import Rectangle
 from . import beacon
 
-from piclassifier.trapcontroller import trigger_trap
 from piclassifier.attiny import set_recording_state
 from pathlib import Path
 from functools import partial
 from piclassifier import utils
+from .signals import PARSING_FILE, PARSED, SNAPSHOT_SIGNAL, STOP_SIGNAL, SKIP_SIGNAL
 
-SNAPSHOT_SIGNAL = "snap"
-STOP_SIGNAL = "stop"
-SKIP_SIGNAL = "skip"
 track_extractor = None
 clip = None
 fp_model = None
 classifier = None
 
+CAMERA_SOURCE = "camera"
+FILE_SOURCE = "file"
+
+
+def put_asoldest(queue, item):
+    try:
+        queue.put_nowait(item)
+    except Full:
+        try:
+            queue.get_nowait()
+        except Empty:
+            pass
+        try:
+            queue.put_nowait(item)
+        except Full:
+            pass
+
 
 def run_classifier(
-    frame_queue, config, thermal_config, headers, classify=True, detect_after=None
+    frame_queue, response_queue, config, thermal_config, headers, classify=True
 ):
+    from .headerinfo import HeaderInfo
+
     init_logging()
     pi_classifier = None
     try:
-        pi_classifier = PiClassifier(
-            config, thermal_config, headers, classify, detect_after
-        )
+        pi_classifier = PiClassifier(config, thermal_config, headers, classify)
         while True:
-            frame = frame_queue.get()
-            if isinstance(frame, str):
-                if frame == STOP_SIGNAL:
+            item = frame_queue.get()
+            if isinstance(item, str):
+                if item == STOP_SIGNAL:
                     logging.info("PiClassifier received stop signal")
                     pi_classifier.disconnected()
                     return
-                if frame == "skip":
+                if item == "skip":
                     pi_classifier.skip_frame()
-                elif frame == SNAPSHOT_SIGNAL:
+                elif item == SNAPSHOT_SIGNAL:
                     pi_classifier.take_snapshot()
+            elif isinstance(item, HeaderInfo):
+                pi_classifier.update_headers(item)
             else:
-                pi_classifier.process_frame(frame[0], frame[1])
+                pi_classifier.process_frame(item[0], item[1], CAMERA_SOURCE)
+            if pi_classifier.parsing_file:
+
+                response_queue.put(PARSING_FILE)
+                while pi_classifier.parsing_file:
+                    logging.info("Waiting for parse file to finish")
+                    time.sleep(10)
+                response_queue.put(PARSED)
+
     except:
         logging.error("Error running classifier restarting ..", exc_info=True)
         if pi_classifier is not None:
@@ -89,23 +112,29 @@ class PiClassifier(Processor):
         thermal_config,
         headers,
         classify,
-        detect_after=None,
         preview_type=None,
         seed=None,
     ):
+        self.parsing_file = False
+        self.initialised = False
         self.seed = seed
         self.constant_recorder = None
+        self.headers = headers
         global output_dir
         output_dir = thermal_config.recorder.output_dir
         # ensure thumb dir is made
         thumbnail_dir = Path(output_dir) / "thumbnails"
         thumbnail_dir.mkdir(exist_ok=True)
-
-        self._output_dir = thermal_config.recorder.output_dir
-        self.headers = headers
         self.classifier = None
-        self.classifier_initialised = False
         self.fp_model = None
+        self.classify = classify
+
+        super().__init__(thumbnail_dir, False or not self.classify)
+        self.recorder = None
+        self.snapshot_recorder = None
+        self.processing_frame = False
+        self._output_dir = thermal_config.recorder.output_dir
+        self.classifier_initialised = False
         self.frame_num = 0
         self.clip = None
         self.prev_clip = None
@@ -114,7 +143,6 @@ class PiClassifier(Processor):
         self.next_classify_frame = 0
         self.next_fp_classification_frame = 0
         self.classified_consec = 0
-        self.classify = classify
         self.config = config
         self.predictions = {}
         self.process_time = 0
@@ -146,123 +174,202 @@ class PiClassifier(Processor):
 
         if self.classify and self.do_tracking:
             self.init_classifiers(config.classify.models, preview_type)
-        # call after model is setup
-        super().__init__(thumbnail_dir)
+            self.update_service_labels()
 
         if self.fp_model is not None:
             self.fp_model.load_model()
         if self.classifier is not None and not self.classifier.run_over_network:
             self.classifier.load_model()
 
-        if self.headers.model == "IR":
-            self.init_ir(thermal_config)
-        else:
-            self.init_thermal(thermal_config, detect_after)
+        self.thermal_config = thermal_config
+        self.init_thermal()
 
-        edge = self.tracking_config.edge_pixels
-        self.crop_rectangle = Rectangle(
-            edge, edge, headers.res_x - 2 * edge, headers.res_y - 2 * edge
-        )
         global track_extractor
         track_extractor = self.track_extractor
-
-        self.motion = thermal_config.motion
-        self.min_frames = thermal_config.recorder.min_secs * headers.fps
-        self.max_frames = thermal_config.recorder.max_secs * headers.fps
 
         self.meta_dir = os.path.join(thermal_config.recorder.output_dir)
         if not os.path.exists(self.meta_dir):
             os.makedirs(self.meta_dir)
+        self.parsing_file = False
+        self.initialised = True
 
-    def init_ir_recorders(self, thermal_config):
-        recording_stopping_callback = partial(
-            on_recording_stopping,
-            output_dir=self._output_dir,
-            service=self.service,
-            tracking_events=self.tracking_events,
-        )
+    def update_headers(self, headers):
+        from .cptvmotiondetector import CPTVMotionDetector
 
-        from .irrecorder import IRRecorder
-
-        if not thermal_config.recorder.disable_recordings:
-            self.recorder = IRRecorder(
-                thermal_config,
-                self.headers,
-                on_recording_stopping=recording_stopping_callback,
-            )
-
-        # dont want snaps getting postprocess
-        postprocess = thermal_config.motion.postprocess
-        thermal_config.motion.postprocess = False
-        self.snapshot_recorder = IRRecorder(
-            thermal_config,
-            self.headers,
-            on_recording_stopping=recording_stopping_callback,
-            name="IR Snapshot",
-        )
-        thermal_config.motion.postprocess = postprocess
-
-        if thermal_config.recorder.constant_recorder:
-            self.constant_recorder = IRRecorder(
-                thermal_config,
-                self.headers,
-                on_recording_stopping=recording_stopping_callback,
-                name="IR Constant",
-                constant_recorder=True,
-            )
-
-    def init_ir_tracking(self, thermal_config):
-        from track.irtrackextractor import IRTrackExtractor
-
-        logging.info("Running on IR")
-        PiClassifier.SKIP_FRAMES = 3
-        self.track_extractor = IRTrackExtractor(
-            self.config.tracking,
-            cache_to_disk=self.config.classify.cache_to_disk,
-            keep_frames=False,
-            verbose=self.config.verbose,
-            calc_stats=False,
-            scale=0.25,
-            on_trapped=on_track_trapped,
-            update_background=False,
-            trap_size=thermal_config.device_setup.trap_size,
-            from_pi=True,
-        )
-        self.tracking_config = self.config.tracking.get(IRTrackExtractor.TYPE)
-
-        self.type = IRTrackExtractor.TYPE
-
-    def init_ir(self, thermal_config):
-        from .irmotiondetector import IRMotionDetector
-
-        logging.info("Running on IR")
-        if self.do_tracking:
-            self.init_ir_tracking(thermal_config)
-        self.init_ir_recorders(thermal_config)
-        self.type = "IR"
-        self.motion_detector = IRMotionDetector(
-            thermal_config,
+        self.headers = headers
+        self.reset()
+        self.init_recorders()
+        self.motion_detector = CPTVMotionDetector(
+            self.thermal_config,
+            self.tracking_config.motion.dynamic_thresh,
             self.headers,
         )
 
-    def init_thermal(self, thermal_config, detect_after):
+    def is_ready(self):
+        if self.classify and self.initialised:
+            return self.classifier_ready(0)
+        return self.initialised
+    
+    def is_parsing_file(self):
+        return self.headers.source if self.parsing_file else None
+
+    def parse_file(self, file, fps, seed):
+        max_sleep = 30
+        slept = 0
+        while not self.initialised:
+            logging.info("Trying to parse file but not initialized waiting 1 second")
+            time.sleep(1)
+            slept += 1
+            if slept >= max_sleep:
+                logging.info(
+                    "Processor failed to become ready initialized %s", self.initialised
+                )
+        if self.parsing_file:
+            logging.info("Already parsing file so not parsing %s", file)
+            return
+        pre_headers = self.headers
+        try:
+            slept = 0
+            self.parsing_file = True
+            if self.classify:
+                self.startup_classifier()
+            self.classifier_ready()
+            while self.processing_frame:
+                logging.info("Trying to parse file but processesor is busy")
+                time.sleep(1)
+                slept += 1
+                if slept >= max_sleep:
+                    logging.info(
+                        "Processor failed to become ready process frame is %s",
+                        self.processing_frame,
+                    )
+                    return
+            self.reset()
+
+            logging.info("Parsing %s", file)
+            from cptv_rs_python_bindings import CptvReader
+            from cptv import Frame
+            from .headerinfo import HeaderInfo
+
+            frame_queue = Queue(maxsize=5)
+            telemetry_size = 160 * 4
+            reader = CptvReader(str(file))
+            header = reader.get_header()
+            headers = HeaderInfo(
+                res_x=header.x_resolution,
+                res_y=header.y_resolution,
+                fps=9,
+                brand=header.brand if header.brand else None,
+                model=header.model if header.model else None,
+                frame_size=header.x_resolution * header.y_resolution * 2
+                + telemetry_size,
+                pixel_bits=16,
+                serial="",
+                firmware="",
+                source=str(file),
+            )
+
+            self.update_headers(headers)
+            if not self.recorder.postprocess:
+                from .dummyrecorder import DummyRecorder
+
+                self.recorder = DummyRecorder(
+                    None,
+                    self.headers,
+                    on_recording_stopping=self.recorder.on_recording_stopping,
+                )
+                self.recorder.min_frames = self.recorder.min_frames
+                self.recorder.max_frames = self.recorder.max_frames
+
+            self.motion_detector.force_record = True
+            from threading import Thread
+
+            preview_thread = Thread(
+                target=utils.preview_socket,
+                args=(
+                    headers,
+                    frame_queue,
+                ),
+                daemon=True,
+            )
+            preview_thread.start()
+            if self.classify and self.classifier:
+                if seed is not None and seed >= 0:
+                    self.classifier.seed = seed
+                else:
+                    self.classifier.seed = header.timestamp
+            if self.fp_model is not None:
+                self.fp_model.seed = self.classifier.seed
+
+            while True:
+                frame = reader.next_frame()
+
+                if frame is None:
+                    break
+                # to get extra properties and allow pickling convert to cptv.Frame
+                frame = Frame(
+                    frame.pix,
+                    timedelta(milliseconds=frame.time_on),
+                    timedelta(milliseconds=frame.last_ffc_time),
+                    frame.temp_c,
+                    frame.last_ffc_temp_c,
+                    frame.background_frame,
+                )
+
+                put_asoldest(frame_queue, frame)
+
+                frame.ffc_imminent = False
+                frame.ffc_status = 0
+
+                if frame.background_frame:
+                    self.motion_detector._background._background = frame.pix
+                    continue
+                try:
+                    self.process_frame(frame, time.time(), FILE_SOURCE)
+                except:
+                    logging.error("Could not process frame from file ", exc_info=True)
+                if fps is not None and fps > 0:
+                    time.sleep(1.0 / fps)
+
+            put_asoldest(frame_queue, STOP_SIGNAL)
+            self.reset()
+
+            while self.recorder is not None and self.recorder.recording:
+                logging.info(
+                    "Trying to end parse file but still recording so waiting 5 seconds"
+                )
+                time.sleep(5)
+            preview_thread.join(7)
+            if preview_thread.is_alive():
+                logging.info(
+                    "Preview thread did not stop in time, it will be abandoned"
+                )
+        except:
+            logging.error("Could not parse file %s", exc_info=True)
+        self.motion_detector.force_record = False
+
+        self.reset()
+        self.update_headers(pre_headers)
+
+        self.parsing_file = False
+
+    def init_thermal(self):
         from .cptvmotiondetector import CPTVMotionDetector
 
         logging.info("Running on Thermal")
         self.tracking_config = self.config.tracking.get("thermal")
 
         if self.do_tracking:
-            self.init_tracking(thermal_config)
-        self.init_recorders(thermal_config)
+            self.init_tracking()
+        self.init_recorders()
         self.type = "thermal"
         self.motion_detector = CPTVMotionDetector(
-            thermal_config,
+            self.thermal_config,
             self.tracking_config.motion.dynamic_thresh,
             self.headers,
-            detect_after=detect_after,
         )
 
-    def init_recorders(self, thermal_config):
+    def init_recorders(self):
         recording_stopping_callback = partial(
             on_recording_stopping,
             output_dir=self._output_dir,
@@ -270,11 +377,11 @@ class PiClassifier(Processor):
             tracking_events=self.tracking_events,
         )
 
-        if thermal_config.recorder.disable_recordings:
+        if self.thermal_config.recorder.disable_recordings:
             from .dummyrecorder import DummyRecorder
 
             self.recorder = DummyRecorder(
-                thermal_config,
+                self.thermal_config,
                 self.headers,
                 on_recording_stopping=recording_stopping_callback,
             )
@@ -282,44 +389,44 @@ class PiClassifier(Processor):
             from .cptvrecorder import CPTVRecorder
 
             self.recorder = CPTVRecorder(
-                thermal_config,
+                self.thermal_config,
                 self.headers,
                 on_recording_stopping=recording_stopping_callback,
             )
 
-        if thermal_config.throttler.activate:
+        if self.thermal_config.throttler.activate:
             from .throttledrecorder import ThrottledRecorder
 
             self.recorder = ThrottledRecorder(
                 self.recorder,
-                thermal_config,
+                self.thermal_config,
                 self.headers,
                 on_recording_stopping=recording_stopping_callback,
             )
 
         # dont want snaps getting reprocessed
-        postprocess = thermal_config.motion.postprocess
-        thermal_config.motion.postprocess = False
+        postprocess = self.thermal_config.motion.postprocess
+        self.thermal_config.motion.postprocess = False
         self.snapshot_recorder = CPTVRecorder(
-            thermal_config,
+            self.thermal_config,
             self.headers,
             on_recording_stopping=recording_stopping_callback,
             constant_recorder=False,
             name="CPTV Snapshot",
             file_suffix="-snap",
         )
-        thermal_config.motion.postprocess = postprocess
+        self.thermal_config.motion.postprocess = postprocess
 
-        if thermal_config.recorder.constant_recorder:
+        if self.thermal_config.recorder.constant_recorder:
             self.constant_recorder = CPTVRecorder(
-                thermal_config,
+                self.thermal_config,
                 self.headers,
                 on_recording_stopping=recording_stopping_callback,
                 name="CPTV Constant",
                 constant_recorder=True,
             )
 
-    def init_tracking(self, thermal_config, detect_after=None):
+    def init_tracking(self):
         from track.cliptrackextractor import ClipTrackExtractor
 
         self.track_extractor = ClipTrackExtractor(
@@ -382,7 +489,9 @@ class PiClassifier(Processor):
             except ValueError:
                 self.fp_index = None
         if fp_config is not None:
-            self.fp_model = get_interpreter(fp_config, load_model=load_model)
+            self.fp_model = get_interpreter(
+                fp_config, load_model=load_model, seed=self.seed
+            )
             global fp_model
             fp_model = self.fp_model
             self.predictions[self.fp_model.id] = Predictions(
@@ -390,6 +499,8 @@ class PiClassifier(Processor):
             )
 
     def new_clip(self, preview_frames, received_at):
+        from track.clip import Clip
+
         self.clip = Clip(
             self.tracking_config,
             "stream",
@@ -441,6 +552,20 @@ class PiClassifier(Processor):
         )
         for t in new_tracks:
             t.received_at = received_at
+
+    def classifier_ready(self,timeout= 45):
+        if not self.classify or not self.classifier.run_over_network:
+            return True
+        from classify.clipclassifier import classify_ready
+
+        logging.info(
+            "Checking if classifier is ready at %s",
+            f"http://127.0.0.1:{self.classifier.port}/ready",
+        )
+        classifier_is_ready = classify_ready(
+            f"http://127.0.0.1:{self.classifier.port}/ready",timeout
+        )
+        return classifier_is_ready
 
     def startup_classifier(self):
         self.classifier_initialised = True
@@ -715,6 +840,7 @@ class PiClassifier(Processor):
         best_contour = None
         from ml_tools.imageprocessing import resize_and_pad
         import cv2
+        from track.track import ThumbInfo
 
         for track in tracks:
             confidence = None
@@ -882,17 +1008,22 @@ class PiClassifier(Processor):
                 self.motion_detector.num_frames,
             )
 
-    def disconnected(self):
+    def reset(self):
+        self.classified_consec = 0
         self.motion_detector.disconnected()
-        if self.recorder.recording and self.tracking_events:
+        if self.recorder and self.recorder.recording and self.tracking_events:
             self.recording = False
             self.service.recording(time.time(), False)
         self.recorder.force_stop()
-        self.snapshot_recorder.force_stop()
+        if self.snapshot_recorder:
+            self.snapshot_recorder.force_stop()
         if self.constant_recorder is not None:
             self.constant_recorder.force_stop()
 
         self.end_clip()
+
+    def disconnected(self):
+        self.reset()
         self.service.quit()
 
     def skip_frame(self):
@@ -901,7 +1032,11 @@ class PiClassifier(Processor):
 
     def take_snapshot(self):
         started = self.snapshot_recorder.start_recording(
-            None, [], self.motion_detector.temp_thresh, time.time()
+            None,
+            [],
+            self.motion_detector.temp_thresh,
+            time.time(),
+            test=self.parsing_file,
         )
         if not started:
             logging.info("Already taking snapshot recording")
@@ -910,7 +1045,10 @@ class PiClassifier(Processor):
         self.snapshot_recorder.write_until = 2 * self.headers.fps
         return True
 
-    def process_frame(self, lepton_frame, received_at):
+    def process_frame(self, lepton_frame, received_at, source):
+        if self.parsing_file and source == CAMERA_SOURCE:
+            return
+        self.processing_frame = True
         import time
 
         start = time.time()
@@ -945,15 +1083,20 @@ class PiClassifier(Processor):
         ):
             s_r = time.time()
             preview_frames = self.motion_detector.preview_frames()
-            bak = self.motion_detector.background
             self.recording = self.recorder.start_recording(
                 self.motion_detector.background,
                 preview_frames,
                 self.motion_detector.temp_thresh,
                 received_at,
+                test=self.parsing_file,
             )
             self.rec_time += time.time() - s_r
             if self.recording:
+                if self.classify and self.classifier and not self.parsing_file:
+                    # set the seed to be recording start time so that the predictions can be reproduced
+                    self.classifier.seed = int(received_at * 1000000)
+                    if self.fp_model is not None:
+                        self.fp_model.seed = int(received_at * 1000000)
                 if self.tracking_events:
                     self.service.recording(
                         received_at,
@@ -1089,6 +1232,7 @@ class PiClassifier(Processor):
             self.total_time = 0
             self.rec_time = 0
         self.fps_timer.add(time.time() - start)
+        self.processing_frame = False
 
     def create_mp4(self):
         from ml_tools.previewer import Previewer
@@ -1127,7 +1271,7 @@ class PiClassifier(Processor):
             )
             if self.classify:
                 for pred in self.predictions.values():
-                    logging.info("Pred for model %s", pred.model)
+                    logging.info("Pred for model %s", pred.model.name)
                     for t_id, prediction in pred.prediction_per_track.items():
                         if prediction.max_score:
                             logging.info(
@@ -1159,6 +1303,8 @@ class PiClassifier(Processor):
 
 
 def on_track_trapped(track):
+    from piclassifier.trapcontroller import trigger_trap
+
     track.trap_reported = True
     # GP could make a prediction here
 
@@ -1184,6 +1330,7 @@ def on_recording_stopping(
         set_recording_state(False)
     if "-snap" in filename.stem:
         return
+
     global clip, track_extractor, predictions
     if clip and track_extractor:
         # save thumbs
@@ -1231,6 +1378,10 @@ def on_recording_stopping(
         meta_data["algorithm"] = {}
         meta_data["algorithm"]["tracker_version"] = f"PI-{track_extractor.VERSION}"
         meta_data["metadata_source"] = "PI"
+        if "-test" in filename.stem:
+            # this is a test recording always use the same seed
+            meta_data["seed"] = 0
+
         if clip.thumb_info is not None:
             meta_data["thumbnail"] = clip.thumb_info.to_metadata()
         if predictions is not None:

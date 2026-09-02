@@ -19,18 +19,15 @@ from .eventreporter import log_event
 from piclassifier.monitorconfig import monitor_file
 from pathlib import Path
 from piclassifier import utils
+from .signals import STOP_SIGNAL, SKIP_SIGNAL, SNAPSHOT_SIGNAL, PARSING_FILE, PARSED
 
 SOCKET_NAME = "/var/run/lepton-frames"
 VOSPI_DATA_SIZE = 160
 TELEMETRY_PACKET_COUNT = 4
-STOP_SIGNAL = "stop"
-
-SKIP_SIGNAL = "skip"
-SNAPSHOT_SIGNAL = "snap"
 
 restart_pending = False
 connected = False
-
+ready_to_record = False
 
 def parse_args():
     parser = argparse.ArgumentParser()
@@ -48,9 +45,6 @@ def parse_args():
 
     parser.add_argument(
         "--thermal-config-file", help="Path to pi-config file (config.toml) to use"
-    )
-    parser.add_argument(
-        "--ir", action="count", help="Path to pi-config file (config.toml) to use"
     )
 
     parser.add_argument(
@@ -78,22 +72,33 @@ def main():
 
     config = Config.load_from_file(args.config_file)
     thermal_config = ThermalConfig.load_from_file(args.thermal_config_file)
-    monitor_thread = Thread(
-        target=monitor_file, args=(file_changed, thermal_config.config_file)
-    )
-    monitor_thread.daemon = True
-    monitor_thread.start()
+
     thermal_config.recorder.rec_window.set_location(
         *thermal_config.location.get_lat_long(use_default=True),
         thermal_config.location.altitude,
     )
-
     if args.file:
         return parse_file(
             args.file, config, thermal_config, args.preview_type, args.fps, args.seed
         )
 
+
     process_queue = multiprocessing.Queue()
+    response_queue = multiprocessing.Queue()
+
+    # TODO this will break things if we ever have different resolution or FPS
+    headers = default_headers()
+    processor = get_processor(
+        process_queue, response_queue, config, thermal_config, headers
+    )
+    processor.start()
+
+    monitor_thread = Thread(
+        target=monitor_file, args=(file_changed, thermal_config.config_file)
+    )
+    monitor_thread.daemon = True
+    monitor_thread.start()
+
 
     # get a cloned window so we dont update it
     if not thermal_config.recorder.use_low_power_mode:
@@ -107,37 +112,12 @@ def main():
         )
         snapshot_thread.daemon = True
         snapshot_thread.start()
-    if args.ir or thermal_config.device_setup.ir:
-        while True:
-            if restart_pending:
-                break
-            try:
-                read = ir_camera(config, thermal_config, process_queue)
-                if read == 0:
-                    logging.error("Error reading camera try again in 10")
-                    time.sleep(10)
-                else:
-                    log_event("camera-disconnected", f"read {read} frames")
-            except Exception as ex:
-                log_event("camera-disconnected", ex)
-                logging.error("Error reading camera try again in 10", exc_info=True)
-                time.sleep(10)
-        return
-
     try:
         os.unlink(SOCKET_NAME)
     except OSError:
         if os.path.exists(SOCKET_NAME):
             raise
     logging.info("running as thermal")
-
-    # start relevenet services
-
-    model = None
-    for model_config in config.classify.models:
-        if model_config.type != "RandomForest":
-            model = model_config
-            break
 
     # try not run classifier unless we are inside a recording window
     # enable_network_classifier = (
@@ -156,14 +136,18 @@ def main():
     success = utils.startup_postprocessor(thermal_config.motion.postprocess)
     if not success and thermal_config.motion.postprocess:
         raise Exception("Could not start up postprocessor")
+
+
     sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     sock.bind(SOCKET_NAME)
-    sock.settimeout(3 * 60)  # 3 minutes
+    sock.settimeout(1 * 60)
     sock.listen(1)
     global connected
+
     while True:
         if restart_pending:
             sock.close()
+            logging.info("Restart pending exiting")
             break
         logging.info("waiting for a connection")
         try:
@@ -171,12 +155,20 @@ def main():
             connected = True
             logging.info("connection from %s", client_address)
             log_event("camera-connected", {"type": "thermal"})
+
             handle_connection(
-                connection, config, args.thermal_config_file, process_queue
+                processor,
+                connection,
+                config,
+                args.thermal_config_file,
+                process_queue,
+                response_queue,
             )
+
+
         except socket.timeout:
             logging.error("Socket %s timeout error", SOCKET_NAME, exc_info=True)
-            return
+            continue
 
         except Exception as ex:
             log_event("camera-disconnected", ex)
@@ -187,7 +179,17 @@ def main():
                 connection.close()
             except:
                 pass
-        connected = False
+    if processor.is_alive:
+        logging.info("Stopping processor because restart was pending")
+        process_queue.put(STOP_SIGNAL)
+        # give it time to clean up, seems to take a while if classifier is running
+        processor.join(50)
+        if processor.is_alive():
+            logging.info("Killing process")
+            try:
+                utils.kill_process_with_timeout(processor)
+            except:
+                pass
 
 
 def file_changed(event):
@@ -202,227 +204,50 @@ def file_changed(event):
 def parse_file(file, config, thermal_config, preview_type, fps, seed):
     from config.timewindow import TimeWindow, RelAbsTime
 
-    _, ext = os.path.splitext(file)
     thermal_config.recorder.rec_window = rec_window = TimeWindow(
         RelAbsTime(""), RelAbsTime(""), None, None, 0
     )
 
-    if ext == ".cptv":
-        parse_cptv(file, config, thermal_config.config_file, preview_type, fps, seed)
-    else:
-        parse_ir(file, config, thermal_config, preview_type, fps)
+    parse_cptv(file, config, thermal_config, preview_type, fps, seed)
 
 
-def parse_ir(file, config, thermal_config, preview_type, fps):
-    from piclassifier import irmotiondetector
+def parse_cptv(file, config, thermal_config, preview_type, fps, seed):
     from .piclassifier import PiClassifier
 
-    import cv2
-
-    irmotiondetector.MIN_FRAMES = 0
-    count = 0
-    vidcap = cv2.VideoCapture(file)
-    while True:
-        if fps is not None:
-            time.sleep(1 / fps)
-        success, image = vidcap.read()
-        if not success:
-            break
-        # gray = cv2.resize(gray, (640, 480))
-        if count == 0:
-            res_y, res_x = image.shape[:2]
-            headers = HeaderInfo(
-                res_x=res_x,
-                res_y=res_y,
-                fps=10,
-                brand=None,
-                model="IR",
-                frame_size=res_y * res_x,
-                pixel_bits=8,
-                serial="",
-                firmware="",
-            )
-
-            pi_classifier = PiClassifier(
-                config,
-                thermal_config,
-                headers,
-                thermal_config.motion.run_classifier,
-                0,
-                preview_type,
-            )
-            gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-            pi_classifier.motion_detector._background._background = np.float32(gray)
-            pi_classifier.motion_detector._background.update_background(
-                gray, learning_rate=1
-            )
-            pi_classifier.motion_detector._background._frames = 1000
-            count += 1
-            # assume this has been run over 1000 frames
-            continue
-        # frame = Frame(image, None, None, None, None)
-        # frame.received_at = time.time()
-        pi_classifier.process_frame(image, time.time())
-        count += 1
-    vidcap.release()
-    pi_classifier.disconnected()
-
-
-def preview_socket(headers, frame_queue):
-    import yaml
-
-    # convert casing
-    python_dic = headers.__dict__
-    go_dic = {}
-    for k, v in python_dic.items():
-        new_key = f"{k[0].upper()}{k[1:]}"
-        try:
-            under_index = new_key.index("_")
-            new_key = f"{new_key[:under_index]}{new_key[under_index+1].upper()}{new_key[under_index+2:]}"
-        except:
-            pass
-        go_dic[new_key] = v
-    header_bytes = yaml.dump(go_dic).encode()
-    header_bytes += b"\nclear"
-
-    while True:
-        try:
-            # connect to management socket
-            frameSocket = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-            frameSocket.connect("/var/spool/managementd")
-            logging.info("Connected to management interface")
-            frameSocket.send(header_bytes)
-            telemetry_bytes = bytearray(640)
-            # if we need this can add the correct info
-            while True:
-                frame = frame_queue.get()
-                if isinstance(frame, str):
-                    if frame == STOP_SIGNAL:
-                        return
-                if frame is None:
-                    logging.info("Disconnected")
-                    break
-                frame_bytes = frame.pix.byteswap().tobytes()
-                frame_bytes = telemetry_bytes + frame_bytes
-                frameSocket.send(frame_bytes)
-        except:
-            # logging.error("Failed to connect to /var/spool/managementd", exc_info=True)
-            try:
-                # empty the queue
-                items = frame_queue.qsize()
-                items = max(items, 1)
-                for _ in range(items):
-                    item = frame_queue.get(100)
-                    if isinstance(item, str):
-                        if item == STOP_SIGNAL:
-                            return
-            except:
-                pass
-            # could not connect wait a few seconds
-            time.sleep(2)
-
-
-def parse_cptv(file, config, thermal_config_file, preview_type, fps, seed):
-    from .piclassifier import PiClassifier
-
-    from cptv import Frame
-    from cptv_rs_python_bindings import CptvReader
-
-    reader = CptvReader(str(file))
-    header = reader.get_header()
+    # this doesnt matter since it will get read from file later
     telemetry_size = 160 * 4
     headers = HeaderInfo(
-        res_x=header.x_resolution,
-        res_y=header.y_resolution,
+        res_x=160,
+        res_y=120,
         fps=9,
-        brand=header.brand if header.brand else None,
-        model=header.model if header.model else None,
-        frame_size=header.x_resolution * header.y_resolution * 2 + telemetry_size,
+        brand=None,
+        model=None,
+        frame_size=120 * 160 * 2 + telemetry_size,
         pixel_bits=16,
         serial="",
         firmware="",
+        source=file,
     )
-
-    frame_queue = multiprocessing.Queue()
-    preview_process = multiprocessing.Process(
-        target=preview_socket,
-        args=(
-            headers,
-            frame_queue,
-        ),
+    pi_classifier = PiClassifier(
+        config,
+        thermal_config,
+        headers,
+        thermal_config.motion.run_classifier,
+        preview_type,
     )
-    preview_process.start()
-    try:
-        thermal_config = ThermalConfig.load_from_file(
-            thermal_config_file, headers.model
-        )
-
-        pi_classifier = PiClassifier(
-            config,
-            thermal_config,
-            headers,
-            thermal_config.motion.run_classifier,
-            0,
-            preview_type,
-            seed,
-        )
-        while True:
-            frame = reader.next_frame()
-
-            if frame is None:
-                break
-            # to get extra properties and allow pickling convert to cptv.Frame
-            frame = Frame(
-                frame.pix,
-                timedelta(milliseconds=frame.time_on),
-                timedelta(milliseconds=frame.last_ffc_time),
-                frame.temp_c,
-                frame.last_ffc_temp_c,
-                frame.background_frame,
-            )
-
-            frame_queue.put(frame)
-
-            frame.ffc_imminent = False
-            frame.ffc_status = 0
-
-            if frame.background_frame:
-                pi_classifier.motion_detector._background._background = frame.pix
-                continue
-            pi_classifier.process_frame(frame, time.time())
-            if fps is not None:
-                time.sleep(1.0 / fps)
-
-        pi_classifier.disconnected()
-        frame_queue.put(STOP_SIGNAL)
-        preview_process.join(7)
-        if preview_process.is_alive():
-            logging.info("Killing preview process")
-            try:
-                kill_process_with_timeout(preview_process)
-            except:
-                pass
-    except Exception as ex:
-        pi_classifier.disconnected()
-        logging.error("EXception all done")
-        frame_queue.put(STOP_SIGNAL)
-        preview_process.join(7)
-        if preview_process.is_alive():
-            logging.info("Killing preview process")
-            try:
-                kill_process_with_timeout(preview_process)
-            except:
-                pass
-        raise ex
+    pi_classifier.parse_file(file, fps, seed)
+    pi_classifier.service.quit()
+    print("ALL DONE")
 
 
-def get_processor(process_queue, config, thermal_config, headers):
+def get_processor(process_queue, response_queue, config, thermal_config, headers):
     from .piclassifier import run_classifier
 
     p_processor = multiprocessing.Process(
         target=run_classifier,
         args=(
             process_queue,
+            response_queue,
             config,
             thermal_config,
             headers,
@@ -450,94 +275,6 @@ def handle_headers(connection):
                 left_over = left_over[5:]
             break
     return HeaderInfo.parse_header(headers.decode()), left_over
-
-
-def ir_camera(config, thermal_config, process_queue):
-    import cv2
-
-    FPS = 10
-    logging.info("Starting ir video capture")
-    cap = cv2.VideoCapture(0)
-    cap.set(cv2.CAP_PROP_FPS, FPS)
-    frames = 0
-    try:
-        res_x = cap.get(cv2.CAP_PROP_FRAME_WIDTH)
-        res_y = cap.get(cv2.CAP_PROP_FRAME_HEIGHT)
-        headers = HeaderInfo(
-            res_x=int(res_x),
-            res_y=int(res_y),
-            fps=FPS,
-            brand=None,
-            model="IR",
-            frame_size=res_y * res_x,
-            pixel_bits=8,
-            serial="",
-            firmware="",
-        )
-
-        global connected
-        connected = True
-        processor = get_processor(process_queue, config, thermal_config, headers)
-        processor.start()
-        drop_frame = None
-        dropped = 0
-        start_dropping = None
-
-        while True:
-            if restart_pending:
-                logging.info(
-                    "Restarting as config changed QSize is %s", process_queue.qsize()
-                )
-                process_queue.put(STOP_SIGNAL)
-                # give it time to clean up
-                processor.join(5)
-                if processor.is_alive():
-                    logging.info("Killing process")
-                    try:
-                        kill_process_with_timeout(processor)
-                    except:
-                        pass
-                break
-            returned, frame = cap.read()
-            if not processor.is_alive():
-                logging.info("Processor stopped, restarting %s", processor.is_alive())
-                processor = get_processor(
-                    process_queue, config, thermal_config, headers
-                )
-                processor.start()
-            if not returned:
-                logging.info("no frame from video capture")
-                process_queue.put(STOP_SIGNAL)
-                break
-            frames += 1
-            if frames == 1:
-                log_event("camera-connected", {"type": "IR"})
-            if drop_frame is not None and (frames - start_dropping) % drop_frame == 0:
-                logging.info("Dropping frame due to slow processing")
-                dropped += 1
-            else:
-                process_queue.put((frame, time.time()))
-            qsize = process_queue.qsize()
-            if qsize > headers.fps * 4 and (
-                drop_frame is None or frames > (start_dropping + drop_frame)
-            ):
-                # drop every 9th frame
-                if drop_frame is None:
-                    drop_frame = 9
-                else:
-                    drop_frame = drop_frame - 1
-                # drop first frame
-                start_dropping = frames + 1
-                logging.info("Dropping every %s frame as qsize %s", drop_frame, qsize)
-            elif qsize < headers.fps * 3:
-                drop_frame = None
-                start_dropping = None
-    finally:
-        if processor is not None:
-            time.sleep(5)
-            kill_process_with_timeout(processor)
-
-    return frames
 
 
 def next_snapshot(window, prev_window_type=None):
@@ -587,6 +324,8 @@ def take_snapshots(window, process_queue, output_dir):
         if time_until > 0:
             logging.info("Taking snapshot at %s", snap_time)
             time.sleep(time_until)
+        while not ready_to_record:
+            time.sleep(10)
         logging.info("Sending snapshot signal")
         process_queue.put(SNAPSHOT_SIGNAL)
         next_snap = next_snapshot(window, next_snap[1])
@@ -633,48 +372,31 @@ def delete_stale_thumbnails(output_dir):
 # return -1
 
 
-def kill_process_with_timeout(process, timeout=30):
-    # for some reason process.kill hangs sometimes
-    kill_thread = Thread(target=kill_process, args=(process,))
-    kill_thread.start()
-    try:
-        kill_thread.join(timeout)
-    except:
-        logging.error("Kill thread didnt terminate", exc_info=True)
+import fcntl, termios, struct
 
+def bytes_queued(sock):
+    buf = struct.pack('i', 0)
+    return struct.unpack('i', fcntl.ioctl(sock.fileno(), termios.FIONREAD, buf))[0]
 
-def kill_process(process):
-    logging.info("Killing process %s", process.pid)
-    try:
-        parent = psutil.Process(process.pid)
-        children = parent.children()
-        for child in children:
-            if child.is_running:
-                kill_process(child)
-        psutil.wait_procs(children, timeout=5)
-        if parent.is_running:
-            try:
-                parent.kill()
-            except:
-                logging.error("Could not kill process %s ", parent.pid, exc_info=True)
-            parent.wait(5)
-
-    except:
-        logging.error("Could not kill process", exc_info=True)
-
-
-def handle_connection(connection, config, thermal_config_file, process_queue):
+def handle_connection(
+    processor, connection, config, thermal_config_file, process_queue, response_queue
+):
     from .cameras import lepton3
     from ml_tools.rectangle import Rectangle
+    from queue import Empty
 
+    # sometimes the headers are never received
+    connection.settimeout(20)
     headers, extra_b = handle_headers(connection)
+    connection.settimeout(None)
+
     thermal_config = ThermalConfig.load_from_file(thermal_config_file, headers.model)
     logging.info(
         "parsed camera headers %s running with config %s", headers, thermal_config
     )
-
-    processor = get_processor(process_queue, config, thermal_config, headers)
-    processor.start()
+    process_queue.put(headers)
+    global ready_to_record
+    ready_to_record = True
 
     edge = config.tracking["thermal"].edge_pixels
     crop_rectangle = Rectangle(
@@ -682,16 +404,18 @@ def handle_connection(connection, config, thermal_config_file, process_queue):
     )
     raw_frame = lepton3.Lepton3(headers)
     read = 0
+    parsing_file = False
     try:
         while True:
             if restart_pending:
                 logging.info("Restarting as config changed")
                 break
+
             if not processor.is_alive():
                 # this potentially loops on indefinately on an error if the error is to do with the headers
                 logging.info("Processor stopped restarting")
                 processor = get_processor(
-                    process_queue, config, thermal_config, headers
+                    process_queue, response_queue, config, thermal_config, headers
                 )
                 processor.start()
             if extra_b is not None:
@@ -699,9 +423,9 @@ def handle_connection(connection, config, thermal_config_file, process_queue):
                     headers.frame_size - len(extra_b), socket.MSG_WAITALL
                 )
                 extra_b = None
+
             else:
                 data = connection.recv(headers.frame_size, socket.MSG_WAITALL)
-
             if not data:
                 logging.info("disconnected from camera")
                 break
@@ -715,7 +439,19 @@ def handle_connection(connection, config, thermal_config_file, process_queue):
             except:
                 pass
             read += 1
-
+            # if read % 90:
+            #     print_memory_usage()
+            if parsing_file:
+                # need to keep reading from data socket in the mean time so just do a quick check
+                try:
+                    message = response_queue.get(False, 0)
+                    if message == PARSED:
+                        parsing_file = False
+                        logging.info("Finished parsing file")
+                        process_queue.put(headers)
+                except Empty:
+                    pass
+                continue
             frame = raw_frame.parse(data)
             frame.received_at = time.time()
             cropped_frame = crop_rectangle.subimage(frame.pix)
@@ -732,14 +468,103 @@ def handle_connection(connection, config, thermal_config_file, process_queue):
             else:
                 process_queue.put((frame, time.time()))
 
+            if process_queue.qsize() > 20:
+                # check if there is a reason frames have slowed down
+                try:
+                    message = response_queue.get(False, 0)
+                    if message == PARSING_FILE:
+                        parsing_file = True
+                        clear_queue(process_queue)
+                        logging.info("Parsing file so will not process any more frames")
+                except Empty:
+                    pass
+
+    except:
+        logging.error("Error handling connection",exc_info=True)
     finally:
+        ready_to_record = False
         if processor.is_alive:
+            logging.info("Stopping processor because there was an issue in frame handling")
+
             process_queue.put(STOP_SIGNAL)
             # give it time to clean up, seems to take a while if classifier is running
             processor.join(50)
             if processor.is_alive():
                 logging.info("Killing process")
                 try:
-                    kill_process_with_timeout(processor)
+                    utils.kill_process_with_timeout(processor)
                 except:
                     pass
+        clear_queue(process_queue)
+        clear_queue(response_queue)
+
+def clear_queue(q):
+    """Removes all items from a multiprocessing Queue."""
+    from queue import Empty
+
+    try:
+        while True:
+            q.get_nowait()
+    except Empty:
+        pass
+
+
+def default_headers():
+    telemetry_size = 160 * 4
+
+    headers = HeaderInfo(
+        res_x=160,
+        res_y=120,
+        fps=9,
+        brand=None,
+        model=None,
+        frame_size=120 * 160 * 2 + telemetry_size,
+        pixel_bits=16,
+        serial="",
+        firmware="",
+    )
+    return headers
+
+
+
+def print_memory_usage():
+    process = psutil.Process(os.getpid())
+    main_rss = process.memory_info().rss
+    main_uss = process.memory_full_info().uss
+    total_rss = main_rss
+    total_uss = main_uss
+    logging.info(
+        "Memory usage pid %d (%s) %.1fMB rss %.1fMB uss",
+        process.pid,
+        process.name(),
+        main_rss / (1024 * 1024),
+        main_uss / (1024 * 1024),
+    )
+    children = process.children(recursive=True)
+    for child in children:
+        try:
+            child_rss = child.memory_info().rss
+            child_uss = child.memory_full_info().uss
+            total_rss += child_rss
+            total_uss += child_uss
+            logging.info(
+                "Memory usage pid %d (%s) %.1fMB rss %.1fMB uss",
+                child.pid,
+                child.name(),
+                child_rss / (1024 * 1024),
+                child_uss / (1024 * 1024),
+            )
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            continue
+    swap = psutil.swap_memory()
+    logging.info(
+        "Memory usage main %.1fMB total (with %d sub processes) %.1fMB uss %.1fMB swap used %.1fMB of %.1fMB (%.1f%%)",
+        main_rss / (1024 * 1024),
+        len(children),
+        total_rss / (1024 * 1024),
+        total_uss / (1024 * 1024),
+        swap.used / (1024 * 1024),
+        swap.total / (1024 * 1024),
+        swap.percent,
+    )
+
