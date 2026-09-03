@@ -420,20 +420,7 @@ class KerasModel(Interpreter):
             x
         )
 
-        for layer in base_model.layers:
-            # Skip the base model's original default input layer to prevent graph disconnection
-            if isinstance(layer, tf.keras.layers.InputLayer):
-                continue
-            # Pass our active tensor directly through the layer
-            x = layer(x)
-            
-        # # 4. Save a reference to the flattened graph output
-        # self.base_model_output = x 
-        # input_image
-        # x = base_model(x)
-        # x = base_model.output
-
-        # x = base_model(x)
+        x = base_model(x)
 
         # Multi input adding information about the frame number used
         if not single_input:
@@ -825,7 +812,6 @@ class KerasModel(Interpreter):
                         )
             self.model.summary()
         else:
-
             self.model = self.build_model(
                 dropout=self.params.dropout,
                 single_input=single_input,
@@ -956,8 +942,9 @@ class KerasModel(Interpreter):
         else:
             if qat:
                 import tensorflow_model_optimization as tfmot
-
-                self.model = tfmot.quantization.keras.quantize_model(self.model)
+                from ml_tools.flattenmodel import flatten_model
+                flattened = flatten_model(self.model)
+                self.model = tfmot.quantization.keras.quantize_model(flattened)
 
             self.compile_training_model(optimizer_fn)
             history = self.model.fit(
