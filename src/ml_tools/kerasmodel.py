@@ -392,6 +392,7 @@ class KerasModel(Interpreter):
         self,
         dropout=None,
         single_input=True,
+        qat = False,
     ):
         RNN_MODEL = False
         if RNN_MODEL:
@@ -503,7 +504,7 @@ class KerasModel(Interpreter):
         activation = "softmax"
         if self.params.multi_label:
             # will need to add this in after training
-            activation = None
+            activation = "sigmoid" if qat else None
         logging.info("Using %s activation", activation)
         final_dense = tf.keras.layers.Dense(
             len(self.labels), activation=activation, name="prediction"
@@ -945,19 +946,18 @@ class KerasModel(Interpreter):
                 from ml_tools.flattenmodel import flatten_model
                 flattened = flatten_model(self.model)
 
-                # TFMOT's default 8-bit scheme has no support for the
-                # preprocessing `Rescaling`/`Normalization` layers pulled in
-                # by the backbone, so leave them unannotated -- quantize_apply()
+                # TFMOT's default 8-bit scheme doesn't have a QuantizeConfig
+                # for every layer type the backbone pulls in (preprocessing
+                # `Rescaling`/`Normalization`, the `Multiply` in EfficientNet's
+                # squeeze-excite blocks, etc). Rather than hardcoding each one
+                # as it's discovered, ask the registry directly and leave
+                # anything it doesn't support unannotated -- quantize_apply()
                 # passes unannotated layers through untouched (still float)
-                # instead of erroring, which is fine since they're cheap
-                # elementwise scale/shift ops.
-                _UNQUANTIZABLE_LAYERS = (
-                    tf.keras.layers.Rescaling,
-                    tf.keras.layers.Normalization,
-                )
+                # instead of erroring.
+                quantize_registry = tfmot.quantization.keras.default_8bit.Default8BitQuantizeRegistry()
 
                 def annotate_layer(layer):
-                    if isinstance(layer, _UNQUANTIZABLE_LAYERS):
+                    if not quantize_registry.supports(layer):
                         return layer
                     return tfmot.quantization.keras.quantize_annotate_layer(layer)
 
@@ -966,7 +966,7 @@ class KerasModel(Interpreter):
                 )
                 self.model = tfmot.quantization.keras.quantize_apply(annotated)
 
-            self.compile_training_model(optimizer_fn)
+            self.compile_training_model(optimizer_fn,qat)
             history = self.model.fit(
                 self.train,
                 validation_data=self.validate,
@@ -1015,11 +1015,11 @@ class KerasModel(Interpreter):
             qat = qat
             
         )
-    def compile_training_model(self,opt):
+    def compile_training_model(self,opt,qat = False):
         self.model.compile(
             optimizer=opt,
-            loss=loss(self.params),
-            metrics={"prediction": metrics(self.params.multi_label)},
+            loss=loss(self.params,from_logits = not qat),
+            metrics={"prediction": metrics(self.params.multi_label,from_logits = not qat)},
         )
     def phase2(self,epochs):
         logging.info(
@@ -1812,11 +1812,11 @@ def plot_to_image(figure):
     return image
 
 
-def loss(params):
+def loss(params,from_logits = True):
     if params.multi_label:
         # return tf.keras.losses.BinaryFocalCrossentropy(gamma=2.0, alpha=0.25),
         return tf.keras.losses.BinaryCrossentropy(
-            from_logits=True,
+            from_logits=from_logits,
             label_smoothing=params.label_smoothing,
         )
     return tf.keras.losses.CategoricalCrossentropy(
