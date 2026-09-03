@@ -407,9 +407,6 @@ class KerasModel(Interpreter):
             shape=(width, width, len(self.params.channels)), name="input_image"
         )
         weights = "imagenet"
-        base_model, preprocess = self.get_base_model(input_image, weights=weights)
-        self.preprocess_fn = preprocess
-        # inputs = base_model.input
 
         # Step A: Standardise channel means (92.96, 47.33, 30.62) & variances automatically
         # x = layers.BatchNormalization(axis=-1, name="channel_standardizer")(input_image)
@@ -420,7 +417,15 @@ class KerasModel(Interpreter):
             x
         )
 
-        x = base_model(x)
+        # Build the backbone directly on top of `x` and use its output tensor,
+        # rather than calling it as a callable (`base_model(x)`), so its layers
+        # graft directly into this model instead of appearing as a single
+        # nested "model in a model" node. QAT/tflite int8 conversion needs to
+        # see and quantize the individual backbone layers.
+        base_model, preprocess = self.get_base_model(x, weights=weights)
+        self.preprocess_fn = preprocess
+        self.base_model = base_model
+        x = base_model.output
 
         # Multi input adding information about the frame number used
         if not single_input:
@@ -828,7 +833,7 @@ class KerasModel(Interpreter):
                         self.params.phase2_freeze_epochs,
                     )
                     self.model.get_layer("channel_aligner").trainable = False
-                    self.model.get_layer("efficientnetv2-b3").trainable = False
+                    self.base_model.trainable = False
                 else:
                     self.model.load_weights(weights)
 
@@ -941,7 +946,10 @@ class KerasModel(Interpreter):
             # not used but kept incase revisited
             self.phase2(epochs)
         else:
-            self.model = tfmot.quantization.keras.quantize_model(self.model)
+            if qat:
+                import tensorflow_model_optimization as tfmot
+
+                self.model = tfmot.quantization.keras.quantize_model(self.model)
 
             self.compile_training_model(optimizer_fn)
             history = self.model.fit(
@@ -1064,7 +1072,7 @@ class KerasModel(Interpreter):
             epochs - phase2_freeze_epochs,
         )
         self.model.get_layer("channel_aligner").trainable = True
-        self.model.get_layer("efficientnetv2-b3").trainable = True
+        self.base_model.trainable = True
         self.compile_training_model(tf.keras.optimizers.Adam(learning_rate=2e-5))
         history = self.model.fit(
             self.train,
@@ -1089,16 +1097,29 @@ class KerasModel(Interpreter):
 
         # 4. Inject the weights directly by matching string layer labels in memory
 
-        target_layers = [
-            "channel_aligner",
-            "efficientnetv2-b3",
-        ]
-        for layer_name in target_layers:
-            source_layer = phase1_model.get_layer(layer_name)
-            destination_layer = self.model.get_layer(layer_name)
+        source_channel_aligner = phase1_model.get_layer("channel_aligner")
+        print("Injecting weights for: channel_aligner")
+        self.model.get_layer("channel_aligner").set_weights(
+            source_channel_aligner.get_weights()
+        )
 
-            print(f"Injecting weights for: {layer_name}")
-            destination_layer.set_weights(source_layer.get_weights())
+        # The backbone is flattened directly into this model's graph, so
+        # there's no single "efficientnetv2-b3" layer to fetch here -- use
+        # self.base_model (get_weights/set_weights still walk its full,
+        # deterministically-ordered weight list). phase1_model may still be
+        # an older checkpoint where the backbone is a single nested layer, so
+        # fall back to matching individual layers by name if it's flattened
+        # too.
+        backbone_name = self.base_model.name
+        print(f"Injecting weights for: {backbone_name}")
+        try:
+            source_backbone = phase1_model.get_layer(backbone_name)
+            self.base_model.set_weights(source_backbone.get_weights())
+        except ValueError:
+            for layer in self.base_model.layers:
+                if not layer.weights:
+                    continue
+                layer.set_weights(phase1_model.get_layer(layer.name).get_weights())
 
     def warm_down(self, run_name, weights, tf_mappings, epochs=5, single_input=False):
         logging.info(
