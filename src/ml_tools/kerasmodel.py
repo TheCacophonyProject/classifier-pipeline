@@ -946,13 +946,18 @@ class KerasModel(Interpreter):
                 flattened = flatten_model(self.model)
 
                 # TFMOT's default 8-bit scheme has no support for the
-                # preprocessing `Rescaling` layer pulled in by the backbone,
-                # so leave it unannotated -- quantize_apply() passes
-                # unannotated layers through untouched (still float) instead
-                # of erroring, which is fine since it's a cheap elementwise
-                # scale/shift.
+                # preprocessing `Rescaling`/`Normalization` layers pulled in
+                # by the backbone, so leave them unannotated -- quantize_apply()
+                # passes unannotated layers through untouched (still float)
+                # instead of erroring, which is fine since they're cheap
+                # elementwise scale/shift ops.
+                _UNQUANTIZABLE_LAYERS = (
+                    tf.keras.layers.Rescaling,
+                    tf.keras.layers.Normalization,
+                )
+
                 def annotate_layer(layer):
-                    if isinstance(layer, tf.keras.layers.Rescaling):
+                    if isinstance(layer, _UNQUANTIZABLE_LAYERS):
                         return layer
                     return tfmot.quantization.keras.quantize_annotate_layer(layer)
 
