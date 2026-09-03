@@ -608,7 +608,7 @@ class KerasModel(Interpreter):
             converter.inference_output_type = tf.int8
 
             tflite_qat_model = converter.convert()
-            with open(str(self.checkpoint_folder / run_name / f"{run_name}.tflite", "wb") as f:
+            with open(str(self.checkpoint_folder / run_name / f"{run_name}.tflite"), "wb") as f:
                 f.write(tflite_qat_model)
         else:
             self.model.save(str(self.checkpoint_folder / run_name / f"{run_name}.keras"))
