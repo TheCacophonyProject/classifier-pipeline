@@ -45,21 +45,24 @@ Layer.from_config = _patched_from_config
 def flatten_model(k2_model):
     print("Flatting model")
     k2_model.get_layer("channel_aligner").trainable = False
-    flat_input = tf.keras.layers.Input(shape=k2_model.input_shape[1:], name="flat_input_image")
+    flat_input = tf_keras.layers.Input(shape=k2_model.input_shape[1:], name="flat_input_image")
 
+    # Keras 2's KerasTensor isn't hashable (unlike Keras 3's), so every tensor
+    # used as a dict key here must go through `.ref()` -- the values stored
+    # are still the plain tensors themselves.
     tensor_map = {}
     # Seed the mapping using our fresh standalone input tracer
     for original_inp in k2_model.inputs:
-        tensor_map[original_inp] = flat_input
+        tensor_map[original_inp.ref()] = flat_input
 
     # Recursive function to unpack inner layers safely 
     def unroll_layers(layers_list):
         for layer in layers_list:
-            if isinstance(layer, tf.keras.layers.InputLayer):
+            if isinstance(layer, tf_keras.layers.InputLayer):
                 continue
                 
             # If it's a sub-model container, dive deep and unroll its children
-            if isinstance(layer, tf.keras.Model) and hasattr(layer, "layers"):
+            if isinstance(layer, tf_keras.Model) and hasattr(layer, "layers"):
                 print(f"-> Unnesting container: '{layer.name}'")
                 # `.input`/`.output` on a nested Functional model return its own
                 # *structural* definition tensors (from when it was built as a
@@ -75,13 +78,13 @@ def flatten_model(k2_model):
                     outer_output = outer_output[0]
 
                 # Map the sub-model's internal structural input to its current outer tracer
-                tensor_map[layer.inputs[0]] = tensor_map[outer_inbound]
+                tensor_map[layer.inputs[0].ref()] = tensor_map[outer_inbound.ref()]
 
                 # Recursively unroll the inner layers
                 unroll_layers(layer.layers)
 
                 # Link the container's outer output tensor to the terminal internal layer trace
-                tensor_map[outer_output] = tensor_map[layer.outputs[0]]
+                tensor_map[outer_output.ref()] = tensor_map[layer.outputs[0].ref()]
                 continue
 
             # --- PROCESS REGULAR LAYERS ---
@@ -91,34 +94,34 @@ def flatten_model(k2_model):
             # Extract current mapped inputs
             original_inputs = layer.input
             if isinstance(original_inputs, list):
-                mapped_inputs = [tensor_map.get(t, t) for t in original_inputs]
+                mapped_inputs = [tensor_map.get(t.ref(), t) for t in original_inputs]
             else:
-                mapped_inputs = tensor_map.get(original_inputs, original_inputs)
+                mapped_inputs = tensor_map.get(original_inputs.ref(), original_inputs)
 
             # Call the layer instance explicitly at the root level!
-            # This strips away the sub-model visual nesting properties in Keras 3.
+            # This strips away the sub-model visual nesting properties.
             x = layer(mapped_inputs)
-            
+
             # Save output tracers safely
             if isinstance(layer.output, list):
                 for out_t, new_t in zip(layer.output, x):
-                    tensor_map[out_t] = new_t
+                    tensor_map[out_t.ref()] = new_t
             else:
-                tensor_map[layer.output] = x
+                tensor_map[layer.output.ref()] = x
 
     # Run the global flattening trace
     unroll_layers(k2_model.layers)
 
     # 3. Create the final flattened architecture
     # The terminal value of 'x' tracks perfectly back to 'flat_input'
-    flat_model = tf.keras.Model(inputs=flat_input, outputs=tensor_map[k2_model.output])
+    flat_model = tf_keras.Model(inputs=flat_input, outputs=tensor_map[k2_model.output.ref()])
     return flat_model
 
 
 import sys
 def main():
     model_file = sys.argv[1]
-    k2_model = tf.keras.models.load_model(model_file, compile=False)
+    k2_model = tf_keras.models.load_model(model_file, compile=False)
     print("Loaded")
     k2_model.summary()
     flat_model = flatten_model(k2_model)

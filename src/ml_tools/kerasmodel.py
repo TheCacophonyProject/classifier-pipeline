@@ -944,7 +944,22 @@ class KerasModel(Interpreter):
                 import tensorflow_model_optimization as tfmot
                 from ml_tools.flattenmodel import flatten_model
                 flattened = flatten_model(self.model)
-                self.model = tfmot.quantization.keras.quantize_model(flattened)
+
+                # TFMOT's default 8-bit scheme has no support for the
+                # preprocessing `Rescaling` layer pulled in by the backbone,
+                # so leave it unannotated -- quantize_apply() passes
+                # unannotated layers through untouched (still float) instead
+                # of erroring, which is fine since it's a cheap elementwise
+                # scale/shift.
+                def annotate_layer(layer):
+                    if isinstance(layer, tf.keras.layers.Rescaling):
+                        return layer
+                    return tfmot.quantization.keras.quantize_annotate_layer(layer)
+
+                annotated = tf.keras.models.clone_model(
+                    flattened, clone_function=annotate_layer
+                )
+                self.model = tfmot.quantization.keras.quantize_apply(annotated)
 
             self.compile_training_model(optimizer_fn)
             history = self.model.fit(
