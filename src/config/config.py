@@ -1,5 +1,4 @@
 from pathlib import Path
-import os.path as path
 
 import attr
 import logging

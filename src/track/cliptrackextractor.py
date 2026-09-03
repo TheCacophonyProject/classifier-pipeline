@@ -184,14 +184,18 @@ class ClipTrackExtractor(ClipTracker):
         return self._tracking_time
 
     def start_tracking(
-        self, clip, frames, track_frames=True, background_alg=None, **args
+        self, clip, frames,track_frames,  background_alg=None, **args
     ):
         # no need to retrack all of preview
         do_tracking = self.do_tracking
+        self.do_tracking = False
         self.background_alg = background_alg
-        self.do_tracking = self.do_tracking and track_frames
         new_tracks = []
-        for frame in frames:
+        tracking_start = len(frames)  - track_frames
+        for i,frame in enumerate(frames):
+            if not self.do_tracking and i>= tracking_start :
+                logging.info("Tracking preview at %s of %s", i, len(frames))
+                self.do_tracking = do_tracking
             new_tracks.extend(self.process_frame(clip, frame))
         self.do_tracking = do_tracking
         return new_tracks
@@ -226,18 +230,6 @@ class ClipTrackExtractor(ClipTracker):
         if not self.do_tracking:
             return []
 
-        # if clip.from_metadata:
-        #     for track in clip.tracks:
-        #         if clip.current_frame in track.frame_list:
-        #             track.add_frame_for_existing_region(
-        #                 cur_frame,
-        #                 threshold,
-        #                 (
-        #                     clip.frame_buffer.prev_frame.filtered
-        #                     if clip.frame_buffer.prev_frame is not None
-        #                     else None
-        #                 ),
-        #             )
         new_tracks = []
         if not clip.from_metadata:
             regions = []

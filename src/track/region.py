@@ -32,7 +32,6 @@ class Region(Rectangle):
     # how much pixels in this region have changed since last frame
     frame_number = attr.ib(default=0)
     pixel_variance = attr.ib(default=0)
-    id = attr.ib(default=0)
 
     # if this region was cropped or not
     was_cropped = attr.ib(default=False)
@@ -171,7 +170,6 @@ class Region(Rectangle):
             self.mass,
             self.frame_number,
             self.pixel_variance,
-            self.id,
             self.was_cropped,
             self.blank,
             self.is_along_border,

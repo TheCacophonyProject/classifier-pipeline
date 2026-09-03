@@ -12,7 +12,6 @@ from .motiondetector import SlidingWindow
 from .processor import Processor
 
 from ml_tools.logs import init_logging
-from ml_tools.rectangle import Rectangle
 from . import beacon
 
 from piclassifier.attiny import set_recording_state
@@ -273,12 +272,10 @@ class PiClassifier(Processor):
                 from .dummyrecorder import DummyRecorder
 
                 self.recorder = DummyRecorder(
-                    None,
+                    self.thermal_config,
                     self.headers,
                     on_recording_stopping=self.recorder.on_recording_stopping,
                 )
-                self.recorder.min_frames = self.recorder.min_frames
-                self.recorder.max_frames = self.recorder.max_frames
 
             self.motion_detector.force_record = True
             from threading import Thread
@@ -299,7 +296,7 @@ class PiClassifier(Processor):
                     self.classifier.seed = header.timestamp
             if self.fp_model is not None:
                 self.fp_model.seed = self.classifier.seed
-
+            read = 0
             while True:
                 frame = reader.next_frame()
 
@@ -329,7 +326,9 @@ class PiClassifier(Processor):
                     logging.error("Could not process frame from file ", exc_info=True)
                 if fps is not None and fps > 0:
                     time.sleep(1.0 / fps)
-
+                read +=1
+                if read % 90==0:
+                    utils.print_memory_usage()
             put_asoldest(frame_queue, STOP_SIGNAL)
             self.reset()
 
@@ -534,20 +533,12 @@ class PiClassifier(Processor):
             return
         # no need to retrack all of preview
         background_frames = None
-        track_frames = -1
-        retrack_back = True
-        if self.type == "IR":
-            track_frames = 5
-            retrack_back = True
-            # background is calculated in motion, so already 5 frames ahead
+        track_frames = 1
         new_tracks = self.track_extractor.start_tracking(
             self.clip,
             preview_frames,
             track_frames=track_frames,
             background_alg=self.motion_detector._background,
-            retrack_back=retrack_back,
-            # background_frame=clip.background,
-            # background_frames=background_frames,
         )
         for t in new_tracks:
             t.received_at = received_at
@@ -878,6 +869,9 @@ class PiClassifier(Processor):
                 first_loop = False
                 assert frame.frame_number == region.frame_number
                 contour_image = frame.filtered if frame.mask is None else frame.mask
+
+                # only reason we are keeping mask
+                frame.mask = None
                 contours, _ = cv2.findContours(
                     np.uint8(region.subimage(contour_image)),
                     cv2.RETR_EXTERNAL,

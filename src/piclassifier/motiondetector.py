@@ -186,7 +186,7 @@ class WeightedBackground:
         self._background = None
         self.weight_add = weight_add
         self.background_weight = np.zeros(
-            (res_y - edge_pixels * 2, res_x - edge_pixels * 2)
+            (res_y - edge_pixels * 2, res_x - edge_pixels * 2), np.float32
         )
         # there is not much need to this as it gets updated after processing 1 frame
         # and can just calculate it from the background frame
@@ -202,11 +202,11 @@ class WeightedBackground:
         return self.average
 
     def process_frame(self, frame):
-        frame = np.int32(self.crop_rectangle.subimage(frame))
+        frame = np.uint16(self.crop_rectangle.subimage(frame))
         if self._background is None:
             res_y, res_x = frame.shape
             self._background = np.empty(
-                (res_y + self.edge_pixels * 2, res_x + self.edge_pixels * 2)
+                (res_y + self.edge_pixels * 2, res_x + self.edge_pixels * 2),np.uint16
             )
             self._background[
                 self.edge_pixels : res_y + self.edge_pixels,

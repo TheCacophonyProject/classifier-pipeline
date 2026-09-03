@@ -14,13 +14,12 @@ from config.config import Config
 from config.thermalconfig import ThermalConfig
 from .headerinfo import HeaderInfo
 from ml_tools.logs import init_logging
-import multiprocessing
 from .eventreporter import log_event
 from piclassifier.monitorconfig import monitor_file
 from pathlib import Path
 from piclassifier import utils
 from .signals import STOP_SIGNAL, SKIP_SIGNAL, SNAPSHOT_SIGNAL, PARSING_FILE, PARSED
-
+from multiprocessing import Queue,Process
 SOCKET_NAME = "/var/run/lepton-frames"
 VOSPI_DATA_SIZE = 160
 TELEMETRY_PACKET_COUNT = 4
@@ -83,8 +82,8 @@ def main():
             args.file, config, thermal_config, args.preview_type, args.fps, args.seed
         )
 
-    process_queue = multiprocessing.Queue()
-    response_queue = multiprocessing.Queue()
+    process_queue = Queue()
+    response_queue = Queue()
 
     # TODO this will break things if we ever have different resolution or FPS
     headers = default_headers()
@@ -240,7 +239,7 @@ def parse_cptv(file, config, thermal_config, preview_type, fps, seed):
 def get_processor(process_queue, response_queue, config, thermal_config, headers):
     from .piclassifier import run_classifier
 
-    p_processor = multiprocessing.Process(
+    p_processor = Process(
         target=run_classifier,
         args=(
             process_queue,
@@ -438,8 +437,9 @@ def handle_connection(
             except:
                 pass
             read += 1
-            # if read % 90:
-            #     print_memory_usage()
+            if read % 90==0:
+                from utils import print_memory_usage
+                print_memory_usage()
             if parsing_file:
                 # need to keep reading from data socket in the mean time so just do a quick check
                 try:
@@ -527,44 +527,3 @@ def default_headers():
     )
     return headers
 
-
-def print_memory_usage():
-    process = psutil.Process(os.getpid())
-    main_rss = process.memory_info().rss
-    main_uss = process.memory_full_info().uss
-    total_rss = main_rss
-    total_uss = main_uss
-    logging.info(
-        "Memory usage pid %d (%s) %.1fMB rss %.1fMB uss",
-        process.pid,
-        process.name(),
-        main_rss / (1024 * 1024),
-        main_uss / (1024 * 1024),
-    )
-    children = process.children(recursive=True)
-    for child in children:
-        try:
-            child_rss = child.memory_info().rss
-            child_uss = child.memory_full_info().uss
-            total_rss += child_rss
-            total_uss += child_uss
-            logging.info(
-                "Memory usage pid %d (%s) %.1fMB rss %.1fMB uss",
-                child.pid,
-                child.name(),
-                child_rss / (1024 * 1024),
-                child_uss / (1024 * 1024),
-            )
-        except (psutil.NoSuchProcess, psutil.AccessDenied):
-            continue
-    swap = psutil.swap_memory()
-    logging.info(
-        "Memory usage main %.1fMB total (with %d sub processes) %.1fMB uss %.1fMB swap used %.1fMB of %.1fMB (%.1f%%)",
-        main_rss / (1024 * 1024),
-        len(children),
-        total_rss / (1024 * 1024),
-        total_uss / (1024 * 1024),
-        swap.used / (1024 * 1024),
-        swap.total / (1024 * 1024),
-        swap.percent,
-    )

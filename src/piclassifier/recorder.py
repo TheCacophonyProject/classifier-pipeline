@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 from datetime import datetime
 import logging
-import multiprocessing
+from multiprocessing import Queue
 import shutil
 import time
 from pathlib import Path
@@ -49,7 +49,7 @@ class Recorder(ABC):
         self.write_until = 0
         self.rec_time = 0
         self.on_recording_stopping = on_recording_stopping
-        self.frame_q = multiprocessing.Queue()
+        self.frame_q = Queue()
         self.rec_p = None
 
     def process_frame(self, movement_detected, cptv_frame, received_at):
@@ -103,7 +103,7 @@ class Recorder(ABC):
         if self.recording:
             self.frame_q.put(0)
             self.rec_p.join()
-            self.frame_q = multiprocessing.Queue()
+            self.frame_q = Queue()
             self.rec_p = None
             self.recording = False
         self.filename.unlink()
@@ -117,7 +117,7 @@ class Recorder(ABC):
         self.rec_p.join()
         self.recording = False
 
-        self.frame_q = multiprocessing.Queue()
+        self.frame_q = Queue()
         self.rec_p = None
         logging.info(
             "%s recording %s ended %s frames %s time recording %s per frame ",
