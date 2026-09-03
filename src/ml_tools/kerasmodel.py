@@ -848,7 +848,7 @@ class KerasModel(Interpreter):
             resample=resample,
             stop_on_empty_dataset=False,
             include_features=self.params.mvm,
-            augment=augment,
+            augment=not qat and augment,
             excluded_labels=self.excluded_labels,
             remapped_labels=self.remapped_labels,
             # dist=self.dataset_counts["train"],
