@@ -812,10 +812,6 @@ class KerasModel(Interpreter):
                         )
             self.model.summary()
         else:
-            if qat:
-                logging.info("Loading %s as the model for QAT",weights)
-                self.model =            tf.keras.models.load_model(weights, compile=False)
-
             self.model = self.build_model(
                 dropout=self.params.dropout,
                 single_input=single_input,
@@ -947,6 +943,7 @@ class KerasModel(Interpreter):
             if qat:
                 import tensorflow_model_optimization as tfmot
                 from ml_tools.flattenmodel import flatten_model
+                flattened = flatten_model(self.model)
                 self.model = tfmot.quantization.keras.quantize_model(flattened)
 
             self.compile_training_model(optimizer_fn)

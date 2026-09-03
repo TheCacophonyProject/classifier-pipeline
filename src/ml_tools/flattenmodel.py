@@ -1,7 +1,15 @@
 
+
+
+
 # ==========================================
-# STEP 1: READ THE WEIGHT ARRAYS NATIVELY IN KERAS 3
+# STEP 1: READ THE WEIGHT ARRAYS NATIVELY IN KERAS 2 (tf_keras)
 # ==========================================
+import os
+
+os.environ.setdefault("TF_USE_LEGACY_KERAS", "1")
+
+import tf_keras
 import tensorflow as tf
 import numpy as np
 
@@ -11,15 +19,15 @@ import numpy as np
 # installed here, so some layer configs carry kwargs this Keras's layer
 # classes don't recognize (e.g. BatchNormalization's old `renorm*` args,
 # Dense's newer `quantization_config`). Every plain layer class resolves
-# `from_config` to `Operation.from_config` (none of them override it), which
+# `from_config` to `Layer.from_config` (none of them override it), which
 # just does `cls(**config)` -- so patch that one choke point to drop known
 # forward/backward-compat keys before reconstructing the layer, instead of
 # chasing every affected layer class individually. `custom_objects` can't be
 # used for this: it's keyed off `registered_name`, which is `None` in this
 # saved model's config, so it's never consulted during deserialization.
-from keras.src.ops.operation import Operation
+from tf_keras.src.engine.base_layer import Layer
 
-_orig_from_config = Operation.from_config.__func__
+_orig_from_config = Layer.from_config.__func__
 _DROP_CONFIG_KEYS = {"renorm", "renorm_clipping", "renorm_momentum", "quantization_config"}
 
 
@@ -30,18 +38,18 @@ def _patched_from_config(cls, config):
     return _orig_from_config(cls, config)
 
 
-Operation.from_config = _patched_from_config
+Layer.from_config = _patched_from_config
 
 
 
-def flatten_model(k3_model):
+def flatten_model(k2_model):
     print("Flatting model")
-    k3_model.get_layer("channel_aligner").trainable = False
-    flat_input = tf.keras.layers.Input(shape=k3_model.input_shape[1:], name="flat_input_image")
+    k2_model.get_layer("channel_aligner").trainable = False
+    flat_input = tf.keras.layers.Input(shape=k2_model.input_shape[1:], name="flat_input_image")
 
     tensor_map = {}
     # Seed the mapping using our fresh standalone input tracer
-    for original_inp in k3_model.inputs:
+    for original_inp in k2_model.inputs:
         tensor_map[original_inp] = flat_input
 
     # Recursive function to unpack inner layers safely 
@@ -99,21 +107,21 @@ def flatten_model(k3_model):
                 tensor_map[layer.output] = x
 
     # Run the global flattening trace
-    unroll_layers(k3_model.layers)
+    unroll_layers(k2_model.layers)
 
     # 3. Create the final flattened architecture
     # The terminal value of 'x' tracks perfectly back to 'flat_input'
-    flat_model = tf.keras.Model(inputs=flat_input, outputs=tensor_map[k3_model.output])
+    flat_model = tf.keras.Model(inputs=flat_input, outputs=tensor_map[k2_model.output])
     return flat_model
 
 
 import sys
 def main():
     model_file = sys.argv[1]
-    k3_model = tf.keras.models.load_model(model_file, compile=False)
+    k2_model = tf.keras.models.load_model(model_file, compile=False)
     print("Loaded")
-    k3_model.summary()
-    flat_model = flatten_model(k3_model)
+    k2_model.summary()
+    flat_model = flatten_model(k2_model)
     print("\nSuccess! Fully unnested and flattened model summary:")
     flat_model.summary()
     flat_model.save("flattened_model.keras")
