@@ -107,15 +107,16 @@ def flatten_model(k3_model):
     return flat_model
 
 
-
+import sys
 def main():
-    model_file = "/etc/cacophony/models/server-v1.2/default/saved_model.keras"
+    model_file = sys.argv[1]
     k3_model = tf.keras.models.load_model(model_file, compile=False)
     print("Loaded")
     k3_model.summary()
     flat_model = flatten_model(k3_model)
     print("\nSuccess! Fully unnested and flattened model summary:")
     flat_model.summary()
+    flat_model.save("flattened_model.keras")
 
 
 
