@@ -603,10 +603,12 @@ class KerasModel(Interpreter):
             converter = tf.lite.TFLiteConverter.from_keras_model(self.model)
             converter.optimizations = [tf.lite.Optimize.DEFAULT]
 
-            # Finalize the target operational constraints
-            converter.target_spec.supported_ops = [tf.lite.OpsSet.TFLITE_BUILTINS_INT8]
-            converter.inference_input_type = tf.int8
-            converter.inference_output_type = tf.int8
+            # Allow standard builtins alongside int8 operations so 
+            # the model can handle float32 inputs/outputs smoothly.
+            converter.target_spec.supported_ops = [
+                tf.lite.OpsSet.TFLITE_BUILTINS,
+                tf.lite.OpsSet.TFLITE_BUILTINS_INT8
+            ]
 
             tflite_qat_model = converter.convert()
             with open(str(self.checkpoint_folder / run_name / f"{run_name}.tflite"), "wb") as f:
