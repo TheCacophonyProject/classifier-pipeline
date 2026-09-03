@@ -581,6 +581,24 @@ class KerasModel(Interpreter):
             self.model.load_weights(self.weights)
             logging.info("Loaded weight %s", self.weights)
 
+
+    # 2. Wrap your TFRecord processing inside a python generator function
+    def tfrecord_representative_dataset_gen(self):
+
+        # Parse the dataset, cast to float32, and grab a tiny batch (10-20 images is plenty)
+        # We use .batch(1) because TFLite expects the array to include the batch dimension when yielded.
+        parsed_dataset = self.validate.take(20).batch(1)
+        
+        for raw_tensor,_ in parsed_dataset:
+            # TFLite expects standard NumPy arrays inside a Python list [tensor]
+            # Cast your uint16 data cleanly to float32 here
+            img_array = raw_tensor.numpy().astype(np.float32)
+            
+            # If your model expects normalized inputs (0.0 to 1.0), do it here:
+            # img_array = img_array / 65535.0
+            
+            yield [img_array]
+            
     def save(
         self,
         run_name=None,
@@ -602,13 +620,11 @@ class KerasModel(Interpreter):
             # 4. Export the actual full integer TFLite binary
             converter = tf.lite.TFLiteConverter.from_keras_model(self.model)
             converter.optimizations = [tf.lite.Optimize.DEFAULT]
+            converter.representative_dataset = tfrecord_representative_dataset_gen
 
-            # Allow standard builtins alongside int8 operations so 
-            # the model can handle float32 inputs/outputs smoothly.
-            converter.target_spec.supported_ops = [
-                tf.lite.OpsSet.TFLITE_BUILTINS,
-                tf.lite.OpsSet.TFLITE_BUILTINS_INT8
-            ]
+            # Target internal int8 execution structures
+            converter.target_spec.supported_ops = [tf.lite.OpsSet.TFLITE_BUILTINS_INT8]
+
 
             tflite_qat_model = converter.convert()
             with open(str(self.checkpoint_folder / run_name / f"{run_name}.tflite"), "wb") as f:

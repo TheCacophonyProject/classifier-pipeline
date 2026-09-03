@@ -22,5 +22,5 @@ class Kalman:
     def correct(self, rect):
         pts = np.array(
             [np.float32(rect.centroid[0]), np.float32(rect.centroid[1])], np.float32
-        )
+        ).reshape(2,1)
         self.kalman.correct(pts)
