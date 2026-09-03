@@ -942,6 +942,8 @@ class KerasModel(Interpreter):
             self.phase2(epochs)
         else:
             if qat:
+                epochs = 5
+                logging.info("Using 5 epochs in QAT mode")
                 import tensorflow_model_optimization as tfmot
                 from ml_tools.flattenmodel import flatten_model
                 flattened = flatten_model(self.model)
