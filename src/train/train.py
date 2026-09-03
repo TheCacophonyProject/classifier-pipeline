@@ -1,5 +1,4 @@
 import logging
-from ml_tools.kerasmodel import KerasModel, grid_search
 import pickle
 import os
 from ml_tools.logs import init_logging
@@ -51,8 +50,14 @@ def train_model(
     test=False,
     phase2=False,
     use_jitter=False,
+    qat=False,
 ):
     init_logging()
+    if qat:
+        logging.info("Using legacy keras because of qat")
+        os.environ["TF_USE_LEGACY_KERAS"] = "1" 
+    from ml_tools.kerasmodel import KerasModel, grid_search
+
     """Trains a model with the given hyper parameters."""
     data_dir = Path(conf.base_folder) / "training-data"
     model = KerasModel(
@@ -90,6 +95,7 @@ def train_model(
             test=test,
             phase2=phase2,
             use_jitter=use_jitter,
+            qat=qat,
         )
     except KeyboardInterrupt:
         pass

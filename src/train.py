@@ -26,7 +26,7 @@ All the training results are stored in tensorboard.  To assess the
 training run tensorboard from the log directory.
 
 """
-
+import ml_tools.bootstrap_keras
 import argparse
 import os
 
@@ -71,6 +71,11 @@ def load_config():
         "augmentation",
     )
     parser.add_argument(
+        "--qat",
+        action="store_true",
+        help="Quantization aware training",
+    )
+    parser.add_argument(
         "name",
         default="unnammed",
         help="Name of training job",
@@ -98,6 +103,7 @@ def main():
         test=args.test,
         phase2=args.phase2,
         use_jitter=args.jitter,
+        qat=args.qat,
     )
 
 

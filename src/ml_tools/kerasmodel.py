@@ -588,6 +588,7 @@ class KerasModel(Interpreter):
         rebalance=False,
         fine_tune=None,
         single_input=False,
+        qat = False
     ):
         # create a save point
         if run_name is None:
@@ -595,8 +596,22 @@ class KerasModel(Interpreter):
 
         run_dir = self.checkpoint_folder / run_name
         run_dir.mkdir(parents=True, exist_ok=True)
+        if qat:
+            import tensorflow_model_optimization as tfmot
+            # 4. Export the actual full integer TFLite binary
+            converter = tf.lite.TFLiteConverter.from_keras_model(self.model)
+            converter.optimizations = [tf.lite.Optimize.DEFAULT]
 
-        self.model.save(str(self.checkpoint_folder / run_name / f"{run_name}.keras"))
+            # Finalize the target operational constraints
+            converter.target_spec.supported_ops = [tf.lite.OpsSet.TFLITE_BUILTINS_INT8]
+            converter.inference_input_type = tf.int8
+            converter.inference_output_type = tf.int8
+
+            tflite_qat_model = converter.convert()
+            with open(str(self.checkpoint_folder / run_name / f"{run_name}.tflite", "wb") as f:
+                f.write(tflite_qat_model)
+        else:
+            self.model.save(str(self.checkpoint_folder / run_name / f"{run_name}.keras"))
         self.save_metadata(
             run_name, history, test_results, rebalance, fine_tune, single_input
         )
@@ -751,15 +766,17 @@ class KerasModel(Interpreter):
         test=False,
         phase2=False,
         use_jitter=False,
+        qat=False,
     ):
         logging.info(
-            "%s Training model for %s epochs with weights %s with single input as: %s phase2 %s use_jitter %s",
+            "%s Training model for %s epochs with weights %s with single input as: %s phase2 %s use_jitter %s qat %s",
             run_name,
             epochs,
             weights,
             single_input,
             phase2,
             use_jitter,
+            qat,
         )
         if test:
             logging.info("Running in test, small datasets of 100")
@@ -815,7 +832,6 @@ class KerasModel(Interpreter):
                 else:
                     self.model.load_weights(weights)
 
-            # self.model.load_weights(weights)
 
         self.model.summary()
 
@@ -911,7 +927,7 @@ class KerasModel(Interpreter):
                 self.params, steps, self.epochs, fine_tune=fine_tune is not None
             )
             warmup_callback = StepWarmupCallback(
-                target_lr=self.params.fine_tune_learning_rate if use_jitter else self.params.learning_rate ,
+                target_lr=self.params.fine_tune_learning_rate if use_jitter or qat else self.params.learning_rate ,
                 warmup_epochs=2,
                 steps_per_epoch=steps,
                 medium_epoch =JITTER_MEDIUM_STAGE_EPOCH,
@@ -925,7 +941,8 @@ class KerasModel(Interpreter):
             # not used but kept incase revisited
             self.phase2(epochs)
         else:
-            
+            self.model = tfmot.quantization.keras.quantize_model(self.model)
+
             self.compile_training_model(optimizer_fn)
             history = self.model.fit(
                 self.train,
@@ -972,6 +989,8 @@ class KerasModel(Interpreter):
             rebalance=rebalance,
             fine_tune=fine_tune,
             single_input=single_input,
+            qat = qat
+            
         )
     def compile_training_model(self,opt):
         self.model.compile(
