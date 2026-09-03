@@ -587,17 +587,16 @@ class KerasModel(Interpreter):
 
         # Parse the dataset, cast to float32, and grab a tiny batch (10-20 images is plenty)
         # We use .batch(1) because TFLite expects the array to include the batch dimension when yielded.
-        parsed_dataset = self.validate.take(20).batch(1)
-        
-        for raw_tensor,_ in parsed_dataset:
-            # TFLite expects standard NumPy arrays inside a Python list [tensor]
-            # Cast your uint16 data cleanly to float32 here
-            img_array = raw_tensor.numpy().astype(np.float32)
-            
-            # If your model expects normalized inputs (0.0 to 1.0), do it here:
-            # img_array = img_array / 65535.0
-            
-            yield [img_array]
+        parsed_dataset = self.validate.take(1)
+        for batch,_ in parsed_dataset: 
+            for raw_tensor in batch:
+                # TFLite expects standard NumPy arrays inside a Python list [tensor]
+                # Cast your uint16 data cleanly to float32 here
+                img_array = raw_tensor.numpy().astype(np.float32)
+                
+                # If your model expects normalized inputs (0.0 to 1.0), do it here:
+                # img_array = img_array / 65535.0
+                yield [np.expand_dims(img_array, axis=0)]
             
     def save(
         self,
@@ -620,7 +619,7 @@ class KerasModel(Interpreter):
             # 4. Export the actual full integer TFLite binary
             converter = tf.lite.TFLiteConverter.from_keras_model(self.model)
             converter.optimizations = [tf.lite.Optimize.DEFAULT]
-            converter.representative_dataset = tfrecord_representative_dataset_gen
+            converter.representative_dataset = self.tfrecord_representative_dataset_gen
 
             # Target internal int8 execution structures
             converter.target_spec.supported_ops = [tf.lite.OpsSet.TFLITE_BUILTINS_INT8]
@@ -834,6 +833,7 @@ class KerasModel(Interpreter):
             self.model = self.build_model(
                 dropout=self.params.dropout,
                 single_input=single_input,
+                qat = qat,
             )
 
             if weights is not None:
@@ -960,7 +960,7 @@ class KerasModel(Interpreter):
             self.phase2(epochs)
         else:
             if qat:
-                epochs = 5
+                epochs = 5 
                 logging.info("Using 5 epochs in QAT mode")
                 import tensorflow_model_optimization as tfmot
                 from ml_tools.flattenmodel import flatten_model
@@ -985,6 +985,8 @@ class KerasModel(Interpreter):
                     flattened, clone_function=annotate_layer
                 )
                 self.model = tfmot.quantization.keras.quantize_apply(annotated)
+                # self.save(run_name, fine_tune=fine_tune, rebalance=rebalance,qat=qat)
+
 
             self.compile_training_model(optimizer_fn,qat)
             history = self.model.fit(
