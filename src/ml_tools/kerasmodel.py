@@ -1021,7 +1021,7 @@ class KerasModel(Interpreter):
         self.model.compile(
             optimizer=opt,
             loss=loss(self.params,from_logits = not qat),
-            metrics={"prediction": metrics(self.params.multi_label,from_logits = not qat)},
+            metrics={"quant_prediction" if qat else "prediction" : metrics(self.params.multi_label,from_logits = not qat)},
         )
     def phase2(self,epochs):
         logging.info(
