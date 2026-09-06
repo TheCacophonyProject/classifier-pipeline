@@ -197,7 +197,8 @@ class Interpreter(ABC):
             smooth_preds=self.params.smooth_predictions,
             multi_label=self.params.multi_label,
             parent_mappings=self.parent_mappings,
-            scale_thresholds=self.scale_thresholds
+            scale_thresholds=self.scale_thresholds,
+            thresholds_per_label=self.thresholds_per_label
         )
         track_prediction.classified_track(
             output,
