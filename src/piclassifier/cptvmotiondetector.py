@@ -71,7 +71,9 @@ class CPTVMotionDetector(MotionDetector):
     def temp_thresh(self):
         return self._background.average
 
-    def detect(self, clipped_frame, received_at=None):
+    def detect(self, frame):
+        clipped_frame = self.crop_rectangle.subimage(frame).astype(np.int32)
+
         oldest = self.crop_rectangle.subimage(self.thermal_window.oldest_nonffc.pix)
         oldest = np.clip(oldest, a_min=self.temp_thresh, a_max=None)
         np.clip(clipped_frame, a_min=self.temp_thresh, a_max=None, out=clipped_frame)
@@ -176,8 +178,7 @@ class CPTVMotionDetector(MotionDetector):
                 if prev_ffc:
                     self.thermal_window.non_ffc_index = self.thermal_window.last_index
             elif self.force_record or self.processed > self.detect_after:
-                cropped_frame = np.int32(self.crop_rectangle.subimage(cptv_frame.pix))
-                movement = self.detect(cropped_frame)
+                movement = self.detect(cptv_frame.pix)
                 if movement:
                     self.triggered += 1
                 else:

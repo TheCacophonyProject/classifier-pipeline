@@ -189,8 +189,8 @@ class WeightedBackground:
         self.init_average = None
 
     def get_average(self):
-        return  int(round(np.average(self.crop_rectangle.subimage(self.background))))
-
+        return  self.average
+    
 
     def process_frame(self, frame):
         frame = np.uint16(self.crop_rectangle.subimage(frame))
@@ -214,6 +214,7 @@ class WeightedBackground:
         self.background_weight += self.weight_add
         self.background_weight *= mask
         self.set_background_edges()
+        self.average = int(round(np.average(edgeless_back)))
 
     def set_background_edges(self):
         for i in range(self.edge_pixels):
