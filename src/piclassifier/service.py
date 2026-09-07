@@ -52,7 +52,7 @@ class Service(dbus.service.Object):
         try:
             self.LabelsUpdated()
         except:
-            logging.error("Could run labels updated", exc_info=True)
+            logging.error("Could not update service labels", exc_info=True)
 
     @dbus.service.method(
         DBUS_NAME,
