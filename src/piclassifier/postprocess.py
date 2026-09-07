@@ -45,6 +45,23 @@ def filename_timestamp(cptv_file):
 
     return datetime.fromtimestamp(0)
 
+logging.info("Process usage %s", process_mem())
+
+TIMESTAMP_FORMATS = [
+    (re.compile(r"^\d{4}-\d{2}-\d{2}--\d{2}-\d{2}-\d{2}"), "%Y-%m-%d--%H-%M-%S"),
+    (re.compile(r"^\d{8}-\d{6}\.\d+"), "%Y%m%d-%H%M%S.%f"),
+]
+
+
+def filename_timestamp(cptv_file):
+    stem = cptv_file.stem
+    for pattern, fmt in TIMESTAMP_FORMATS:
+        match = pattern.match(stem)
+        if match:
+            return datetime.strptime(match.group(), fmt)
+
+    return datetime.fromtimestamp(0)
+
 
 class DirWatcher(FileSystemEventHandler):
     def __init__(self, priority_queue):

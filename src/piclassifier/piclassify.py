@@ -29,7 +29,6 @@ restart_pending = False
 connected = False
 ready_to_record = False
 
-
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--file", help="a test file to send", default=None)
@@ -392,10 +391,10 @@ def delete_stale_thumbnails(output_dir):
 
 import fcntl, termios, struct
 
-
 def bytes_queued(sock):
-    buf = struct.pack("i", 0)
-    return struct.unpack("i", fcntl.ioctl(sock.fileno(), termios.FIONREAD, buf))[0]
+    buf = struct.pack('i', 0)
+    return struct.unpack('i', fcntl.ioctl(sock.fileno(), termios.FIONREAD, buf))[0]
+
 
 
 def handle_connection(
@@ -519,7 +518,6 @@ def handle_connection(
                     pass
         clear_queue(process_queue)
         clear_queue(response_queue)
-
 
 def clear_queue(q):
     """Removes all items from a multiprocessing Queue."""

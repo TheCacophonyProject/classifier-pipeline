@@ -54,9 +54,22 @@ class Service(dbus.service.Object):
         except:
             logging.error("Could not update service labels", exc_info=True)
 
+    def start_service(self,dbus):
+        super().__init__(dbus, DBUS_PATH)
+        self.ServiceStarted()
+
+
+    def update_labels(self, labels):
+        self.labels = labels
+        self.classifier_loaded = True
+        try:
+            self.LabelsUpdated()
+        except:
+            logging.error("Could run labels updated",exc_info=True)
+        
     @dbus.service.method(
         DBUS_NAME,
-        in_signature="",
+    in_signature="",
         out_signature="a{si}",
     )
     def CameraInfo(self):
@@ -78,6 +91,35 @@ class Service(dbus.service.Object):
             headers["Model"] = 1
         logging.debug("Sending headers %s", headers)
         return headers
+
+
+    @dbus.service.method(
+        DBUS_NAME,
+        out_signature="b",
+    )
+    def IsReady(self):
+        return self.is_ready()
+    
+    @dbus.service.method(
+        DBUS_NAME,
+        out_signature="s",
+    )
+    def ParsingFile(self):
+        parsing_file = self.is_parsing_file()
+        return parsing_file if parsing_file is not None else ""
+
+    @dbus.service.method(
+        DBUS_NAME,
+        in_signature="sii",
+    )
+    def ParseFile(self, file, fps, seed):
+        parsing_file = self.is_parsing_file()
+        if parsing_file is not None:
+            raise ParseFileError(f"Already parsing {parsing_file}")
+        threading.Thread(
+            target=self.parse_file, args=(file, fps, seed), daemon=True
+        ).start()
+        return "Parsing file"
 
     @dbus.service.method(
         DBUS_NAME,
@@ -275,7 +317,6 @@ class SnapshotService:
             is_ready,
             classifier_loaded,
         )
-
         self.t = threading.Thread(
             target=self.run_server,
         )

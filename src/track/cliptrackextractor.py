@@ -207,6 +207,8 @@ class ClipTrackExtractor(ClipTracker):
         :param thermal: A numpy array of shape (height, width) and type uint16
         If specified background subtraction algorithm will be used.
         """
+        from piclassifier.cptvmotiondetector import is_affected_by_ffc
+
         ffc_affected = is_affected_by_ffc(frame)
         thermal = frame.pix.copy()
         if ffc_affected:

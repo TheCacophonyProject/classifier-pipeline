@@ -208,7 +208,6 @@ class PiClassifier(Processor):
         if self.classify and self.initialised:
             return self.classifier_ready(0)
         return self.initialised
-
     def is_parsing_file(self):
         return self.headers.source if self.parsing_file else None
 
@@ -326,8 +325,8 @@ class PiClassifier(Processor):
                 if fps is not None and fps > 0:
                     time.sleep(1.0 / fps)
                 read +=1
-                if read % 90==0:
-                    utils.print_memory_usage()
+                # if read % 90==0:
+                #     utils.print_memory_usage()
             put_asoldest(frame_queue, STOP_SIGNAL)
             self.reset()
 
