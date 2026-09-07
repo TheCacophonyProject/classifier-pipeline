@@ -33,7 +33,6 @@ class Processor(ABC):
                 model_labels[self.fp_model.id] = self.fp_model.labels
 
         self.service = SnapshotService(
-            self.get_recent_frame,
             self.headers,
             self.take_snapshot,
             model_labels,
@@ -66,8 +65,8 @@ class Processor(ABC):
     @abstractmethod
     def process_frame(self, lepton_frame): ...
 
-    @abstractmethod
-    def get_recent_frame(self, last_frame=None): ...
+    # @abstractmethod
+    # def get_recent_frame(self, last_frame=None): ...
 
     @abstractmethod
     def disconnected(self): ...

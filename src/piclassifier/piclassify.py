@@ -8,7 +8,8 @@ import socket
 import time
 
 import numpy as np
-from threading import Thread
+import signal
+from threading import Thread, Event
 
 from config.config import Config
 from config.thermalconfig import ThermalConfig
@@ -117,64 +118,60 @@ def main():
             raise
     logging.info("running as thermal")
 
-    # try not run classifier unless we are inside a recording window
-    # enable_network_classifier = (
-    #     model is not None and thermal_config.motion.run_classifier
-    # )
+    other_services = []
+    if thermal_config.motion.run_classifier:
+        other_services.append(run_classifier())
+    if thermal_config.motion.postprocess:
+        other_services.append(run_postprocess())
+    # utils.toggle_network_classifier(False)
 
-    # will start this up later, if tc2-agent is offloading recordings this can overload the system
-    # best to wait until we get frames
-    # if thermal_config.recorder.rec_window.inside_window() and enable_network_classifier:
-    #     success = utils.toggle_network_classifier(model.run_over_network)
-    #     if not success:
-    #         raise Exception("Could not start up network classifier")
-    # if not enable_network_classifier:
-    utils.toggle_network_classifier(False)
+    # success = utils.startup_postprocessor(thermal_config.motion.postprocess)
+    # if not success and thermal_config.motion.postprocess:
+    #     raise Exception("Could not start up postprocessor")
+    if thermal_config.recorder.use_low_power_mode:
+        sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        sock.bind(SOCKET_NAME)
+        sock.settimeout(1 * 60)
+        sock.listen(1)
+        global connected
 
-    success = utils.startup_postprocessor(thermal_config.motion.postprocess)
-    if not success and thermal_config.motion.postprocess:
-        raise Exception("Could not start up postprocessor")
-
-    sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-    sock.bind(SOCKET_NAME)
-    sock.settimeout(1 * 60)
-    sock.listen(1)
-    global connected
-
-    while True:
-        if restart_pending:
-            sock.close()
-            logging.info("Restart pending exiting")
-            break
-        logging.info("waiting for a connection")
-        try:
-            connection, client_address = sock.accept()
-            connected = True
-            logging.info("connection from %s", client_address)
-            log_event("camera-connected", {"type": "thermal"})
-
-            handle_connection(
-                processor,
-                connection,
-                config,
-                args.thermal_config_file,
-                process_queue,
-                response_queue,
-            )
-
-        except socket.timeout:
-            logging.error("Socket %s timeout error", SOCKET_NAME, exc_info=True)
-            continue
-
-        except Exception as ex:
-            log_event("camera-disconnected", ex)
-            logging.error("Error with connection", exc_info=True)
-        finally:
-            # Clean up the connection
+        while True:
+            if restart_pending:
+                sock.close()
+                logging.info("Restart pending exiting")
+                break
+            logging.info("waiting for a connection")
             try:
-                connection.close()
-            except:
-                pass
+                connection, client_address = sock.accept()
+                connected = True
+                logging.info("connection from %s", client_address)
+                log_event("camera-connected", {"type": "thermal"})
+
+                handle_connection(
+                    processor,
+                    connection,
+                    config,
+                    args.thermal_config_file,
+                    process_queue,
+                    response_queue,
+                )
+
+            except socket.timeout:
+                logging.error("Socket %s timeout error", SOCKET_NAME, exc_info=True)
+                continue
+
+            except Exception as ex:
+                log_event("camera-disconnected", ex)
+                logging.error("Error with connection", exc_info=True)
+            finally:
+                # Clean up the connection
+                try:
+                    connection.close()
+                except:
+                    pass
+    else:
+        wait_for_shutdown()
+
     if processor.is_alive:
         logging.info("Stopping processor because restart was pending")
         process_queue.put(STOP_SIGNAL)
@@ -188,13 +185,30 @@ def main():
                 pass
 
 
+    for process in other_services:
+        try:
+            utils.kill_process_with_timeout(process)
+        except:
+            pass
+
+shutdown_event = Event()
+
+
+def wait_for_shutdown():
+    def handle_signal(signum, frame):
+        logging.info("Received signal %s, shutting down", signum)
+        shutdown_event.set()
+
+    signal.signal(signal.SIGTERM, handle_signal)
+    signal.signal(signal.SIGINT, handle_signal)
+    shutdown_event.wait()
+
+
 def file_changed(event):
     logging.info("Received file changed event %s restarting", event)
     global restart_pending
     restart_pending = True
-    if not connected:
-        logging.info("Not connected so closing")
-        os._exit(0)
+    shutdown_event.set()
 
 
 def parse_file(file, config, thermal_config, preview_type, fps, seed):
@@ -527,3 +541,33 @@ def default_headers():
     )
     return headers
 
+
+# saves import in main process
+def _postprocess_main():
+    from piclassifier.postprocess import main
+
+    main()
+
+
+def run_postprocess():
+    p_processor = Process(
+        target=_postprocess_main,
+        args=(),
+    )
+    p_processor.start()
+    return p_processor
+    
+def _classifier_main():
+    from .servemodel import main
+
+    main()
+
+
+def run_classifier():
+    p_processor = Process(
+        target=_classifier_main,
+        args=(),
+    )
+    p_processor.start()
+    return p_processor
+    

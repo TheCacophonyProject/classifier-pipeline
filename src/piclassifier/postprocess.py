@@ -1,4 +1,3 @@
-import psutil
 
 
 def process_mem():
@@ -8,7 +7,7 @@ def process_mem():
     process = psutil.Process(os.getpid())
     return process.memory_info().rss / (1024 * 1024)
 
-
+import psutil
 import queue
 import re
 import time
@@ -29,9 +28,7 @@ from functools import partial
 import threading
 import dbus
 from gi.repository import GLib
-from piclassifier.utils import toggle_network_classifier, is_service_running
 
-logging.info("Process usage %s", process_mem())
 
 TIMESTAMP_FORMATS = [
     (re.compile(r"^\d{4}-\d{2}-\d{2}--\d{2}-\d{2}-\d{2}"), "%Y-%m-%d--%H-%M-%S"),
@@ -190,13 +187,13 @@ def main():
                         time.sleep(20)
                     attempt += 1
 
-            if not is_service_running("thermal-classifier"):
-                logging.info("Network classifier is not running starting it up")
-                success = toggle_network_classifier(True)
-                if not success:
-                    raise Exception("Could not start up netowrk classifier")
-                # give it some time to start up
-                time.sleep(5)
+            # if not is_service_running("thermal-classifier"):
+            #     logging.info("Network classifier is not running starting it up")
+            #     success = toggle_network_classifier(True)
+            #     if not success:
+            #         raise Exception("Could not start up netowrk classifier")
+            #     # give it some time to start up
+            #     time.sleep(5)
             try:
                 if clip_classifier._is_recording:
                     while clip_classifier._is_recording:

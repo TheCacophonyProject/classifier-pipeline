@@ -19,6 +19,7 @@ from pathlib import Path
 from functools import partial
 from piclassifier import utils
 from .signals import PARSING_FILE, PARSED, SNAPSHOT_SIGNAL, STOP_SIGNAL, SKIP_SIGNAL
+import time
 
 track_extractor = None
 clip = None
@@ -560,10 +561,10 @@ class PiClassifier(Processor):
     def startup_classifier(self):
         self.classifier_initialised = True
         if self.classifier.run_over_network:
-            if not utils.is_service_running("thermal-classifier"):
-                success = utils.toggle_network_classifier(True)
-                if not success:
-                    raise Exception("COuild not start network classifier")
+        #     if not utils.is_service_running("thermal-classifier"):
+        #         success = utils.toggle_network_classifier(True)
+        #         if not success:
+        #             raise Exception("COuild not start network classifier")
             return
         # classifies an empty frame to force loading of the model into memory
         num_inputs, in_shape = self.classifier.shape()
@@ -600,7 +601,7 @@ class PiClassifier(Processor):
         new_prediction = False
         if len(active_tracks) == 0:
             return False
-
+        
         if self.fp_model is not None:
             fp_time = time.time()
             for track in active_tracks:
@@ -968,38 +969,38 @@ class PiClassifier(Processor):
                 return None
             return best_contour
 
-    def get_recent_frame(self, last_frame=None):
-        # save us having to lock if we dont have a different frame
-        if last_frame is not None and self.motion_detector.num_frames == last_frame:
-            return None, None, last_frame
-        last_frame = self.motion_detector.get_recent_frame()
-        if self.clip:
-            if last_frame is None:
-                return None
-            track_meta = []
-            tracks = clip.active_tracks
-            for track in tracks:
-                pred = None
-                if self.predictions:
-                    pred = {
-                        self.predictions[self.classifier.id].model.id: self.predictions[
-                            self.classifier.id
-                        ]
-                    }
-                meta = track.get_metadata(pred)
-                last_pos = meta["positions"][-1].copy()
-                # if self.track_extractor.scale is not None:
-                # last_pos.rescale(1 / self.track_extractor.scale)
-                meta["positions"] = [last_pos]
-                track_meta.append(meta)
+    # def get_recent_frame(self, last_frame=None):
+    #     # save us having to lock if we dont have a different frame
+    #     if last_frame is not None and self.motion_detector.num_frames == last_frame:
+    #         return None, None, last_frame
+    #     last_frame = self.motion_detector.get_recent_frame()
+    #     if self.clip:
+    #         if last_frame is None:
+    #             return None
+    #         track_meta = []
+    #         tracks = clip.active_tracks
+    #         for track in tracks:
+    #             pred = None
+    #             if self.predictions:
+    #                 pred = {
+    #                     self.predictions[self.classifier.id].model.id: self.predictions[
+    #                         self.classifier.id
+    #                     ]
+    #                 }
+    #             meta = track.get_metadata(pred)
+    #             last_pos = meta["positions"][-1].copy()
+    #             # if self.track_extractor.scale is not None:
+    #             # last_pos.rescale(1 / self.track_extractor.scale)
+    #             meta["positions"] = [last_pos]
+    #             track_meta.append(meta)
 
-            return last_frame, track_meta, self.motion_detector.num_frames
-        else:
-            return (
-                last_frame,
-                {},
-                self.motion_detector.num_frames,
-            )
+    #         return last_frame, track_meta, self.motion_detector.num_frames
+    #     else:
+    #         return (
+    #             last_frame,
+    #             {},
+    #             self.motion_detector.num_frames,
+    #         )
 
     def reset(self):
         self.classified_consec = 0
@@ -1041,8 +1042,10 @@ class PiClassifier(Processor):
     def process_frame(self, lepton_frame, received_at, source):
         if self.parsing_file and source == CAMERA_SOURCE:
             return
+        delay = time.time()-received_at
+        if delay > 1:
+            logging.info("Delay in process frame is %s",delay)
         self.processing_frame = True
-        import time
 
         start = time.time()
         if (

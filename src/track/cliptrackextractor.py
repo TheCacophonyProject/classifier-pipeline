@@ -24,6 +24,7 @@ from datetime import datetime
 
 from .clip import Clip
 from track.cliptracker import ClipTracker
+from piclassifier.cptvmotiondetector import is_affected_by_ffc
 import logging
 
 
@@ -206,8 +207,6 @@ class ClipTrackExtractor(ClipTracker):
         :param thermal: A numpy array of shape (height, width) and type uint16
         If specified background subtraction algorithm will be used.
         """
-        from piclassifier.cptvmotiondetector import is_affected_by_ffc
-
         ffc_affected = is_affected_by_ffc(frame)
         thermal = frame.pix.copy()
         if ffc_affected:
@@ -220,8 +219,8 @@ class ClipTrackExtractor(ClipTracker):
         if self.do_tracking or self.calculate_thumbnail_info:
             from ml_tools.imageprocessing import detect_objects
 
-            obj_filtered, threshold = self._get_filtered_frame(
-                clip, thermal, denoise=self.config.denoise
+            obj_filtered, threshold = self._get_normalized_filtered_frame(
+                clip, thermal, filtered, denoise=self.config.denoise
             )
             _, mask, component_details, centroids = detect_objects(
                 obj_filtered, otsus=False, threshold=threshold, kernel=(5, 5)

@@ -22,7 +22,6 @@ class ParseFileError(dbus.exceptions.DBusException):
 class Service(dbus.service.Object):
     def __init__(
         self,
-        get_frame,
         headers,
         take_snapshot_fn,
         labels,
@@ -34,7 +33,6 @@ class Service(dbus.service.Object):
         classifier_loaded=True,
     ):
         self.is_ready = is_ready
-        self.get_frame = get_frame
         self.get_thumbnail = get_thumbnail
         self.headers = headers
         self.take_snapshot = take_snapshot_fn
@@ -109,47 +107,6 @@ class Service(dbus.service.Object):
         ).start()
         return "Parsing file"
 
-    @dbus.service.method(
-        DBUS_NAME,
-        in_signature="i",
-        out_signature="(aaq(xsiqddxb)s)",
-    )
-    def TakeSnapshot(self, last_num):
-
-        from cptv import Frame
-
-        s = time.time()
-        last_frame, track_meta, f_num = self.get_frame(last_num)
-
-        if f_num == last_num or last_frame is None:
-            return (np.empty((0, 0)), (0, "", f_num, 0, 0, 0, 0, False), "")
-        logging.debug(
-            "Frame requested %s latest frame %s took %s",
-            last_num,
-            f_num,
-            time.time() - s,
-        )
-        if not isinstance(last_frame, Frame):
-            last_frame = last_frame[:, :, 0]
-            return (
-                last_frame,
-                (0, "", f_num, 0, 0, 0, 0, 0),  # count
-                json.dumps(track_meta, cls=CustomJSONEncoder),
-            )
-        return (
-            last_frame.pix,
-            (
-                last_frame.time_on.total_seconds() * 1e9,
-                "",
-                f_num,  # count
-                0,
-                last_frame.temp_c,
-                last_frame.last_ffc_temp_c,
-                last_frame.last_ffc_time.total_seconds() * 1e9,
-                last_frame.background_frame,
-            ),
-            json.dumps(track_meta, cls=CustomJSONEncoder),
-        )
 
     @dbus.service.method(
         DBUS_NAME,
@@ -293,7 +250,6 @@ class Service(dbus.service.Object):
 class SnapshotService:
     def __init__(
         self,
-        get_frame,
         headers,
         take_snapshot_fn,
         labels,
@@ -309,7 +265,6 @@ class SnapshotService:
         self.loop = GLib.MainLoop()
 
         self.service = Service(
-            get_frame,
             headers,
             take_snapshot_fn,
             labels,
@@ -329,7 +284,6 @@ class SnapshotService:
 
     def update_service(
         self,
-        get_frame,
         headers,
         take_snapshot_fn,
         labels,
@@ -337,7 +291,6 @@ class SnapshotService:
         thumbnail_dir,
         parse_file,
     ):
-        self.service.get_frame = get_frame
         self.service.headers = headers
         self.service.take_snapshot = take_snapshot_fn
         self.service.labels = labels

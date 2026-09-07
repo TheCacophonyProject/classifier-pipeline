@@ -87,16 +87,18 @@ class ClipTracker(ABC):
                 track.smooth(Rectangle(0, 0, clip.res_x, clip.res_y))
         return filtered_tracks
 
-    def _get_filtered_frame(self, clip, thermal, sub_change=True, denoise=True):
+    def _get_normalized_filtered_frame(
+        self, clip, thermal, filtered, sub_change=True, denoise=True
+    ):
         """
         Calculates filtered frame from thermal
         :param thermal: the thermal frame
-        :param background: (optional) used for background subtraction
+        :param filtered: (optional) thermal frame with background already subtracted,
+            reused to avoid redoing the subtraction
         :return: uint8 filtered frame and adjusted clip threshold for normalized frame
         """
         from ml_tools.imageprocessing import normalize
 
-        filtered = np.float32(thermal.copy())
         if sub_change:
             avg_change = int(
                 round(np.average(thermal) - self.background_alg.get_average())
@@ -104,12 +106,7 @@ class ClipTracker(ABC):
         else:
             avg_change = 0
 
-        np.clip(
-            filtered - self.background_alg.background - avg_change,
-            0,
-            None,
-            out=filtered,
-        )
+        filtered = np.clip(filtered - avg_change, 0, None)
         filtered, stats = normalize(filtered, new_max=255)
         if denoise:
             import cv2

@@ -1,12 +1,10 @@
 from abc import ABC, abstractmethod
-from threading import Lock
 import logging
 import numpy as np
 
 
 class SlidingWindow:
     def __init__(self, shape, dtype):
-        self.lock = Lock()
         # if dtype == "O":
         self.frames = [None] * shape
         # else:
@@ -18,80 +16,72 @@ class SlidingWindow:
         self.ffc = False
 
     def update_current_frame(self, frame, ffc=False):
-        with self.lock:
-            if self.last_index is None:
-                self.oldest_index = 0
-                self.last_index = 0
-                if not ffc:
-                    self.non_ffc_index = self.oldest_index
-            if not ffc and self.ffc:
-                self.non_ffc_index = self.last_index
+        if self.last_index is None:
+            self.oldest_index = 0
+            self.last_index = 0
+            if not ffc:
+                self.non_ffc_index = self.oldest_index
+        if not ffc and self.ffc:
+            self.non_ffc_index = self.last_index
 
-            self.frames[self.last_index] = frame
-            self.ffc = ffc
+        self.frames[self.last_index] = frame
+        self.ffc = ffc
 
     @property
     def current(self):
-        with self.lock:
-            if self.last_index is not None:
-                return self.frames[self.last_index]
-            return None
+        if self.last_index is not None:
+            return self.frames[self.last_index]
+        return None
 
     def get_frames(self):
-        with self.lock:
-            if self.last_index is None:
-                return []
-            frames = []
-            cur = self.oldest_index
-            end_index = (self.last_index + 1) % self.size
-            while len(frames) == 0 or cur != end_index:
-                frames.append(self.frames[cur])
-                cur = (cur + 1) % self.size
-            return frames
+        if self.last_index is None:
+            return []
+        frames = []
+        cur = self.oldest_index
+        end_index = (self.last_index + 1) % self.size
+        while len(frames) == 0 or cur != end_index:
+            frames.append(self.frames[cur])
+            cur = (cur + 1) % self.size
+        return frames
 
     def get(self, i):
         i = i % self.size
-        with self.lock:
-            return self.frames[i]
+        return self.frames[i]
 
     @property
     def oldest_nonffc(self):
-        with self.lock:
-            if self.non_ffc_index is not None:
-                return self.frames[self.non_ffc_index]
-            return None
+        if self.non_ffc_index is not None:
+            return self.frames[self.non_ffc_index]
+        return None
 
     @property
     def oldest(self):
-        with self.lock:
-            if self.oldest_index is not None:
-                return self.frames[self.oldest_index]
-            return None
+        if self.oldest_index is not None:
+            return self.frames[self.oldest_index]
+        return None
 
     def add(self, frame, ffc=False):
-        with self.lock:
-            if self.last_index is None:
-                self.oldest_index = 0
-                self.frames[0] = frame
-                self.last_index = 0
-                if not ffc:
-                    self.non_ffc_index = self.oldest_index
-            else:
-                new_index = (self.last_index + 1) % self.size
-                if new_index == self.oldest_index:
-                    if self.oldest_index == self.non_ffc_index and not ffc:
-                        self.non_ffc_index = (self.oldest_index + 1) % self.size
-                    self.oldest_index = (self.oldest_index + 1) % self.size
-                self.frames[new_index] = frame
-                self.last_index = new_index
-            if not ffc and self.ffc:
-                self.non_ffc_index = self.last_index
-            self.ffc = ffc
+        if self.last_index is None:
+            self.oldest_index = 0
+            self.frames[0] = frame
+            self.last_index = 0
+            if not ffc:
+                self.non_ffc_index = self.oldest_index
+        else:
+            new_index = (self.last_index + 1) % self.size
+            if new_index == self.oldest_index:
+                if self.oldest_index == self.non_ffc_index and not ffc:
+                    self.non_ffc_index = (self.oldest_index + 1) % self.size
+                self.oldest_index = (self.oldest_index + 1) % self.size
+            self.frames[new_index] = frame
+            self.last_index = new_index
+        if not ffc and self.ffc:
+            self.non_ffc_index = self.last_index
+        self.ffc = ffc
 
     def reset(self):
-        with self.lock:
-            self.last_index = None
-            self.oldest_index = None
+        self.last_index = None
+        self.oldest_index = None
 
 
 class MotionDetector(ABC):
@@ -199,7 +189,8 @@ class WeightedBackground:
         self.init_average = None
 
     def get_average(self):
-        return self.average
+        return  int(round(np.average(self.crop_rectangle.subimage(self.background))))
+
 
     def process_frame(self, frame):
         frame = np.uint16(self.crop_rectangle.subimage(frame))
@@ -216,32 +207,13 @@ class WeightedBackground:
             self.set_background_edges()
             return
         edgeless_back = self.crop_rectangle.subimage(self.background)
-        new_background = np.where(
-            edgeless_back < frame - self.background_weight,
-            edgeless_back,
-            frame,
-        )
+        mask = edgeless_back < frame - self.background_weight
+        edgeless_back[~mask] = frame[~mask]
         # update weighting
         # weights could be adjusted to less while recording
-        self.background_weight = np.where(
-            edgeless_back < frame - self.background_weight,
-            self.background_weight + self.weight_add,
-            0,
-        )
-        back_changed = new_background != edgeless_back
-        back_changed = np.any(back_changed == True)
-        if back_changed:
-            edgeless_back[:, :] = new_background
-            old_temp = self.average
-            self.average = int(round(np.average(edgeless_back)))
-            if self.average != old_temp:
-                logging.debug(
-                    "MotionDetector temp threshold changed from {} to {} ".format(
-                        old_temp,
-                        self.average,
-                    )
-                )
-            self.set_background_edges()
+        self.background_weight += self.weight_add
+        self.background_weight *= mask
+        self.set_background_edges()
 
     def set_background_edges(self):
         for i in range(self.edge_pixels):
