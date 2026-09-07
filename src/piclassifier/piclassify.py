@@ -451,8 +451,8 @@ def handle_connection(
             except:
                 pass
             read += 1
-            if read % 90==0:
-                utils.print_memory_usage()
+            # if read % 90==0:
+            #     utils.print_memory_usage()
             if parsing_file:
                 # need to keep reading from data socket in the mean time so just do a quick check
                 try:

@@ -5,7 +5,6 @@ from ml_tools.interpreter import get_interpreter
 from config.config import Config
 import logging
 from ml_tools.logs import init_logging
-from piclassifier.utils import print_memory_usage
 from config.thermalconfig import ThermalConfig
 from waitress import serve
 
