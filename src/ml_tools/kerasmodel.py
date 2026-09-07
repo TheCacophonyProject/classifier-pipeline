@@ -615,6 +615,9 @@ class KerasModel(Interpreter):
         run_dir = self.checkpoint_folder / run_name
         run_dir.mkdir(parents=True, exist_ok=True)
         if qat:
+            val_loss = self.checkpoint_folder / run_name / "val_loss.weights.h5"
+            logging.info("Saving with weights %s",val_loss)
+            self.model.load_weights(val_loss)
             import tensorflow_model_optimization as tfmot
             # 4. Export the actual full integer TFLite binary
             converter = tf.lite.TFLiteConverter.from_keras_model(self.model)
