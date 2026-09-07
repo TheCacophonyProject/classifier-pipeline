@@ -6,8 +6,18 @@ class DummyRecorder(Recorder):
     def __init__(self, thermal_config, headers, on_recording_stopping=None):
         self.recording = False
         self.frames = 0
-        self.min_frames = thermal_config.recorder.min_secs * headers.fps
-        self.max_frames = thermal_config.recorder.max_secs * headers.fps
+        if thermal_config is not None:
+            self.min_frames = thermal_config.recorder.min_secs * headers.fps
+            self.max_frames = thermal_config.recorder.max_secs * headers.fps
+        self.output_dir = None
+
+    def new_recording(self, background_frame, preview_frames, temp_thresh, frame_time):
+        self.frames = 0
+        self.start_recording(background_frame, preview_frames, temp_thresh, frame_time)
+        return True
+
+    def final_name(self):
+        return ""
 
     def process_frame(self, movement_detected, cptv_frame, received_at):
         if self.recording:
@@ -29,7 +39,7 @@ class DummyRecorder(Recorder):
         self.frames += 1
 
     def start_recording(
-        self, background_frame, preview_frames, temp_thresh, frame_time
+        self, background_frame, preview_frames, temp_thresh, frame_time, test=False
     ):
         if self.recording:
             return False

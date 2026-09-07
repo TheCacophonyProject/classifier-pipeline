@@ -19,7 +19,7 @@ import numpy as np
 from track.region import Region
 from ml_tools.datasetstructures import TrackHeader, ClipHeader
 from track.track import Track
-from track.cliptrackextractor import is_affected_by_ffc
+from piclassifier.cptvmotiondetector import is_affected_by_ffc
 from cptv_rs_python_bindings import CptvReader
 from ml_tools.rectangle import Rectangle
 from config.buildconfig import BuildConfig

@@ -107,7 +107,7 @@ class MotionDetector(ABC):
         self.sunrise = None
         self.sunset = None
         self.recording = False
-
+        self.force_record = False
         if self.rec_window.use_sunrise_sunset():
             self.rec_window.set_location(
                 *self.location_config.get_lat_long(use_default=True),
@@ -141,7 +141,9 @@ class MotionDetector(ABC):
         """Tracker type IR or Thermal"""
 
     def can_record(self):
-        return self.rec_window.inside_window() and not self.use_low_power_mode
+        return self.force_record or (
+            self.rec_window.inside_window() and not self.use_low_power_mode
+        )
 
     @abstractmethod
     def disconnected(self):
@@ -190,6 +192,11 @@ class WeightedBackground:
         # and can just calculate it from the background frame
         if init_average is not None:
             self.average = init_average
+
+    def reset(self):
+        self._background = None
+        self.background_weight.fill(0)
+        self.init_average = None
 
     def get_average(self):
         return self.average

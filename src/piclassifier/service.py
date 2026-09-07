@@ -8,36 +8,58 @@ import dbus.service
 import dbus.mainloop.glib
 from gi.repository import GLib
 from ml_tools.tools import CustomJSONEncoder
-from cptv import Frame
-
+from dbus.exceptions import DBusException
 from dbus.mainloop.glib import DBusGMainLoop
 
 DBUS_NAME = "org.cacophony.thermalrecorder"
 DBUS_PATH = "/org/cacophony/thermalrecorder"
 
 
+class ParseFileError(dbus.exceptions.DBusException):
+    _dbus_error_name = DBUS_NAME + ".ParseFileError"
+
+
 class Service(dbus.service.Object):
     def __init__(
         self,
-        dbus,
         get_frame,
         headers,
         take_snapshot_fn,
         labels,
         get_thumbnail,
         thumbnail_dir,
+        parse_file,
+        is_parsing_file,
+        is_ready,
+        classifier_loaded=True,
     ):
-        super().__init__(dbus, DBUS_PATH)
+        self.is_ready = is_ready
         self.get_frame = get_frame
         self.get_thumbnail = get_thumbnail
         self.headers = headers
         self.take_snapshot = take_snapshot_fn
         self.labels = labels
         self.thumbnail_dir = thumbnail_dir
+        self.parse_file = parse_file
+        self.is_parsing_file = is_parsing_file
+        self.classifier_loaded = classifier_loaded
 
+    def start_service(self,dbus):
+        super().__init__(dbus, DBUS_PATH)
+        self.ServiceStarted()
+
+
+    def update_labels(self, labels):
+        self.labels = labels
+        self.classifier_loaded = True
+        try:
+            self.LabelsUpdated()
+        except:
+            logging.error("Could run labels updated",exc_info=True)
+        
     @dbus.service.method(
         DBUS_NAME,
-        in_signature="",
+    in_signature="",
         out_signature="a{si}",
     )
     def CameraInfo(self):
@@ -60,12 +82,44 @@ class Service(dbus.service.Object):
         logging.debug("Sending headers %s", headers)
         return headers
 
+
+    @dbus.service.method(
+        DBUS_NAME,
+        out_signature="b",
+    )
+    def IsReady(self):
+        return self.is_ready()
+    
+    @dbus.service.method(
+        DBUS_NAME,
+        out_signature="s",
+    )
+    def ParsingFile(self):
+        parsing_file = self.is_parsing_file()
+        return parsing_file if parsing_file is not None else ""
+
+    @dbus.service.method(
+        DBUS_NAME,
+        in_signature="sii",
+    )
+    def ParseFile(self, file, fps, seed):
+        parsing_file = self.is_parsing_file()
+        if parsing_file is not None:
+            raise ParseFileError(f"Already parsing {parsing_file}")
+        threading.Thread(
+            target=self.parse_file, args=(file, fps, seed), daemon=True
+        ).start()
+        return "Parsing file"
+
     @dbus.service.method(
         DBUS_NAME,
         in_signature="i",
         out_signature="(aaq(xsiqddxb)s)",
     )
     def TakeSnapshot(self, last_num):
+
+        from cptv import Frame
+
         s = time.time()
         last_frame, track_meta, f_num = self.get_frame(last_num)
 
@@ -141,6 +195,8 @@ class Service(dbus.service.Object):
 
     @dbus.service.method(DBUS_NAME, signature="a{ias}")
     def ClassificationLabels(self):
+        if not self.classifier_loaded:
+            raise DBusException("Labels have not been initialized")
         logging.info("Getting labels %s", self.labels)
         if len(self.labels) == 0:
             return dbus.Array([], signature="(ias)")
@@ -228,53 +284,85 @@ class Service(dbus.service.Object):
         pass
 
     @dbus.service.signal(DBUS_NAME)
+    def LabelsUpdated(self):
+        pass
+
+    @dbus.service.signal(DBUS_NAME)
     def ServiceStarted(self):
         pass
 
 
 class SnapshotService:
     def __init__(
-        self, get_frame, headers, take_snapshot_fn, labels, get_thumbnail, thumbnail_dir
+        self,
+        get_frame,
+        headers,
+        take_snapshot_fn,
+        labels,
+        get_thumbnail,
+        thumbnail_dir,
+        parse_file,
+        is_parsing_file,
+        is_ready,
+                classifier_loaded=True,
+
     ):
         DBusGMainLoop(set_as_default=True)
         dbus.mainloop.glib.threads_init()
         self.loop = GLib.MainLoop()
+       
+        self.service = Service(
+            get_frame,
+            headers,
+            take_snapshot_fn,
+            labels,
+            get_thumbnail,
+            thumbnail_dir,
+            parse_file,
+            is_parsing_file,
+            is_ready,
+            classifier_loaded,
+        )
+    
         self.t = threading.Thread(
             target=self.run_server,
-            args=(
-                get_frame,
-                headers,
-                take_snapshot_fn,
-                labels,
-                get_thumbnail,
-                thumbnail_dir,
-            ),
         )
+        self.t.daemon = True
         self.t.start()
-        self.service = None
+    
+
+    def update_service(
+        self,
+        get_frame,
+        headers,
+        take_snapshot_fn,
+        labels,
+        get_thumbnail,
+        thumbnail_dir,
+        parse_file,
+    ):
+        self.service.get_frame = get_frame
+        self.service.headers = headers
+        self.service.take_snapshot = take_snapshot_fn
+        self.service.labels = labels
+        self.service.get_thumbnail = get_thumbnail
+        self.service.thumbnail_dir = thumbnail_dir
+        self.service.parse_file = parse_file
 
     def quit(self):
         self.loop.quit()
+        self.service = None
 
     def run_server(
-        self, get_frame, headers, take_snapshot_fn, labels, get_thumbnail, thumbnail_dir
+        self,
     ):
         try:
             session_bus = dbus.SystemBus(mainloop=DBusGMainLoop())
             name = dbus.service.BusName(DBUS_NAME, session_bus)
-            self.service = Service(
-                session_bus,
-                get_frame,
-                headers,
-                take_snapshot_fn,
-                labels,
-                get_thumbnail,
-                thumbnail_dir,
-            )
-            self.service.ServiceStarted()
+            self.service.start_service(session_bus)
             self.loop.run()
         except:
-            logging.error("Couldn't run dbus server at %s %s", DBUS_NAME, session_bus)
+            logging.error("Couldn't run loop",exc_info=True)
 
     def tracking(
         self,

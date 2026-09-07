@@ -13,7 +13,7 @@ Astral~=1.10.1
 timezonefinder~=6.5.9
 portalocker~=3.2.0
 toml~=0.10.2
-psutil~=7.0.0
+psutil~=7.2.2
 dbus-python~=1.4.0
 
 # sudo apt install libgirepository-2.0-dev

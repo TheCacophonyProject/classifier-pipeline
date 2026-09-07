@@ -3,7 +3,7 @@ import os
 from track.clip import Clip
 from track.cliptrackextractor import ClipTrackExtractor
 from config.config import Config
-from ml_tools.previewer import PREVIEW_TRACKING
+from config.classifyconfig import PreviewType
 
 
 class TestTrackingSpeed:
@@ -19,7 +19,8 @@ class TestTrackingSpeed:
         print("Tracking cptv with no background ", file_name)
         track_extractor = ClipTrackExtractor(
             config.tracking,
-            config.use_opt_flow or config.classify.preview == PREVIEW_TRACKING,
+            config.use_opt_flow
+            or config.classify.preview == PreviewType.TRACKING.value,
             cache_to_disk=False,
             verbose=config.verbose,
         )

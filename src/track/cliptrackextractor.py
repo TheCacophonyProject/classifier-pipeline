@@ -23,12 +23,8 @@ import yaml
 from datetime import datetime
 
 from .clip import Clip
-from piclassifier.cptvmotiondetector import is_affected_by_ffc
-from ml_tools.imageprocessing import detect_objects
 from track.cliptracker import ClipTracker
 import logging
-from cptv_rs_python_bindings import CptvReader
-from piclassifier.motiondetector import WeightedBackground
 
 
 class ClipTrackExtractor(ClipTracker):
@@ -96,6 +92,8 @@ class ClipTrackExtractor(ClipTracker):
         #     self.dilate_kernel = np.ones((size, size), np.uint8)
 
     def init_clip(self, clip):
+        from cptv_rs_python_bindings import CptvReader
+        from piclassifier.motiondetector import WeightedBackground
 
         clip.set_frame_buffer(
             self.high_quality_optical_flow,
@@ -157,6 +155,8 @@ class ClipTrackExtractor(ClipTracker):
         if clip.background is None:
             logging.error("Clip has no background have you called init_clip first")
             raise Exception("Clip has no background have you called init_clip first")
+        from cptv_rs_python_bindings import CptvReader
+
         reader = CptvReader(str(clip.source_file))
         while True:
             frame = reader.next_frame()
@@ -201,6 +201,8 @@ class ClipTrackExtractor(ClipTracker):
         :param thermal: A numpy array of shape (height, width) and type uint16
         If specified background subtraction algorithm will be used.
         """
+        from piclassifier.cptvmotiondetector import is_affected_by_ffc
+
         ffc_affected = is_affected_by_ffc(frame)
         thermal = frame.pix.copy()
         if ffc_affected:
@@ -211,6 +213,8 @@ class ClipTrackExtractor(ClipTracker):
         if self.do_tracking or self.calculate_filtered or self.calculate_thumbnail_info:
             filtered = np.float32(frame.pix) - self.background_alg.background
         if self.do_tracking or self.calculate_thumbnail_info:
+            from ml_tools.imageprocessing import detect_objects
+
             obj_filtered, threshold = self._get_filtered_frame(
                 clip, thermal, denoise=self.config.denoise
             )

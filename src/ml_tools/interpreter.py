@@ -5,8 +5,6 @@ import logging
 import numpy as np
 from ml_tools.hyperparams import HyperParams
 from pathlib import Path
-from classify.trackprediction import TrackPrediction
-from ml_tools.imageprocessing import normalize
 import requests
 
 
@@ -105,7 +103,11 @@ class Interpreter(ABC):
         frames, preprocessed, mass = self.preprocess(clip, track, samples, **args)
         if preprocessed is None or len(preprocessed) == 0:
             return None
-        prediction = self.predict(preprocessed)
+        try:
+            prediction = self.predict(preprocessed)
+        except:
+            logging.error("Could not predict", exc_info=True)
+            return None
         return prediction, frames, mass
 
     def preprocess(self, clip, track, samples, **args):
@@ -149,6 +151,8 @@ class Interpreter(ABC):
         return track_pred
 
     def track_prediction_from_raw(self, track_id, prediction_frames, output, masses):
+        from classify.trackprediction import TrackPrediction
+
         track_prediction = TrackPrediction(
             track_id, self.labels, smooth_preds=self.params.smooth_predictions
         )
@@ -638,6 +642,7 @@ def get_interpreter(model, run_over_network=False, load_model=True, seed=None):
 
 def get_contours(contour_image, frame_number):
     import cv2
+    from ml_tools.imageprocessing import normalize
 
     contour_image, stats = normalize(contour_image, new_max=255)
 

@@ -166,6 +166,7 @@ class ForestModel(Interpreter):
             normalize=args.get("normalize", True),
             buf_len=self.buffer_length,
             last_frame_predicted=args.get("last_frame_predicted"),
+            seed = self.seed
         )
         if result is None:
             return None
@@ -204,6 +205,7 @@ def process_track(
     scale=None,
     normalize=True,
     last_frame_predicted=None,
+    seed = None,
 ):
     background = clip.background
     all_frames = None
@@ -252,9 +254,11 @@ def process_track(
         logging.warning("Clip has no crop rectangle")
 
     # iterator =enumerate(range(len(bounds)))
+    rng = np.random.default_rng(seed=seed)
+
     if max_frames is not None:
         if len(indices) > max_frames:
-            indices = np.random.choice(indices, max_frames, replace=False)
+            indices = rng.choice(indices, max_frames, replace=False)
             indices.sort()
 
     data_bounds = np.empty(len(indices), dtype="O")
