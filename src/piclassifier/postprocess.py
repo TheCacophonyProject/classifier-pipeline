@@ -187,13 +187,7 @@ def main():
                         time.sleep(20)
                     attempt += 1
 
-            # if not is_service_running("thermal-classifier"):
-            #     logging.info("Network classifier is not running starting it up")
-            #     success = toggle_network_classifier(True)
-            #     if not success:
-            #         raise Exception("Could not start up netowrk classifier")
-            #     # give it some time to start up
-            #     time.sleep(5)
+
             try:
                 if clip_classifier._is_recording:
                     while clip_classifier._is_recording:

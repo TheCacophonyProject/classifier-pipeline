@@ -128,7 +128,7 @@ def main():
     # success = utils.startup_postprocessor(thermal_config.motion.postprocess)
     # if not success and thermal_config.motion.postprocess:
     #     raise Exception("Could not start up postprocessor")
-    if thermal_config.recorder.use_low_power_mode:
+    if not thermal_config.recorder.use_low_power_mode:
         sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         sock.bind(SOCKET_NAME)
         sock.settimeout(1 * 60)
@@ -452,8 +452,7 @@ def handle_connection(
                 pass
             read += 1
             if read % 90==0:
-                from utils import print_memory_usage
-                print_memory_usage()
+                utils.print_memory_usage()
             if parsing_file:
                 # need to keep reading from data socket in the mean time so just do a quick check
                 try:

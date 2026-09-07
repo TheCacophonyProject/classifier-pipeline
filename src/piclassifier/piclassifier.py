@@ -561,10 +561,6 @@ class PiClassifier(Processor):
     def startup_classifier(self):
         self.classifier_initialised = True
         if self.classifier.run_over_network:
-        #     if not utils.is_service_running("thermal-classifier"):
-        #         success = utils.toggle_network_classifier(True)
-        #         if not success:
-        #             raise Exception("COuild not start network classifier")
             return
         # classifies an empty frame to force loading of the model into memory
         num_inputs, in_shape = self.classifier.shape()
