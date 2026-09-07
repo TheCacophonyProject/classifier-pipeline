@@ -78,10 +78,19 @@ def main():
         *thermal_config.location.get_lat_long(use_default=True),
         thermal_config.location.altitude,
     )
+    other_services = []
     if args.file:
-        return parse_file(
+        if thermal_config.motion.run_classifier:
+            other_services.append(run_classifier())
+        parse_file(
             args.file, config, thermal_config, args.preview_type, args.fps, args.seed
         )
+        for process in other_services:
+            try:
+                utils.kill_process_with_timeout(process)
+            except:
+                pass
+        return
 
     process_queue = Queue()
     response_queue = Queue()
@@ -118,7 +127,6 @@ def main():
             raise
     logging.info("running as thermal")
 
-    other_services = []
     if thermal_config.motion.run_classifier:
         other_services.append(run_classifier())
     if thermal_config.motion.postprocess:

@@ -230,8 +230,6 @@ class PiClassifier(Processor):
         try:
             slept = 0
             self.parsing_file = True
-            if self.classify:
-                self.startup_classifier()
             self.classifier_ready()
             while self.processing_frame:
                 logging.info("Trying to parse file but processesor is busy")

@@ -291,6 +291,8 @@ class SnapshotService:
         thumbnail_dir,
         parse_file,
     ):
+        if self.service is None:
+            return
         self.service.headers = headers
         self.service.take_snapshot = take_snapshot_fn
         self.service.labels = labels
@@ -312,6 +314,7 @@ class SnapshotService:
             self.loop.run()
         except:
             logging.error("Couldn't run loop", exc_info=True)
+            self.quit()
 
     def tracking(
         self,
