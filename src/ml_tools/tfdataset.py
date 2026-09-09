@@ -364,8 +364,8 @@ def apply_channel_isolated_transforms(frame, bright_seed, contrast_seed):
 
 brightness_contrast_aug = tf.keras.Sequential(
     [
-        tf.keras.layers.RandomBrightness(0.2, value_range=(0.0, 255.0)),
-        tf.keras.layers.RandomContrast(0.5),
+        tf.keras.layers.RandomBrightness(0.05, value_range=(0.0, 255.0)),
+        tf.keras.layers.RandomContrast(0.15),
     ]
 )
 

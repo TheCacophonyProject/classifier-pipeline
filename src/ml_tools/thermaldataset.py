@@ -346,6 +346,8 @@ def load_dataset(filenames, remap_lookup, labels, args):
                 prob=args.get("cutmix_prob", 0.4),
                 current_epoch=args.get("current_epoch"),
             )
+
+
     else:
         # remove num_frames_used from y
         dataset = dataset.map(
@@ -358,6 +360,10 @@ def load_dataset(filenames, remap_lookup, labels, args):
         dataset = dataset.map(
             lambda x, y: (tile_input(x, USE_VELOCITY), y),
             num_parallel_calls=tf.data.AUTOTUNE,
+        )
+    if augment:
+        dataset = dataset.map(
+            lambda x, y: sensor_dropout_augmentation(x, y), num_parallel_calls=tf.data.AUTOTUNE
         )
     return dataset
 
@@ -1344,6 +1350,23 @@ def show_batch(image_batch, label_batch, labels, save=None, tracks=False):
         plt.savefig(save)
     plt.show()
 
+
+@tf.function
+def sensor_dropout_augmentation(mosaic_grid, labels):
+    """
+    Randomly drops Channel 0 completely on some training samples to force 
+    the network to extract primary features from Channels 1 and 2.
+    """
+    # 30% chance to completely blind the model to the thermal channel
+    # This forces the network to train the visual channels up from scratch
+    if tf.random.uniform([]) < 0.30:
+        ch0 = tf.zeros_like(mosaic_grid[:, :, 0])  # Zero out the thermal channel completely
+        ch1 = mosaic_grid[:, :, 1]
+        ch2 = mosaic_grid[:, :, 2]
+        
+        mosaic_grid = tf.stack([ch0, ch1, ch2], axis=-1)
+        
+    return mosaic_grid, labels
 
 @tf.function
 def mask_random_frames(rgb_image, frame_indices, record_frames):
