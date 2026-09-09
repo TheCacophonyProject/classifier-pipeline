@@ -26,7 +26,7 @@ All the training results are stored in tensorboard.  To assess the
 training run tensorboard from the log directory.
 
 """
-import ml_tools.bootstrap_keras
+# only use in QAT training
 import argparse
 import os
 
@@ -35,7 +35,6 @@ import matplotlib
 matplotlib.use("Agg")  # enable canvas drawing
 
 from config.config import Config
-from train.train import train_model
 
 
 def load_config():
@@ -81,11 +80,15 @@ def load_config():
         help="Name of training job",
     )
     args = parser.parse_args()
+    if args.qat:
+        import ml_tools.bootstrap_keras
+
     return Config.load_from_file(args.config_file), args
 
 
 def main():
     conf, args = load_config()
+    from train.train import train_model
 
     os.makedirs(conf.train.train_dir, exist_ok=True)
     train_model(
