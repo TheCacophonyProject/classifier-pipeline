@@ -44,16 +44,29 @@ def parse_args():
 
 
 def make_gradcam_heatmap(
-    model, img_array, class_index, last_conv_layer_name="top_conv"
+    model, img_array, class_index, last_conv_layer_name="efficientnetv2-b3"
 ):
     """Returns (H, W) float32 heatmap in [0, 1]."""
-    grad_model = tf.keras.models.Model(
-        model.inputs,
-        [model.get_layer(last_conv_layer_name).output, model.output],
-    )
-    # grad_model.summary()
+    conv_layer = model.get_layer(last_conv_layer_name)
+
+    # A single combined Model spanning a nested sub-model (efficientnetv2-b3)
+    # loses the gradient link to that sub-model's .output tensor under Keras 3,
+    # so tape.gradient() below comes back None. Splitting the graph into a
+    # pre-model (up to conv_layer) and a post-model (everything after,
+    # reapplied to an explicitly watched tensor) keeps the link intact.
+    pre_model = tf.keras.models.Model(model.inputs, conv_layer.output)
+
+    layer_index = model.layers.index(conv_layer)
+    remaining_input = tf.keras.Input(shape=conv_layer.output.shape[1:])
+    y = remaining_input
+    for layer in model.layers[layer_index + 1 :]:
+        y = layer(y, training=False)
+    post_model = tf.keras.models.Model(remaining_input, y)
+
+    conv_outputs = pre_model(img_array, training=False)
     with tf.GradientTape() as tape:
-        conv_outputs, predictions = grad_model(img_array)
+        tape.watch(conv_outputs)
+        predictions = post_model(conv_outputs, training=False)
         loss = predictions[:, class_index]
 
     grads = tape.gradient(loss, conv_outputs)  # (1, h, w, filters)
@@ -84,24 +97,47 @@ def overlay_heatmap_on_channel(channel, heatmap, alpha=0.4):
     return (np.clip(blended, 0, 1) * 255).astype(np.uint8)
 
 
+def print_channel_contributions(model, img_array, class_index, label, channel_names):
+    """Prints how much each input channel drives the class score, via
+    Grad x Input summed over space — a cheap per-channel importance measure."""
+    img_tensor = tf.convert_to_tensor(img_array)
+    with tf.GradientTape() as tape:
+        tape.watch(img_tensor)
+        predictions = model({"input_image": img_tensor}, training=False)
+        score = predictions[:, class_index]
+
+    grads = tape.gradient(score, img_tensor)  # (1, H, W, C)
+    contributions = tf.reduce_sum(tf.abs(grads * img_tensor), axis=(0, 1, 2)).numpy()
+    total = contributions.sum() + 1e-8
+
+    print(f"Channel contribution to '{label}' score:")
+    for name, contrib in zip(channel_names, contributions):
+        print(f"  {name}: {contrib:.4f} ({100 * contrib / total:.1f}%)")
+
+
 def save_gradcam_for_label(
     model,
     pred_image,
-    pred_mask,
     label_index,
     label,
     pred_score,
     out_path,
     channel_names,
 ):
+    print_channel_contributions(
+        model,
+        np.expand_dims(pred_image, 0),
+        label_index,
+        label,
+        channel_names,
+    )
     heatmap = make_gradcam_heatmap(
         model,
         {
             "input_image": np.expand_dims(pred_image, 0),
-            "input_mask": np.expand_dims(pred_mask, 0),
         },
         class_index=label_index,
-        last_conv_layer_name="conv2d_1",
+        last_conv_layer_name="efficientnetv2-b3",
     )
 
     fig, axes = plt.subplots(1, 3, figsize=(12, 4), squeeze=False)
@@ -216,10 +252,12 @@ def preprocess_file(classifier, filename):
                     classifier.params.frame_size,
                     region,
                     clip.crop_rectangle,
+                    enlarge=True,
+                    new_max=255.0,
                 )
-                pre_f.thermal *= 255
-                pre_f.thermal_norm *= 255
-                pre_f.filtered *= 255
+                # pre_f.thermal *= 255
+                # pre_f.thermal_norm *= 255
+                # pre_f.filtered *= 255
                 track_data[track_id]["frames"][region.frame_number] = pre_f
 
         # track_extractor.process_frame(clip, frame)
@@ -237,13 +275,12 @@ def preprocess_file(classifier, filename):
     i = 0
     for track_id, data in track_data.items():
         print("Track id is", track_id)
-        if track_id != 4:
-            continue
+
         i += 1
         i += 1
         pred_frames = data["pred_frames"]
         pred_frame_numbers = []
-        preprocess_data = {"input_image": [], "input_mask": []}
+        preprocess_data = {"input_image": []}
         masses = []
         for segment in pred_frames:
             segment_frames = []
@@ -254,16 +291,14 @@ def preprocess_file(classifier, filename):
             frames = preprocess_movement(
                 segment_frames,
                 classifier.params.square_width,
-                classifier.params.frame_size,
+                classifier.params.frame_size * 2,
                 classifier.params.channels,
                 classifier.preprocess_fn,
                 sample=f"{clip.get_id()}-{track_id}",
-                enlarge=True,
+                pad_with = 0,
             )
-            frame_mask = get_frame_mask(segment.frame_indices)
             # preprocess_data["input_image"].append(np.zeros_like(frames))
             preprocess_data["input_image"].append(frames)
-            preprocess_data["input_mask"].append(frame_mask)
 
             masses.append(segment.mass)
             pred_frame_numbers.append(segment.frame_indices)
@@ -272,7 +307,6 @@ def preprocess_file(classifier, filename):
             continue
             # dont think this should happen
         preprocess_data["input_image"] = np.array(preprocess_data["input_image"])
-        preprocess_data["input_mask"] = np.array(preprocess_data["input_mask"])
         return preprocess_data
 
 
@@ -302,6 +336,7 @@ def main():
 
     old_model = classifier.model
 
+
     if args.weights is not None:
         old_model.load_weights(args.weights)
     # model = build_model(metadata, old_model)
@@ -313,9 +348,10 @@ def main():
     # img = source[0]                        # (H, W, 3) for display
 
     preds = model.predict(data)
-    for pred, pred_image, pred_mask in zip(
-        preds, data["input_image"], data["input_mask"]
+    for pred, pred_image in zip(
+        preds, data["input_image"]
     ):
+        print(pred_image.shape)
         print("Predictions:")
         for i, label in enumerate(labels):
             print(f"  {label}: {pred[i]*100:.1f}%")
@@ -330,7 +366,6 @@ def main():
                 save_gradcam_for_label(
                     model,
                     pred_image,
-                    pred_mask,
                     label_i,
                     label,
                     pred[label_i],
@@ -342,7 +377,6 @@ def main():
             save_gradcam_for_label(
                 model,
                 pred_image,
-                pred_mask,
                 top_i,
                 top_label,
                 pred[top_i],
