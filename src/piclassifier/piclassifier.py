@@ -576,7 +576,7 @@ class PiClassifier(Processor):
                     num_predictions=1,
                     calculate_filtered=True,
                     last_frame_predicted=track_prediction.last_frame_classified,
-                    min_frames_for_prediction = 6,
+                    # min_frames_for_prediction = 6,
                 )
                 if pred_result is None:
                     logging.info("not prediction %s",track)
@@ -608,7 +608,6 @@ class PiClassifier(Processor):
                 new_prediction = True
 
             self.identify_time += time.time() - id_start
-            logging.info("Skipping %s",skip)
             self.next_classify_frame += skip
 
         for i, track in enumerate(active_tracks):
