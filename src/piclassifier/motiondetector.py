@@ -203,7 +203,7 @@ class WeightedBackground:
                 self.edge_pixels : res_y + self.edge_pixels,
                 self.edge_pixels : res_x + self.edge_pixels,
             ] = frame
-            self.average = np.average(frame)
+            self.average = int(np.average(frame))
             self.set_background_edges()
             return
         edgeless_back = self.crop_rectangle.subimage(self.background)

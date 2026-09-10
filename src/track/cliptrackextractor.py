@@ -228,6 +228,7 @@ class ClipTrackExtractor(ClipTracker):
                 obj_filtered, otsus=False, threshold=threshold, kernel=(5, 5)
             )
         _ = clip.add_frame(thermal, filtered, mask, ffc_affected)
+        debug_frame(clip.frame_buffer.current_frame)
         if not self.do_tracking:
             return []
 
@@ -247,3 +248,17 @@ class ClipTrackExtractor(ClipTracker):
                 # Pi it would just grow unbounded for the life of the clip
                 clip.region_history.append(regions)
         return new_tracks
+
+
+def debug_frame(frame):
+    if frame.filtered is None or frame.thermal is None:
+        return
+    from ml_tools.imageprocessing import normalize
+    thermal,_ = normalize(frame.thermal,new_max = 255)
+    filtered,_ = normalize(frame.filtered,new_max = 255)
+    import cv2
+    cv2.imshow("t",np.uint8(thermal))
+
+    cv2.imshow("f",np.uint8(filtered))
+    cv2.moveWindow("f",300,300)
+    cv2.waitKey()

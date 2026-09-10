@@ -27,7 +27,6 @@ from ml_tools.resnet.wr_resnet import WRResNet
 
 from ml_tools import irdataset
 from ml_tools.tfdataset import get_weighting, get_dataset as get_tf
-from ml_tools.preprocess import FrameTypes
 
 classify_i = 0
 
@@ -1486,6 +1485,8 @@ def get_dataset(
 
 
 class MetaJSONEncoder(json.JSONEncoder):
+    from ml_tools.tools import FrameTypes
+
     def default(self, obj):
         if isinstance(obj, SegmentType) or isinstance(obj, FrameTypes):
             return obj.name
