@@ -52,7 +52,7 @@ class Interpreter(ABC):
         headers = {"content-type": "application/octet-stream"}
         response = requests.post(
             f"http://127.0.0.1:{self.port}/predict",
-            data=data.tostring(),
+            data=data.tobytes(),
             headers=headers,
         )
         predictions = np.frombuffer(response.content, dtype=np.float32)

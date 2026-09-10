@@ -1,4 +1,3 @@
-import h5py
 import os
 import numpy as np
 
@@ -23,7 +22,7 @@ class FrameCache:
         self.bytes_since_flush = 0
         if delete_if_exists:
             self.delete()
-
+        import h5py
         f = h5py.File(self.filename, "w")
         f.create_group("tracks")
         f.close()

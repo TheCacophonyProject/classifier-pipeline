@@ -22,7 +22,6 @@ class ParseFileError(dbus.exceptions.DBusException):
 class Service(dbus.service.Object):
     def __init__(
         self,
-        get_frame,
         headers,
         take_snapshot_fn,
         labels,
@@ -34,7 +33,6 @@ class Service(dbus.service.Object):
         classifier_loaded=True,
     ):
         self.is_ready = is_ready
-        self.get_frame = get_frame
         self.get_thumbnail = get_thumbnail
         self.headers = headers
         self.take_snapshot = take_snapshot_fn
@@ -43,6 +41,18 @@ class Service(dbus.service.Object):
         self.parse_file = parse_file
         self.is_parsing_file = is_parsing_file
         self.classifier_loaded = classifier_loaded
+
+    def start_service(self, dbus):
+        super().__init__(dbus, DBUS_PATH)
+        self.ServiceStarted()
+
+    def update_labels(self, labels):
+        self.labels = labels
+        self.classifier_loaded = True
+        try:
+            self.LabelsUpdated()
+        except:
+            logging.error("Could not update service labels", exc_info=True)
 
     def start_service(self,dbus):
         super().__init__(dbus, DBUS_PATH)
@@ -113,45 +123,32 @@ class Service(dbus.service.Object):
 
     @dbus.service.method(
         DBUS_NAME,
-        in_signature="i",
-        out_signature="(aaq(xsiqddxb)s)",
+        out_signature="b",
     )
-    def TakeSnapshot(self, last_num):
+    def IsReady(self):
+        return self.is_ready()
 
-        from cptv import Frame
+    @dbus.service.method(
+        DBUS_NAME,
+        out_signature="s",
+    )
+    def ParsingFile(self):
+        parsing_file = self.is_parsing_file()
+        return parsing_file if parsing_file is not None else ""
 
-        s = time.time()
-        last_frame, track_meta, f_num = self.get_frame(last_num)
+    @dbus.service.method(
+        DBUS_NAME,
+        in_signature="sii",
+    )
+    def ParseFile(self, file, fps, seed):
+        parsing_file = self.is_parsing_file()
+        if parsing_file is not None:
+            raise ParseFileError(f"Already parsing {parsing_file}")
+        threading.Thread(
+            target=self.parse_file, args=(file, fps, seed), daemon=True
+        ).start()
+        return "Parsing file"
 
-        if f_num == last_num or last_frame is None:
-            return (np.empty((0, 0)), (0, "", f_num, 0, 0, 0, 0, False), "")
-        logging.debug(
-            "Frame requested %s latest frame %s took %s",
-            last_num,
-            f_num,
-            time.time() - s,
-        )
-        if not isinstance(last_frame, Frame):
-            last_frame = last_frame[:, :, 0]
-            return (
-                last_frame,
-                (0, "", f_num, 0, 0, 0, 0, 0),  # count
-                json.dumps(track_meta, cls=CustomJSONEncoder),
-            )
-        return (
-            last_frame.pix,
-            (
-                last_frame.time_on.total_seconds() * 1e9,
-                "",
-                f_num,  # count
-                0,
-                last_frame.temp_c,
-                last_frame.last_ffc_temp_c,
-                last_frame.last_ffc_time.total_seconds() * 1e9,
-                last_frame.background_frame,
-            ),
-            json.dumps(track_meta, cls=CustomJSONEncoder),
-        )
 
     @dbus.service.method(
         DBUS_NAME,
@@ -295,7 +292,6 @@ class Service(dbus.service.Object):
 class SnapshotService:
     def __init__(
         self,
-        get_frame,
         headers,
         take_snapshot_fn,
         labels,
@@ -304,15 +300,13 @@ class SnapshotService:
         parse_file,
         is_parsing_file,
         is_ready,
-                classifier_loaded=True,
-
+        classifier_loaded=True,
     ):
         DBusGMainLoop(set_as_default=True)
         dbus.mainloop.glib.threads_init()
         self.loop = GLib.MainLoop()
-       
+
         self.service = Service(
-            get_frame,
             headers,
             take_snapshot_fn,
             labels,
@@ -323,17 +317,14 @@ class SnapshotService:
             is_ready,
             classifier_loaded,
         )
-    
         self.t = threading.Thread(
             target=self.run_server,
         )
         self.t.daemon = True
         self.t.start()
-    
 
     def update_service(
         self,
-        get_frame,
         headers,
         take_snapshot_fn,
         labels,
@@ -341,7 +332,8 @@ class SnapshotService:
         thumbnail_dir,
         parse_file,
     ):
-        self.service.get_frame = get_frame
+        if self.service is None:
+            return
         self.service.headers = headers
         self.service.take_snapshot = take_snapshot_fn
         self.service.labels = labels
@@ -362,7 +354,8 @@ class SnapshotService:
             self.service.start_service(session_bus)
             self.loop.run()
         except:
-            logging.error("Couldn't run loop",exc_info=True)
+            logging.error("Couldn't run loop", exc_info=True)
+            self.quit()
 
     def tracking(
         self,

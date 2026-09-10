@@ -17,7 +17,6 @@ You should have received a copy of the GNU General Public License
 along with this program. If not, see <http://www.gnu.org/licenses/>.
 """
 
-from ml_tools.framecache import FrameCache
 from ml_tools.frame import Frame
 from threading import Lock
 
@@ -37,6 +36,7 @@ class FrameBuffer:
 
         if cache_to_disk:
             import os
+            from ml_tools.framecache import FrameCache
 
             basename = os.path.splitext(cptv_name)[0]
             filename = basename + ".cache"

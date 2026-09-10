@@ -8,19 +8,19 @@ import socket
 import time
 
 import numpy as np
-from threading import Thread
+import signal
+from threading import Thread, Event
 
 from config.config import Config
 from config.thermalconfig import ThermalConfig
 from .headerinfo import HeaderInfo
 from ml_tools.logs import init_logging
-import multiprocessing
 from .eventreporter import log_event
 from piclassifier.monitorconfig import monitor_file
 from pathlib import Path
 from piclassifier import utils
 from .signals import STOP_SIGNAL, SKIP_SIGNAL, SNAPSHOT_SIGNAL, PARSING_FILE, PARSED
-
+from multiprocessing import Queue,Process
 SOCKET_NAME = "/var/run/lepton-frames"
 VOSPI_DATA_SIZE = 160
 TELEMETRY_PACKET_COUNT = 4
@@ -77,14 +77,22 @@ def main():
         *thermal_config.location.get_lat_long(use_default=True),
         thermal_config.location.altitude,
     )
+    other_services = []
     if args.file:
-        return parse_file(
+        if thermal_config.motion.run_classifier:
+            other_services.append(run_classifier())
+        parse_file(
             args.file, config, thermal_config, args.preview_type, args.fps, args.seed
         )
+        for process in other_services:
+            try:
+                utils.kill_process_with_timeout(process)
+            except:
+                pass
+        return
 
-
-    process_queue = multiprocessing.Queue()
-    response_queue = multiprocessing.Queue()
+    process_queue = Queue()
+    response_queue = Queue()
 
     # TODO this will break things if we ever have different resolution or FPS
     headers = default_headers()
@@ -98,7 +106,6 @@ def main():
     )
     monitor_thread.daemon = True
     monitor_thread.start()
-
 
     # get a cloned window so we dont update it
     if not thermal_config.recorder.use_low_power_mode:
@@ -119,66 +126,55 @@ def main():
             raise
     logging.info("running as thermal")
 
-    # try not run classifier unless we are inside a recording window
-    # enable_network_classifier = (
-    #     model is not None and thermal_config.motion.run_classifier
-    # )
+    if thermal_config.motion.run_classifier:
+        other_services.append(run_classifier())
+    if thermal_config.motion.postprocess:
+        other_services.append(run_postprocess())
+  
+    if not thermal_config.recorder.use_low_power_mode:
+        sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        sock.bind(SOCKET_NAME)
+        sock.settimeout(1 * 60)
+        sock.listen(1)
+        global connected
 
-    # will start this up later, if tc2-agent is offloading recordings this can overload the system
-    # best to wait until we get frames
-    # if thermal_config.recorder.rec_window.inside_window() and enable_network_classifier:
-    #     success = utils.toggle_network_classifier(model.run_over_network)
-    #     if not success:
-    #         raise Exception("Could not start up network classifier")
-    # if not enable_network_classifier:
-    utils.toggle_network_classifier(False)
-
-    success = utils.startup_postprocessor(thermal_config.motion.postprocess)
-    if not success and thermal_config.motion.postprocess:
-        raise Exception("Could not start up postprocessor")
-
-
-    sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-    sock.bind(SOCKET_NAME)
-    sock.settimeout(1 * 60)
-    sock.listen(1)
-    global connected
-
-    while True:
-        if restart_pending:
-            sock.close()
-            logging.info("Restart pending exiting")
-            break
-        logging.info("waiting for a connection")
-        try:
-            connection, client_address = sock.accept()
-            connected = True
-            logging.info("connection from %s", client_address)
-            log_event("camera-connected", {"type": "thermal"})
-
-            handle_connection(
-                processor,
-                connection,
-                config,
-                args.thermal_config_file,
-                process_queue,
-                response_queue,
-            )
-
-
-        except socket.timeout:
-            logging.error("Socket %s timeout error", SOCKET_NAME, exc_info=True)
-            continue
-
-        except Exception as ex:
-            log_event("camera-disconnected", ex)
-            logging.error("Error with connection", exc_info=True)
-        finally:
-            # Clean up the connection
+        while True:
+            if restart_pending:
+                sock.close()
+                logging.info("Restart pending exiting")
+                break
+            logging.info("waiting for a connection")
             try:
-                connection.close()
-            except:
-                pass
+                connection, client_address = sock.accept()
+                connected = True
+                logging.info("connection from %s", client_address)
+                log_event("camera-connected", {"type": "thermal"})
+
+                handle_connection(
+                    processor,
+                    connection,
+                    config,
+                    args.thermal_config_file,
+                    process_queue,
+                    response_queue,
+                )
+
+            except socket.timeout:
+                logging.error("Socket %s timeout error", SOCKET_NAME, exc_info=True)
+                continue
+
+            except Exception as ex:
+                log_event("camera-disconnected", ex)
+                logging.error("Error with connection", exc_info=True)
+            finally:
+                # Clean up the connection
+                try:
+                    connection.close()
+                except:
+                    pass
+    else:
+        wait_for_shutdown()
+
     if processor.is_alive:
         logging.info("Stopping processor because restart was pending")
         process_queue.put(STOP_SIGNAL)
@@ -192,13 +188,30 @@ def main():
                 pass
 
 
+    for process in other_services:
+        try:
+            utils.kill_process_with_timeout(process)
+        except:
+            pass
+
+shutdown_event = Event()
+
+
+def wait_for_shutdown():
+    def handle_signal(signum, frame):
+        logging.info("Received signal %s, shutting down", signum)
+        shutdown_event.set()
+
+    signal.signal(signal.SIGTERM, handle_signal)
+    signal.signal(signal.SIGINT, handle_signal)
+    shutdown_event.wait()
+
+
 def file_changed(event):
     logging.info("Received file changed event %s restarting", event)
     global restart_pending
     restart_pending = True
-    if not connected:
-        logging.info("Not connected so closing")
-        os._exit(0)
+    shutdown_event.set()
 
 
 def parse_file(file, config, thermal_config, preview_type, fps, seed):
@@ -243,7 +256,7 @@ def parse_cptv(file, config, thermal_config, preview_type, fps, seed):
 def get_processor(process_queue, response_queue, config, thermal_config, headers):
     from .piclassifier import run_classifier
 
-    p_processor = multiprocessing.Process(
+    p_processor = Process(
         target=run_classifier,
         args=(
             process_queue,
@@ -378,6 +391,8 @@ def bytes_queued(sock):
     buf = struct.pack('i', 0)
     return struct.unpack('i', fcntl.ioctl(sock.fileno(), termios.FIONREAD, buf))[0]
 
+
+
 def handle_connection(
     processor, connection, config, thermal_config_file, process_queue, response_queue
 ):
@@ -439,8 +454,8 @@ def handle_connection(
             except:
                 pass
             read += 1
-            # if read % 90:
-            #     print_memory_usage()
+            # if read % 90==0:
+            #     utils.print_memory_usage()
             if parsing_file:
                 # need to keep reading from data socket in the mean time so just do a quick check
                 try:
@@ -480,11 +495,13 @@ def handle_connection(
                     pass
 
     except:
-        logging.error("Error handling connection",exc_info=True)
+        logging.error("Error handling connection", exc_info=True)
     finally:
         ready_to_record = False
         if processor.is_alive:
-            logging.info("Stopping processor because there was an issue in frame handling")
+            logging.info(
+                "Stopping processor because there was an issue in frame handling"
+            )
 
             process_queue.put(STOP_SIGNAL)
             # give it time to clean up, seems to take a while if classifier is running
@@ -526,45 +543,32 @@ def default_headers():
     return headers
 
 
+# saves import in main process
+def _postprocess_main():
+    from piclassifier.postprocess import main
 
-def print_memory_usage():
-    process = psutil.Process(os.getpid())
-    main_rss = process.memory_info().rss
-    main_uss = process.memory_full_info().uss
-    total_rss = main_rss
-    total_uss = main_uss
-    logging.info(
-        "Memory usage pid %d (%s) %.1fMB rss %.1fMB uss",
-        process.pid,
-        process.name(),
-        main_rss / (1024 * 1024),
-        main_uss / (1024 * 1024),
-    )
-    children = process.children(recursive=True)
-    for child in children:
-        try:
-            child_rss = child.memory_info().rss
-            child_uss = child.memory_full_info().uss
-            total_rss += child_rss
-            total_uss += child_uss
-            logging.info(
-                "Memory usage pid %d (%s) %.1fMB rss %.1fMB uss",
-                child.pid,
-                child.name(),
-                child_rss / (1024 * 1024),
-                child_uss / (1024 * 1024),
-            )
-        except (psutil.NoSuchProcess, psutil.AccessDenied):
-            continue
-    swap = psutil.swap_memory()
-    logging.info(
-        "Memory usage main %.1fMB total (with %d sub processes) %.1fMB uss %.1fMB swap used %.1fMB of %.1fMB (%.1f%%)",
-        main_rss / (1024 * 1024),
-        len(children),
-        total_rss / (1024 * 1024),
-        total_uss / (1024 * 1024),
-        swap.used / (1024 * 1024),
-        swap.total / (1024 * 1024),
-        swap.percent,
-    )
+    main()
 
+
+def run_postprocess():
+    p_processor = Process(
+        target=_postprocess_main,
+        args=(),
+    )
+    p_processor.start()
+    return p_processor
+    
+def _classifier_main():
+    from .servemodel import main
+
+    main()
+
+
+def run_classifier():
+    p_processor = Process(
+        target=_classifier_main,
+        args=(),
+    )
+    p_processor.start()
+    return p_processor
+    

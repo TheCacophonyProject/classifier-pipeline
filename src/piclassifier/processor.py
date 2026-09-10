@@ -33,7 +33,6 @@ class Processor(ABC):
                 model_labels[self.fp_model.id] = self.fp_model.labels
 
         self.service = SnapshotService(
-            self.get_recent_frame,
             self.headers,
             self.take_snapshot,
             model_labels,
@@ -42,17 +41,17 @@ class Processor(ABC):
             self.parse_file,
             self.is_parsing_file,
             self.is_ready,
-                        classifier_loaded,
-
+            classifier_loaded,
         )
 
     def update_service_labels(self):
+        if self.service.service is None:
+            return
         model_labels = {}
         if self.classifier is not None:
             model_labels[self.classifier.id] = self.classifier.labels
         if self.fp_model is not None:
             model_labels[self.fp_model.id] = self.fp_model.labels
-        self.service.service.labels = model_labels
         self.service.service.update_labels(model_labels)
 
     @abstractmethod
@@ -66,9 +65,6 @@ class Processor(ABC):
 
     @abstractmethod
     def process_frame(self, lepton_frame): ...
-
-    @abstractmethod
-    def get_recent_frame(self, last_frame=None): ...
 
     @abstractmethod
     def disconnected(self): ...

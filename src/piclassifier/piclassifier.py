@@ -12,7 +12,6 @@ from .motiondetector import SlidingWindow
 from .processor import Processor
 
 from ml_tools.logs import init_logging
-from ml_tools.rectangle import Rectangle
 from . import beacon
 
 from piclassifier.attiny import set_recording_state
@@ -20,6 +19,7 @@ from pathlib import Path
 from functools import partial
 from piclassifier import utils
 from .signals import PARSING_FILE, PARSED, SNAPSHOT_SIGNAL, STOP_SIGNAL, SKIP_SIGNAL
+import time
 
 track_extractor = None
 clip = None
@@ -139,7 +139,6 @@ class PiClassifier(Processor):
         self.clip = None
         self.prev_clip = None
         self.enable_per_track_information = False
-        self.rolling_track_classify = {}
         self.next_classify_frame = 0
         self.next_fp_classification_frame = 0
         self.classified_consec = 0
@@ -209,7 +208,6 @@ class PiClassifier(Processor):
         if self.classify and self.initialised:
             return self.classifier_ready(0)
         return self.initialised
-    
     def is_parsing_file(self):
         return self.headers.source if self.parsing_file else None
 
@@ -231,8 +229,6 @@ class PiClassifier(Processor):
         try:
             slept = 0
             self.parsing_file = True
-            if self.classify:
-                self.startup_classifier()
             self.classifier_ready()
             while self.processing_frame:
                 logging.info("Trying to parse file but processesor is busy")
@@ -274,12 +270,10 @@ class PiClassifier(Processor):
                 from .dummyrecorder import DummyRecorder
 
                 self.recorder = DummyRecorder(
-                    None,
+                    self.thermal_config,
                     self.headers,
                     on_recording_stopping=self.recorder.on_recording_stopping,
                 )
-                self.recorder.min_frames = self.recorder.min_frames
-                self.recorder.max_frames = self.recorder.max_frames
 
             self.motion_detector.force_record = True
             from threading import Thread
@@ -300,7 +294,7 @@ class PiClassifier(Processor):
                     self.classifier.seed = header.timestamp
             if self.fp_model is not None:
                 self.fp_model.seed = self.classifier.seed
-
+            read = 0
             while True:
                 frame = reader.next_frame()
 
@@ -330,7 +324,9 @@ class PiClassifier(Processor):
                     logging.error("Could not process frame from file ", exc_info=True)
                 if fps is not None and fps > 0:
                     time.sleep(1.0 / fps)
-
+                read +=1
+                # if read % 90==0:
+                #     utils.print_memory_usage()
             put_asoldest(frame_queue, STOP_SIGNAL)
             self.reset()
 
@@ -535,25 +531,17 @@ class PiClassifier(Processor):
             return
         # no need to retrack all of preview
         background_frames = None
-        track_frames = -1
-        retrack_back = True
-        if self.type == "IR":
-            track_frames = 5
-            retrack_back = True
-            # background is calculated in motion, so already 5 frames ahead
+        track_frames = 1
         new_tracks = self.track_extractor.start_tracking(
             self.clip,
             preview_frames,
             track_frames=track_frames,
             background_alg=self.motion_detector._background,
-            retrack_back=retrack_back,
-            # background_frame=clip.background,
-            # background_frames=background_frames,
         )
         for t in new_tracks:
             t.received_at = received_at
 
-    def classifier_ready(self,timeout= 45):
+    def classifier_ready(self, timeout=45):
         if not self.classify or not self.classifier.run_over_network:
             return True
         from classify.clipclassifier import classify_ready
@@ -563,17 +551,13 @@ class PiClassifier(Processor):
             f"http://127.0.0.1:{self.classifier.port}/ready",
         )
         classifier_is_ready = classify_ready(
-            f"http://127.0.0.1:{self.classifier.port}/ready",timeout
+            f"http://127.0.0.1:{self.classifier.port}/ready", timeout
         )
         return classifier_is_ready
 
     def startup_classifier(self):
         self.classifier_initialised = True
         if self.classifier.run_over_network:
-            if not utils.is_service_running("thermal-classifier"):
-                success = utils.toggle_network_classifier(True)
-                if not success:
-                    raise Exception("COuild not start network classifier")
             return
         # classifies an empty frame to force loading of the model into memory
         num_inputs, in_shape = self.classifier.shape()
@@ -610,7 +594,7 @@ class PiClassifier(Processor):
         new_prediction = False
         if len(active_tracks) == 0:
             return False
-
+        
         if self.fp_model is not None:
             fp_time = time.time()
             for track in active_tracks:
@@ -879,6 +863,9 @@ class PiClassifier(Processor):
                 first_loop = False
                 assert frame.frame_number == region.frame_number
                 contour_image = frame.filtered if frame.mask is None else frame.mask
+
+                # only reason we are keeping mask
+                frame.mask = None
                 contours, _ = cv2.findContours(
                     np.uint8(region.subimage(contour_image)),
                     cv2.RETR_EXTERNAL,
@@ -975,38 +962,6 @@ class PiClassifier(Processor):
                 return None
             return best_contour
 
-    def get_recent_frame(self, last_frame=None):
-        # save us having to lock if we dont have a different frame
-        if last_frame is not None and self.motion_detector.num_frames == last_frame:
-            return None, None, last_frame
-        last_frame = self.motion_detector.get_recent_frame()
-        if self.clip:
-            if last_frame is None:
-                return None
-            track_meta = []
-            tracks = clip.active_tracks
-            for track in tracks:
-                pred = None
-                if self.predictions:
-                    pred = {
-                        self.predictions[self.classifier.id].model.id: self.predictions[
-                            self.classifier.id
-                        ]
-                    }
-                meta = track.get_metadata(pred)
-                last_pos = meta["positions"][-1].copy()
-                # if self.track_extractor.scale is not None:
-                # last_pos.rescale(1 / self.track_extractor.scale)
-                meta["positions"] = [last_pos]
-                track_meta.append(meta)
-
-            return last_frame, track_meta, self.motion_detector.num_frames
-        else:
-            return (
-                last_frame,
-                {},
-                self.motion_detector.num_frames,
-            )
 
     def reset(self):
         self.classified_consec = 0
@@ -1048,8 +1003,10 @@ class PiClassifier(Processor):
     def process_frame(self, lepton_frame, received_at, source):
         if self.parsing_file and source == CAMERA_SOURCE:
             return
+        delay = time.time()-received_at
+        if delay > 1:
+            logging.info("Delay in process frame is %s",delay)
         self.processing_frame = True
-        import time
 
         start = time.time()
         if (

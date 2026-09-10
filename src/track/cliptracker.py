@@ -87,16 +87,18 @@ class ClipTracker(ABC):
                 track.smooth(Rectangle(0, 0, clip.res_x, clip.res_y))
         return filtered_tracks
 
-    def _get_filtered_frame(self, clip, thermal, sub_change=True, denoise=True):
+    def _get_normalized_filtered_frame(
+        self, clip, thermal, filtered, sub_change=True, denoise=True
+    ):
         """
         Calculates filtered frame from thermal
         :param thermal: the thermal frame
-        :param background: (optional) used for background subtraction
+        :param filtered: (optional) thermal frame with background already subtracted,
+            reused to avoid redoing the subtraction
         :return: uint8 filtered frame and adjusted clip threshold for normalized frame
         """
         from ml_tools.imageprocessing import normalize
 
-        filtered = np.float32(thermal.copy())
         if sub_change:
             avg_change = int(
                 round(np.average(thermal) - self.background_alg.get_average())
@@ -104,12 +106,7 @@ class ClipTracker(ABC):
         else:
             avg_change = 0
 
-        np.clip(
-            filtered - self.background_alg.background - avg_change,
-            0,
-            None,
-            out=filtered,
-        )
+        filtered = np.clip(filtered - avg_change, 0, None)
         filtered, stats = normalize(filtered, new_max=255)
         if denoise:
             import cv2
@@ -250,6 +247,18 @@ class ClipTracker(ABC):
                     )
                 )
 
+    def get_delta_filtered(self, clip):
+        from ml_tools.imageprocessing import normalize
+
+        frame = clip.frame_buffer.current_frame
+        prev_frame = clip.frame_buffer.prev_frame
+        if prev_frame is None or  prev_frame.filtered is None or frame.filtered is None:
+            return None
+        delta_filtered = None
+        filtered, _ = normalize(frame.filtered, new_max=255)
+        prev_filtered, _ = normalize(prev_frame.filtered, new_max=255)
+        delta_filtered = np.abs(np.float32(filtered) - prev_filtered)
+        return  delta_filtered
     def get_delta_frame(self, clip):
         from ml_tools.imageprocessing import normalize
 
@@ -257,13 +266,15 @@ class ClipTracker(ABC):
         prev_frame = clip.frame_buffer.prev_frame
         if prev_frame is None:
             return None, None
-        filtered, _ = normalize(frame.filtered, new_max=255)
-        prev_filtered, _ = normalize(prev_frame.filtered, new_max=255)
-        delta_filtered = np.abs(np.float32(filtered) - np.float32(prev_filtered))
+        delta_filtered = None
+        if prev_frame.filtered is not None and frame.filtered is not None:
+            filtered, _ = normalize(frame.filtered, new_max=255)
+            prev_filtered, _ = normalize(prev_frame.filtered, new_max=255)
+            delta_filtered = np.abs(np.float32(filtered) - prev_filtered)
 
         thermal, _ = normalize(frame.thermal, new_max=255)
         prev_thermal, _ = normalize(prev_frame.thermal, new_max=255)
-        delta_thermal = np.abs(np.float32(thermal) - np.float32(prev_thermal))
+        delta_thermal = np.abs(np.float32(thermal) - prev_thermal)
         return delta_thermal, delta_filtered
 
     def _get_regions_of_interest(self, clip, component_details, centroids=None):
@@ -273,7 +284,7 @@ class ClipTracker(ABC):
         :param filtered: The filtered frame
         :return: regions of interest, mask frame
         """
-        delta_thermal, delta_filtered = self.get_delta_frame(
+        delta_filtered = self.get_delta_filtered(
             clip,
         )
 
@@ -295,11 +306,9 @@ class ClipTracker(ABC):
                 component[2],
                 component[3],
                 mass=component[4],
-                id=i,
                 frame_number=clip.current_frame,
                 centroid=centroid,
             )
-
             if self.scale:
                 region.rescale(1 / self.scale)
 
@@ -307,21 +316,9 @@ class ClipTracker(ABC):
             if region.width < self.min_dimension or region.height < self.min_dimension:
                 continue
             # GP this needs to be checked for themals 29/06/2022
-            if clip.type == "IR":
-                if delta_thermal is not None:
-                    # filtered only 0 or 255
-                    sub_delta = region.subimage(delta_thermal)
-                    previous_delta_mass = len(
-                        sub_delta[sub_delta > clip.background_thresh]
-                    )
-                    # if previous_delta_mass == 0:
-                    #     logging.info("No mass from previous so skipping")
-                    #     continue
-                    region.pixel_variance = np.var(sub_delta)
-
-            elif delta_filtered is not None:
+            if delta_filtered is not None:
                 region_difference = region.subimage(delta_filtered)
-                region.pixel_variance = np.var(region_difference)
+                region.pixel_variance = np.var(region_difference,dtype=np.float32)
             old_region = region.copy()
             region.crop(clip.crop_rectangle)
             region.was_cropped = str(old_region) != str(region)

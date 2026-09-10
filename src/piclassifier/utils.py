@@ -1,48 +1,5 @@
-import subprocess
 import logging
 import time
-
-
-def run_cmd(cmd):
-    try:
-        result = subprocess.run(
-            cmd,
-            shell=True,
-            encoding="ascii",
-            check=True,
-        )
-        return result.returncode == 0
-
-    except:
-        logging.error("Could not run command %s", cmd, exc_info=True)
-        return False
-
-
-def startup_postprocessor(enable):
-    if enable:
-        cmd = "sudo systemctl restart thermal-postprocess"
-    else:
-        # disable but start once so that it can finish any stale files that may exist
-        cmd = "sudo systemctl disable thermal-postprocess && sudo systemctl restart thermal-postprocess"
-    return run_cmd(cmd)
-
-
-def stop_network_classifier():
-    cmd = "sudo systemctl stop thermal-classifier"
-    return run_cmd(cmd)
-
-
-def toggle_network_classifier(enable):
-    if enable:
-        cmd = "sudo systemctl start thermal-classifier"
-    else:
-        cmd = "sudo systemctl disable thermal-classifier && sudo systemctl stop thermal-classifier"
-    return run_cmd(cmd)
-
-
-def is_service_running(service_name):
-    result = subprocess.run(["systemctl", "is-active", "--quiet", service_name])
-    return result.returncode == 0
 
 
 def preview_socket(headers, frame_queue):
@@ -157,3 +114,48 @@ def kill_process(process):
             parent.wait(5)
     except:
         logging.error("Could not kill process", exc_info=True)
+
+
+
+def print_memory_usage():
+    import psutil
+    import os
+    process = psutil.Process(os.getpid())
+    main_rss = process.memory_info().rss
+    main_uss = process.memory_full_info().uss
+    total_rss = main_rss
+    total_uss = main_uss
+    logging.info(
+        "Memory usage pid %d (%s) %.1fMB rss %.1fMB uss",
+        process.pid,
+        process.name(),
+        main_rss / (1024 * 1024),
+        main_uss / (1024 * 1024),
+    )
+    children = process.children(recursive=True)
+    for child in children:
+        try:
+            child_rss = child.memory_info().rss
+            child_uss = child.memory_full_info().uss
+            total_rss += child_rss
+            total_uss += child_uss
+            logging.info(
+                "Memory usage pid %d (%s) %.1fMB rss %.1fMB uss",
+                child.pid,
+                child.name(),
+                child_rss / (1024 * 1024),
+                child_uss / (1024 * 1024),
+            )
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            continue
+    swap = psutil.swap_memory()
+    logging.info(
+        "Memory usage main %.1fMB total (with %d sub processes) %.1fMB uss %.1fMB swap used %.1fMB of %.1fMB (%.1f%%)",
+        main_rss / (1024 * 1024),
+        len(children),
+        total_rss / (1024 * 1024),
+        total_uss / (1024 * 1024),
+        swap.used / (1024 * 1024),
+        swap.total / (1024 * 1024),
+        swap.percent,
+    )

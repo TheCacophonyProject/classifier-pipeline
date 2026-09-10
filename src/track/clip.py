@@ -137,7 +137,7 @@ class Clip:
         self.track_max_delta = threshold.track_max_delta
 
     def _background_calculated(self):
-        if self.type != "IR" or self.calc_stats:
+        if self.type != "IR" and self.calc_stats:
             self.stats.mean_background_value = np.average(self._background)
         self.background_calculated = True
 
