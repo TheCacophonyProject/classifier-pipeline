@@ -228,7 +228,6 @@ class ClipTrackExtractor(ClipTracker):
                 obj_filtered, otsus=False, threshold=threshold, kernel=(5, 5)
             )
         _ = clip.add_frame(thermal, filtered, mask, ffc_affected)
-        debug_frame(clip.frame_buffer.current_frame)
         if not self.do_tracking:
             return []
 
