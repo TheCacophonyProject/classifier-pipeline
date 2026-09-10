@@ -962,38 +962,6 @@ class PiClassifier(Processor):
                 return None
             return best_contour
 
-    # def get_recent_frame(self, last_frame=None):
-    #     # save us having to lock if we dont have a different frame
-    #     if last_frame is not None and self.motion_detector.num_frames == last_frame:
-    #         return None, None, last_frame
-    #     last_frame = self.motion_detector.get_recent_frame()
-    #     if self.clip:
-    #         if last_frame is None:
-    #             return None
-    #         track_meta = []
-    #         tracks = clip.active_tracks
-    #         for track in tracks:
-    #             pred = None
-    #             if self.predictions:
-    #                 pred = {
-    #                     self.predictions[self.classifier.id].model.id: self.predictions[
-    #                         self.classifier.id
-    #                     ]
-    #                 }
-    #             meta = track.get_metadata(pred)
-    #             last_pos = meta["positions"][-1].copy()
-    #             # if self.track_extractor.scale is not None:
-    #             # last_pos.rescale(1 / self.track_extractor.scale)
-    #             meta["positions"] = [last_pos]
-    #             track_meta.append(meta)
-
-    #         return last_frame, track_meta, self.motion_detector.num_frames
-    #     else:
-    #         return (
-    #             last_frame,
-    #             {},
-    #             self.motion_detector.num_frames,
-    #         )
 
     def reset(self):
         self.classified_consec = 0

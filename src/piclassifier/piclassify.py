@@ -130,11 +130,7 @@ def main():
         other_services.append(run_classifier())
     if thermal_config.motion.postprocess:
         other_services.append(run_postprocess())
-    # utils.toggle_network_classifier(False)
-
-    # success = utils.startup_postprocessor(thermal_config.motion.postprocess)
-    # if not success and thermal_config.motion.postprocess:
-    #     raise Exception("Could not start up postprocessor")
+  
     if not thermal_config.recorder.use_low_power_mode:
         sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         sock.bind(SOCKET_NAME)
