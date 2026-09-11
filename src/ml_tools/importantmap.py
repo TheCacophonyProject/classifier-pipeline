@@ -338,6 +338,7 @@ def main():
 
 
     if args.weights is not None:
+        print("Loading ",args.weights)
         old_model.load_weights(args.weights)
     # model = build_model(metadata, old_model)
     old_model.summary()

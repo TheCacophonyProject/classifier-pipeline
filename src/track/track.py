@@ -494,6 +494,7 @@ class Track:
         filter_by_fp=False,
         min_segments=1,
         seed=None,
+        ceil_num_windows = True,
     ):
         if from_last is not None:
             if from_last == 0:
@@ -541,6 +542,7 @@ class Track:
                 dont_filter=dont_filter,
                 min_segments=min_segments,
                 seed=seed,
+                ceil_num_windows = ceil_num_windows,
             )
 
         return segments

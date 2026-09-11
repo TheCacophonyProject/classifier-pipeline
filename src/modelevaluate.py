@@ -950,11 +950,13 @@ def main():
         )
         labels = None
         cm = np.load(args.model_score)
-        if Path(args.model_score).suffix ==".npz":
+        if Path(args.model_score).suffix == ".npz":
             labels = cm["labels"]
             cm = cm["cm"]
         if labels is None:
-            logging.info("No labels could be found in npz file so loading model metadata")
+            logging.info(
+                "No labels could be found in npz file so loading model metadata"
+            )
             with open(args.model_metadata, "r") as t:
                 # add in some metadata stats
                 model_meta = json.load(t)
