@@ -1194,11 +1194,7 @@ def random_sections(
     min_frames=1,
     min_segments=None,
     ceil_num_windows= True,
-):
-    frame_indices = frame_indices[:110]
-
-
-    
+):   
     min_frames = max(min_frames,1)
     rng = np.random.default_rng(seed=seed)
 
@@ -1218,7 +1214,9 @@ def random_sections(
     upsampled = False
     step = window_frames// 2
     if ceil_num_windows:
-        step = num_frames %window_frames
+        offset = num_frames %window_frames
+        if offset!=0:
+            step  = offset
     if step == 0 :
         windows = [0]
     else:
@@ -1228,7 +1226,7 @@ def random_sections(
     # try to get an extra sample if its short
     num_frames_sampled =  max(1,window_frames / chunk_size )
     if num_frames_sampled < 2 and round(num_frames_sampled) >num_frames_sampled:
-        chunk_size =window_frames  / round(num_frames_sampled)
+        chunk_size =int(window_frames  / round(num_frames_sampled))
 
         logging.info("set chunk size %s",chunk_size)
 
@@ -1279,12 +1277,13 @@ def random_sections(
 
     vel_y = centre_y[1:] - centre_y[:-1]
 
+    chosen_windows = chosen_windows + frame_indices[0]
     # probably having the extra windows in here is redundant now as we dont care if we skip a bunch of frames
     # and accept segmetns with a small number of frames
     for window_start in chosen_windows:
         segment_frames, seg_regions, mass, last_index, stopped_early = (
             get_segment_indices(
-                frame_indices[window_start],
+                window_start,
                 chunks,
                 chunk_size,
                 frame_indices,
@@ -1304,6 +1303,7 @@ def random_sections(
             and len(segments) >= min_segments
             and len(segment_frames) < min_frames
             and num_frames > min_frames
+            or len(segment_frames) == 0
         ):
             continue
         segment = SegmentHeader(
