@@ -195,7 +195,6 @@ class ClipTrackExtractor(ClipTracker):
         tracking_start = len(frames)  - track_frames
         for i,frame in enumerate(frames):
             if not self.do_tracking and i>= tracking_start :
-                logging.info("Tracking preview at %s of %s", i, len(frames))
                 self.do_tracking = do_tracking
             new_tracks.extend(self.process_frame(clip, frame))
         self.do_tracking = do_tracking
