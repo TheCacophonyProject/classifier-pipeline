@@ -80,13 +80,13 @@ def main():
     other_services = []
     if args.file:
         if thermal_config.motion.run_classifier:
-            other_services.append(run_classifier())
+            other_services.append(start_service(run_classifier))
         parse_file(
             args.file, config, thermal_config, args.preview_type, args.fps, args.seed
         )
-        for process in other_services:
+        for service in other_services:
             try:
-                utils.kill_process_with_timeout(process)
+                utils.kill_process_with_timeout(service["process"])
             except:
                 pass
         return
@@ -127,10 +127,18 @@ def main():
     logging.info("running as thermal")
 
     if thermal_config.motion.run_classifier:
-        other_services.append(run_classifier())
+        other_services.append(start_service(run_classifier))
     if thermal_config.motion.postprocess:
-        other_services.append(run_postprocess())
-  
+        other_services.append(start_service(run_postprocess))
+
+    watchdog_stop = Event()
+    watchdog_thread = Thread(
+        target=watch_services,
+        args=(other_services, watchdog_stop),
+    )
+    watchdog_thread.daemon = True
+    watchdog_thread.start()
+
     if not thermal_config.recorder.use_low_power_mode:
         sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         sock.bind(SOCKET_NAME)
@@ -188,13 +196,37 @@ def main():
                 pass
 
 
-    for process in other_services:
+    watchdog_stop.set()
+    watchdog_thread.join(10)
+
+    for service in other_services:
         try:
-            utils.kill_process_with_timeout(process)
+            utils.kill_process_with_timeout(service["process"])
         except:
             pass
 
 shutdown_event = Event()
+
+
+def start_service(start_fn):
+    return {"process": start_fn(), "start_fn": start_fn}
+
+
+def watch_services(services, stop_event):
+    while not stop_event.wait(5 * 60):
+        for service in services:
+            process = service["process"]
+            if not process.is_alive():
+                logging.warning(
+                    "Service %s died (exit code %s), restarting",
+                    service["start_fn"].__name__,
+                    process.exitcode,
+                )
+                try:
+                    utils.kill_process_with_timeout(process, timeout=2)
+                except:
+                    pass
+                service["process"] = service["start_fn"]()
 
 
 def wait_for_shutdown():
