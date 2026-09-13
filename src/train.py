@@ -26,6 +26,7 @@ All the training results are stored in tensorboard.  To assess the
 training run tensorboard from the log directory.
 
 """
+
 # only use in QAT training
 import argparse
 import os

@@ -363,7 +363,7 @@ def load_dataset(filenames, remap_lookup, labels, args):
         )
     if augment:
         dataset = dataset.map(
-            lambda x, y: sensor_dropout_augmentation(x, y), num_parallel_calls=tf.data.AUTOTUNE
+            lambda x, y: train_all_channel_dropout_tf(x, y), num_parallel_calls=tf.data.AUTOTUNE
         )
     return dataset
 
@@ -1350,15 +1350,58 @@ def show_batch(image_batch, label_batch, labels, save=None, tracks=False):
         plt.savefig(save)
     plt.show()
 
+import tensorflow as tf
 
 @tf.function
-def sensor_dropout_augmentation(mosaic_grid, labels):
+def train_all_channel_dropout_tf(mosaic_grid_dic, labels,dropout_prob=0.15):
+    """
+    Fast, pure TensorFlow channel dropout for 3-channel images.
+    Operates on a single tensor image of shape (H, W, 3).
+    """
+    image = mosaic_grid_dic["input_image"]
+
+    # 1. Generate random uniform numbers for each of the 3 channels
+    rand_vals = tf.random.uniform(shape=(3,), minval=0.0, maxval=1.0)
+    
+    # 2. Determine which channels hit the threshold to be dropped
+    # True means 'drop', False means 'keep'
+    drop_mask = rand_vals < dropout_prob
+    
+    # 3. Safety Check: If ALL three channels are marked for dropping,
+    # force-save one randomly so the model doesn't get a completely black image.
+    all_dropped = tf.reduce_all(drop_mask)
+    
+    if all_dropped:
+        # Pick an index (0, 1, or 2) to force-keep
+        keep_idx = tf.random.uniform(shape=(), minval=0, maxval=3, dtype=tf.int32)
+        # Create a boolean updates vector where True represents the index we want to keep
+        indices = tf.range(3)
+        keep_mask = tf.equal(indices, keep_idx)
+        # Flip the drop flag back to False for that chosen channel
+        drop_mask = tf.logical_and(drop_mask, tf.logical_not(keep_mask))
+        
+    # 4. Invert the mask: Convert 'drop' flags to standard multiplication masks
+    # False (keep) becomes 1.0, True (drop) becomes 0.0
+    channel_multipliers = tf.where(drop_mask, 0.0, 1.0)
+    
+    # 5. Broadcast and apply the multipliers across the H x W dimensions
+    # Reshapes from (3,) to (1, 1, 3) to multiply across pixel space
+    channel_multipliers = tf.reshape(channel_multipliers, (1, 1, 3))
+    
+    return {"input_image":image * channel_multipliers,"input_mask":mosaic_grid_dic["input_mask"]}, labels
+
+
+
+@tf.function
+def sensor_dropout_augmentation(mosaic_grid_dic, labels):
     """
     Randomly drops Channel 0 completely on some training samples to force 
     the network to extract primary features from Channels 1 and 2.
     """
     # 30% chance to completely blind the model to the thermal channel
     # This forces the network to train the visual channels up from scratch
+    mosaic_grid = mosaic_grid_dic["input_image"]
+
     if tf.random.uniform([]) < 0.30:
         ch0 = tf.zeros_like(mosaic_grid[:, :, 0])  # Zero out the thermal channel completely
         ch1 = mosaic_grid[:, :, 1]
@@ -1366,7 +1409,7 @@ def sensor_dropout_augmentation(mosaic_grid, labels):
         
         mosaic_grid = tf.stack([ch0, ch1, ch2], axis=-1)
         
-    return mosaic_grid, labels
+    return {"input_image":mosaic_grid,"input_mask":mosaic_grid_dic["input_mask"]}, labels
 
 @tf.function
 def mask_random_frames(rgb_image, frame_indices, record_frames):
