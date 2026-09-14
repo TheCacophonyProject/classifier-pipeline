@@ -32,7 +32,7 @@ def main():
         predictions = np.array(predictions)
     else:
         predictions = interpreter.predict(input_data)
-    response = Response(predictions.tostring(), mimetype="application/octet-stream")
+    response = Response(predictions.tobytes(), mimetype="application/octet-stream")
     return response
 
 
@@ -72,7 +72,7 @@ def get_model():
 
 
 def main():
-    init_logging()
+    init_logging(name="servemodel")
     global interpreter
     global input_shape
     network_model = get_model()

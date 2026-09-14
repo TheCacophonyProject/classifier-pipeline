@@ -1,5 +1,3 @@
-from ml_tools.frame import TrackChannels
-from ml_tools.datasetstructures import SegmentType
 
 
 class HyperParams(dict):
@@ -33,6 +31,8 @@ class HyperParams(dict):
 
     @property
     def channels(self):
+        from ml_tools.frame import TrackChannels
+
         return self.get(
             "channels", [TrackChannels.thermal.name, TrackChannels.filtered.name]
         )
@@ -89,6 +89,8 @@ class HyperParams(dict):
 
     @property
     def segment_types(self):
+        from ml_tools.datasetstructures import SegmentType
+
         segment_types = self.get("segment_types", [SegmentType.ALL_RANDOM_MASKED])
         # convert string to enum type
         if isinstance(segment_types, str):

@@ -105,6 +105,7 @@ class TestWindow:
         )
         assert not time_window.inside_window()
 
+    @freeze_time(lambda: datetime.now())
     def test_absolute_times(self):
         cur_date = datetime.now()
         start = RelAbsTime(cur_date.strftime("%H:%M"))

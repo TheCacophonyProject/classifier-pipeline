@@ -87,10 +87,14 @@ def get_track_thumb_stats(clip, track):
 
             flags = cv2.THRESH_BINARY
             _, image = cv2.threshold(contour_image, mapped_thresh, 255, flags)
+
+            contour_image = np.uint8(region.subimage(image))
         else:
             contour_image = frame.mask
+            if region.mask_id is not None:
+                contour_image = np.uint8(region.subimage(frame.mask)==region.mask_id)*255
         contours, _ = cv2.findContours(
-            np.uint8(region.subimage(contour_image)),
+            contour_image,
             cv2.RETR_EXTERNAL,
             # cv2.CHAIN_APPROX_SIMPLE,
             cv2.CHAIN_APPROX_TC89_L1,
@@ -107,7 +111,7 @@ def get_track_thumb_stats(clip, track):
                 max_contour = points
 
         # get mask of all pixels that are considered an animal
-        filtered_sub = region.subimage(contour_image)
+        filtered_sub = contour_image
         sub_mask = filtered_sub > 0
 
         # get the thermal values for this mask
