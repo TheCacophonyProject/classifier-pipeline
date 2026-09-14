@@ -363,7 +363,7 @@ def load_dataset(filenames, remap_lookup, labels, args):
         )
     if augment:
         dataset = dataset.map(
-            lambda x, y: train_all_channel_dropout_tf(x, y), num_parallel_calls=tf.data.AUTOTUNE
+            lambda x, y: sensor_dropout_augmentation(x, y), num_parallel_calls=tf.data.AUTOTUNE
         )
     return dataset
 
@@ -1352,6 +1352,9 @@ def show_batch(image_batch, label_batch, labels, save=None, tracks=False):
 
 import tensorflow as tf
 
+
+
+# this backfired and just force the modal to rely on thermal
 @tf.function
 def train_all_channel_dropout_tf(mosaic_grid_dic, labels,dropout_prob=0.15):
     """
