@@ -5,7 +5,7 @@ opencv-python-headless~=5.0.0.93
 cptv~=1.5.4
 scipy==1.16.0
 python-dateutil
-scikit-learn==1.7.0
+scikit-learn==1.9.0
 pyyaml>=6.0.2
 attrs~=25.3.0
 filelock~=3.18.0
@@ -20,7 +20,7 @@ dbus-python~=1.4.0
 PyGObject~=3.50.1 
 joblib
 inotify_simple==1.3.5
-python-cptv==0.0.8
+python-cptv==0.0.11
 # multiprocess
 pillow~=11.3.0
 h5py~=3.14.0
