@@ -822,7 +822,7 @@ class PiClassifier(Processor):
 
     def update_thumbnail(self, clip, tracks):
         best_contour = None
-        from ml_tools.imageprocessing import resize_and_pad
+        from ml_tools.imageprocessing import resize_and_pad,normalize
         import cv2
         from track.track import ThumbInfo
 
@@ -862,12 +862,17 @@ class PiClassifier(Processor):
                     track.thumb_info.last_frame_check = region.frame_number
                 first_loop = False
                 assert frame.frame_number == region.frame_number
-                contour_image = frame.filtered if frame.mask is None else frame.mask
+                if frame.mask is None:
+                    #shouldn't happen if we really wanted can run on filtered but would require some thresholding
+                    continue
+                contour_image = frame.mask 
+                if region.mask_id is not None:
+                    contour_image = np.uint8(region.subimage(frame.mask) == region.mask_id)* 255
 
                 # only reason we are keeping mask
                 frame.mask = None
                 contours, _ = cv2.findContours(
-                    np.uint8(region.subimage(contour_image)),
+                    contour_image,
                     cv2.RETR_EXTERNAL,
                     # cv2.CHAIN_APPROX_SIMPLE,
                     cv2.CHAIN_APPROX_TC89_L1,

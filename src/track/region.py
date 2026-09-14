@@ -38,7 +38,7 @@ class Region(Rectangle):
     blank = attr.ib(default=False)
     is_along_border = attr.ib(default=False)
     in_trap = attr.ib(default=False)
-
+    mask_id = attr.ib(default=None)
     def rescale(self, factor):
         self.x = int(self.x * factor)
         self.y = int(self.y * factor)

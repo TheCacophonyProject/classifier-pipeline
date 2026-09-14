@@ -308,6 +308,7 @@ class ClipTracker(ABC):
                 mass=component[4],
                 frame_number=clip.current_frame,
                 centroid=centroid,
+                mask_id = i+1,
             )
             if self.scale:
                 region.rescale(1 / self.scale)
