@@ -305,6 +305,7 @@ class Dataset:
                     skip_ffc=self.skip_ffc,
                     ffc_frames=clip_header.ffc_frames,
                     seed=seed + track_header.clip_id + track_header.track_id,
+                    ceil_num_windows = False,
                 )
                 self.filtered_stats["segment_mass"] += track_header.filtered_stats[
                     "segment_mass"
@@ -775,6 +776,7 @@ def load_clip_multi(
                     else seed + track_header.clip_id + track_header.track_id
                 ),
                 min_frames=min_frames,
+                ceil_num_windows = False,
             )
             filtered_stats.setdefault("segment_mass", 0)
             filtered_stats["segment_mass"] += track_header.filtered_stats[

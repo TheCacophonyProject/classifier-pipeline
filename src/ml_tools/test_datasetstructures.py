@@ -78,7 +78,7 @@ class TestGetSamplesByLabelUrgency:
     def test_short_clip_gives_one_sample(self):
         # 10 s clip < 18 s threshold
         samples, num_windows, _ = get_samples_by_label_urgency(
-            "possum", 90, fps=9, window_length_seconds=12
+            "possum", 90, window_frames=108
         )
         assert samples == 1
         assert num_windows == 1
@@ -86,7 +86,7 @@ class TestGetSamplesByLabelUrgency:
     def test_normal_clip_gives_multiple_windows(self):
         # 30 s clip → multiple windows
         samples, num_windows, _ = get_samples_by_label_urgency(
-            "possum", 270, fps=9, window_length_seconds=12
+            "possum", 270, window_frames=108
         )
         assert num_windows > 1
         assert samples == num_windows  # common labels: samples == windows
@@ -94,13 +94,13 @@ class TestGetSamplesByLabelUrgency:
     def test_long_clip_capped_at_max_samples(self):
         # 120 s clip, default max_samples=5
         samples, num_windows, _ = get_samples_by_label_urgency(
-            "possum", 1080, fps=9, window_length_seconds=12
+            "possum", 1080, window_frames=108
         )
         assert samples <= 5
 
     def test_rare_label_short_clip_still_gets_samples(self):
         samples, _, _ = get_samples_by_label_urgency(
-            "fox", 90, fps=9, window_length_seconds=12
+            "fox", 90, window_frames=108
         )
         assert samples >= 1
 
@@ -108,7 +108,7 @@ class TestGetSamplesByLabelUrgency:
         # fox is CRITICALLY_RARE: max_resample=5, bound by ceil(total_frames / (3*25))
         total_frames = 225
         samples, _, _ = get_samples_by_label_urgency(
-            "fox", total_frames, fps=9, window_length_seconds=12
+            "fox", total_frames, window_frames=108
         )
         max_expected = max(1, int(np.ceil(total_frames / (3 * 25))))
         assert samples <= min(5, max_expected)
@@ -117,7 +117,7 @@ class TestGetSamplesByLabelUrgency:
         # MODERATE_RARE labels (e.g. chicken) cap at max_resample=3
         total_frames = 1000
         samples, _, _ = get_samples_by_label_urgency(
-            "chicken", total_frames, fps=9, window_length_seconds=12
+            "chicken", total_frames, window_frames=108
         )
         assert samples <= 3
 
@@ -125,7 +125,7 @@ class TestGetSamplesByLabelUrgency:
         # CRITICALLY_RARE labels (e.g. fox) cap at max_resample=5
         total_frames = 1000
         samples, _, _ = get_samples_by_label_urgency(
-            "fox", total_frames, fps=9, window_length_seconds=12
+            "fox", total_frames, window_frames=108
         )
         assert samples <= 5
 
