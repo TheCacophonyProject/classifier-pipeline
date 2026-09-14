@@ -5,8 +5,6 @@ import logging
 import enum
 from astral import Location
 
-from ml_tools import tools
-
 
 class WindowStatus(enum.Enum):
     """Types of frames"""
@@ -172,11 +170,13 @@ class TimeWindow:
             )
 
     def set_location(self, lat, lng, altitude=0):
+        from ml_tools.tools import get_timezone_str
+
         self.location = Location()
         self.location.latitude = lat
         self.location.longitude = lng
         self.location.altitude = altitude
-        self.location.timezone = tools.get_timezone_str(lat, lng)
+        self.location.timezone = get_timezone_str(lat, lng)
 
         self.update_sun_times()
 

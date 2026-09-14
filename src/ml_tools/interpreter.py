@@ -5,8 +5,6 @@ import logging
 import numpy as np
 from ml_tools.hyperparams import HyperParams
 from pathlib import Path
-from classify.trackprediction import TrackPrediction
-from ml_tools.imageprocessing import normalize
 import requests
 
 
@@ -86,7 +84,7 @@ class Interpreter(ABC):
         headers = {"content-type": "application/octet-stream"}
         response = requests.post(
             f"http://127.0.0.1:{self.port}/predict",
-            data=data.tostring(),
+            data=data.tobytes(),
             headers=headers,
         )
         predictions = np.frombuffer(response.content, dtype=np.float32)
@@ -143,7 +141,11 @@ class Interpreter(ABC):
         frames, preprocessed, mass = self.preprocess(clip, track, samples, **args)
         if preprocessed is None or len(preprocessed) == 0:
             return None
-        prediction = self.predict(preprocessed)
+        try:
+            prediction = self.predict(preprocessed)
+        except:
+            logging.error("Could not predict", exc_info=True)
+            return None
         return prediction, frames, mass
 
     def preprocess(self, clip, track, samples, **args):
@@ -197,6 +199,8 @@ class Interpreter(ABC):
         return track_pred
 
     def track_prediction_from_raw(self, track_id, prediction_frames, output, masses):
+        from classify.trackprediction import TrackPrediction
+
         track_prediction = TrackPrediction(
             track_id,
             self.labels,
@@ -683,7 +687,9 @@ def get_interpreter_from_path(model_file, run_over_network=False, load_model=Tru
         from ml_tools.kerasmodel import KerasModel
 
         classifier = KerasModel(run_over_network=run_over_network)
-        classifier.init_model(model_file, load_model=load_model)
+        classifier.init_model(
+            model_file, run_over_network=run_over_network, load_model=load_model
+        )
     elif model_file.suffix == ".tflite":
         classifier = LiteInterpreter(
             model_file, run_over_network=run_over_network, load_model=load_model
@@ -746,6 +752,7 @@ def get_interpreter(model, run_over_network=False, load_model=True, seed=None):
 
 def get_contours(contour_image, frame_number):
     import cv2
+    from ml_tools.imageprocessing import normalize
 
     contour_image, stats = normalize(contour_image, new_max=255)
 

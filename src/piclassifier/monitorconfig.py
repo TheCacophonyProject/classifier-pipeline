@@ -1,5 +1,3 @@
-import sys
-import time
 import logging
 from inotify_simple import INotify, flags
 

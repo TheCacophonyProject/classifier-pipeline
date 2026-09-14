@@ -17,7 +17,6 @@ You should have received a copy of the GNU General Public License
 along with this program. If not, see <http://www.gnu.org/licenses/>.
 """
 
-import ml_tools.tools as tools
 from ml_tools.rectangle import Rectangle
 import attr
 import logging
@@ -33,14 +32,13 @@ class Region(Rectangle):
     # how much pixels in this region have changed since last frame
     frame_number = attr.ib(default=0)
     pixel_variance = attr.ib(default=0)
-    id = attr.ib(default=0)
 
     # if this region was cropped or not
     was_cropped = attr.ib(default=False)
     blank = attr.ib(default=False)
     is_along_border = attr.ib(default=False)
     in_trap = attr.ib(default=False)
-
+    mask_id = attr.ib(default=None)
     def rescale(self, factor):
         self.x = int(self.x * factor)
         self.y = int(self.y * factor)
@@ -145,11 +143,13 @@ class Region(Rectangle):
         calculates variance on this frame for this region
         filtered is assumed to be cropped to the region
         """
+        from ml_tools.tools import calculate_variance
+
         height, width = filtered.shape
         assert (
             width == self.width and height == self.height
         ), "calculating variance on incorrectly sized filtered"
-        self.pixel_variance = tools.calculate_variance(filtered, prev_filtered)
+        self.pixel_variance = calculate_variance(filtered, prev_filtered)
 
     def set_is_along_border(self, bounds, edge=0):
         self.is_along_border = (
@@ -170,7 +170,6 @@ class Region(Rectangle):
             self.mass,
             self.frame_number,
             self.pixel_variance,
-            self.id,
             self.was_cropped,
             self.blank,
             self.is_along_border,
@@ -180,21 +179,21 @@ class Region(Rectangle):
         """Calculates the distance between 2 regions by using the distance between
         (top, left), mid points and (bottom,right) of each region
         """
+        from ml_tools.tools import eucl_distance_sq
+
         distances = []
 
         expected_x = int(other.x)
         expected_y = int(other.y)
-        distance = tools.eucl_distance_sq((expected_x, expected_y), (self.x, self.y))
+        distance = eucl_distance_sq((expected_x, expected_y), (self.x, self.y))
         distances.append(distance)
 
         expected_x = int(other.mid_x)
         expected_y = int(other.mid_y)
-        distance = tools.eucl_distance_sq(
-            (expected_x, expected_y), (self.mid_x, self.mid_y)
-        )
+        distance = eucl_distance_sq((expected_x, expected_y), (self.mid_x, self.mid_y))
         distances.append(distance)
 
-        distance = tools.eucl_distance_sq(
+        distance = eucl_distance_sq(
             (
                 other.right,
                 other.bottom,

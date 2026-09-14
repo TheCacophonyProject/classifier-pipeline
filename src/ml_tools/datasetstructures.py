@@ -2,12 +2,9 @@ import json
 import dateutil
 import numpy as np
 import logging
-from ml_tools import tools
 from track.region import Region
 from abc import ABC, abstractmethod
 from ml_tools.rectangle import Rectangle
-from config.buildconfig import BuildConfig
-from ml_tools import imageprocessing
 from enum import Enum
 import attr
 import math
@@ -256,8 +253,9 @@ class TrackHeader:
             except:
                 pass
         meta_dict["label"] = self.label
+        from ml_tools.tools import CustomJSONEncoder
 
-        return json.dumps(meta_dict, indent=3, cls=tools.CustomJSONEncoder)
+        return json.dumps(meta_dict, indent=3, cls=CustomJSONEncoder)
 
     def add_sample(self, sample):
         self.samples.append(sample)
@@ -364,7 +362,7 @@ class TrackHeader:
         for rect in self.regions:
             rx, ry = rect.mid_x, rect.mid_y
             size = max(rect.width, rect.height)
-            adjusted_rect = tools.Rectangle(rx - size / 2, ry - size / 2, size, size)
+            adjusted_rect = Rectangle(rx - size / 2, ry - size / 2, size, size)
             self.frame_crop.append(
                 get_cropped_fraction(adjusted_rect, self.res_x, self.res_y)
             )
@@ -401,6 +399,8 @@ class TrackHeader:
         min_frames=0,
         ceil_num_windows = True,
     ):
+        NO_MIN_FRAMES = ["stoat", "mustelid", "weasel", "ferret"]
+
         if segment_frames is not None:
             raise Exception("Have not implement this path")
         if self.label in BuildConfig.NO_MIN_FRAMES:
@@ -903,7 +903,9 @@ class SegmentHeader(Sample):
         return self.id
 
     def get_data(self, db):
-        crop_rectangle = tools.Rectangle(1, 1, 160 - 2, 120 - 2)
+        from ml_tools.imageprocessing import normalize
+
+        crop_rectangle = Rectangle(1, 1, 160 - 2, 120 - 2)
 
         try:
             background = db.get_clip_background(self.clip_id)
@@ -962,7 +964,7 @@ class SegmentHeader(Sample):
 
 def get_cropped_fraction(region: Rectangle, width, height):
     """Returns the fraction regions mass outside the rect ((0,0), (width, height)"""
-    bounds = tools.Rectangle(0, 0, width - 1, height - 1)
+    bounds = Rectangle(0, 0, width - 1, height - 1)
     return 1 - (bounds.overlap_area(region) / region.area)
 
 
@@ -1360,6 +1362,8 @@ def get_segments(
     seed=None,
     ceil_num_windows = True,
 ):
+    if segment_types is None:
+        segment_types = [SegmentType.ALL_RANDOM_MASKED]
     if min_frames is None:
         min_frames = segment_width / 4.0
     segments = []
@@ -1533,7 +1537,7 @@ def get_segments(
 
                         frame_indices = segment_indices[mask]
                         frame_indices = np.uint32(frame_indices)
-                        np.random.shuffle(frame_indices)
+                        rng.shuffle(frame_indices)
 
                 # always get atleast one segment, not doing annymore
                 if (

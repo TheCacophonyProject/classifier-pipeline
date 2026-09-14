@@ -1,6 +1,3 @@
-from ml_tools.frame import TrackChannels
-from ml_tools.datasetstructures import SegmentType
-from ml_tools.preprocess import FrameTypes
 
 
 class HyperParams(dict):
@@ -35,6 +32,8 @@ class HyperParams(dict):
 
     @property
     def channels(self):
+        from ml_tools.frame import TrackChannels
+
         return self.get(
             "channels",
             [

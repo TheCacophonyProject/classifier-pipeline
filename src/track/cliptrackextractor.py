@@ -23,12 +23,9 @@ import yaml
 from datetime import datetime
 
 from .clip import Clip
-from piclassifier.cptvmotiondetector import is_affected_by_ffc
-from ml_tools.imageprocessing import detect_objects
 from track.cliptracker import ClipTracker
+from piclassifier.cptvmotiondetector import is_affected_by_ffc
 import logging
-from cptv_rs_python_bindings import CptvReader
-from piclassifier.motiondetector import WeightedBackground
 
 
 class ClipTrackExtractor(ClipTracker):
@@ -71,6 +68,7 @@ class ClipTrackExtractor(ClipTracker):
             max_frames=max_frames,
         )
 
+        self.from_pi = from_pi
         if from_pi:
             self.version = f"PI-{ClipTrackExtractor.VERSION}"
         else:
@@ -96,6 +94,8 @@ class ClipTrackExtractor(ClipTracker):
         #     self.dilate_kernel = np.ones((size, size), np.uint8)
 
     def init_clip(self, clip):
+        from cptv_rs_python_bindings import CptvReader
+        from piclassifier.motiondetector import WeightedBackground
 
         clip.set_frame_buffer(
             self.high_quality_optical_flow,
@@ -157,6 +157,8 @@ class ClipTrackExtractor(ClipTracker):
         if clip.background is None:
             logging.error("Clip has no background have you called init_clip first")
             raise Exception("Clip has no background have you called init_clip first")
+        from cptv_rs_python_bindings import CptvReader
+
         reader = CptvReader(str(clip.source_file))
         while True:
             frame = reader.next_frame()
@@ -183,14 +185,17 @@ class ClipTrackExtractor(ClipTracker):
         return self._tracking_time
 
     def start_tracking(
-        self, clip, frames, track_frames=True, background_alg=None, **args
+        self, clip, frames,track_frames,  background_alg=None, **args
     ):
         # no need to retrack all of preview
         do_tracking = self.do_tracking
+        self.do_tracking = False
         self.background_alg = background_alg
-        self.do_tracking = self.do_tracking and track_frames
         new_tracks = []
-        for frame in frames:
+        tracking_start = len(frames)  - track_frames
+        for i,frame in enumerate(frames):
+            if not self.do_tracking and i>= tracking_start :
+                self.do_tracking = do_tracking
             new_tracks.extend(self.process_frame(clip, frame))
         self.do_tracking = do_tracking
         return new_tracks
@@ -201,6 +206,8 @@ class ClipTrackExtractor(ClipTracker):
         :param thermal: A numpy array of shape (height, width) and type uint16
         If specified background subtraction algorithm will be used.
         """
+        from piclassifier.cptvmotiondetector import is_affected_by_ffc
+
         ffc_affected = is_affected_by_ffc(frame)
         thermal = frame.pix.copy()
         if ffc_affected:
@@ -211,8 +218,10 @@ class ClipTrackExtractor(ClipTracker):
         if self.do_tracking or self.calculate_filtered or self.calculate_thumbnail_info:
             filtered = np.float32(frame.pix) - self.background_alg.background
         if self.do_tracking or self.calculate_thumbnail_info:
-            obj_filtered, threshold = self._get_filtered_frame(
-                clip, thermal, denoise=self.config.denoise
+            from ml_tools.imageprocessing import detect_objects
+
+            obj_filtered, threshold = self._get_normalized_filtered_frame(
+                clip, thermal, filtered, denoise=self.config.denoise
             )
             _, mask, component_details, centroids = detect_objects(
                 obj_filtered, otsus=False, threshold=threshold, kernel=(5, 5)
@@ -221,18 +230,6 @@ class ClipTrackExtractor(ClipTracker):
         if not self.do_tracking:
             return []
 
-        # if clip.from_metadata:
-        #     for track in clip.tracks:
-        #         if clip.current_frame in track.frame_list:
-        #             track.add_frame_for_existing_region(
-        #                 cur_frame,
-        #                 threshold,
-        #                 (
-        #                     clip.frame_buffer.prev_frame.filtered
-        #                     if clip.frame_buffer.prev_frame is not None
-        #                     else None
-        #                 ),
-        #             )
         new_tracks = []
         if not clip.from_metadata:
             regions = []
@@ -243,5 +240,23 @@ class ClipTrackExtractor(ClipTracker):
                     clip, component_details[1:], centroids[1:]
                 )
                 new_tracks = self._apply_region_matchings(clip, regions)
-            clip.region_history.append(regions)
+            if not self.from_pi:
+                # region_history is only consumed by offline thumbnail
+                # selection (classify.thumbnail.best_trackless_thumb); on the
+                # Pi it would just grow unbounded for the life of the clip
+                clip.region_history.append(regions)
         return new_tracks
+
+
+def debug_frame(frame):
+    if frame.filtered is None or frame.thermal is None:
+        return
+    from ml_tools.imageprocessing import normalize
+    thermal,_ = normalize(frame.thermal,new_max = 255)
+    filtered,_ = normalize(frame.filtered,new_max = 255)
+    import cv2
+    cv2.imshow("t",np.uint8(thermal))
+
+    cv2.imshow("f",np.uint8(filtered))
+    cv2.moveWindow("f",300,300)
+    cv2.waitKey()

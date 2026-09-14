@@ -13,14 +13,14 @@ from ml_tools.rectangle import Rectangle
 
 class CPTVMotionDetector(MotionDetector):
     FFC_PERIOD = timedelta(seconds=9.9)
-    BACKGROUND_WEIGHT_ADD = 0.1
+    BACKGROUND_WEIGHT_ADD = 1
     MEAN_FRAMES = 45
 
     def __init__(self, thermal_config, dynamic_thresh, headers, detect_after=None):
         super().__init__(thermal_config, headers)
         self.headers = headers
-        if headers.model and headers.model.lower() == "lepton3.5":
-            CPTVMotionDetector.BACKGROUND_WEIGHT_ADD = 1
+        if headers.model and headers.model.lower() == "lepton3":
+            CPTVMotionDetector.BACKGROUND_WEIGHT_ADD = 0.1
         self.config = thermal_config.motion
         self.location_config = thermal_config.location
         self.num_preview_frames = thermal_config.recorder.preview_secs * headers.fps
@@ -71,15 +71,17 @@ class CPTVMotionDetector(MotionDetector):
     def temp_thresh(self):
         return self._background.average
 
-    def detect(self, clipped_frame, received_at=None):
+    def detect(self, frame):
+        clipped_frame = self.crop_rectangle.subimage(frame).astype(np.int32)
+
         oldest = self.crop_rectangle.subimage(self.thermal_window.oldest_nonffc.pix)
         oldest = np.clip(oldest, a_min=self.temp_thresh, a_max=None)
-        clipped_frame = np.clip(clipped_frame, a_min=self.temp_thresh, a_max=None)
-        delta_frame = clipped_frame - oldest
+        np.clip(clipped_frame, a_min=self.temp_thresh, a_max=None, out=clipped_frame)
+        delta_frame = np.subtract(clipped_frame, oldest, out=clipped_frame)
         if not self.config.warmer_only:
-            delta_frame = abs(delta_frame)
+            np.abs(delta_frame, out=delta_frame)
         if self.config.one_diff_only:
-            diff = len(delta_frame[delta_frame > self.config.delta_thresh])
+            diff = np.count_nonzero(delta_frame > self.config.delta_thresh)
         else:
             if self.processed > 2:
                 delta_frame2 = self.diff_window.oldest_nonffc
@@ -87,8 +89,8 @@ class CPTVMotionDetector(MotionDetector):
                     self.config.delta_thresh
                 )
                 delta_combined = delta_frame2 + delta_frame
-                diff = len(
-                    delta_combined[delta_combined == self.config.delta_thresh * 2]
+                diff = np.count_nonzero(
+                    delta_combined == self.config.delta_thresh * 2
                 )
             else:
                 delta_frame[delta_frame >= self.config.delta_thresh] = (
@@ -131,11 +133,13 @@ class CPTVMotionDetector(MotionDetector):
         if not self.config.one_diff_only:
             self.diff_window.reset()
         self.processed = 0
+        self._background.reset()
+        self.running_mean = None
 
-    def process_frame(self, cptv_frame, force_process=False):
+    def process_frame(self, cptv_frame):
         prev_ffc = self.ffc_affected
         self.ffc_affected = is_affected_by_ffc(cptv_frame)
-        if self.can_record() or force_process:
+        if self.can_record():
             self.thermal_window.add(cptv_frame, self.ffc_affected)
             oldest_thermal = self.thermal_window.oldest
             if oldest_thermal is not None:
@@ -150,28 +154,16 @@ class CPTVMotionDetector(MotionDetector):
             else:
                 self.running_mean.add(cptv_frame.pix, oldest_thermal)
             if self.running_mean is not None and not self.ffc_affected:
-                self._background.process_frame(self.running_mean.mean())
+                mean_frame = self.running_mean.mean()
 
-                # debug stuff
-                running_mean_mean = np.mean(self.running_mean.mean())
+                self._background.process_frame(mean_frame)
 
-                current_frame_mean = np.mean(cptv_frame.pix)
-                mean_diff = abs(current_frame_mean - running_mean_mean)
                 if self.processed % (9 * 60) == 0:
+                    running_mean_mean = np.mean(mean_frame)
+                    current_frame_mean = np.mean(cptv_frame.pix)
 
                     logging.info(
                         "Running mean is %s frame mean is %s frames %s processed %s since ffc %s background mean %s",
-                        running_mean_mean,
-                        current_frame_mean,
-                        self.running_mean.running_mean_frames,
-                        self.processed,
-                        since_ffc(cptv_frame),
-                        np.mean(self._background.background),
-                    )
-
-                if mean_diff > 1000:
-                    logging.error(
-                        "Running mean is %s current frame mean %s mean frames %s processed %s since ffc %s background mean %s",
                         running_mean_mean,
                         current_frame_mean,
                         self.running_mean.running_mean_frames,
@@ -185,9 +177,8 @@ class CPTVMotionDetector(MotionDetector):
                 self.triggered = 0
                 if prev_ffc:
                     self.thermal_window.non_ffc_index = self.thermal_window.last_index
-            elif self.processed > self.detect_after:
-                cropped_frame = np.int32(self.crop_rectangle.subimage(cptv_frame.pix))
-                movement = self.detect(cropped_frame)
+            elif self.force_record or self.processed > self.detect_after:
+                movement = self.detect(cptv_frame.pix)
                 if movement:
                     self.triggered += 1
                 else:

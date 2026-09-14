@@ -1,11 +1,11 @@
 tensorflow~=2.20.0
 matplotlib~=3.10.1
 pytz
-opencv-contrib-python-headless~=4.12.0.88
+opencv-python-headless~=5.0.0.93
 cptv~=1.5.4
 scipy==1.16.0
 python-dateutil
-scikit-learn==1.7.0
+scikit-learn==1.9.0
 pyyaml>=6.0.2
 attrs~=25.3.0
 filelock~=3.18.0
@@ -13,7 +13,7 @@ Astral~=1.10.1
 timezonefinder~=6.5.9
 portalocker~=3.2.0
 toml~=0.10.2
-psutil~=7.0.0
+psutil~=7.2.2
 dbus-python~=1.4.0
 
 # sudo apt install libgirepository-2.0-dev

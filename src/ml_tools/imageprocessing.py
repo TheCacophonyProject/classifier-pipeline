@@ -3,9 +3,6 @@ import numpy as np
 
 from pathlib import Path
 from PIL import Image
-from scipy import ndimage
-from PIL import Image
-import logging
 
 
 def adapt_hist(image):

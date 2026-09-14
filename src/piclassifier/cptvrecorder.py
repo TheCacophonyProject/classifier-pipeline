@@ -1,12 +1,11 @@
 from datetime import datetime
 import logging
 import yaml
-from cptv import CPTVWriter
-from cptv import Frame
+
 from datetime import timedelta
 from piclassifier.recorder import Recorder
 from ml_tools.logs import init_logging
-import multiprocessing
+from multiprocessing import Process
 from .eventreporter import log_event
 
 CPTV_EXT = ".cptv"
@@ -33,7 +32,7 @@ class CPTVRecorder(Recorder):
         can_rec = self.can_record(frame_time)
         if not can_rec:
             return False
-        self.rec_p = multiprocessing.Process(
+        self.rec_p = Process(
             target=record,
             args=(
                 self.frame_q,
@@ -44,6 +43,7 @@ class CPTVRecorder(Recorder):
                 self.headers,
                 self.location_config,
                 self.device_config,
+                datetime.fromtimestamp(frame_time),
                 background_frame,
                 preview_frames,
             ),
@@ -64,6 +64,7 @@ def record(
     headers,
     location_config,
     device_config,
+    rec_dt,
     background_frame=None,
     init_frames=None,
     name="CPTVRecorder",
@@ -71,10 +72,15 @@ def record(
     init_logging()
     frames = 0
     try:
+        from cptv import CPTVWriter,Frame
         logging.info("%s Recorder %s started", name, filename.resolve())
         f = open(filename, "wb")
         writer = CPTVWriter(f)
-        writer.timestamp = datetime.now()
+        if rec_dt is None:
+            writer.timestamp = datetime.now()
+        else:
+            writer.timestamp = rec_dt
+
         writer.latitude = location_config.latitude
         writer.longitude = location_config.longitude
         writer.preview_secs = preview_secs

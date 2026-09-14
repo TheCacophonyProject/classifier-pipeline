@@ -125,9 +125,6 @@ def main(cmd_args=None):
     import time
 
     start = time.time()
-    # testing stuff
-    # clip_classifier.post_process_file(args.source, None)
-    # return
     clip_classifier.process(
         args.source,
         cache=args.cache,

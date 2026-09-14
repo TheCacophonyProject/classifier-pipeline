@@ -8,10 +8,8 @@ import pickle
 import json
 import datetime
 import glob
-import cv2
 import enum
 import timezonefinder
-from PIL import Image, ImageFont, ImageDraw
 from pathlib import Path
 from ml_tools.rectangle import Rectangle
 from dateutil import parser
@@ -73,6 +71,8 @@ def convert_heat_to_img(frame, colormap=None, temp_min=None, temp_max=None):
     :param colormap: an optional colormap to use, if none is provided then tracker.colormap is used.
     :return: a pillow Image containing a colorised heatmap
     """
+    from PIL import Image
+
     # normalise
     if colormap is None:
         colormap = _load_colourmap(None)
@@ -120,6 +120,8 @@ def calculate_variance(filtered, prev_filtered):
 
 
 def get_optical_flow_function(high_quality=False):
+    import cv2
+
     opt_flow = cv2.optflow.createOptFlow_DualTVL1()
     opt_flow.setUseInitialFlow(True)
     if not high_quality:
@@ -160,6 +162,8 @@ def resource_path(name):
 
 
 def add_heat_number(img, frame, scale):
+    from PIL import ImageDraw, ImageFont
+
     draw = ImageDraw.Draw(img)
     font = ImageFont.truetype(resource_path("Ubuntu-R.ttf"), 8)
     for y, row in enumerate(frame):
@@ -192,6 +196,8 @@ def get_clipped_flow(flow):
 
 def saveclassify_image(data, filename):
     # saves image channels side by side, expected data to be values in the range of 0->1
+    from PIL import Image
+
     filename = Path(filename)
     filename.parent.mkdir(parents=True, exist_ok=True)
     r = Image.fromarray(np.uint8(data[:, :, 0]))
@@ -221,6 +227,8 @@ def get_timezone_str(lat, lng):
 
 
 def saveclassify_rgb(data, filename):
+    from PIL import Image
+
     Path(filename).parent.mkdir(parents=True, exist_ok=True)
     r = Image.fromarray(np.uint8(data))
     r.save(filename + ".png")

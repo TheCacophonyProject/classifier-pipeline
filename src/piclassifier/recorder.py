@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 from datetime import datetime
 import logging
-import multiprocessing
+from multiprocessing import Queue
 import shutil
 import time
 from pathlib import Path
@@ -20,7 +20,8 @@ class Recorder(ABC):
         on_recording_stopping=None,
         file_suffix=None,
     ):
-
+        self.postprocess = thermal_config.motion.postprocess
+        self.do_tracking = thermal_config.motion.do_tracking
         self.file_suffix = file_suffix
         self.file_extention = file_extention
         self.name = name
@@ -31,9 +32,8 @@ class Recorder(ABC):
         if constant_recorder:
             self.output_dir = self.output_dir / "constant-recordings"
             self.output_dir.mkdir(parents=True, exist_ok=True)
-        if thermal_config.motion.run_classifier and thermal_config.motion.postprocess:
+        if thermal_config.motion.postprocess:
             self.output_dir = self.output_dir / "postprocess"
-
         self.temp_dir = self.output_dir / TEMP_DIR
         self.temp_dir.mkdir(parents=True, exist_ok=True)
         self.motion = thermal_config.motion
@@ -49,7 +49,7 @@ class Recorder(ABC):
         self.write_until = 0
         self.rec_time = 0
         self.on_recording_stopping = on_recording_stopping
-        self.frame_q = multiprocessing.Queue()
+        self.frame_q = Queue()
         self.rec_p = None
 
     def process_frame(self, movement_detected, cptv_frame, received_at):
@@ -75,6 +75,8 @@ class Recorder(ABC):
         self.rec_time += time.time() - start
 
     def can_record(self, frame_time):
+        if self.output_dir is None:
+            return True
         _, _, free = shutil.disk_usage(self.output_dir)
         free = free * 0.000001
         if free <= self.min_disk_space_mb:
@@ -101,7 +103,7 @@ class Recorder(ABC):
         if self.recording:
             self.frame_q.put(0)
             self.rec_p.join()
-            self.frame_q = multiprocessing.Queue()
+            self.frame_q = Queue()
             self.rec_p = None
             self.recording = False
         self.filename.unlink()
@@ -109,12 +111,13 @@ class Recorder(ABC):
     def stop_recording(self, frame_time):
         start = time.time()
         self.rec_time += time.time() - start
-        self.recording = False
         final_name = self.final_name()
         logging.info("%s Waiting for recorder to finish", self.name)
         self.frame_q.put(0)
         self.rec_p.join()
-        self.frame_q = multiprocessing.Queue()
+        self.recording = False
+
+        self.frame_q = Queue()
         self.rec_p = None
         logging.info(
             "%s recording %s ended %s frames %s time recording %s per frame ",
@@ -154,7 +157,7 @@ class Recorder(ABC):
             free_percent = stat[2] / stat[0]
 
     def start_recording(
-        self, background_frame, preview_frames, temp_thresh, frame_time
+        self, background_frame, preview_frames, temp_thresh, frame_time, test=False
     ):
         if self.constant_recorder:
             self.delete_excess()
@@ -166,7 +169,7 @@ class Recorder(ABC):
 
         self.frames = 0
 
-        self.filename = self.new_temp_name(frame_time)
+        self.filename = self.new_temp_name(frame_time, test=test)
         started = self.new_recording(
             background_frame, preview_frames, temp_thresh, frame_time
         )
@@ -185,10 +188,15 @@ class Recorder(ABC):
 
         return True
 
-    def new_temp_name(self, frame_time):
-        file_name = datetime.fromtimestamp(frame_time).strftime("%Y%m%d-%H%M%S.%f")
+    def new_temp_name(self, frame_time, test=False):
+        file_name = datetime.fromtimestamp(frame_time).strftime("%Y-%m-%d--%H-%M-%S")
         if self.file_suffix is not None:
             file_name = f"{file_name}{self.file_suffix}"
+        if self.postprocess and not self.do_tracking:
+            file_name = f"{file_name}-track"
+        if test:
+            file_name = f"{file_name}-test"
+
         return self.temp_dir / f"{file_name}{self.file_extention}"
 
     @abstractmethod

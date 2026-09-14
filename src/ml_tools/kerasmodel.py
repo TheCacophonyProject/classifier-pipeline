@@ -27,9 +27,7 @@ from ml_tools import thermaldataset
 from ml_tools.resnet.wr_resnet import WRResNet
 
 from ml_tools import irdataset
-from ml_tools.tfdataset import get_weighting, get_dataset as get_tf, apply_label_mapping
-from ml_tools.preprocess import FrameTypes
-from ml_tools.thermalwriter import MeanData
+from ml_tools.tfdataset import get_weighting, get_dataset as get_tf
 
 classify_i = 0
 CURRENT_EPOCH = tf.Variable(0, dtype=tf.int32, trainable=False, name="current_epoch")
@@ -2121,6 +2119,8 @@ def get_dataset(
 
 
 class MetaJSONEncoder(json.JSONEncoder):
+    from ml_tools.tools import FrameTypes
+
     def default(self, obj):
         if isinstance(obj, SegmentType) or isinstance(obj, FrameTypes):
             return obj.name

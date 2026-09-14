@@ -1,7 +1,5 @@
 import attr
-import cv2
 import numpy as np
-from ml_tools.imageprocessing import resize_cv, rotate, normalize, resize_and_pad
 import enum
 import logging
 
@@ -61,9 +59,9 @@ class Frame:
             region=region,
         )
         for channel, data in zip(channels, frame):
-            if TrackChannels.thermal == channel:
+            if TrackChannels.thermal.value == channel:
                 f.thermal = data
-            if TrackChannels.filtered == channel:
+            elif TrackChannels.filtered.value == channel:
                 f.filtered = data
             if TrackChannels.mask == channel:
                 f.mask = data
@@ -103,6 +101,8 @@ class Frame:
         return np.asarray(data)
 
     def normalize(self):
+        from ml_tools.imageprocessing import normalize
+
         if self.thermal is not None:
             self.thermal, _ = normalize(self.thermal, new_max=255)
         if self.filtered is not None:
@@ -257,9 +257,14 @@ class Frame:
         keep_edge=False,
         edge_offset=(0, 0, 0, 0),
         original_region=None,
-        interpolation=cv2.INTER_NEAREST,
+        interpolation=None,
         no_padding=False,
     ):
+        import cv2
+        if interpolation is None:
+            interpolation = cv2.INTER_NEAREST
+        from ml_tools.imageprocessing import resize_and_pad
+
         if self.thermal is not None:
             self.thermal = resize_and_pad(
                 self.thermal,
@@ -305,7 +310,11 @@ class Frame:
                 interpolation=interpolation,
             )
 
-    def resize(self, dim, interpolation=cv2.INTER_NEAREST):
+    def resize(self, dim, interpolation=None):
+        from ml_tools.imageprocessing import resize_cv
+        import cv2
+        if interpolation is None:
+            interpolation = cv2.INTER_NEAREST
         self.thermal = resize_cv(self.thermal, dim, interpolation=interpolation)
         self.filtered = resize_cv(self.filtered, dim, interpolation=interpolation)
         self.thermal_norm = resize_cv(
