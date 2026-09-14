@@ -4,7 +4,9 @@
 Script to classify animals within a CPTV video file.
 """
 
-from piclassifier.piclassify import main
-
+import multiprocessing
+multiprocessing.set_forkserver_preload(["numpy"])
 if __name__ == "__main__":
+    multiprocessing.set_start_method('forkserver')
+    from piclassifier.piclassify import main
     main()

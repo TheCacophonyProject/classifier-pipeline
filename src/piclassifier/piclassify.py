@@ -282,7 +282,6 @@ def parse_cptv(file, config, thermal_config, preview_type, fps, seed):
     )
     pi_classifier.parse_file(file, fps, seed)
     pi_classifier.service.quit()
-    print("ALL DONE")
 
 
 def get_processor(process_queue, response_queue, config, thermal_config, headers):

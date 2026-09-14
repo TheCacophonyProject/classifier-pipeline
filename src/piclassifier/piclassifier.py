@@ -49,7 +49,7 @@ def run_classifier(
 ):
     from .headerinfo import HeaderInfo
 
-    init_logging()
+    init_logging(name="piclassifier")
     pi_classifier = None
     try:
         pi_classifier = PiClassifier(config, thermal_config, headers, classify)

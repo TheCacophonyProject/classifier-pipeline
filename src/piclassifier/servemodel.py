@@ -72,7 +72,7 @@ def get_model():
 
 
 def main():
-    init_logging()
+    init_logging(name="servemodel")
     global interpreter
     global input_shape
     network_model = get_model()

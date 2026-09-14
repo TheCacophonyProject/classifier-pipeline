@@ -118,7 +118,7 @@ def service_started():
 
 
 def main():
-    init_logging()
+    init_logging(name="postprocess")
     config = Config.load_from_file()
     thermal_config = ThermalConfig.load_from_file()
     output_dir = Path(thermal_config.recorder.output_dir)
