@@ -111,7 +111,7 @@ def get_track_thumb_stats(clip, track):
                 max_contour = points
 
         # get mask of all pixels that are considered an animal
-        filtered_sub = region.subimage(contour_image)
+        filtered_sub = contour_image
         sub_mask = filtered_sub > 0
 
         # get the thermal values for this mask

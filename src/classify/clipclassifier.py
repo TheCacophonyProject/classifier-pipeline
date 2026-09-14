@@ -37,7 +37,7 @@ class ClipClassifier:
             self.model.name = f"post-{self.model.name}"
 
         # prediction record for each track
-
+        self.previewer = None
         if config.classify.preview and not config.classify.preview.lower() == "none":
             from ml_tools.previewer import Previewer
 
