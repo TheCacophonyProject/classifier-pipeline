@@ -40,7 +40,6 @@ class TrackingConfig(DefaultConfig):
     track_smoothing = attr.ib()
     denoise = attr.ib()
 
-    high_quality_optical_flow = attr.ib()
     max_tracks = attr.ib()
     track_overlap_ratio = attr.ib()
     min_duration_secs = attr.ib()
@@ -67,14 +66,16 @@ class TrackingConfig(DefaultConfig):
     @classmethod
     def load(cls, tracking):
         if tracking is None:
-            return None
-        trackers = {}
-        for type, raw_tracker in tracking.items():
-            if raw_tracker is None:
-                raw_tracker = {}
-            tracker = TrackingConfig.load_type(raw_tracker, type)
-            trackers[tracker.type] = tracker
-        return trackers
+            return cls.get_type_defaults("thermal")
+        thermal = tracking.get("thermal",None)
+        if thermal is not None:
+            # old configs will have tracking -> thermal -> params
+            tracker = TrackingConfig.load_type(thermal, type)
+            return tracker
+        else:
+            tracker = TrackingConfig.load_type(tracking, type)
+            return tracker
+        return cls.get_type_defaults("thermal")
 
     @classmethod
     def load_type(cls, tracking, type):
@@ -91,7 +92,6 @@ class TrackingConfig(DefaultConfig):
             frame_padding=tracking["frame_padding"],
             track_smoothing=tracking["track_smoothing"],
             denoise=tracking["denoise"],
-            high_quality_optical_flow=tracking["high_quality_optical_flow"],
             max_tracks=tracking["max_tracks"],
             moving_vel_thresh=tracking["filters"]["moving_vel_thresh"],
             track_overlap_ratio=tracking["filters"]["track_overlap_ratio"],
@@ -117,10 +117,7 @@ class TrackingConfig(DefaultConfig):
 
     @classmethod
     def get_defaults(cls):
-        default_tracking = {}
-        default_tracking["thermal"] = cls.get_type_defaults("thermal")
-        default_tracking["IR"] = cls.get_type_defaults("IR")
-        return default_tracking
+        return cls.get_type_defaults("thermal")
 
     @classmethod
     def get_type_defaults(cls, type):
@@ -132,7 +129,6 @@ class TrackingConfig(DefaultConfig):
             # dilation_pixels=2,
             track_smoothing=False,
             denoise=True,
-            high_quality_optical_flow=False,
             max_tracks=None,
             filters={
                 "track_overlap_ratio": 0.5,

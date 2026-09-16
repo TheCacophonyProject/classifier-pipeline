@@ -19,12 +19,10 @@ along with this program. If not, see <http://www.gnu.org/licenses/>.
 
 import numpy as np
 import time
-import yaml
 from datetime import datetime
 
 from .clip import Clip
 from track.cliptracker import ClipTracker
-from piclassifier.cptvmotiondetector import is_affected_by_ffc
 import logging
 
 
@@ -44,11 +42,9 @@ class ClipTrackExtractor(ClipTracker):
     def __init__(
         self,
         config,
-        use_opt_flow,
         cache_to_disk=False,
         keep_frames=True,
         calc_stats=True,
-        high_quality_optical_flow=False,
         verbose=False,
         do_tracking=True,
         update_background=True,
@@ -74,8 +70,6 @@ class ClipTrackExtractor(ClipTracker):
         else:
             self.version = ClipTrackExtractor.VERSION
 
-        self.use_opt_flow = use_opt_flow
-        self.high_quality_optical_flow = high_quality_optical_flow
         self.background_alg = None
         self.update_background = update_background
         self.calculate_filtered = calculate_filtered
@@ -98,9 +92,7 @@ class ClipTrackExtractor(ClipTracker):
         from piclassifier.motiondetector import WeightedBackground
 
         clip.set_frame_buffer(
-            self.high_quality_optical_flow,
             self.cache_to_disk,
-            self.use_opt_flow,
             self.keep_frames,
             self.max_frames,
         )
@@ -196,7 +188,8 @@ class ClipTrackExtractor(ClipTracker):
         for i,frame in enumerate(frames):
             if not self.do_tracking and i>= tracking_start :
                 self.do_tracking = do_tracking
-            new_tracks.extend(self.process_frame(clip, frame))
+            new_t, _ = self.process_frame(clip, frame)
+            new_tracks.extend(new_t)
         self.do_tracking = do_tracking
         return new_tracks
 
@@ -228,9 +221,10 @@ class ClipTrackExtractor(ClipTracker):
             )
         _ = clip.add_frame(thermal, filtered, mask, ffc_affected)
         if not self.do_tracking:
-            return []
+            return [],[]
 
         new_tracks = []
+        stale_tracks = []
         if not clip.from_metadata:
             regions = []
             if ffc_affected:
@@ -239,13 +233,13 @@ class ClipTrackExtractor(ClipTracker):
                 regions = self._get_regions_of_interest(
                     clip, component_details[1:], centroids[1:]
                 )
-                new_tracks = self._apply_region_matchings(clip, regions)
+                new_tracks,stale_tracks = self._apply_region_matchings(clip, regions)
             if not self.from_pi:
                 # region_history is only consumed by offline thumbnail
                 # selection (classify.thumbnail.best_trackless_thumb); on the
                 # Pi it would just grow unbounded for the life of the clip
                 clip.region_history.append(regions)
-        return new_tracks
+        return new_tracks,stale_tracks
 
 
 def debug_frame(frame):

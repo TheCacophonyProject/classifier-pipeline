@@ -169,7 +169,6 @@ class ClipClassifier:
 
             track_extractor = ClipTrackExtractor(
                 self.config.tracking,
-                self.config.use_opt_flow,
                 cache_to_disk,
                 do_tracking=track,
                 calculate_filtered=True,
@@ -427,7 +426,6 @@ class ClipClassifier:
             # only extra data for segments
             track_extractor = ClipTrackExtractor(
                 self.config.tracking,
-                self.config.use_opt_flow,
                 calculate_filtered=True,
                 verbose=self.config.verbose,
             )

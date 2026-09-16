@@ -1,7 +1,6 @@
 import attr
 import numpy as np
 import enum
-import logging
 from ml_tools import opencvconstants
 
 
@@ -22,7 +21,6 @@ class Frame:
     frame_number = attr.ib()
     mask = attr.ib(default=None)
     thermal_norm = attr.ib(default=None)
-    scaled_thermal = attr.ib(default=None)
     ffc_affected = attr.ib(default=False)
     region = attr.ib(default=None)
     frame_temp_median = attr.ib(default=None)

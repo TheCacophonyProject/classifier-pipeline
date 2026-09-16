@@ -133,7 +133,6 @@ def extract_file(
 
         track_extractor = ClipTrackExtractor(
             config.tracking,
-            config.use_opt_flow,
             cache_to_disk,
             verbose=config.verbose,
             max_frames=max_frames,

@@ -149,6 +149,7 @@ class RecorderConfig:
     constant_recorder = attr.ib()
     use_low_power_mode = attr.ib()
     min_disk_space_mb = attr.ib()
+    instant_classify = attr.ib()
 
     @classmethod
     def load(cls, recorder, window, location_config):
@@ -167,6 +168,7 @@ class RecorderConfig:
             min_disk_space_mb=recorder.get("min-disk-space-mb", 200),
             output_dir=recorder.get("output-dir", "/var/spool/cptv"),
             use_low_power_mode=recorder.get("use-low-power-mode", False),
+            instant_classify = recorder.get("instant_classify",False),
         )
 
 

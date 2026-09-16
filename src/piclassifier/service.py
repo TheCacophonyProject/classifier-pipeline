@@ -289,7 +289,7 @@ class Service(dbus.service.Object):
         pass
 
 
-class SnapshotService:
+class DbusService:
     def __init__(
         self,
         headers,
@@ -382,6 +382,7 @@ class SnapshotService:
             predictions = prediction.copy()
             predictions = np.uint8(np.round(predictions * 100))
             best = np.argmax(predictions)
+
             self.service.Tracking(
                 clip_id,
                 track.get_id(),

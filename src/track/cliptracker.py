@@ -1,6 +1,5 @@
 from abc import ABC, abstractmethod
 import logging
-import time
 import math
 import numpy as np
 
@@ -22,7 +21,7 @@ class ClipTracker(ABC):
         max_frames=None,
     ):
         self.max_frames = max_frames
-        config = config.get(self.type, "thermal")
+        # config = config.get(self.type, "thermal")
         self.scale = scale
         self.calculate_thumbnail_info = calculate_thumbnail_info
         # if scale:
@@ -128,8 +127,8 @@ class ClipTracker(ABC):
 
         unactive_tracks = clip.active_tracks - matched_tracks - new_tracks
         clip.active_tracks = matched_tracks | new_tracks
-        self._filter_inactive_tracks(clip, unactive_tracks)
-        return new_tracks
+        stale_tracks = self._filter_inactive_tracks(clip, unactive_tracks)
+        return new_tracks,stale_tracks
 
     def _match_existing_tracks(self, clip, regions):
         from ml_tools.imageprocessing import hist_diff
@@ -237,6 +236,7 @@ class ClipTracker(ABC):
 
     def _filter_inactive_tracks(self, clip, unactive_tracks):
         """Filters tracks which are or have become inactive"""
+        stale_tracks = []
         for track in unactive_tracks:
             track.add_blank_frame()
             if track.tracking:
@@ -246,7 +246,9 @@ class ClipTracker(ABC):
                         clip.current_frame, track.get_id()
                     )
                 )
-
+            else:
+                stale_tracks.append(track)
+        return stale_tracks
     def get_delta_filtered(self, clip):
         from ml_tools.imageprocessing import normalize
 

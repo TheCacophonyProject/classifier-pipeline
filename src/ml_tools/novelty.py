@@ -112,8 +112,7 @@ def preprocess_file(classifier, filename):
     # get segments here, or frames
     # only extra data for segments
     track_extractor = ClipTrackExtractor(
-        {"thermal": TrackingConfig.get_type_defaults("thermal")},
-        None,
+        TrackingConfig.get_type_defaults("thermal"),
         True,
         False,
         calculate_filtered=True,

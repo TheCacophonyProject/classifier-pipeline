@@ -19,7 +19,7 @@ along with this program. If not, see <http://www.gnu.org/licenses/>.
 
 from abc import ABC, abstractmethod
 
-from .service import SnapshotService
+from .service import DbusService
 
 
 class Processor(ABC):
@@ -32,7 +32,7 @@ class Processor(ABC):
             if self.fp_model is not None:
                 model_labels[self.fp_model.id] = self.fp_model.labels
 
-        self.service = SnapshotService(
+        self.service = DbusService(
             self.headers,
             self.take_snapshot,
             model_labels,

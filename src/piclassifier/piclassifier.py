@@ -356,7 +356,7 @@ class PiClassifier(Processor):
         from .cptvmotiondetector import CPTVMotionDetector
 
         logging.info("Running on Thermal")
-        self.tracking_config = self.config.tracking.get("thermal")
+        self.tracking_config = self.config.tracking
 
         if self.do_tracking:
             self.init_tracking()
@@ -430,7 +430,6 @@ class PiClassifier(Processor):
 
         self.track_extractor = ClipTrackExtractor(
             self.config.tracking,
-            self.config.use_opt_flow,
             self.config.classify.cache_to_disk,
             keep_frames=False,
             calc_stats=False,
@@ -521,9 +520,7 @@ class PiClassifier(Processor):
         self.next_fp_classification_frame = 0
         self.clip.set_res(self.res_x, self.res_y)
         self.clip.set_frame_buffer(
-            self.tracking_config.high_quality_optical_flow,
             self.config.classify.cache_to_disk,
-            self.config.use_opt_flow,
             keep_frames=(
                 self.max_keep_frames > 0 if self.max_keep_frames is not None else True
             ),
@@ -679,13 +676,7 @@ class PiClassifier(Processor):
                     clip,
                     track,
                     predict_from_last=self.predict_from_last,
-                    scale=self.track_extractor.scale,
-                    frames_per_classify=self.frames_per_classify,
-                    max_frames=self.max_pred_frames,
                     num_predictions=1,
-                    calculate_filtered=True,
-                    last_frame_predicted=track_prediction.last_frame_classified,
-                    # min_frames_for_prediction = 6,
                 )
                 if pred_result is None:
                     logging.info("not prediction %s",track)
@@ -1097,7 +1088,7 @@ class PiClassifier(Processor):
         if self.recorder.recording:
             t_start = time.time()
             if self.do_tracking:
-                new_tracks = self.track_extractor.process_frame(self.clip, lepton_frame)
+                new_tracks,_ = self.track_extractor.process_frame(self.clip, lepton_frame)
                 for t in new_tracks:
                     t.received_at = received_at
                 active_best = self.get_and_update_thumbnail()

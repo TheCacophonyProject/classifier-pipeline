@@ -27,9 +27,7 @@ class FrameBuffer:
     def __init__(
         self,
         cptv_name,
-        high_quality_flow,
         cache_to_disk,
-        calc_flow,
         keep_frames,
         max_frames=None,
     ):
@@ -43,26 +41,15 @@ class FrameBuffer:
             self.cache = FrameCache(filename)
         else:
             self.cache = None
-        self.opt_flow = None
-        self.high_quality_flow = high_quality_flow
         self.frames = None
         self.frames_by_frame_number = {}
         self.prev_frame = None
-        self.calc_flow = calc_flow
         self.max_frames = max_frames
         self.keep_frames = True if max_frames and max_frames > 0 else keep_frames
         self.current_frame_i = 0
         self.current_frame = None
         self.frame_lock = Lock()
-        if calc_flow:
-            self.set_optical_flow()
         self.reset()
-
-    def set_optical_flow(self):
-        from ml_tools.tools import get_optical_flow_function
-
-        if self.opt_flow is None:
-            self.opt_flow = get_optical_flow_function(self.high_quality_flow)
 
     def add_frame(self, thermal, filtered, mask, frame_number, ffc_affected=False):
         self.prev_frame = self.current_frame
@@ -71,8 +58,6 @@ class FrameBuffer:
         )
         self.current_frame = frame
 
-        if self.opt_flow:
-            frame.generate_optical_flow(self.opt_flow, self.prev_frame)
         if self.keep_frames:
             if self.cache:
                 self.cache.add_frame(frame)
@@ -84,10 +69,6 @@ class FrameBuffer:
                 self.frames.append(frame)
                 self.frames_by_frame_number[frame.frame_number] = frame
         return frame
-
-    @property
-    def has_flow(self):
-        return self.cache or self.opt_flow
 
     def get_frame(self, frame_number):
         frame = None

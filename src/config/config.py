@@ -38,7 +38,6 @@ class Config(DefaultConfig):
     previews_colour_map = attr.ib()
     worker_threads = attr.ib()
     debug = attr.ib()
-    use_opt_flow = attr.ib()
     verbose = attr.ib()
 
     @classmethod
@@ -72,7 +71,6 @@ class Config(DefaultConfig):
             labels=raw["labels"],
             build=BuildConfig.load(raw["build"]),
             debug=raw["debug"],
-            use_opt_flow=raw["use_opt_flow"],
             verbose=raw["verbose"],
         )
 
@@ -89,14 +87,12 @@ class Config(DefaultConfig):
             train=TrainConfig.get_defaults(),
             classify=ClassifyConfig.get_defaults(),
             debug=False,
-            use_opt_flow=False,
             verbose=False,
         )
 
     def validate(self):
         self.build.validate()
-        for tracker in self.tracking.values():
-            tracker.validate()
+        self.tracking.validate()
         self.train.validate()
         self.classify.validate()
         return True

@@ -157,7 +157,9 @@ def save_gradcam_for_label(
 
 
 def preprocess_file(classifier, filename):
-    from track.cliptrackextractor import ClipTrackExtractor, is_affected_by_ffc
+    from track.cliptrackextractor import ClipTrackExtractor
+    from piclassifier.cptvmotiondetector import is_affected_by_ffc
+
     from track.clip import Clip
     from ml_tools.tools import load_clip_metadata, clear_session, CustomJSONEncoder
     from classify.trackprediction import Predictions
@@ -186,8 +188,7 @@ def preprocess_file(classifier, filename):
     # get segments here, or frames
     # only extra data for segments
     track_extractor = ClipTrackExtractor(
-        {"thermal": TrackingConfig.get_type_defaults("thermal")},
-        None,
+        TrackingConfig.get_type_defaults("thermal"),
         True,
         False,
         calculate_filtered=True,
@@ -333,15 +334,21 @@ def main():
     labels = metadata["labels"]
     channel_names = ["Red", "Green", "Blue"]
 
-    old_model = classifier.model
+    model = classifier.model
 
 
     if args.weights is not None:
         print("Loading ",args.weights)
-        old_model.load_weights(args.weights)
+        model.load_weights(args.weights)
     # model = build_model(metadata, old_model)
-    old_model.summary()
-    model = old_model
+    model.summary()
+
+    from modelevaluate import has_activation, add_sigmoid_output
+    if not has_activation(model):
+        print("Added sigmoid output")
+        model = add_sigmoid_output(model)
+        model.summary()
+
     # source = np.load(args.source)          # expected (H, W, 3) or (1, H, W, 3)
     # if source.ndim == 3:
     #     source = source[np.newaxis]        # → (1, H, W, 3)

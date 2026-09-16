@@ -77,6 +77,10 @@ def main():
         *thermal_config.location.get_lat_long(use_default=True),
         thermal_config.location.altitude,
     )
+    if (thermal_config.recorder.instant_classify and thermal_config.recorder.rec_window.inside_window()) :
+        from mediumpower.mediumpower import main
+        main(thermal_config)
+        return
     other_services = []
     if args.file:
         if thermal_config.motion.run_classifier:
@@ -444,7 +448,7 @@ def handle_connection(
     global ready_to_record
     ready_to_record = True
 
-    edge = config.tracking["thermal"].edge_pixels
+    edge = config.tracking.edge_pixels
     crop_rectangle = Rectangle(
         edge, edge, headers.res_x - 2 * edge, headers.res_y - 2 * edge
     )

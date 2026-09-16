@@ -169,10 +169,16 @@ class RunningMean:
 
 class WeightedBackground:
     def __init__(
-        self, edge_pixels, crop_rectangle, res_x, res_y, weight_add, init_average=None
+        self, edge_pixels=1,crop_rectangle=None, res_x=160, res_y=120, weight_add=1, init_average=28000
     ):
         self.edge_pixels = edge_pixels
-        self.crop_rectangle = crop_rectangle
+        if crop_rectangle:
+            self.crop_rectangle = crop_rectangle
+        else:
+            from ml_tools.rectangle import Rectangle
+            self.crop_rectangle = Rectangle(
+                edge_pixels, edge_pixels, res_x - 2 * edge_pixels, res_y - 2 * edge_pixels
+            )
         self._background = None
         self.weight_add = weight_add
         self.background_weight = np.zeros(

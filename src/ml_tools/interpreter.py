@@ -132,6 +132,7 @@ class Interpreter(ABC):
     # use when predictin as tracks are being tracked i.e not finished yet
     def predict_recent_frames(self, clip, track, **args):
         samples = self.frames_for_prediction(clip, track, **args)
+        print("Samplea re ",samples)
         min_frames_for_prediction =  args.get("min_frames_for_prediction",None)
         if min_frames_for_prediction is not None and len(samples)== 1 and len(samples[0].frame_indices) < min_frames_for_prediction:
             logging.info("Not enough frames for a prediction have %s required %s", len(samples[0].frame_indices), min_frames_for_prediction)
@@ -541,7 +542,7 @@ class Interpreter(ABC):
                 frame,
                 (self.params.frame_size, self.params.frame_size),
                 region,
-                clip.background,
+                None,
                 clip.crop_rectangle,
                 calculate_filtered=False,
                 filtered_norm_limits=filtered_norm_limits,

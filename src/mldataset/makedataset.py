@@ -128,7 +128,7 @@ class ClipLoader:
             logging.error("No tracks found for %s", filename)
             return
 
-        clip = Clip(config.tracking["thermal"], filename)
+        clip = Clip(config.tracking, filename)
         clip.load_metadata(
             metadata,
             config.build.tag_precedence,
