@@ -107,7 +107,7 @@ First download the CPTV files by running
 
 Now we can build the data set. Move to the src directory.
 
-`python build.py <dir> --ext ".cptv"`
+`python build.py <dir>`
 
 And train the model
 

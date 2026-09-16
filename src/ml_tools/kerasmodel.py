@@ -389,7 +389,7 @@ class KerasModel(Interpreter):
     def build_model(
         self,
         dropout=None,
-        single_input=True,
+        multi_input=False,
         qat = False,
     ):
         RNN_MODEL = False
@@ -422,7 +422,7 @@ class KerasModel(Interpreter):
         x = base_model(x)
 
         # Multi input adding information about the frame number used
-        if not single_input:
+        if multi_input:
             # --- Input 2: The Timeline Mask Layer (5x5x7) ---
             # Channels 0-3: absolute time, presence, width, height
             # Channels 4-6: Vx velocity, Vy velocity, forward-aligned delta-T
@@ -603,7 +603,7 @@ class KerasModel(Interpreter):
         test_results=None,
         rebalance=False,
         fine_tune=None,
-        single_input=False,
+        multi_input=False,
         qat = False
     ):
         # create a save point
@@ -632,7 +632,7 @@ class KerasModel(Interpreter):
         else:
             self.model.save(str(self.checkpoint_folder / run_name / f"{run_name}.keras"))
         self.save_metadata(
-            run_name, history, test_results, rebalance, fine_tune, single_input
+            run_name, history, test_results, rebalance, fine_tune, multi_input=multi_input
         )
 
     def save_metadata(
@@ -642,7 +642,7 @@ class KerasModel(Interpreter):
         test_results=None,
         rebalance=False,
         fine_tune=None,
-        single_input=False,
+        multi_input=False,
     ):
         #  save metadata
         if run_name is None:
@@ -650,7 +650,8 @@ class KerasModel(Interpreter):
         model_stats = {}
         model_stats["name"] = self.params.model_name
         model_stats["labels"] = self.labels
-        model_stats["single_input"] = single_input
+        model_stats["multi_input"] = multi_input
+
         model_stats["hyperparams"] = self.params
         model_stats["training_date"] = str(time.time())
         model_stats["version"] = self.VERSION
@@ -781,18 +782,18 @@ class KerasModel(Interpreter):
         resample=False,
         fine_tune=None,
         warm_down=False,
-        single_input=True,
+        multi_input=False,
         test=False,
         phase2=False,
         use_jitter=False,
         qat=False,
     ):
         logging.info(
-            "%s Training model for %s epochs with weights %s with single input as: %s phase2 %s use_jitter %s qat %s",
+            "%s Training model for %s epochs with weights %s with multi input as: %s phase2 %s use_jitter %s qat %s",
             run_name,
             epochs,
             weights,
-            single_input,
+            multi_input,
             phase2,
             use_jitter,
             qat,
@@ -833,7 +834,7 @@ class KerasModel(Interpreter):
         else:
             self.model = self.build_model(
                 dropout=self.params.dropout,
-                single_input=single_input,
+                multi_input=multi_input,
                 qat = qat,
             )
 
@@ -878,7 +879,7 @@ class KerasModel(Interpreter):
             tf_mappings=tf_mappings,
             downsize_fp=True,
             rebalance=rebalance,
-            single_input=single_input,
+            multi_input=multi_input,
             use_jitter=use_jitter or None,
             epoch_size=100 if test else None,
             current_epoch=CURRENT_EPOCH,
@@ -904,7 +905,7 @@ class KerasModel(Interpreter):
             channels=self.params.channels,
             pads=self.pads,
             tf_mappings=tf_mappings,
-            single_input=single_input,
+            multi_input=multi_input,
             epoch_size=100 if test else None,
         )
         logging.info(
@@ -1022,7 +1023,7 @@ class KerasModel(Interpreter):
                 channels=self.params.channels,
                 pads=self.pads,
                 tf_mappings=tf_mappings,
-                single_input=single_input,
+                multi_input=multi_input,
                 epoch_size=100 if test else None,
             )
             if self.test:
@@ -1034,7 +1035,7 @@ class KerasModel(Interpreter):
             test_results=test_accuracy,
             rebalance=rebalance,
             fine_tune=fine_tune,
-            single_input=single_input,
+            multi_input=multi_input,
             qat = qat
             
         )
@@ -1146,7 +1147,7 @@ class KerasModel(Interpreter):
             print(f"Injecting weights for: {layer_name}")
             destination_layer.set_weights(source_layer.get_weights())
 
-    def warm_down(self, run_name, weights, tf_mappings, epochs=5, single_input=False):
+    def warm_down(self, run_name, weights, tf_mappings, epochs=5, multi_input=False):
         logging.info(
             "Warming down for 5 epochs with weights %s without augmentation", weights
         )
@@ -1175,7 +1176,7 @@ class KerasModel(Interpreter):
             pads=self.pads,
             downsize_fp=True,
             tf_mappings=tf_mappings,
-            single_input=single_input,
+            multi_input=multi_input,
             current_epoch=CURRENT_EPOCH,
         )
 

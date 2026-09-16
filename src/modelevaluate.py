@@ -610,10 +610,10 @@ def load_clip_data(cptv_file):
             output = None
             num_preds = None
             if len(preprocessed) > 0 and (
-                worker_model.single_input or len(preprocessed["input_image"]) > 0
+                not worker_model.multi_input or len(preprocessed["input_image"]) > 0
             ):
 
-                if worker_model.single_input:
+                if not worker_model.multi_input:
                     num_preds = len(preprocessed)
                     preprocess_data["input_image"].extend(preprocessed)
                 else:
@@ -633,7 +633,7 @@ def load_clip_data(cptv_file):
         except:
             logging.error("Could not load %s", clip.clip_id, exc_info=True)
     if len(preprocess_data["input_image"]) > 0:
-        if worker_model.single_input:
+        if not worker_model.multi_input:
             preprocess_data = np.array(preprocess_data["input_image"])
         else:
             preprocess_data["input_image"] = np.array(preprocess_data["input_image"])

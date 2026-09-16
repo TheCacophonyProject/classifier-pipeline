@@ -38,7 +38,7 @@ class Interpreter(ABC):
         self.thresholds_per_label = metadata.get("thresholds")
         self.preprocess_fn = self.get_preprocess_fn()
         self.preprocess_v2 = metadata.get("v2_preprocess", False)
-        self.single_input = metadata.get("single_input", True)
+        self.multi_input = metadata.get("multi_input", False)
         self.scale_thresholds = metadata.get("scale_thresholds",False)
         from ml_tools.interpreter import get_mappings
 
@@ -462,13 +462,13 @@ class Interpreter(ABC):
                 continue
             preprocessed.setdefault("input_image", []).append(input_image)
 
-            if not self.single_input:
+            if self.multi_input:
                 input_mask = get_frame_mask(segment.frame_indices)
                 preprocessed.setdefault("input_mask", []).append(input_mask)
             masses.append(segment.mass)
 
         if len(preprocessed) > 0:
-            if self.single_input:
+            if not self.multi_input:
                 preprocessed = np.array(preprocessed["input_image"])
             else:
                 preprocessed["input_image"] = np.array(preprocessed["input_image"])

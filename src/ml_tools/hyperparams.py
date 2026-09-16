@@ -116,7 +116,7 @@ class HyperParams(dict):
 
     @property
     def model_name(self):
-        return self.get("model_name", "wr-resnet")
+        return self.get("model_name", "efficientnetv2b3")
 
     @property
     def dense_sizes(self):

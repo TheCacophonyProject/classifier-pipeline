@@ -273,7 +273,7 @@ def get_dataset(load_function, base_dir, labels, **args):
 
     # dataset = dataset.map(resize_mosaic, num_parallel_calls=tf.data.AUTOTUNE)
     # doing this early would speed things up but for testing it best performance it wont matter too much
-    if args.get("single_input", False):
+    if not args.get("multi_input", False):
         logging.info("Loading single input")
         dataset = dataset.map(
             lambda x, y: (x["input_image"], y), num_parallel_calls=tf.data.AUTOTUNE

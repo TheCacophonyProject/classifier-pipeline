@@ -47,7 +47,10 @@ def load_config():
     parser.add_argument("-e", "--epochs", type=int, help="Epochs to train")
     parser.add_argument("-f", "--fine-tune", help="Model to fine tune")
     parser.add_argument(
-        "-s", "--single-input", action="store_true", help="Run on image input only"
+        "-m",
+        "--multi-input",
+        action="store_true",
+        help="Run on image and timeline mask multi-input (default: image input only)",
     )
     parser.add_argument(
         "--phase2",
@@ -66,7 +69,7 @@ def load_config():
     parser.add_argument(
         "--jitter",
         action="store_true",
-        help="Force jitter augmentation even with --single-input (cutmix is the "
+        help="Force jitter augmentation even without --multi-input (cutmix is the "
         "single-input default), e.g. for a baseline matching a multi-input run's "
         "augmentation",
     )
@@ -103,7 +106,7 @@ def main():
         fine_tune=args.fine_tune,
         rebalance=args.rebalance,
         warm_down=args.warm_down,
-        single_input=args.single_input,
+        multi_input=args.multi_input,
         test=args.test,
         phase2=args.phase2,
         use_jitter=args.jitter,
