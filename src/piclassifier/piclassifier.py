@@ -156,10 +156,10 @@ class PiClassifier(Processor):
         self.fp_time = 0
         self.monitored_tracks = {}
         self.recording = False
-        self.tracking_events = thermal_config.motion.tracking_events
-        self.bluetooth_beacons = thermal_config.motion.bluetooth_beacons
+        self.tracking_events = thermal_config.base_motion.tracking_events
+        self.bluetooth_beacons = thermal_config.base_motion.bluetooth_beacons
         self.preview_frames = thermal_config.recorder.preview_secs * headers.fps
-        self.do_tracking = thermal_config.motion.do_tracking
+        self.do_tracking = thermal_config.base_motion.do_tracking
         self.fps_timer = SlidingWindow((headers.fps * 3), np.float32)
         self.preview_type = preview_type
         self.max_keep_frames = None if preview_type else 0
@@ -201,8 +201,12 @@ class PiClassifier(Processor):
         self.headers = headers
         self.reset()
         self.init_recorders()
+        # motion config needs to be dependent on model
+        motion_config = self.thermal_config.base_motion.use_defaults_for(headers.model)
+
         self.motion_detector = CPTVMotionDetector(
             self.thermal_config,
+            motion_config,
             self.tracking_config.motion.dynamic_thresh,
             self.headers,
         )
@@ -362,8 +366,10 @@ class PiClassifier(Processor):
             self.init_tracking()
         self.init_recorders()
         self.type = "thermal"
+        motion_config = self.thermal_config.base_motion.use_defaults_for(self.headers.model)
         self.motion_detector = CPTVMotionDetector(
             self.thermal_config,
+            motion_config,
             self.tracking_config.motion.dynamic_thresh,
             self.headers,
         )
@@ -404,8 +410,8 @@ class PiClassifier(Processor):
             )
 
         # dont want snaps getting reprocessed
-        postprocess = self.thermal_config.motion.postprocess
-        self.thermal_config.motion.postprocess = False
+        postprocess = self.thermal_config.base_motion.postprocess
+        self.thermal_config.base_motion.postprocess = False
         self.snapshot_recorder = CPTVRecorder(
             self.thermal_config,
             self.headers,
@@ -414,7 +420,7 @@ class PiClassifier(Processor):
             name="CPTV Snapshot",
             file_suffix="-snap",
         )
-        self.thermal_config.motion.postprocess = postprocess
+        self.thermal_config.base_motion.postprocess = postprocess
 
         if self.thermal_config.recorder.constant_recorder:
             self.constant_recorder = CPTVRecorder(
@@ -1062,7 +1068,9 @@ class PiClassifier(Processor):
                 preview_frames,
                 self.motion_detector.temp_thresh,
                 received_at,
+                motion_config = self.motion_detector.config,
                 test=self.parsing_file,
+
             )
             self.rec_time += time.time() - s_r
             if self.recording:

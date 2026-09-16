@@ -16,12 +16,14 @@ class CPTVMotionDetector(MotionDetector):
     BACKGROUND_WEIGHT_ADD = 1
     MEAN_FRAMES = 45
 
-    def __init__(self, thermal_config, dynamic_thresh, headers, detect_after=None):
+    def __init__(
+        self, thermal_config, motion_config, dynamic_thresh, headers, detect_after=None
+    ):
         super().__init__(thermal_config, headers)
         self.headers = headers
         if headers.model and headers.model.lower() == "lepton3":
             CPTVMotionDetector.BACKGROUND_WEIGHT_ADD = 0.1
-        self.config = thermal_config.motion
+        self.config = motion_config
         self.location_config = thermal_config.location
         self.num_preview_frames = thermal_config.recorder.preview_secs * headers.fps
         self.compare_gap = self.config.frame_compare_gap + 1

@@ -136,7 +136,7 @@ def main():
     reprocess_files = sorted(reprocess_dir.glob("*.cptv"), key=filename_timestamp)
     logging.info("Adding existing %s", reprocess_files)
 
-    postprocess = thermal_config.motion.postprocess
+    postprocess = thermal_config.base_motion.postprocess
     pending_exit = False
     if not postprocess:
         if len(reprocess_files) == 0:
@@ -158,13 +158,13 @@ def main():
         config,
         network_model,
         keep_original_predictions=True,
-        tracking_events=thermal_config.motion.postprocess_events,
+        tracking_events=thermal_config.base_motion.postprocess_events,
     )
 
     callback_fn = partial(rec_callback, set_function=clip_classifier.set_is_recording)
     bus = None
     dbus_object = None
-    need_dbus = thermal_config.motion.postprocess_events
+    need_dbus = thermal_config.base_motion.postprocess_events
     loop = None
 
     try:

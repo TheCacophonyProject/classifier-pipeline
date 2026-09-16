@@ -70,21 +70,20 @@ class TrackingConfig(DefaultConfig):
         thermal = tracking.get("thermal",None)
         if thermal is not None:
             # old configs will have tracking -> thermal -> params
-            tracker = TrackingConfig.load_type(thermal, type)
+            tracker = TrackingConfig.load_type(thermal)
             return tracker
         else:
-            tracker = TrackingConfig.load_type(tracking, type)
+            tracker = TrackingConfig.load_type(tracking)
             return tracker
-        return cls.get_type_defaults("thermal")
 
     @classmethod
-    def load_type(cls, tracking, type):
-        defaults = cls.get_type_defaults(type)
+    def load_type(cls, tracking):
+        defaults = cls.get_defaults()
         deep_copy_map_if_key_not_exist(defaults.as_dict(), tracking)
         return cls(
             tracker=tracking["tracker"],
             params=tracking["params"],
-            type=type,
+            type="thermal",
             motion=TrackingMotionConfig.load(tracking.get("motion")),
             min_dimension=tracking["min_dimension"],
             edge_pixels=tracking["edge_pixels"],
@@ -117,10 +116,6 @@ class TrackingConfig(DefaultConfig):
 
     @classmethod
     def get_defaults(cls):
-        return cls.get_type_defaults("thermal")
-
-    @classmethod
-    def get_type_defaults(cls, type):
         default_tracking = cls(
             motion=TrackingMotionConfig.get_defaults(),
             edge_pixels=1,
@@ -172,31 +167,6 @@ class TrackingConfig(DefaultConfig):
             filter_regions_pre_match=True,
             min_hist_diff=None,
         )
-        if type == "IR":
-            # default_tracking.min_hist_diff = 0.95
-            default_tracking.filters["min_duration_secs"] = 0
-            default_tracking.min_duration_secs = 0
-            default_tracking.filter_regions_pre_match = False
-            default_tracking.areas_of_interest["pixel_variance"] = 0
-            default_tracking.areas_of_interest["min_mass"] = 0
-            default_tracking.filters["track_min_offset"] = 7
-            default_tracking.track_min_offset = 20
-            default_tracking.min_dimension = 10
-            default_tracking.min_tracks = None
-            default_tracking.frame_padding = 10
-            default_tracking.edge_pixels = 0
-            default_tracking.tracker = "RegionTracker"
-            default_tracking.type = "IR"
-            default_tracking.params = {
-                "base_distance_change": 12000,
-                "min_mass_change": None,
-                "restrict_mass_after": 1.5,
-                "mass_change_percent": None,
-                "max_distance": 30752,
-                "max_blanks": 18,
-                "velocity_multiplier": 8,
-                "base_velocity": 10,
-            }
         return default_tracking
 
     #

@@ -53,8 +53,8 @@ def get_model():
     thermal_config = ThermalConfig.load_from_file()
 
     if (
-        not thermal_config.motion.run_classifier
-        and not thermal_config.motion.postprocess
+        not thermal_config.base_motion.run_classifier
+        and not thermal_config.base_motion.postprocess
     ):
         logging.info("Classifier isn't configured to run in config")
         return None

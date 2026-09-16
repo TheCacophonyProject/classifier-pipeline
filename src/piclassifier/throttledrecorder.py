@@ -7,7 +7,7 @@ from datetime import datetime
 
 class ThrottledRecorder(Recorder):
     def __init__(self, recorder, thermal_config, headers, on_recording_stopping):
-        self.postprocess = thermal_config.motion.postprocess
+        self.postprocess = thermal_config.base_motion.postprocess
 
         self.bucket_size = thermal_config.throttler.bucket_size * headers.fps
         self.throttling = False

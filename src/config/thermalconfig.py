@@ -70,6 +70,8 @@ class CameraMotionConfig:
     edge_pixels = attr.ib()
     warmer_only = attr.ib()
     dynamic_thresh = attr.ib()
+
+    # TODO these need to be moved into a different configf that isn't dependent on model info
     run_classifier = attr.ib(default=False)
     bluetooth_beacons = attr.ib(default=False)
     tracking_events = attr.ib(default=False)
@@ -79,20 +81,7 @@ class CameraMotionConfig:
 
     @classmethod
     def defaults_for(cls, model):
-        if model == "lepton3.5":
-            return cls(
-                temp_thresh=28000,
-                delta_thresh=150,
-                count_thresh=3,
-                frame_compare_gap=45,
-                one_diff_only=True,
-                trigger_frames=2,
-                edge_pixels=1,
-                warmer_only=True,
-                dynamic_thresh=True,
-                do_tracking=False,
-            )
-        else:
+        if model == "lepton3":
             return cls(
                 temp_thresh=2750,
                 delta_thresh=50,
@@ -103,39 +92,69 @@ class CameraMotionConfig:
                 edge_pixels=1,
                 warmer_only=True,
                 dynamic_thresh=True,
-                do_tracking=False,
             )
+        else:
+            return cls(
+                temp_thresh=28000,
+                delta_thresh=150,
+                count_thresh=3,
+                frame_compare_gap=45,
+                one_diff_only=True,
+                trigger_frames=2,
+                edge_pixels=1,
+                warmer_only=True,
+                dynamic_thresh=True,
+            )
+            
 
     @classmethod
-    def load(cls, motion, model=None):
-        default = CameraMotionConfig.defaults_for(model)
+    def load(cls, motion):
         motion = cls(
-            temp_thresh=motion.get("temp-thresh", default.temp_thresh),
-            delta_thresh=motion.get("delta-thresh", default.delta_thresh),
-            count_thresh=motion.get("count-thresh", default.count_thresh),
-            frame_compare_gap=motion.get(
-                "frame-compare-gap", default.frame_compare_gap
-            ),
-            one_diff_only=motion.get("use-one-diff-only", default.one_diff_only),
-            trigger_frames=motion.get("trigger-frames", default.trigger_frames),
-            edge_pixels=motion.get("edge-pixels", default.edge_pixels),
-            warmer_only=motion.get("warmer-only", default.warmer_only),
-            dynamic_thresh=motion.get("dynamic-thresh", default.dynamic_thresh),
-            run_classifier=motion.get("run-classifier", default.run_classifier),
-            bluetooth_beacons=motion.get(
-                "bluetooth-beacons", default.bluetooth_beacons
-            ),
-            tracking_events=motion.get("tracking-events", default.tracking_events),
-            do_tracking=motion.get("do-tracking", default.do_tracking),
-            postprocess=motion.get("postprocess", default.postprocess),
-            postprocess_events=motion.get(
-                "postprocess-events", default.postprocess_events
-            ),
+            temp_thresh=motion.get("temp-thresh"),
+            delta_thresh=motion.get("delta-thresh"),
+            count_thresh=motion.get("count-thresh"),
+            frame_compare_gap=motion.get("frame-compare-gap"),
+            one_diff_only=motion.get("use-one-diff-only"),
+            trigger_frames=motion.get("trigger-frames"),
+            edge_pixels=motion.get("edge-pixels"),
+            warmer_only=motion.get("warmer-only"),
+            dynamic_thresh=motion.get("dynamic-thresh"),
+            run_classifier=motion.get("run-classifier", False),
+            bluetooth_beacons=motion.get("bluetooth-beacons", False),
+            tracking_events=motion.get("tracking-events", False),
+            do_tracking=motion.get("do-tracking", False),
+            postprocess=motion.get("postprocess", False),
+            postprocess_events=motion.get("postprocess-events", False),
         )
         return motion
-
+    
     def as_dict(self):
         return attr.asdict(self)
+
+    def use_defaults_for(self, model):
+        default = CameraMotionConfig.defaults_for(model)
+
+        def value_for(field):
+            current = getattr(self, field)
+            return current if current is not None else getattr(default, field)
+
+        return CameraMotionConfig(
+            temp_thresh=value_for("temp_thresh"),
+            delta_thresh=value_for("delta_thresh"),
+            count_thresh=value_for("count_thresh"),
+            frame_compare_gap=value_for("frame_compare_gap"),
+            one_diff_only=value_for("one_diff_only"),
+            trigger_frames=value_for("trigger_frames"),
+            edge_pixels=value_for("edge_pixels"),
+            warmer_only=value_for("warmer_only"),
+            dynamic_thresh=value_for("dynamic_thresh"),
+            run_classifier=self.run_classifier,
+            bluetooth_beacons=self.bluetooth_beacons,
+            tracking_events=self.tracking_events,
+            do_tracking=self.do_tracking,
+            postprocess=self.postprocess,
+            postprocess_events=self.postprocess_events,
+        )
 
 
 @attr.s
@@ -201,7 +220,7 @@ class DeviceConfig:
 
 @attr.s
 class ThermalConfig:
-    motion = attr.ib()
+    base_motion = attr.ib()
     recorder = attr.ib()
     device = attr.ib()
     location = attr.ib()
@@ -210,14 +229,14 @@ class ThermalConfig:
     config_file = attr.ib()
 
     @classmethod
-    def load_from_file(cls, filename=None, model=None):
+    def load_from_file(cls, filename=None):
         if not filename:
             filename = ThermalConfig.find_config()
         with LockSafeConfig(filename) as stream:
-            return cls.load_from_stream(filename, stream, model)
+            return cls.load_from_stream(filename, stream)
 
     @classmethod
-    def load_from_stream(cls, filename, stream, model=None):
+    def load_from_stream(cls, filename, stream):
         raw = toml.load(stream)
         if raw is None:
             raw = {}
@@ -226,7 +245,7 @@ class ThermalConfig:
         return cls(
             config_file=filename,
             throttler=ThrottlerConfig.load(raw.get("thermal-throttler", {})),
-            motion=CameraMotionConfig.load(raw.get("thermal-motion", {}), model),
+            base_motion=CameraMotionConfig.load(raw.get("thermal-motion", {})),
             recorder=RecorderConfig.load(
                 raw.get("thermal-recorder", {}), raw.get("windows", {}), location_config
             ),

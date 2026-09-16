@@ -83,9 +83,14 @@ def main():
         return
     other_services = []
     if args.file:
-        if thermal_config.motion.run_classifier:
+        if thermal_config.base_motion.run_classifier:
             other_services.append(start_service(run_classifier))
-        parse_file(
+        from config.timewindow import TimeWindow, RelAbsTime
+
+        thermal_config.recorder.rec_window = TimeWindow(
+            RelAbsTime(""), RelAbsTime(""), None, None, 0
+        )
+        parse_cptv(
             args.file, config, thermal_config, args.preview_type, args.fps, args.seed
         )
         for service in other_services:
@@ -130,9 +135,9 @@ def main():
             raise
     logging.info("running as thermal")
 
-    if thermal_config.motion.run_classifier:
+    if thermal_config.base_motion.run_classifier:
         other_services.append(start_service(run_classifier))
-    if thermal_config.motion.postprocess:
+    if thermal_config.base_motion.postprocess:
         other_services.append(start_service(run_postprocess))
 
     watchdog_stop = Event()
@@ -250,16 +255,6 @@ def file_changed(event):
     shutdown_event.set()
 
 
-def parse_file(file, config, thermal_config, preview_type, fps, seed):
-    from config.timewindow import TimeWindow, RelAbsTime
-
-    thermal_config.recorder.rec_window = rec_window = TimeWindow(
-        RelAbsTime(""), RelAbsTime(""), None, None, 0
-    )
-
-    parse_cptv(file, config, thermal_config, preview_type, fps, seed)
-
-
 def parse_cptv(file, config, thermal_config, preview_type, fps, seed):
     from .piclassifier import PiClassifier
 
@@ -281,7 +276,7 @@ def parse_cptv(file, config, thermal_config, preview_type, fps, seed):
         config,
         thermal_config,
         headers,
-        thermal_config.motion.run_classifier,
+        thermal_config.base_motion.run_classifier,
         preview_type,
     )
     pi_classifier.parse_file(file, fps, seed)
@@ -299,7 +294,7 @@ def get_processor(process_queue, response_queue, config, thermal_config, headers
             config,
             thermal_config,
             headers,
-            thermal_config.motion.run_classifier,
+            thermal_config.base_motion.run_classifier,
         ),
     )
     return p_processor
@@ -440,7 +435,7 @@ def handle_connection(
     headers, extra_b = handle_headers(connection)
     connection.settimeout(None)
 
-    thermal_config = ThermalConfig.load_from_file(thermal_config_file, headers.model)
+    thermal_config = ThermalConfig.load_from_file(thermal_config_file)
     logging.info(
         "parsed camera headers %s running with config %s", headers, thermal_config
     )

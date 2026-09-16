@@ -27,7 +27,7 @@ class CPTVRecorder(Recorder):
             **args,
         )
 
-    def new_recording(self, background_frame, preview_frames, temp_thresh, frame_time):
+    def new_recording(self, background_frame, preview_frames, temp_thresh, frame_time,motion_config):
         self.frames = 0
         can_rec = self.can_record(frame_time)
         if not can_rec:
@@ -39,7 +39,7 @@ class CPTVRecorder(Recorder):
                 self.filename,
                 temp_thresh,
                 self.preview_secs,
-                self.motion,
+                motion_config,
                 self.headers,
                 self.location_config,
                 self.device_config,

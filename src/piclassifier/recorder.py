@@ -20,8 +20,8 @@ class Recorder(ABC):
         on_recording_stopping=None,
         file_suffix=None,
     ):
-        self.postprocess = thermal_config.motion.postprocess
-        self.do_tracking = thermal_config.motion.do_tracking
+        self.postprocess = thermal_config.base_motion.postprocess
+        self.do_tracking = thermal_config.base_motion.do_tracking
         self.file_suffix = file_suffix
         self.file_extention = file_extention
         self.name = name
@@ -32,11 +32,10 @@ class Recorder(ABC):
         if constant_recorder:
             self.output_dir = self.output_dir / "constant-recordings"
             self.output_dir.mkdir(parents=True, exist_ok=True)
-        if thermal_config.motion.postprocess:
+        if thermal_config.base_motion.postprocess:
             self.output_dir = self.output_dir / "postprocess"
         self.temp_dir = self.output_dir / TEMP_DIR
         self.temp_dir.mkdir(parents=True, exist_ok=True)
-        self.motion = thermal_config.motion
         self.preview_secs = thermal_config.recorder.preview_secs
         self.filename = None
         self.recording = False
@@ -157,7 +156,7 @@ class Recorder(ABC):
             free_percent = stat[2] / stat[0]
 
     def start_recording(
-        self, background_frame, preview_frames, temp_thresh, frame_time, test=False
+        self, background_frame, preview_frames, temp_thresh, frame_time,motion_config, test=False
     ):
         if self.constant_recorder:
             self.delete_excess()
@@ -171,7 +170,7 @@ class Recorder(ABC):
 
         self.filename = self.new_temp_name(frame_time, test=test)
         started = self.new_recording(
-            background_frame, preview_frames, temp_thresh, frame_time
+            background_frame, preview_frames, temp_thresh, frame_time,motion_config
         )
         if not started:
             return False
@@ -201,7 +200,7 @@ class Recorder(ABC):
 
     @abstractmethod
     def new_recording(
-        self, background_frame, preview_frames, temp_thresh, frame_time
+        self, background_frame, preview_frames, temp_thresh, frame_time,motion_config
     ): ...
 
     @abstractmethod
