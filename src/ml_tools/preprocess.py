@@ -441,7 +441,6 @@ def preprocess_movement(
             frame_samples,
             pad_with=pad_with,
         )
-
         data.append(channel_data)
         frame_types[channel] = channel_data
     data = np.stack(data, axis=2)

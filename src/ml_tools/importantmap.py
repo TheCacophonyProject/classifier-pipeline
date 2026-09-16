@@ -241,8 +241,7 @@ def preprocess_file(classifier, filename):
 
         if current_frame_num in track_samples:
             thermal_median = np.median(frame.pix)
-            filtered = frame.pix - track_extractor.background_alg.background
-
+            filtered = np.float32(frame.pix) - track_extractor.background_alg.background
             f = Frame(frame.pix, filtered, current_frame_num)
             f.float_arrays()
             for track_id, region in track_samples[current_frame_num].items():
