@@ -2,8 +2,7 @@ import cv2
 import numpy as np
 
 from pathlib import Path
-from PIL import Image
-
+import logging
 
 def adapt_hist(image):
     from skimage import exposure
@@ -26,9 +25,6 @@ def apply_fair_clahe(resized_crop, resize_amount):
 
     # Ensure it is at least 2x2 to satisfy CLAHE mathematical limits
     kernel_dim = max(2, calculated_kernel)
-    import logging
-
-    # logging.info("Kernel is %s for image %s",kernel_dim,resized_crop.shape)
     return exposure.equalize_adapthist(
         resized_crop, kernel_size=(kernel_dim, kernel_dim), clip_limit=0.01
     )
@@ -159,6 +155,7 @@ def normalize(data, min=None, max=None, new_max=1):
 
 
 def save_image_channels(data, filename):
+    from PIL import Image
     Path(filename).parent.mkdir(parents=True, exist_ok=True)
     r = Image.fromarray(np.uint8(data[:, :, 0] * 255))
     g = Image.fromarray(np.uint8(data[:, :, 1] * 255))

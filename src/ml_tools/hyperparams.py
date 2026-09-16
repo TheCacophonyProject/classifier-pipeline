@@ -95,6 +95,7 @@ class HyperParams(dict):
 
     @property
     def segment_types(self):
+        from ml_tools.datasetstructures import SegmentType
         segment_types = self.get("segment_types", [SegmentType.RANDOM_SECTIONS])
         # convert string to enum type
         if isinstance(segment_types, str):

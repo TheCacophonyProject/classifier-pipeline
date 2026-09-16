@@ -2,6 +2,7 @@ import attr
 import numpy as np
 import enum
 import logging
+from ml_tools import opencvconstants
 
 
 class TrackChannels(enum.Enum):
@@ -257,12 +258,9 @@ class Frame:
         keep_edge=False,
         edge_offset=(0, 0, 0, 0),
         original_region=None,
-        interpolation=None,
+        interpolation=opencvconstants.INTER_NEAREST,
         no_padding=False,
     ):
-        import cv2
-        if interpolation is None:
-            interpolation = cv2.INTER_NEAREST
         from ml_tools.imageprocessing import resize_and_pad
 
         if self.thermal is not None:
@@ -310,11 +308,8 @@ class Frame:
                 interpolation=interpolation,
             )
 
-    def resize(self, dim, interpolation=None):
+    def resize(self, dim, interpolation=opencvconstants.INTER_NEAREST):
         from ml_tools.imageprocessing import resize_cv
-        import cv2
-        if interpolation is None:
-            interpolation = cv2.INTER_NEAREST
         self.thermal = resize_cv(self.thermal, dim, interpolation=interpolation)
         self.filtered = resize_cv(self.filtered, dim, interpolation=interpolation)
         self.thermal_norm = resize_cv(
@@ -329,6 +324,8 @@ class Frame:
         np.clip(self.thermal_norm, min, max, out=self.thermal_norm)
 
     def rotate(self, degrees):
+        from ml_tools.imageprocessing import rotate
+
         if self.thermal is not None:
             self.thermal = rotate(self.thermal, degrees)
         if self.mask is not None:
