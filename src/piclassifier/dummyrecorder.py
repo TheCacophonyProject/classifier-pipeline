@@ -9,6 +9,9 @@ class DummyRecorder(Recorder):
         if thermal_config is not None:
             self.min_frames = thermal_config.recorder.min_secs * headers.fps
             self.max_frames = thermal_config.recorder.max_secs * headers.fps
+        else:
+            self.min_frames = 45
+            self.max_frames = 9 * 60 * 10
         self.output_dir = None
 
     def new_recording(self, background_frame, preview_frames, temp_thresh, frame_time):
