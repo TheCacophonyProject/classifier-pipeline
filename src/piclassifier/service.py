@@ -55,7 +55,7 @@ class Service(dbus.service.Object):
         try:
             self.LabelsUpdated()
         except:
-            logging.error("Could run labels updated",exc_info=True)
+            logging.error("Could not call labels updated",exc_info=True)
         
     @dbus.service.method(
         DBUS_NAME,
@@ -363,6 +363,7 @@ class SnapshotService:
             self.loop.run()
         except:
             logging.error("Couldn't run loop",exc_info=True)
+            self.service = None
 
     def tracking(
         self,
