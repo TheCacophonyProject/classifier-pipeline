@@ -274,10 +274,15 @@ def load_dataset(filenames, remap_lookup, labels, args):
         num_parallel_calls=AUTOTUNE,
         deterministic=deterministic,
     )
+    multi_input = args.get("multi_input", False)
     if only_features:
         filter_nan = lambda x, y: not tf.reduce_any(tf.math.is_nan(x))
-    else:
+    elif include_features:
         filter_nan = lambda x, y: not tf.reduce_any(tf.math.is_nan(x["input_image"][0]))
+    elif multi_input:
+        filter_nan = lambda x, y: not tf.reduce_any(tf.math.is_nan(x["input_image"][0]))
+    else:
+        filter_nan = lambda x, y: not tf.reduce_any(tf.math.is_nan(x[0]))
 
     dataset = dataset.filter(filter_nan)
 
@@ -337,6 +342,7 @@ def load_dataset(filenames, remap_lookup, labels, args):
             dataset = prepare_jitter_dataset(
                 dataset,
                 current_epoch=args.get("current_epoch"),
+                multi_input=multi_input,
             )
         else:
             logging.info("Doing cutmix")
@@ -345,6 +351,7 @@ def load_dataset(filenames, remap_lookup, labels, args):
                 img_size=image_size[0],
                 prob=args.get("cutmix_prob", 0.4),
                 current_epoch=args.get("current_epoch"),
+                multi_input=multi_input,
             )
 
 
@@ -358,18 +365,22 @@ def load_dataset(filenames, remap_lookup, labels, args):
     RNN = False
     if not RNN:
         dataset = dataset.map(
-            lambda x, y: (tile_input(x, USE_VELOCITY), y),
+            lambda x, y: (tile_input(x, USE_VELOCITY, multi_input), y),
             num_parallel_calls=tf.data.AUTOTUNE,
         )
     if augment:
         dataset = dataset.map(
-            lambda x, y: sensor_dropout_augmentation(x, y), num_parallel_calls=tf.data.AUTOTUNE
+            lambda x, y: sensor_dropout_augmentation(x, y, multi_input),
+            num_parallel_calls=tf.data.AUTOTUNE,
         )
     return dataset
 
 
 @tf.function
-def tile_input(x, use_velocity):
+def tile_input(x, use_velocity, multi_input=False):
+    if not multi_input:
+        return tile_images(x)
+
     input_image = tile_images(x["input_image"])
     if use_velocity:
         mask = tf.reshape(x["input_mask"], (5, 5, 7))
@@ -711,15 +722,17 @@ def read_tfrecord(
         )
         rgb_image = tf.clip_by_value(rgb_image, 0.0, 255.0)
 
-        mask = get_frame_mask_v2(
-            record_frames,
-            frame_indices,
-            centre_x,
-            centre_y,
-            use_velocity,
-            rotation_angle,
-            regions,
-        )
+        mask = None
+        if multi_input:
+            mask = get_frame_mask_v2(
+                record_frames,
+                frame_indices,
+                centre_x,
+                centre_y,
+                use_velocity,
+                rotation_angle,
+                regions,
+            )
 
         if num_frames > 1 and not repeat_frames:
             pad_size = num_frames - tf.shape(rgb_image)[0]
@@ -773,7 +786,10 @@ def read_tfrecord(
         source_id = example["image/source_id"]
         label = (label, track_id, source_id)
     if not include_features and not only_features:
-        return {"input_image": rgb_image, "input_mask": mask}, {
+        image_out = (
+            {"input_image": rgb_image, "input_mask": mask} if multi_input else rgb_image
+        )
+        return image_out, {
             "label": label,
             "num_frames": record_frames,
         }
@@ -793,7 +809,7 @@ def read_tfrecord(
     # return rgb_image
 
 
-def prepare_jitter_dataset(dataset_original, current_epoch):
+def prepare_jitter_dataset(dataset_original, current_epoch, multi_input=False):
     # 1. Create a second dataset and shuffle it to mix different images together
 
     # current_epoch is read inside the mapped function (not here) so that each
@@ -801,14 +817,14 @@ def prepare_jitter_dataset(dataset_original, current_epoch):
     # EpochTrackerCallback across epochs, rather than baking in a constant
     # captured at dataset-construction time.
     cutmix_dataset = dataset_original.map(
-        lambda x, y: jitter_dataset(x, y, current_epoch),
+        lambda x, y: jitter_dataset(x, y, current_epoch, multi_input),
         num_parallel_calls=tf.data.AUTOTUNE,
     )
 
     return cutmix_dataset
 
 
-def jitter_dataset(x, y, current_epoch):
+def jitter_dataset(x, y, current_epoch, multi_input=False):
     # Read the current epoch value from the global variable graph pointer.
     # Doing this here (inside the traced map function) rather than once when
     # the dataset is built means it re-reads the variable's live value on
@@ -854,13 +870,15 @@ def jitter_dataset(x, y, current_epoch):
         announce_new_stage,
         lambda: False,
     )
-    image = x["input_image"]  # Shape: (num_frames, size, size, 3)
-    mask = x[
-        "input_mask"
-    ]  # Shape: (num_frames, 4) if USE_VELOCITY else (num_frames, 2)
+    image = x["input_image"] if multi_input else x  # Shape: (num_frames, size, size, 3)
+    mask = (
+        x["input_mask"] if multi_input else None
+    )  # Shape: (num_frames, 4) if USE_VELOCITY else (num_frames, 2)
     frames_used = tf.cast(y["num_frames"], tf.int32)
 
     def no_jitter():
+        if not multi_input:
+            return image, y["label"]
         return {"input_image": image, "input_mask": mask}, y["label"]
 
     def jitter():
@@ -892,14 +910,6 @@ def jitter_dataset(x, y, current_epoch):
         )
         # mask the input image by setting these frames to zero
         jittered_image = image * keep_gate[:, tf.newaxis, tf.newaxis, tf.newaxis]
-        # mask the mask by setting these frames to zero, except channel 0
-        # (the absolute time reconstructed in get_frame_mask_v2) which must
-        # stay untouched - it's a cumulative timeline, not a per-frame
-        # signal, so zeroing a dropped frame's entry would falsely reset
-        # the clock back to the start mid-sequence.
-        jittered_mask = tf.concat(
-            [mask[:, :1], mask[:, 1:] * keep_gate[:, tf.newaxis]], axis=-1
-        )
 
         f_used_float = tf.cast(frames_used, tf.float32)
         n_mask_float = tf.cast(num_to_mask, tf.float32)
@@ -908,6 +918,17 @@ def jitter_dataset(x, y, current_epoch):
         # Soften the target label so the model isn't penalized for missing data you erased
         adjusted_label = y["label"] * fraction_retained
 
+        if not multi_input:
+            return jittered_image, adjusted_label
+
+        # mask the mask by setting these frames to zero, except channel 0
+        # (the absolute time reconstructed in get_frame_mask_v2) which must
+        # stay untouched - it's a cumulative timeline, not a per-frame
+        # signal, so zeroing a dropped frame's entry would falsely reset
+        # the clock back to the start mid-sequence.
+        jittered_mask = tf.concat(
+            [mask[:, :1], mask[:, 1:] * keep_gate[:, tf.newaxis]], axis=-1
+        )
         return {
             "input_image": jittered_image,
             "input_mask": jittered_mask,
@@ -922,7 +943,7 @@ def jitter_dataset(x, y, current_epoch):
     return tf.cond(should_jitter, jitter, no_jitter)
 
 
-def prepare_cutmix_dataset(dataset_original, img_size, prob, current_epoch):
+def prepare_cutmix_dataset(dataset_original, img_size, prob, current_epoch, multi_input=False):
     # 1. Create a second dataset and shuffle it to mix different images together
     dataset_shuffled = dataset_original.shuffle(buffer_size=4096)
 
@@ -934,14 +955,14 @@ def prepare_cutmix_dataset(dataset_original, img_size, prob, current_epoch):
     # EpochTrackerCallback across epochs, rather than baking in a constant
     # captured at dataset-construction time.
     cutmix_dataset = zipped_dataset.map(
-        lambda d1, d2: video_sequential_cutmix(d1, d2, current_epoch),
+        lambda d1, d2: video_sequential_cutmix(d1, d2, current_epoch, multi_input),
         num_parallel_calls=tf.data.AUTOTUNE,
     )
 
     return cutmix_dataset
 
 
-def video_sequential_cutmix(data1, data2, current_epoch):
+def video_sequential_cutmix(data1, data2, current_epoch, multi_input=False):
     # Read the current epoch value from the global variable graph pointer.
     # Doing this here (inside the traced map function) rather than once when
     # the dataset is built means it re-reads the variable's live value on
@@ -971,17 +992,18 @@ def video_sequential_cutmix(data1, data2, current_epoch):
     #     )
 
     x1, y1 = data1
-    image1 = x1["input_image"]  # Shape: (25, 32, 32, 3)
-    mask1 = x1["input_mask"]  # Shape: (25, 1)
+    image1 = x1["input_image"] if multi_input else x1  # Shape: (25, 32, 32, 3)
+    mask1 = x1["input_mask"] if multi_input else None  # Shape: (25, 1)
     label1 = y1["label"]  # One-hot encoded class label array
 
     def no_mix():
+        if not multi_input:
+            return image1, label1
         return {"input_image": image1, "input_mask": mask1}, label1
 
     def mix():
         x2, y2 = data2
-        image2 = x2["input_image"]  # Shape: (25, 32, 32, 3)
-        mask2 = x2["input_mask"]  # Shape: (25, 1)
+        image2 = x2["input_image"] if multi_input else x2  # Shape: (25, 32, 32, 3)
         label2 = y2["label"]
 
         # Track the actual valid frame count for both video windows
@@ -1067,6 +1089,8 @@ def video_sequential_cutmix(data1, data2, current_epoch):
             label1,  # Pure base label if Video 2 is just an unreadable flash
         )
 
+        if not multi_input:
+            return mixed_image, mixed_label
         return {"input_image": mixed_image, "input_mask": mask1}, mixed_label
 
     # Conditionally execute the mix or no_mix subgraph based on probability
@@ -1301,22 +1325,24 @@ def train_all_channel_dropout_tf(mosaic_grid_dic, labels,dropout_prob=0.15):
 
 
 @tf.function
-def sensor_dropout_augmentation(mosaic_grid_dic, labels):
+def sensor_dropout_augmentation(mosaic_grid_dic, labels, multi_input=False):
     """
-    Randomly drops Channel 0 completely on some training samples to force 
+    Randomly drops Channel 0 completely on some training samples to force
     the network to extract primary features from Channels 1 and 2.
     """
     # 30% chance to completely blind the model to the thermal channel
     # This forces the network to train the visual channels up from scratch
-    mosaic_grid = mosaic_grid_dic["input_image"]
+    mosaic_grid = mosaic_grid_dic["input_image"] if multi_input else mosaic_grid_dic
 
     if tf.random.uniform([]) < 0.30:
         ch0 = tf.zeros_like(mosaic_grid[:, :, 0])  # Zero out the thermal channel completely
         ch1 = mosaic_grid[:, :, 1]
         ch2 = mosaic_grid[:, :, 2]
-        
+
         mosaic_grid = tf.stack([ch0, ch1, ch2], axis=-1)
-        
+
+    if not multi_input:
+        return mosaic_grid, labels
     return {"input_image":mosaic_grid,"input_mask":mosaic_grid_dic["input_mask"]}, labels
 
 @tf.function

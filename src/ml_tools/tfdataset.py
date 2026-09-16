@@ -234,21 +234,28 @@ def get_dataset(load_function, base_dir, labels, **args):
     else:
         epoch_size = 1
 
+    multi_input = args.get("multi_input", False)
     augment = args.get("augment", False)
     if augment:
         # logging.info("Augmenting on batches")
         fp_index = labels.index("false-positive")
         fp_index = tf.constant(fp_index)
-        dataset = dataset.map(
-            lambda x, y: (
-                {
-                    "input_image": data_augmentation(x["input_image"], y, fp_index),
-                    "input_mask": x["input_mask"],
-                },
-                y,
-            ),
-            num_parallel_calls=tf.data.AUTOTUNE,
-        )
+        if multi_input:
+            dataset = dataset.map(
+                lambda x, y: (
+                    {
+                        "input_image": data_augmentation(x["input_image"], y, fp_index),
+                        "input_mask": x["input_mask"],
+                    },
+                    y,
+                ),
+                num_parallel_calls=tf.data.AUTOTUNE,
+            )
+        else:
+            dataset = dataset.map(
+                lambda x, y: (data_augmentation(x, y, fp_index), y),
+                num_parallel_calls=tf.data.AUTOTUNE,
+            )
 
     # if doing rnn batch after augment
     if batch_size is not None:
@@ -260,24 +267,22 @@ def get_dataset(load_function, base_dir, labels, **args):
             preprocess_fn.__module__,
             preprocess_fn.__name__,
         )
-        dataset = dataset.map(
-            lambda x, y: (
-                {
-                    "input_image": preprocess_fn(x["input_image"], training=True),
-                    "input_mask": x["input_mask"],
-                },
-                y,
-            ),
-            num_parallel_calls=tf.data.AUTOTUNE,
-        )
-
-    # dataset = dataset.map(resize_mosaic, num_parallel_calls=tf.data.AUTOTUNE)
-    # doing this early would speed things up but for testing it best performance it wont matter too much
-    if not args.get("multi_input", False):
-        logging.info("Loading single input")
-        dataset = dataset.map(
-            lambda x, y: (x["input_image"], y), num_parallel_calls=tf.data.AUTOTUNE
-        )
+        if multi_input:
+            dataset = dataset.map(
+                lambda x, y: (
+                    {
+                        "input_image": preprocess_fn(x["input_image"], training=True),
+                        "input_mask": x["input_mask"],
+                    },
+                    y,
+                ),
+                num_parallel_calls=tf.data.AUTOTUNE,
+            )
+        else:
+            dataset = dataset.map(
+                lambda x, y: (preprocess_fn(x, training=True), y),
+                num_parallel_calls=tf.data.AUTOTUNE,
+            )
 
     dataset = dataset.prefetch(buffer_size=AUTOTUNE)
 

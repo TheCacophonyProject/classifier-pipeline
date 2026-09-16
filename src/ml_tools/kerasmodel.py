@@ -99,6 +99,8 @@ class KerasModel(Interpreter):
         self.orig_labels = None
 
     def load_training_meta(self, base_dir):
+        from ml_tools.thermalwriter import MeanData
+
         file = f"{base_dir}/training-meta.json"
         logging.info("loading meta %s", file)
         with open(file, "r") as f:
@@ -398,7 +400,7 @@ class KerasModel(Interpreter):
             # the dataset also needs to be adjusted to handle this
             return self.build_model_lstm()
         from tensorflow.keras import layers
-        from tensorflow import keras
+
 
         # width = self.params.frame_size
         width = self.params.output_dim[0] * 2
@@ -713,6 +715,8 @@ class KerasModel(Interpreter):
         gc.collect()
 
     def init_train(self, epochs):
+        from ml_tools.tfdataset import apply_label_mapping
+
         self.epochs = epochs
         if self.params.excluded_labels is not None:
             self.excluded_labels = self.params.excluded_labels
