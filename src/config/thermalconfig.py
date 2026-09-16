@@ -79,20 +79,7 @@ class CameraMotionConfig:
 
     @classmethod
     def defaults_for(cls, model):
-        if model == "lepton3.5":
-            return cls(
-                temp_thresh=28000,
-                delta_thresh=150,
-                count_thresh=3,
-                frame_compare_gap=45,
-                one_diff_only=True,
-                trigger_frames=2,
-                edge_pixels=1,
-                warmer_only=True,
-                dynamic_thresh=True,
-                do_tracking=False,
-            )
-        else:
+        if model == "lepton3":
             return cls(
                 temp_thresh=2750,
                 delta_thresh=50,
@@ -105,6 +92,31 @@ class CameraMotionConfig:
                 dynamic_thresh=True,
                 do_tracking=False,
             )
+        else:
+            return cls(
+                temp_thresh=28000,
+                delta_thresh=150,
+                count_thresh=3,
+                frame_compare_gap=45,
+                one_diff_only=True,
+                trigger_frames=2,
+                edge_pixels=1,
+                warmer_only=True,
+                dynamic_thresh=True,
+                do_tracking=False,
+            )
+
+    def set_defaults_for(self,model):
+        default = CameraMotionConfig.defaults_for(model)
+        self.temp_thresh = default.temp_thresh
+        self.delta_thresh = default.delta_thresh
+        self.count_thresh = default.count_thresh
+        self.frame_compare_gap = default.frame_compare_gap
+        self.one_diff_only = default.one_diff_only
+        self.trigger_frames = default.trigger_frames
+        self.edge_pixels = default.edge_pixels
+        self.warmer_only = default.warmer_only
+        self.dynamic_thresh = default.dynamic_thresh
 
     @classmethod
     def load(cls, motion, model=None):

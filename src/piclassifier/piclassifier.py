@@ -199,6 +199,9 @@ class PiClassifier(Processor):
         self.headers = headers
         self.reset()
         self.init_recorders()
+        # this ruins any overrides in a users config, is fixed in later verison but for a hotfix
+        # this will do
+        self.thermal_config.motion.set_defaults_for(self.headers.model)
         self.motion_detector = CPTVMotionDetector(
             self.thermal_config,
             self.tracking_config.motion.dynamic_thresh,
@@ -278,8 +281,6 @@ class PiClassifier(Processor):
                     self.headers,
                     on_recording_stopping=self.recorder.on_recording_stopping,
                 )
-                self.recorder.min_frames = self.recorder.min_frames
-                self.recorder.max_frames = self.recorder.max_frames
 
             self.motion_detector.force_record = True
             from threading import Thread
