@@ -52,7 +52,6 @@ class Processor(ABC):
             model_labels[self.classifier.id] = self.classifier.labels
         if self.fp_model is not None:
             model_labels[self.fp_model.id] = self.fp_model.labels
-        self.service.service.labels = model_labels
         self.service.service.update_labels(model_labels)
 
     @abstractmethod
