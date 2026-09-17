@@ -58,6 +58,7 @@ class Dataset:
         self.samples_by_bin = {}
         # self.samples = []
         self.samples_by_id = {}
+        self.samples_by_clip_id = {}
         self.clips = []
         self.tracks = []
 
@@ -239,6 +240,14 @@ class Dataset:
 
                 if clip_header is None:
                     continue
+                if clip_header.clip_id in self.samples_by_clip_id:
+                    logging.warning(
+                        "Duplicate clip_id %s from %s, already loaded from %s - skipping",
+                        clip_header.clip_id,
+                        clip_header.source_file,
+                        self.samples_by_clip_id[clip_header.clip_id][0].source_file,
+                    )
+                    continue
                 self.clips.append(clip_header)
 
                 for track_header in clip_header.tracks:
@@ -249,6 +258,7 @@ class Dataset:
                         if track_header.label not in self.labels:
                             self.labels.append(track_header.label)
                     self.tracks.append(track_header)
+                self.samples_by_clip_id[clip_header.clip_id] = clip_header.get_samples()
 
     def merge_filtered(self, filtered_stats):
         for reason, count in filtered_stats.items():
@@ -373,16 +383,20 @@ class Dataset:
         # (sample)
         return True
 
-    # move this sample to have a bin_id based of clip_id rather than station_id (default)
+    # move this sample, and every other sample from the same clip (regardless
+    # of label), to have a bin_id based of clip_id rather than station_id
+    # (default). Otherwise samples from the same clip can end up in different
+    # bins and get split across train/validation/test.
     def split_by_clip(self, sample):
-        try:
-            del self.samples_by_bin[sample.bin_id][sample.id]
-        except:
-            pass
+        for s in self.samples_by_clip_id.get(sample.clip_id, []):
+            try:
+                del self.samples_by_bin[s.bin_id][s.id]
+            except:
+                pass
 
-        sample._bin_id = sample.clip_id
-        bins = self.samples_by_bin.setdefault(sample.bin_id, {})
-        bins[sample.id] = sample
+            s._bin_id = s.clip_id
+            bins = self.samples_by_bin.setdefault(s.bin_id, {})
+            bins[s.id] = s
 
     def epoch_samples(
         self, cap_samples=None, replace=True, random=True, cap_at=None, label_cap=None

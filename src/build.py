@@ -550,7 +550,7 @@ def add_samples(
 def validate_datasets(datasets, test_bins, after_date):
     # check that clips are only in one dataset
     # that only test set has clips after date
-    # that test set is the only dataset with test_clips
+    # that test set is the only validate_datasetsdataset with test_clips
 
     # for dataset in datasets[:2]:
     #     for track in dataset.tracks:
@@ -569,15 +569,15 @@ def validate_datasets(datasets, test_bins, after_date):
             if dataset.name == other.name:
                 continue
             dont_check = None
-            if other.name == "test" and after_date is not None:
-                dont_check_other = set(
-                    [
-                        sample.bin_id
-                        for sample in other.samples_by_id.values()
-                        if sample.rec_time > after_date
-                    ]
-                )
-                dont_check = dont_check_other
+            # if other.name == "test" and after_date is not None:
+            #     dont_check_other = set(
+            #         [
+            #             sample.bin_id
+            #             for sample in other.samples_by_id.values()
+            #             if sample.rec_time > after_date
+            #         ]
+            #     )
+            #     dont_check = dont_check_other
             other_bins = set([sample.bin_id for sample in other.samples_by_id.values()])
             if dont_check is not None:
                 other_bins = other_bins - dont_check
