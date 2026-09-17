@@ -262,18 +262,16 @@ class Interpreter(ABC):
 
                     target_frames = predict_from_last
                     predict_from_last = 0
+                    
                     for i, r in enumerate(
                         reversed(track.bounds_history[-available_frames:])
                     ):
-                        logging.info(
-                            "Checking regions in reverse %s", predict_from_last
-                        )
                         if r.blank:
                             continue
                         valid_regions += 1
                         predict_from_last = i + 1
                         if valid_regions >= target_frames:
-                            logging.info(
+                            logging.debug(
                                 "Valid regions %s bigger than predict from last %s",
                                 valid_regions,
                                 predict_from_last,
