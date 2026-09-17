@@ -116,10 +116,10 @@ def square_clip(data, frames_per_row, tile_dim, frame_samples=None, pad_with=Non
     if len(frames) < n_tiles:
         if pad_with is None:
             pad_with = 0
-            logging.warning(
-                "Since there are less than %s frames padding with default of 0 since pad_with was None",
-                n_tiles,
-            )
+            # logging.warning(
+            #     "Since there are less than %s frames padding with default of 0 since pad_with was None",
+            #     n_tiles,
+            # )
         pad = np.full(
             (n_tiles - len(frames), tile_dim[0], tile_dim[1]),
             pad_with,

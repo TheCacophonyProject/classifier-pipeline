@@ -18,7 +18,6 @@ along with this program. If not, see <http://www.gnu.org/licenses/>.
 """
 
 from ml_tools.frame import Frame
-from threading import Lock
 
 
 class FrameBuffer:
@@ -30,6 +29,7 @@ class FrameBuffer:
         cache_to_disk,
         keep_frames,
         max_frames=None,
+        lock= True,
     ):
 
         if cache_to_disk:
@@ -48,7 +48,11 @@ class FrameBuffer:
         self.keep_frames = True if max_frames and max_frames > 0 else keep_frames
         self.current_frame_i = 0
         self.current_frame = None
-        self.frame_lock = Lock()
+        self.frame_lock = None
+        if lock:
+            from threading import Lock
+            self.frame_lock = Lock()
+
         self.reset()
 
     def add_frame(self, thermal, filtered, mask, frame_number, ffc_affected=False):
@@ -63,9 +67,14 @@ class FrameBuffer:
                 self.cache.add_frame(frame)
             else:
                 if self.max_frames and len(self.frames) == self.max_frames:
-                    with self.frame_lock:
+                    if self.frame_lock:
+                        self.frame_lock.acquire()
+                    try:
                         del self.frames_by_frame_number[self.frames[0].frame_number]
                         del self.frames[0]
+                    finally:
+                        if self.frame_lock:
+                            self.frame_lock.release()
                 self.frames.append(frame)
                 self.frames_by_frame_number[frame.frame_number] = frame
         return frame

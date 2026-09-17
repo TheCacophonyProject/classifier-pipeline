@@ -21,15 +21,17 @@ class HeaderInfo:
     FIRMWARE = "Firmware"
     SOURCE = "Source"
 
-    res_x = attr.ib()
-    res_y = attr.ib()
-    fps = attr.ib()
-    brand = attr.ib()
-    model = attr.ib()
-    frame_size = attr.ib()
-    pixel_bits = attr.ib()
-    serial = attr.ib()
-    firmware = attr.ib()
+
+    medium_power = attr.ib(default=False)
+    res_x = attr.ib(default=160)
+    res_y = attr.ib(default=120)
+    fps = attr.ib(default=9)
+    brand = attr.ib(default="lepton")
+    model = attr.ib(default="lepton3.5")
+    frame_size = attr.ib(default=39040)
+    pixel_bits = attr.ib(default=16)
+    serial = attr.ib(default="12")
+    firmware = attr.ib(default="12")
     source = attr.ib(default=None)
 
     @classmethod

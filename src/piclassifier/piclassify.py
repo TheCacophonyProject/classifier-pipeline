@@ -77,7 +77,7 @@ def main():
         *thermal_config.location.get_lat_long(use_default=True),
         thermal_config.location.altitude,
     )
-    if (thermal_config.recorder.instant_classify and thermal_config.recorder.rec_window.inside_window()) :
+    if thermal_config.recorder.instant_classify and thermal_config.recorder.rec_window.inside_window():
         from mediumpower.mediumpower import main
         main(thermal_config)
         return

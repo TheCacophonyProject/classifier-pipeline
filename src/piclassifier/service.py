@@ -54,19 +54,6 @@ class Service(dbus.service.Object):
         except:
             logging.error("Could not update service labels", exc_info=True)
 
-    def start_service(self,dbus):
-        super().__init__(dbus, DBUS_PATH)
-        self.ServiceStarted()
-
-
-    def update_labels(self, labels):
-        self.labels = labels
-        self.classifier_loaded = True
-        try:
-            self.LabelsUpdated()
-        except:
-            logging.error("Could run labels updated",exc_info=True)
-        
     @dbus.service.method(
         DBUS_NAME,
     in_signature="",
@@ -194,7 +181,7 @@ class Service(dbus.service.Object):
     def ClassificationLabels(self):
         if not self.classifier_loaded:
             raise DBusException("Labels have not been initialized")
-        logging.info("Getting labels %s", self.labels)
+        # logging.info("Getting labels %s", self.labels)
         if len(self.labels) == 0:
             return dbus.Array([], signature="(ias)")
         return self.labels
@@ -320,8 +307,10 @@ class DbusService:
         self.t = threading.Thread(
             target=self.run_server,
         )
+        self.started = False
         self.t.daemon = True
         self.t.start()
+      
 
     def update_service(
         self,
@@ -352,9 +341,11 @@ class DbusService:
             session_bus = dbus.SystemBus(mainloop=DBusGMainLoop())
             name = dbus.service.BusName(DBUS_NAME, session_bus)
             self.service.start_service(session_bus)
+            self.started= True
             self.loop.run()
         except:
             logging.error("Couldn't run loop", exc_info=True)
+            self.started= True
             self.quit()
 
     def tracking(

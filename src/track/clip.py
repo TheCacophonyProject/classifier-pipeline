@@ -77,7 +77,9 @@ class Clip:
         self.station_id = None
         self.calc_stats = calc_stats
         self.source_file = sourcefile
-        self.stats = ClipStats()
+        self.stats =None
+        if self.calc_stats:
+            self.stats = ClipStats()
         self.camera_model = None
         self.threshold_config = None
         self.track_min_delta = None
@@ -132,9 +134,11 @@ class Clip:
         logging.debug("set thresholds %s", threshold)
         self.background_thresh = threshold.background_thresh
         self.temp_thresh = threshold.temp_thresh
-        self.stats.threshold = self.background_thresh
         self.track_min_delta = threshold.track_min_delta
         self.track_max_delta = threshold.track_max_delta
+
+        if self.stats:
+            self.stats.threshold = self.background_thresh
 
     def _background_calculated(self):
         if self.type != "IR" and self.calc_stats:
@@ -311,6 +315,12 @@ class Clip:
         self.active_tracks.add(track)
         self.tracks.append(track)
 
+    @property
+    def id(self):
+        return self._id
+
+    # TODO check if this needs to be string this was 
+    # historically for the hd5b database which isnt used anymore
     def get_id(self):
         return str(self._id)
 
@@ -379,12 +389,13 @@ class Clip:
 
         return (track.start_s, track.end_s)
 
-    def set_frame_buffer(self, cache_to_disk, keep_frames, max_frames=None):
+    def set_frame_buffer(self, cache_to_disk, keep_frames, max_frames=None,lock=True):
         self.frame_buffer = FrameBuffer(
             self.source_file,
             cache_to_disk,
             keep_frames,
             max_frames,
+            lock = lock,
         )
 
     def set_res(self, res_x, res_y):

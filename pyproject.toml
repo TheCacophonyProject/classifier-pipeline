@@ -8,7 +8,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "classifier_pipeline"
-version = "0.0.62"
+version = "0.0.64"
 authors = [
   { name="Giampaolo Ferraro", email="giampaolo@cacophony.org.nz" },
 ]
@@ -65,7 +65,7 @@ dbus_listener = "piclassifier:dbus_listener"
 "./pi-classifier.yaml" = "classifier.yaml"
 
 [tool.hatch.build.targets.wheel]
-packages = [ "src/piclassifier", "src/config", "src/track", "src/ml_tools","src/classify","src/servemodel"]
+packages = [ "src/piclassifier", "src/config", "src/track", "src/ml_tools","src/classify","src/servemodel", "src/mediumpower"]
 
 [tool.pytest.ini_options]
 pythonpath = "src"
