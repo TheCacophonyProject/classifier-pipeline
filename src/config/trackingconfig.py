@@ -17,7 +17,8 @@ You should have received a copy of the GNU General Public License
 along with this program. If not, see <http://www.gnu.org/licenses/>.
 """
 
-import attr
+from dataclasses import dataclass, asdict
+from typing import Any
 
 from .defaultconfig import (
     DefaultConfig,
@@ -27,41 +28,41 @@ from .trackingmotionconfig import TrackingMotionConfig
 from track.track import RegionTracker
 
 
-@attr.s
+@dataclass(slots=True)
 class TrackingConfig(DefaultConfig):
-    tracker = attr.ib()
-    params = attr.ib()
-    type = attr.ib()
-    motion = attr.ib()
-    edge_pixels = attr.ib()
+    tracker: Any
+    params: Any
+    type: Any
+    motion: Any
+    edge_pixels: Any
     # dilation_pixels = attr.ib()
-    min_dimension = attr.ib()
-    frame_padding = attr.ib()
-    track_smoothing = attr.ib()
-    denoise = attr.ib()
+    min_dimension: Any
+    frame_padding: Any
+    track_smoothing: Any
+    denoise: Any
 
-    max_tracks = attr.ib()
-    track_overlap_ratio = attr.ib()
-    min_duration_secs = attr.ib()
-    track_min_offset = attr.ib()
-    track_min_mass = attr.ib()
-    aoi_min_mass = attr.ib()
-    aoi_pixel_variance = attr.ib()
-    cropped_regions_strategy = attr.ib()
-    enable_track_output = attr.ib()
-    min_tag_confidence = attr.ib()
-    moving_vel_thresh = attr.ib()
-    min_moving_frames = attr.ib()
-    max_blank_percent = attr.ib()
-    max_mass_std_percent = attr.ib()
+    max_tracks: Any
+    track_overlap_ratio: Any
+    min_duration_secs: Any
+    track_min_offset: Any
+    track_min_mass: Any
+    aoi_min_mass: Any
+    aoi_pixel_variance: Any
+    cropped_regions_strategy: Any
+    enable_track_output: Any
+    min_tag_confidence: Any
+    moving_vel_thresh: Any
+    min_moving_frames: Any
+    max_blank_percent: Any
+    max_mass_std_percent: Any
 
-    max_jitter = attr.ib()
+    max_jitter: Any
     # used to provide defaults
-    filters = attr.ib()
-    areas_of_interest = attr.ib()
+    filters: Any
+    areas_of_interest: Any
     # filter regions out by mass and variance before matching to a track
-    filter_regions_pre_match = attr.ib()
-    min_hist_diff = attr.ib()
+    filter_regions_pre_match: Any
+    min_hist_diff: Any
 
     @classmethod
     def load(cls, tracking):
@@ -183,7 +184,7 @@ class TrackingConfig(DefaultConfig):
         return True
 
     def as_dict(self):
-        return attr.asdict(self)
+        return asdict(self)
 
     def rescale(self, scale):
         # adjust numbers if we rescale frame sizes

@@ -18,27 +18,28 @@ along with this program. If not, see <http://www.gnu.org/licenses/>.
 """
 
 from ml_tools.rectangle import Rectangle
-import attr
+from dataclasses import dataclass
+from typing import Any
 import logging
 import numpy as np
 
 
-@attr.s(eq=False, slots=True)
+@dataclass(eq=False, slots=True)
 class Region(Rectangle):
     """Region is a rectangle extended to support mass."""
 
-    centroid = attr.ib()
-    mass = attr.ib(default=0)
+    centroid: Any
+    mass: Any = 0
     # how much pixels in this region have changed since last frame
-    frame_number = attr.ib(default=0)
-    pixel_variance = attr.ib(default=0)
+    frame_number: Any = 0
+    pixel_variance: Any = 0
 
     # if this region was cropped or not
-    was_cropped = attr.ib(default=False)
-    blank = attr.ib(default=False)
-    is_along_border = attr.ib(default=False)
-    in_trap = attr.ib(default=False)
-    mask_id = attr.ib(default=None)
+    was_cropped: Any = False
+    blank: Any = False
+    is_along_border: Any = False
+    in_trap: Any = False
+    mask_id: Any = None
     def rescale(self, factor):
         self.x = int(self.x * factor)
         self.y = int(self.y * factor)

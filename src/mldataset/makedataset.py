@@ -19,6 +19,7 @@ along with this program. If not, see <http://www.gnu.org/licenses/>.
 
 import os
 import logging
+import pytz
 import time
 from multiprocessing import Process, Queue
 import traceback
@@ -121,7 +122,9 @@ class ClipLoader:
                 if f.attrs.get("rec_time") is None:
                     with open(filename, "rb") as cptv:
                         reader = CPTVReader(cptv)
-                        video_start_time = reader.timestamp.astimezone(Clip.local_tz)
+                        video_start_time = reader.timestamp.astimezone(
+                            pytz.timezone("Pacific/Auckland")
+                        )
                     f.attrs["rec_time"] = video_start_time.isoformat()
             return
         if len(metadata.get("Tracks")) == 0:
@@ -161,7 +164,9 @@ class ClipLoader:
                         if triggered_temp_thresh:
                             clip.temp_thresh = triggered_temp_thresh
 
-                    video_start_time = reader.timestamp.astimezone(Clip.local_tz)
+                    video_start_time = reader.timestamp.astimezone(
+                        pytz.timezone("Pacific/Auckland")
+                    )
                     clip.set_video_stats(video_start_time)
                     print("Adding rec time", video_start_time)
                     frames = clip_node.create_group("frames")

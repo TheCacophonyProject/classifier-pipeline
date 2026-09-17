@@ -1,15 +1,9 @@
-import threading
+from threading import Thread
 import logging
-import json
 import numpy as np
-import time
 import dbus
 import dbus.service
-import dbus.mainloop.glib
-from gi.repository import GLib
-from ml_tools.tools import CustomJSONEncoder
 from dbus.exceptions import DBusException
-from dbus.mainloop.glib import DBusGMainLoop
 
 DBUS_NAME = "org.cacophony.thermalrecorder"
 DBUS_PATH = "/org/cacophony/thermalrecorder"
@@ -103,7 +97,7 @@ class Service(dbus.service.Object):
         parsing_file = self.is_parsing_file()
         if parsing_file is not None:
             raise ParseFileError(f"Already parsing {parsing_file}")
-        threading.Thread(
+        Thread(
             target=self.parse_file, args=(file, fps, seed), daemon=True
         ).start()
         return "Parsing file"
@@ -131,7 +125,7 @@ class Service(dbus.service.Object):
         parsing_file = self.is_parsing_file()
         if parsing_file is not None:
             raise ParseFileError(f"Already parsing {parsing_file}")
-        threading.Thread(
+        Thread(
             target=self.parse_file, args=(file, fps, seed), daemon=True
         ).start()
         return "Parsing file"
@@ -289,6 +283,10 @@ class DbusService:
         is_ready,
         classifier_loaded=True,
     ):
+        import dbus.mainloop.glib
+        from dbus.mainloop.glib import DBusGMainLoop
+        from gi.repository import GLib
+
         DBusGMainLoop(set_as_default=True)
         dbus.mainloop.glib.threads_init()
         self.loop = GLib.MainLoop()
@@ -304,7 +302,7 @@ class DbusService:
             is_ready,
             classifier_loaded,
         )
-        self.t = threading.Thread(
+        self.t = Thread(
             target=self.run_server,
         )
         self.started = False
@@ -337,6 +335,8 @@ class DbusService:
     def run_server(
         self,
     ):
+        from dbus.mainloop.glib import DBusGMainLoop
+
         try:
             session_bus = dbus.SystemBus(mainloop=DBusGMainLoop())
             name = dbus.service.BusName(DBUS_NAME, session_bus)

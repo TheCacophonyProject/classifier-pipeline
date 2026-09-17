@@ -1,4 +1,5 @@
-import attr
+from dataclasses import dataclass
+from typing import Any
 import numpy as np
 import enum
 from ml_tools import opencvconstants
@@ -14,17 +15,17 @@ class TrackChannels(enum.Enum):
     thermal_norm = 7
 
 
-@attr.s(slots=True, eq=False)
+@dataclass(slots=True, eq=False)
 class Frame:
-    thermal = attr.ib()
-    filtered = attr.ib()
-    frame_number = attr.ib()
-    mask = attr.ib(default=None)
-    thermal_norm = attr.ib(default=None)
-    ffc_affected = attr.ib(default=False)
-    region = attr.ib(default=None)
-    frame_temp_median = attr.ib(default=None)
-    preprocessed = attr.ib(default=False)
+    thermal: Any
+    filtered: Any
+    frame_number: Any
+    mask: Any = None
+    thermal_norm: Any = None
+    ffc_affected: Any = False
+    region: Any = None
+    frame_temp_median: Any = None
+    preprocessed: Any = False
 
     def get_channel(self, channel):
         # just leave this top one for old style

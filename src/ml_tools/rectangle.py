@@ -1,16 +1,17 @@
-import attr
+from dataclasses import dataclass, asdict
+from typing import Any
 import numpy as np
 import math
 
 
-@attr.s(eq=False)
+@dataclass(eq=False, slots=True)
 class Rectangle:
     """Defines a rectangle by the topleft point and width / height."""
 
-    x = attr.ib()
-    y = attr.ib()
-    width = attr.ib()
-    height = attr.ib()
+    x: Any
+    y: Any
+    width: Any
+    height: Any
 
     @staticmethod
     def from_ltrb(left, top, right, bottom):
@@ -198,11 +199,9 @@ class Rectangle:
 
     def meta_dictionary(self):
         # Return object as dictionary without is_along_border,was_cropped and id for saving to json
-        region_info = attr.asdict(
-            self,
-            filter=lambda attr, value: attr.name
-            not in ["is_along_border", "was_cropped", "id", "centroid"],
-        )
+        region_info = asdict(self)
+        for excluded in ("is_along_border", "was_cropped", "id", "centroid"):
+            region_info.pop(excluded, None)
         # region_info["centroid"][0] = round(region_info["centroid"][0], 1)
         # region_info["centroid"][1] = round(region_info["centroid"][1], 1)
         if region_info["pixel_variance"] is not None:

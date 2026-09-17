@@ -1,5 +1,6 @@
 from pathlib import Path
-import attr
+from dataclasses import dataclass, asdict
+from typing import Any
 import toml
 import portalocker
 import os
@@ -37,12 +38,12 @@ class LockSafeConfig:
             self.lock.release()
 
 
-@attr.s
+@dataclass(slots=True)
 class ThrottlerConfig:
-    bucket_size = attr.ib()
-    activate = attr.ib()
-    no_motion = attr.ib()
-    max_throttling_minutes = attr.ib()
+    bucket_size: Any
+    activate: Any
+    no_motion: Any
+    max_throttling_minutes: Any
 
     @classmethod
     def load(cls, throttler):
@@ -56,28 +57,28 @@ class ThrottlerConfig:
         )
 
     def as_dict(self):
-        return attr.asdict(self)
+        return asdict(self)
 
 
-@attr.s
+@dataclass(slots=True)
 class CameraMotionConfig:
-    temp_thresh = attr.ib()
-    delta_thresh = attr.ib()
-    count_thresh = attr.ib()
-    frame_compare_gap = attr.ib()
-    one_diff_only = attr.ib()
-    trigger_frames = attr.ib()
-    edge_pixels = attr.ib()
-    warmer_only = attr.ib()
-    dynamic_thresh = attr.ib()
+    temp_thresh: Any
+    delta_thresh: Any
+    count_thresh: Any
+    frame_compare_gap: Any
+    one_diff_only: Any
+    trigger_frames: Any
+    edge_pixels: Any
+    warmer_only: Any
+    dynamic_thresh: Any
 
     # TODO these need to be moved into a different configf that isn't dependent on model info
-    run_classifier = attr.ib(default=False)
-    bluetooth_beacons = attr.ib(default=False)
-    tracking_events = attr.ib(default=False)
-    do_tracking = attr.ib(default=False)
-    postprocess = attr.ib(default=False)
-    postprocess_events = attr.ib(default=False)
+    run_classifier: Any = False
+    bluetooth_beacons: Any = False
+    tracking_events: Any = False
+    do_tracking: Any = False
+    postprocess: Any = False
+    postprocess_events: Any = False
 
     @classmethod
     def defaults_for(cls, model):
@@ -129,7 +130,7 @@ class CameraMotionConfig:
         return motion
     
     def as_dict(self):
-        return attr.asdict(self)
+        return asdict(self)
 
     def use_defaults_for(self, model):
         default = CameraMotionConfig.defaults_for(model)
@@ -157,18 +158,18 @@ class CameraMotionConfig:
         )
 
 
-@attr.s
+@dataclass(slots=True)
 class RecorderConfig:
-    preview_secs = attr.ib()
-    min_secs = attr.ib()
-    max_secs = attr.ib()
-    rec_window = attr.ib()
-    output_dir = attr.ib()
-    disable_recordings = attr.ib()
-    constant_recorder = attr.ib()
-    use_low_power_mode = attr.ib()
-    min_disk_space_mb = attr.ib()
-    instant_classify = attr.ib()
+    preview_secs: Any
+    min_secs: Any
+    max_secs: Any
+    rec_window: Any
+    output_dir: Any
+    disable_recordings: Any
+    constant_recorder: Any
+    use_low_power_mode: Any
+    min_disk_space_mb: Any
+    instant_classify: Any
 
     @classmethod
     def load(cls, recorder, window, location_config):
@@ -191,10 +192,10 @@ class RecorderConfig:
         )
 
 
-@attr.s
+@dataclass(slots=True)
 class DeviceSetup:
-    ir = attr.ib(default=False)
-    trap_size = attr.ib(default=None)
+    ir: Any = False
+    trap_size: Any = None
     # S or L for small or large
 
     @classmethod
@@ -205,10 +206,10 @@ class DeviceSetup:
         return cls(ir=device.get("ir", False), trap_size=size)
 
 
-@attr.s
+@dataclass(slots=True)
 class DeviceConfig:
-    device_id = attr.ib()
-    name = attr.ib()
+    device_id: Any
+    name: Any
 
     @classmethod
     def load(cls, device):
@@ -218,15 +219,15 @@ class DeviceConfig:
         )
 
 
-@attr.s
+@dataclass(slots=True)
 class ThermalConfig:
-    base_motion = attr.ib()
-    recorder = attr.ib()
-    device = attr.ib()
-    location = attr.ib()
-    throttler = attr.ib()
-    device_setup = attr.ib()
-    config_file = attr.ib()
+    base_motion: Any
+    recorder: Any
+    device: Any
+    location: Any
+    throttler: Any
+    device_setup: Any
+    config_file: Any
 
     @classmethod
     def load_from_file(cls, filename=None):

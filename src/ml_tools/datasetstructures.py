@@ -6,7 +6,8 @@ from track.region import Region
 from abc import ABC, abstractmethod
 from ml_tools.rectangle import Rectangle
 from enum import Enum
-import attr
+from dataclasses import dataclass
+from typing import Any
 import math
 
 FRAMES_PER_SECOND = 9
@@ -110,21 +111,21 @@ res_x = 120
 res_y = 160
 
 
-@attr.s
+@dataclass(slots=True)
 class ClipHeader:
-    clip_id = attr.ib()
-    location = attr.ib()
-    station_id = attr.ib()
-    rec_time = attr.ib()
-    source_file = attr.ib()
-    frames_per_second = attr.ib()
-    camera = attr.ib()
-    events = attr.ib()
-    trap = attr.ib()
-    tracks = attr.ib()
-    ffc_frames = attr.ib()
-    country_code = attr.ib()
-    frame_temp_median = attr.ib(default=None)
+    clip_id: Any
+    location: Any
+    station_id: Any
+    rec_time: Any
+    source_file: Any
+    frames_per_second: Any
+    camera: Any
+    events: Any
+    trap: Any
+    tracks: Any
+    ffc_frames: Any
+    country_code: Any
+    frame_temp_median: Any = None
 
     def get_samples(self):
         samples = []

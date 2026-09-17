@@ -9,10 +9,8 @@ import json
 import datetime
 import glob
 import enum
-import timezonefinder
 from pathlib import Path
 from ml_tools.rectangle import Rectangle
-from dateutil import parser
 from enum import Enum
 
 EPISON = 1e-5
@@ -97,6 +95,8 @@ def load_clip_metadata(filename):
         # add in some metadata stats
         meta = json.load(t)
     if meta.get("recordingDateTime"):
+        from dateutil import parser
+
         meta["recordingDateTime"] = parser.parse(meta["recordingDateTime"])
     if meta.get("tracks") is None and meta.get("Tracks"):
         meta["tracks"] = meta["Tracks"]
@@ -204,6 +204,8 @@ def saveclassify_image(data, filename):
 
 
 def get_timezone_str(lat, lng):
+    import timezonefinder
+
     tf = timezonefinder.TimezoneFinder()
     timezone_str = tf.certain_timezone_at(lat=lat, lng=lng)
 

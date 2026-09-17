@@ -1,8 +1,8 @@
-import attr
+from dataclasses import dataclass, field, asdict
+from typing import Any
 import logging
 import numpy as np
 import time
-from attrs import define, field
 
 # uniform prior stats start with uniform distribution.  This is the safest bet, but means that
 # it takes a while to make predictions.  When off the first prediction is used instead causing
@@ -65,20 +65,20 @@ class Predictions:
         return np.sum(classify_time)
 
 
-@define
+@dataclass(slots=True)
 class Prediction:
-    prediction = field()
-    smoothed_prediction = field()
-    frames = field()
-    predicted_at_frame = field()
-    mass = field()
-    predicted_time = field(init=False)
+    prediction: Any
+    smoothed_prediction: Any
+    frames: Any
+    predicted_at_frame: Any
+    mass: Any
+    predicted_time: Any = field(init=False)
 
-    def __attrs_post_init__(self):
+    def __post_init__(self):
         self.predicted_time = time.time()
 
     def get_metadata(self):
-        meta = attr.asdict(self)
+        meta = asdict(self)
         if self.smoothed_prediction is not None:
             meta["smoothed_prediction"] = np.uint32(np.round(self.smoothed_prediction))
         meta["prediction"] = np.uint8(np.round(100 * self.prediction))
@@ -641,10 +641,10 @@ class TrackPrediction:
         return prediction_meta
 
 
-@attr.s(slots=True)
+@dataclass(slots=True)
 class TrackResult:
-    what = attr.ib()
-    confidence = attr.ib()
+    what: Any
+    confidence: Any
 
 
 def find_common_parent(

@@ -18,10 +18,10 @@ along with this program. If not, see <http://www.gnu.org/licenses/>.
 """
 
 import numpy as np
+import pytz
 import time
 from datetime import datetime
 
-from .clip import Clip
 from track.cliptracker import ClipTracker
 import logging
 
@@ -110,7 +110,9 @@ class ClipTrackExtractor(ClipTracker):
         clip.set_model(camera_model)
 
         video_start_time = datetime.fromtimestamp(header.timestamp / 1000000)
-        video_start_time = video_start_time.astimezone(Clip.local_tz)
+        video_start_time = video_start_time.astimezone(
+            pytz.timezone("Pacific/Auckland")
+        )
 
         clip.set_video_stats(video_start_time)
         if camera_model == "lepton3.5":

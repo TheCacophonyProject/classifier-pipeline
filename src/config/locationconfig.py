@@ -1,16 +1,17 @@
-import attr
+from dataclasses import dataclass
+from typing import Any
 
 
-@attr.s
+@dataclass(slots=True)
 class LocationConfig:
     DEFAULT_LAT = -43.5321
     DEFAULT_LONG = 172.6362
 
-    latitude = attr.ib()
-    longitude = attr.ib()
-    loc_timestamp = attr.ib()
-    altitude = attr.ib()
-    accuracy = attr.ib()
+    latitude: Any
+    longitude: Any
+    loc_timestamp: Any
+    altitude: Any
+    accuracy: Any
 
     @classmethod
     def load(cls, raw):

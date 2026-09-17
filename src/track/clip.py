@@ -21,12 +21,8 @@ import datetime
 import logging
 import numpy as np
 import os
-import pytz
 
 from ml_tools.rectangle import Rectangle
-from track.framebuffer import FrameBuffer
-from track.track import Track
-from track.region import Region
 
 RES_X = 160
 RES_Y = 120
@@ -35,7 +31,6 @@ RES_Y = 120
 class Clip:
     PREVIEW = "preview"
     FRAMES_PER_SECOND = 9
-    local_tz = pytz.timezone("Pacific/Auckland")
     CLIP_ID = 1
     # used when calculating background, mininimum percentage the difference object
     # and background object must overlap i.e. they are a valid object
@@ -51,9 +46,9 @@ class Clip:
         type="thermal",
         fps=FRAMES_PER_SECOND,
     ):
+
         self._id = Clip.CLIP_ID
         Clip.CLIP_ID += 1
-        Track._track_id = 1
         self.disable_background_subtraction = False
         self.current_frame = -1
         self.ffc_affected = False
@@ -187,129 +182,7 @@ class Clip:
         self.update_background(frame.pix)
         self._background_calculated()
         return
-
-        # i dont think this is nessesary
-        # first_frame = frame
-        # initial_frames = None
-        # initial_diff = None
-        # frames = [frame.pix]
-        # while True:
-        #     frame = frame_reader.next_frame()
-        #     if frame is None:
-        #         break
-        #     ffc_affected = is_affected_by_ffc(frame)
-        #     if ffc_affected:
-        #         continue
-        #     frames.append(frame.pix)
-        #     if len(frames) == 9:
-        #         frame_average = np.average(frames, axis=0)
-        #         self.update_background(frame_average)
-        #         initial_diff = self.calculate_initial_diff(
-        #             frame_average, initial_frames, initial_diff
-        #         )
-        #         if initial_frames is None:
-        #             initial_frames = frame_average
-
-        #         frames = []
-        # if len(frames) > 0:
-        #     frame_average = np.average(frames, axis=0)
-        #     if initial_frames is None:
-        #         initial_frames = frame_average
-        #     self.update_background(frame_average)
-        #     initial_diff = self.calculate_initial_diff(
-        #         frame_average, initial_frames, initial_diff
-        #     )
-
-        #     if initial_frames is None:
-        #         initial_frames = frame_average
-        # frames = []
-        # if initial_diff is None:
-        #     if first_frame is not None:
-        #         # fall back if whole clip is ffc
-        #         self.update_background(frame.pix)
-        #         self._background_calculated()
-        #     return
-        # np.clip(initial_diff, 0, None, out=initial_diff)
-        # initial_frames = self.remove_background_animals(initial_frames, initial_diff)
-
-        # self.update_background(initial_frames)
-        # self._background_calculated()
-
-    def remove_background_animals(self, initial_frame, initial_diff):
-        """
-        Try and remove animals that are already in the initial frames, by
-        checking for connected components in the intital_diff frame
-        (this is the maximum change between first frame and all other frames in the clip)
-        """
-        import cv2
-        from ml_tools.imageprocessing import normalize, detect_objects
-
-        # remove some noise
-        initial_diff[initial_diff < self.background_thresh] = 0
-        initial_diff[initial_diff > 255] = 255
-        initial_diff = np.uint8(initial_diff)
-        initial_diff = cv2.fastNlMeansDenoising(initial_diff, None)
-
-        _, lower_mask, lower_objects, centroids = detect_objects(
-            initial_diff, otsus=True
-        )
-
-        max_region = Rectangle(0, 0, self.res_x, self.res_y)
-        for component, centroid in zip(lower_objects[1:], centroids[1:]):
-            region = Region(
-                component[0],
-                component[1],
-                component[2],
-                component[3],
-                centroid=centroid,
-            )
-            region.enlarge(2, max=max_region)
-            if region.width >= self.res_x or region.height >= self.res_y:
-                logging.info(
-                    "Background animal bigger than max, probably false positive %s %s",
-                    region,
-                    component[4],
-                )
-                continue
-            background_region = region.subimage(initial_frame)
-            norm_back = background_region.copy()
-            norm_back, _ = normalize(norm_back, new_max=255)
-            sub_components, sub_connected, sub_stats, centroids = detect_objects(
-                np.uint8(norm_back), otsus=True
-            )
-
-            if sub_components <= 1:
-                continue
-            overlap_image = region.subimage(lower_mask) * 255
-            overlap_pixels = np.sum(sub_connected[overlap_image > 0])
-            overlap_pixels = overlap_pixels / float(component[4])
-
-            # filter out components which are too big, or dont match original causes
-            # for filtering
-            if (
-                overlap_pixels < Clip.MIN_ORIGIN_OVERLAP
-                or sub_stats[1][4] == 0
-                or sub_stats[1][4] == region.area
-            ):
-                logging.info(
-                    "Invalid components mass: %s, components: %s region area %s overlap %s",
-                    sub_stats[1][4],
-                    sub_components,
-                    region.area,
-                    overlap_pixels,
-                )
-                continue
-
-            sub_connected[sub_connected > 0] = 1
-            # remove this component from the background by painting with
-            # colours of neighbouring pixels
-            background_region[:] = cv2.inpaint(
-                np.float32(background_region),
-                np.uint8(sub_connected),
-                3,
-                cv2.INPAINT_TELEA,
-            )
-        return initial_frame
+    
 
     def _add_active_track(self, track):
         self.active_tracks.add(track)
@@ -342,11 +215,11 @@ class Clip:
         """
         Extracts useful statics from video clip.
         """
+        import pytz
         self.video_start_time = video_start_time
-        self.stats.date_time = video_start_time.astimezone(Clip.local_tz)
-        self.stats.is_night = (
-            video_start_time.astimezone(Clip.local_tz).time().hour >= 2
-        )
+        local_tz = pytz.timezone("Pacific/Auckland")
+        self.stats.date_time = video_start_time.astimezone(local_tz)
+        self.stats.is_night = video_start_time.astimezone(local_tz).time().hour >= 2
 
     def load_metadata(self, metadata, tag_precedence=None):
         self._id = metadata.get("id", 0)
@@ -366,6 +239,8 @@ class Clip:
         self.tracks = set(tracks)
 
     def load_tracks_meta(self, metadata, tag_precedence):
+        from track.track import Track
+
         if "Tracks" in metadata:
             tracks_meta = metadata.get("Tracks", [])
         else:
@@ -390,6 +265,8 @@ class Clip:
         return (track.start_s, track.end_s)
 
     def set_frame_buffer(self, cache_to_disk, keep_frames, max_frames=None,lock=True):
+        from track.framebuffer import FrameBuffer
+
         self.frame_buffer = FrameBuffer(
             self.source_file,
             cache_to_disk,
