@@ -37,7 +37,6 @@ from sklearn.metrics import confusion_matrix
 import matplotlib.pyplot as plt
 import numpy as np
 from pathlib import Path
-import cv2
 from config.buildconfig import BuildConfig
 from sklearn.metrics import confusion_matrix
 from multiprocessing import Pool
@@ -1021,20 +1020,23 @@ def main():
             )
         elif args.dataset:
             model = get_interpreter_from_path(model_file)
-
-            if weight is None:
-                acc = (
-                    "val_acc.weights.h5"
-                    if model.params.multi_label
-                    else "val_acc.weights.h5"
-                )
-                weights = [
-                    model_file,  # that will be final
-                    model_file.parent / "val_loss.weights.h5",
-                    model_file.parent / acc,
-                ]
+            tflite_model = model.TYPE == "TFLite"
+            if  tflite_model:
+                weights = ["final"]
             else:
-                weights = [weight]
+                if weight is None:
+                    acc = (
+                        "val_acc.weights.h5"
+                        if model.params.multi_label
+                        else "val_acc.weights.h5"
+                    )
+                    weights = [
+                        model_file,  # that will be final
+                        model_file.parent / "val_loss.weights.h5",
+                        model_file.parent / acc,
+                    ]
+                else:
+                    weights = [weight]
             model_labels = model.labels.copy()
             model.load_training_meta(base_dir)
             # # model.labels = model_labels
@@ -1060,9 +1062,9 @@ def main():
             labels, tf_mappings = apply_label_mapping(
                 model.labels, excluded, remapped, model_labels
             )
-
             model.labels = labels
-
+            if not tflite_model and not has_activation(model.model):
+                model.model = add_sigmoid_output(model.model)
             if args.evaluate:
                 files = base_dir / args.dataset
                 logging.info("Evaluating %s", files)
@@ -1096,15 +1098,20 @@ def main():
                     num_frames=model.params.square_width**2,
                     pads=model.pads,
                     tf_mappings=tf_mappings,
+                    enlarge = model.enlarge
+
                 )
-                results = model.model.evaluate(dataset)
+                if tflite_model:
+                    results = lite_dataset_predict(model,dataset)
+                else:
+                    results = model.model.evaluate(dataset)
                 for name, value in zip(model.model.metrics_names, results):
                     logging.info(f"{name}: {value:.4f}")
 
                 return
-            if not has_activation(model.model):
-                model.model = add_sigmoid_output(model.model)
-            model.model.summary()
+            if not tflite_model:
+
+                model.model.summary()
             logging.info("Loading val files to get best thresholds")
             files = base_dir / "validation"
 
@@ -1129,6 +1136,7 @@ def main():
                 num_frames=model.params.square_width**2,
                 pads=model.pads,
                 tf_mappings=tf_mappings,
+                enlarge = model.enlarge
             )
 
             base_confusion_file = Path(args.confusion)
@@ -1136,21 +1144,26 @@ def main():
             confusion_final = (
                 base_confusion_file.parent / f"{base_confusion_file.stem}-thresholds"
             )
-            if weight is None:
-                logging.info("Using loss weights for thresholds on validation set")
+            if not tflite_model:
+                if weight is None:
+                    logging.info("Using loss weights for thresholds on validation set")
 
-                loss_weights = model_file.parent / "val_loss.weights.h5"
-                model.model.load_weights(loss_weights)
+                    loss_weights = model_file.parent / "val_loss.weights.h5"
+                    model.model.load_weights(loss_weights)
+                else:
+                    logging.info(
+                        "Using %s weights for thresholds on validation set", weights
+                    )
+
+                    model.model.load_weights(weight)
+                thresholds = best_threshold_for_ds(
+                    model.model, model.labels, val_dataset, confusion_final,tflite =tflite_model
+                )
             else:
-                logging.info(
-                    "Using %s weights for thresholds on validation set", weights
+                thresholds = best_threshold_for_ds(
+                    model, model.labels, val_dataset, confusion_final,tflite =tflite_model
                 )
 
-                model.model.load_weights(weight)
-
-            thresholds = best_threshold_for_ds(
-                model.model, model.labels, val_dataset, confusion_final
-            )
             threshold_out = (
                 base_confusion_file.parent
                 / f"{base_confusion_file.stem}-val-thresholds.json"
@@ -1186,6 +1199,8 @@ def main():
                 num_frames=model.params.square_width**2,
                 pads=model.pads,
                 tf_mappings=tf_mappings,
+                enlarge = model.enlarge
+
             )
             logging.info(
                 "Dataset loaded %s, using labels %s",
@@ -1197,19 +1212,25 @@ def main():
             base_confusion_file = base_confusion_file.parent / base_confusion_file.stem
             for weight in weights:
                 logging.info("Loading weights %s", weight)
-                model.model.load_weights(weight)
-                if weight.suffix == ".keras":
-                    confusion_final = (
-                        base_confusion_file.parent / f"{base_confusion_file.stem}-final"
-                    )
+                if weight!="final":
+                    model.model.load_weights(weight)
+                    
+                    if weight.suffix == ".keras":
+                        confusion_final = (
+                            base_confusion_file.parent / f"{base_confusion_file.stem}-final"
+                        )
+                    else:
+                        weight_name = weight.stem
+                        suffix_start = weight_name.index(".weights")
+                        weight_name = weight_name[:suffix_start]
+                        confusion_final = (
+                            base_confusion_file.parent
+                            / f"{base_confusion_file.stem}-{weight_name}"
+                        )
                 else:
-                    weight_name = weight.stem
-                    suffix_start = weight_name.index(".weights")
-                    weight_name = weight_name[:suffix_start]
-                    confusion_final = (
-                        base_confusion_file.parent
-                        / f"{base_confusion_file.stem}-{weight_name}"
-                    )
+                     confusion_final = (
+                                                base_confusion_file.parent / f"{base_confusion_file.stem}-final"
+                                            )
                 model.confusion_tracks(
                     dataset,
                     confusion_final,
@@ -1217,6 +1238,19 @@ def main():
                     thresholds_per_label=thresholds,
                 )
 
+
+def lite_dataset_predict(model,dataset):
+    import tensorflow as tf
+    results = []
+    for x in dataset.map(
+                lambda x, _: x,
+                num_parallel_calls=tf.data.AUTOTUNE,
+            ):
+        res = model.predict(x)
+        res = np.array(res)
+        results.extend(res)
+    results  = np.array(results)
+    return np.array(results)
 
 class LabelGraph:
     def __init__(self):
@@ -1292,16 +1326,19 @@ class LabelGraph:
         plt.savefig(out_file.with_suffix(".png"), format="png")
 
 
-def best_threshold_for_ds(model, labels, dataset, filename):
+def best_threshold_for_ds(model, labels, dataset, filename,tflite= False):
     import tensorflow as tf
 
+    if tflite:
+        y_pred = lite_dataset_predict(model,dataset)
     # sklearn.metrics.auc(
-    y_pred = model.predict(
-        dataset.map(
-            lambda x, _: x,
-            num_parallel_calls=tf.data.AUTOTUNE,
+    else:
+        y_pred = model.predict(
+            dataset.map(
+                lambda x, _: x,
+                num_parallel_calls=tf.data.AUTOTUNE,
+            )
         )
-    )
 
     # true_categories = [y[0] for x, y in dataset]
     # logging.info("Shape is %s", true_categories.shape)

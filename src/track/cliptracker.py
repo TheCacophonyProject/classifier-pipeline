@@ -106,6 +106,8 @@ class ClipTracker(ABC):
             avg_change = 0
 
         filtered = np.clip(filtered - avg_change, 0, None)
+
+
         filtered, stats = normalize(filtered, new_max=255)
         if denoise:
             import cv2

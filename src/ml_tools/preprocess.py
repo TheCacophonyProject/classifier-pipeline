@@ -127,6 +127,7 @@ def preprocess_frame_v2(
         cropped_frame.thermal_norm,
     )
     if not stats[0]:
+        cropped_frame.thermal_norm= None
         return None
 
     if np.median(cropped_frame.filtered) >= 0:
@@ -141,6 +142,7 @@ def preprocess_frame_v2(
     )
 
     if not stats[0]:
+        cropped_frame.filtered= None
         return None
 
     np.clip(

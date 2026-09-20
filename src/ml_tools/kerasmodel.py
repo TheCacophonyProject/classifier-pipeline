@@ -12,10 +12,10 @@ import tensorflow as tf
 import numpy as np
 import gc
 import time
-import matplotlib.pyplot as plt
 import json
 import logging
 from pathlib import Path
+import matplotlib.pyplot as plt
 
 from sklearn.metrics import confusion_matrix
 from ml_tools.datasetstructures import SegmentType
@@ -1427,167 +1427,6 @@ class KerasModel(Interpreter):
             return self.predict_over_network(frames)
         return self.model.predict(frames)
 
-    def confusion_tracks(
-        self, dataset, filename, threshold=0.8, thresholds_per_label=None
-    ):
-        logging.info(
-            "Calculating confusion with threshold %s saving to %s", threshold, filename
-        )
-        true_categories = []
-        track_ids = []
-        for y in dataset.map(
-            lambda _, y: y,
-            num_parallel_calls=tf.data.AUTOTUNE,
-        ):
-            true_categories.extend(y[0].numpy())
-            # dataset_y[0]
-            track_ids.extend(y[1].numpy())
-        if len(true_categories) > 1:
-            if self.params.multi_label:
-                # multi = []
-                # for y in true_categories:
-                # multi.append(tf.where(y).numpy().ravel())
-                # print(y, tf.where(y))
-                # true_categories = np.int64(true_categories)
-                pass
-            else:
-                true_categories = np.int64(tf.argmax(true_categories, axis=1))
-        y_pred = self.model.predict(dataset.map(
-            lambda x, _: x,
-            num_parallel_calls=tf.data.AUTOTUNE,
-        ))  
-        pred_per_track = {}
-        # if self.params.multi_label:
-        # predicted_categori/es = []
-        # for p in y_pred:
-        # predicted_categories.append(tf.where(p >= 0.8).numpy().ravel())
-        # predicted_categories = np.int64(predicted_categories)
-
-        for y, track_id, p in zip(true_categories, track_ids, y_pred):
-            # if self.params.multi_label:
-            #     y_max = np.argmax(y)
-            # else:
-            #     y_max = y
-            track_pred = pred_per_track.setdefault(
-                track_id, (np.nonzero(y)[0], TrackPrediction(track_id, self.labels))
-            )
-            track_pred[1].classified_frame(None, p, 0)
-        flat_y = []
-        results = []
-        confidences = []
-        raw_class_confidences = []
-        labels = self.labels.copy()
-        labels.append("None")
-        totals_row = np.zeros(len(labels))
-
-        for y_true, pred in pred_per_track.values():
-            pred.normalize_score()
-            preds = np.array([p.prediction for p in pred.predictions])
-            # if we do multi label we may of multiple y_true and preds
-            # otherwise this will calculate the same as before
-            no_smoothing = np.mean(preds, axis=0)
-            preds = np.where(no_smoothing >= 0.5)[0]
-            if len(preds) == 0:
-                preds = [np.argmax(no_smoothing)]
-            if len(y_true) > 1:
-                ll = []
-                for y in y_true:
-                    ll.append(labels[y])
-                logging.info("Have multiple labels %s", ll)
-            covered_preds = set()
-            for y in y_true:
-                totals_row[y] += 1
-                if y in preds:
-                    idx = y
-                    covered_preds.add(idx)
-                    results.append(y)
-                    confidences.append(no_smoothing[y])
-                    raw_class_confidences.append(no_smoothing)
-                    flat_y.append(y)
-                    
-                    if len(y_true) > 1:
-                        logging.info(
-                            "Pred %s for %s confs %s",
-                            labels[idx],
-                            labels[y],
-                            np.round(100 * no_smoothing),
-                        )
-
-                else:
-                    for idx in preds:
-                        covered_preds.add(idx)
-                        results.append(idx)
-                        confidences.append(no_smoothing[idx])
-                        flat_y.append(y)
-                        raw_class_confidences.append(no_smoothing)
-                        if len(y_true) > 1:
-                            logging.info(
-                                "Wrong Pred %s for %s confs %s",
-                                labels[idx],
-                                labels[y],
-                                np.round(100 * no_smoothing),
-                            )
-
-            # predicted labels with no matching true label (false positives
-            # that the loop above never touched, e.g. y_true=[0], preds=[0,3])
-            nothing_idx = len(labels) - 1
-            for idx in preds:
-                if idx not in covered_preds:
-                    results.append(idx)
-                    confidences.append(no_smoothing[idx])
-                    flat_y.append(nothing_idx)
-                    raw_class_confidences.append(no_smoothing)
-                    logging.info(
-                        "Extra Pred %s with no true label confs %s",
-                        labels[idx],
-                        np.round(100 * no_smoothing),
-                    )
-
-            assert len(results) == len(flat_y)
-        true_categories = np.int64(flat_y)
-        # else:
-        #     predicted_categories = np.int64(tf.argmax(y_pred, axis=1))
-
-        results = np.int64(results)
-        confidences = np.array(confidences)
-
-        # raw_preds_i = np.uint8(raw_preds_i)
-        raw_class_confidences = np.array(raw_class_confidences)
-        npy_file = filename.parent / f"{filename.stem}-raw.npy"
-        logging.info("Saving %s", npy_file)
-        with npy_file.open("wb") as f:
-            np.save(f, true_categories)
-            np.save(f, results)
-            np.save(f, raw_class_confidences)
-            np.save(f, len(pred_per_track))
-        if thresholds_per_label is not None:
-            thresholds_per_label = np.array(thresholds_per_label)
-            thresholds_per_label[thresholds_per_label < 0.5] = 0.5
-
-            preds = results.copy()
-            for i, lbl_thresh in enumerate(thresholds_per_label):
-                pred_mask = preds == i
-                # set these to None
-                conf_mask = confidences < lbl_thresh
-                preds[pred_mask & conf_mask] = len(labels) - 1
-            cm = confusion_matrix(true_categories, preds, labels=np.arange(len(labels)))
-            # Log the confusion matrix as an image summary.
-            figure = plot_confusion_matrix(cm, class_names=labels,totals_row=totals_row)
-            fscore_file = filename.parent / f"{filename.stem}-fscore"
-            plt.savefig(fscore_file.with_suffix(".png"), format="png")
-            np.savez(fscore_file.with_suffix(".npz"), cm = np.vstack((cm, totals_row)),labels = labels)
-
-        preds = results.copy()
-
-        # set these to None
-        preds[confidences < threshold] = len(labels) - 1
-        cm = confusion_matrix(true_categories, preds, labels=np.arange(len(labels)))
-
-        # Log the confusion matrix as an image summary.
-        figure = plot_confusion_matrix(cm, class_names=labels,totals_row=totals_row)
-        out_file = filename.parent / f"{filename.stem}-{round(100*threshold)}%"
-        plt.savefig(out_file.with_suffix(".png"), format="png")
-        np.savez(out_file.with_suffix(".npz"), cm = np.vstack((cm, totals_row)),labels = labels)
 
     def confusion_tfrecords(self, dataset, filename):
         true_categories = tf.concat([y for x, y in dataset], axis=0)

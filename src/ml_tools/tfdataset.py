@@ -271,7 +271,7 @@ def get_dataset(load_function, base_dir, labels, **args):
             dataset = dataset.map(
                 lambda x, y: (
                     {
-                        "input_image": preprocess_fn(x["input_image"], training=True),
+                        "input_image": preprocess_fn(x["input_image"]),
                         "input_mask": x["input_mask"],
                     },
                     y,
@@ -280,7 +280,7 @@ def get_dataset(load_function, base_dir, labels, **args):
             )
         else:
             dataset = dataset.map(
-                lambda x, y: (preprocess_fn(x, training=True), y),
+                lambda x, y: (preprocess_fn(x), y),
                 num_parallel_calls=tf.data.AUTOTUNE,
             )
 

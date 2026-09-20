@@ -9,7 +9,7 @@ from enum import Enum
 from dataclasses import dataclass
 from typing import Any
 import math
-
+import time
 FRAMES_PER_SECOND = 9
 
 CPTV_FILE_WIDTH = 160
@@ -390,9 +390,7 @@ class TrackHeader:
         dont_filter=False,
         skip_ffc=True,
         ffc_frames=None,
-        location=None,
         segment_frames=None,
-        from_last=None,
         frame_min_mass=None,
         filter_by_fp=True,
         min_segments=None,
@@ -404,7 +402,7 @@ class TrackHeader:
 
         if segment_frames is not None:
             raise Exception("Have not implement this path")
-        if self.label in BuildConfig.NO_MIN_FRAMES:
+        if self.label in NO_MIN_FRAMES:
             # try and always get one for these
             min_frames = 0
             if min_segments is None:
@@ -1362,7 +1360,11 @@ def get_segments(
     min_segments=None,
     seed=None,
     ceil_num_windows = True,
+    from_last=None,
 ):
+    start = time.time()
+    print(segment_types)
+    segment_types = [SegmentType.ALL_RANDOM]
     if segment_types is None:
         segment_types = [SegmentType.ALL_RANDOM_MASKED]
     if min_frames is None:
@@ -1391,6 +1393,13 @@ def get_segments(
     # this is checking that frames for an animal haven't been predicted as FP by the random forest model
     if fp_frames is not None and label not in FP_LABELS:
         frame_indices = [f for f in frame_indices if f not in fp_frames]
+
+    # regions may include extra frames beyond from_last (see Track.get_segments'
+    # available_frames) purely so blank/invalid frames can be filtered out above
+    # while still returning from_last valid ones
+    if from_last is not None:
+        frame_indices = frame_indices[-from_last:]
+
     if len(frame_indices) == 0:
         logging.warn("Nothing to load for %s - %s", clip_id, track_id)
         return [], filtered_stats
@@ -1410,7 +1419,7 @@ def get_segments(
         else:
             s_min_mass = 1
             # remove blank frames
-
+        # TODO Move this out of loop and maybe elsewhere tneirely it is a bit slow on PI
         rng = np.random.default_rng(seed=seed)
 
         if segment_type == SegmentType.ELONGATION:
@@ -1487,6 +1496,7 @@ def get_segments(
             SegmentType.ALL_RANDOM_MASKED,
             SegmentType.RANDOM_SECTIONS,
         ]
+        logging.info("Took %s",time.time()-start)
 
         for _ in range(repeats):
             if segment_type == SegmentType.RANDOM_SECTIONS:
@@ -1525,6 +1535,7 @@ def get_segments(
                 if random_frames:
                     # random_frames and not random_sections:
                     rng.shuffle(frame_indices)
+            logging.info("Shuffled Took %s",time.time()-start)
 
             for i in range(segment_count):
 

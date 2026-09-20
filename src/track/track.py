@@ -484,13 +484,12 @@ class Track:
         segment_frame_spacing=9,
         repeats=1,
         min_frames=1,
-        segment_frames=None,
         segment_types=None,
         from_last=None,
+        available_frames=None,
         max_segments=None,
         ffc_frames=None,
         dont_filter=False,
-        filter_by_fp=False,
         min_segments=1,
         seed=None,
         ceil_num_windows = True,
@@ -500,51 +499,33 @@ class Track:
         if from_last is not None:
             if from_last == 0:
                 return []
-            regions = np.array(self.bounds_history[-from_last:])
+            # available_frames may be wider than from_last - the extra frames
+            # give get_segments room to filter out blank/invalid frames while
+            # still returning from_last valid ones
+            regions = np.array(self.bounds_history[-available_frames:])
             start_frame = regions[0].frame_number
         else:
             start_frame = self.start_frame
             regions = np.array(self.bounds_history)
 
-        # frame_temp_median = np.uint16(frame_temp_median)
-        segments = []
-        if segment_frames is not None:
-            mass_history = np.uint16([region.mass for region in regions])
-            for frames in segment_frames:
-                relative_frames = frames - self.start_frame
-                mass_slice = mass_history[relative_frames]
-                segment_mass = np.sum(mass_slice)
-                segment = SegmentHeader(
-                    self.clip_id,
-                    self._id,
-                    start_frame=start_frame,
-                    frames=len(frames),
-                    weight=1,
-                    mass=segment_mass,
-                    label=None,
-                    regions=regions[relative_frames],
-                    # frame_temp_median=frame_temp_median[relative_frames],
-                    frame_indices=frames,
-                )
-                segments.append(segment)
-        else:
-            segments, _ = get_segments(
-                self.clip_id,
-                self._id,
-                start_frame,
-                segment_frame_spacing=segment_frame_spacing,
-                segment_width=segment_width,
-                regions=regions,
-                ffc_frames=ffc_frames,
-                repeats=repeats,
-                min_frames=min_frames,
-                segment_types=segment_types,
-                max_segments=max_segments,
-                dont_filter=dont_filter,
-                min_segments=min_segments,
-                seed=seed,
-                ceil_num_windows = ceil_num_windows,
-            )
+        segments, _ = get_segments(
+            self.clip_id,
+            self._id,
+            start_frame,
+            segment_frame_spacing=segment_frame_spacing,
+            segment_width=segment_width,
+            regions=regions,
+            ffc_frames=ffc_frames,
+            repeats=repeats,
+            min_frames=min_frames,
+            segment_types=segment_types,
+            from_last=from_last,
+            max_segments=max_segments,
+            dont_filter=dont_filter,
+            min_segments=min_segments,
+            seed=seed,
+            ceil_num_windows = ceil_num_windows,
+        )
 
         return segments
 

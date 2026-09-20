@@ -214,7 +214,6 @@ class ClipTrackExtractor(ClipTracker):
             filtered = np.float32(frame.pix) - self.background_alg.background
         if self.do_tracking or self.calculate_thumbnail_info:
             from ml_tools.imageprocessing import detect_objects
-
             obj_filtered, threshold = self._get_normalized_filtered_frame(
                 clip, thermal, filtered, denoise=self.config.denoise
             )

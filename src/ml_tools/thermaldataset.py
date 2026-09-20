@@ -270,6 +270,7 @@ def load_dataset(filenames, remap_lookup, labels, args):
             current_epoch=args.get("current_epoch"),
             use_velocity=USE_VELOCITY,
             multi_input=args.get("multi_input", False),
+            enlarge = args.get("enlarge",True)
         ),
         num_parallel_calls=AUTOTUNE,
         deterministic=deterministic,
@@ -553,6 +554,7 @@ def read_tfrecord(
     current_epoch=None,
     use_velocity=False,
     multi_input=False,
+    enlarge = True,
 ):
     logging.info(
         "Read tf record with image %s lbls %s aug  %s  prepr %s only features %s one hot %s include fetures %s num frames %s mosaic_size %s mosaic_enalrged %s padding %s",
@@ -717,9 +719,10 @@ def read_tfrecord(
             )
 
         # double the resolution of each frame (mosaic_size -> mosaic_size * 2)
-        rgb_image = tf.image.resize(
-            rgb_image, [mosaic_size * 2, mosaic_size * 2], method="bicubic"
-        )
+        if enlarge:
+            rgb_image = tf.image.resize(
+                rgb_image, [mosaic_size * 2, mosaic_size * 2], method="bicubic"
+            )
         rgb_image = tf.clip_by_value(rgb_image, 0.0, 255.0)
 
         mask = None
@@ -753,9 +756,15 @@ def read_tfrecord(
                 constant_values=0,
             )
             rgb_image = tf.concat([ch_r, ch_g, ch_b], axis=-1)
-            rgb_image = tf.ensure_shape(rgb_image, [num_frames, 64, 64, 3])
+
+            # TF complains if these aren't hard coded numbers
+            if enlarge:
+                rgb_image = tf.ensure_shape(rgb_image, [num_frames, 64,64, 3])
+            else:
+                rgb_image = tf.ensure_shape(rgb_image, [num_frames, 32,32, 3])
 
         elif num_frames > 1:
+            raise Exception("Repeating frames is not implemented as not used")
             logging.info("Repeating frames to make 25")
             # this repeats frames to make 25
             actual_frames = tf.shape(rgb_image)[0]
