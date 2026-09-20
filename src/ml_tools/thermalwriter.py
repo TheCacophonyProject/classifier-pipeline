@@ -180,8 +180,9 @@ def create_tf_example(sample, data, features, labels, country_code):
     # kept to stay aligned with image/num_frames (len(filtered))
     kept_frames = set(frame_indices)
     track_bounds = [r for r in sample.track_bounds if r.frame_number in kept_frames]
+
     for r, f in zip(track_bounds, frame_indices):
-        assert r.frame_number == f
+        assert r.frame_number == f, f"{r.frame_number} does equal {f}"
 
     original_roi = np.uint8([r.to_ltwh() for r in track_bounds])
 
@@ -316,6 +317,8 @@ def get_data(source_file, excluded_tags, extra_args):
         db = RawDatabase(source_file)
         db.load_frames()
     # going to redo segments to get rid of ffc segments
+    rng = np.random.default_rng(seed = db.timestamp)
+    
     try:
         clip_meta = db.get_clip_meta(extra_args.get("tag_precedence"))
         frame_temp_median = clip_meta.frame_temp_median
@@ -359,7 +362,7 @@ def get_data(source_file, excluded_tags, extra_args):
                     max_segments=extra_args.get("max_segments"),
                     frame_min_mass=extra_args.get("min_mass"),
                     filter_by_fp=extra_args.get("filter_by_fp"),
-                    seed=db.timestamp,
+                    rng=rng,
                     ceil_num_windows = False,
                 )
             else:

@@ -1021,7 +1021,7 @@ def main():
         elif args.dataset:
             model = get_interpreter_from_path(model_file)
             tflite_model = model.TYPE == "TFLite"
-            if  tflite_model:
+            if tflite_model:
                 weights = ["final"]
             else:
                 if weight is None:
@@ -1098,11 +1098,10 @@ def main():
                     num_frames=model.params.square_width**2,
                     pads=model.pads,
                     tf_mappings=tf_mappings,
-                    enlarge = model.enlarge
-
+                    enlarge=model.enlarge,
                 )
                 if tflite_model:
-                    results = lite_dataset_predict(model,dataset)
+                    results = lite_dataset_predict(model, dataset)
                 else:
                     results = model.model.evaluate(dataset)
                 for name, value in zip(model.model.metrics_names, results):
@@ -1136,7 +1135,7 @@ def main():
                 num_frames=model.params.square_width**2,
                 pads=model.pads,
                 tf_mappings=tf_mappings,
-                enlarge = model.enlarge
+                enlarge=model.enlarge,
             )
 
             base_confusion_file = Path(args.confusion)
@@ -1157,11 +1156,19 @@ def main():
 
                     model.model.load_weights(weight)
                 thresholds = best_threshold_for_ds(
-                    model.model, model.labels, val_dataset, confusion_final,tflite =tflite_model
+                    model.model,
+                    model.labels,
+                    val_dataset,
+                    confusion_final,
+                    tflite=tflite_model,
                 )
             else:
                 thresholds = best_threshold_for_ds(
-                    model, model.labels, val_dataset, confusion_final,tflite =tflite_model
+                    model,
+                    model.labels,
+                    val_dataset,
+                    confusion_final,
+                    tflite=tflite_model,
                 )
 
             threshold_out = (
@@ -1199,8 +1206,7 @@ def main():
                 num_frames=model.params.square_width**2,
                 pads=model.pads,
                 tf_mappings=tf_mappings,
-                enlarge = model.enlarge
-
+                enlarge=model.enlarge,
             )
             logging.info(
                 "Dataset loaded %s, using labels %s",
@@ -1212,12 +1218,13 @@ def main():
             base_confusion_file = base_confusion_file.parent / base_confusion_file.stem
             for weight in weights:
                 logging.info("Loading weights %s", weight)
-                if weight!="final":
+                if weight != "final":
                     model.model.load_weights(weight)
-                    
+
                     if weight.suffix == ".keras":
                         confusion_final = (
-                            base_confusion_file.parent / f"{base_confusion_file.stem}-final"
+                            base_confusion_file.parent
+                            / f"{base_confusion_file.stem}-final"
                         )
                     else:
                         weight_name = weight.stem
@@ -1228,9 +1235,9 @@ def main():
                             / f"{base_confusion_file.stem}-{weight_name}"
                         )
                 else:
-                     confusion_final = (
-                                                base_confusion_file.parent / f"{base_confusion_file.stem}-final"
-                                            )
+                    confusion_final = (
+                        base_confusion_file.parent / f"{base_confusion_file.stem}-final"
+                    )
                 model.confusion_tracks(
                     dataset,
                     confusion_final,
@@ -1239,18 +1246,20 @@ def main():
                 )
 
 
-def lite_dataset_predict(model,dataset):
+def lite_dataset_predict(model, dataset):
     import tensorflow as tf
+
     results = []
     for x in dataset.map(
-                lambda x, _: x,
-                num_parallel_calls=tf.data.AUTOTUNE,
-            ):
+        lambda x, _: x,
+        num_parallel_calls=tf.data.AUTOTUNE,
+    ):
         res = model.predict(x)
         res = np.array(res)
         results.extend(res)
-    results  = np.array(results)
+    results = np.array(results)
     return np.array(results)
+
 
 class LabelGraph:
     def __init__(self):
@@ -1326,11 +1335,11 @@ class LabelGraph:
         plt.savefig(out_file.with_suffix(".png"), format="png")
 
 
-def best_threshold_for_ds(model, labels, dataset, filename,tflite= False):
+def best_threshold_for_ds(model, labels, dataset, filename, tflite=False):
     import tensorflow as tf
 
     if tflite:
-        y_pred = lite_dataset_predict(model,dataset)
+        y_pred = lite_dataset_predict(model, dataset)
     # sklearn.metrics.auc(
     else:
         y_pred = model.predict(
@@ -1429,15 +1438,10 @@ def best_threshold(labels, y_true, y_pred, confidences, filename):
 
     from sklearn.preprocessing import LabelBinarizer
 
-    print("Y_true is ", y_true.shape)
-    print("Y_pred is ", y_pred.shape)
-    print("Confidences ", confidences.shape)
-
     label_binarizer = LabelBinarizer().fit(y_true)
     y_onehot_test = label_binarizer.transform(y_true)
     thresholds_best = []
     for i, class_of_interest in enumerate(labels):
-        print("Class ", class_of_interest)
         lbl_mask = y_true == i
         if len(y_true[lbl_mask]) == 0:
             thresholds_best.append(0)
@@ -1451,7 +1455,6 @@ def best_threshold(labels, y_true, y_pred, confidences, filename):
         else:
             lbl_pred = confidences[:, i]
             # print("CHooisng all of this labl", lbl_pred)
-        print("plt show for", class_of_interest)
 
         precision, recall, thresholds = precision_recall_curve(binary_true, lbl_pred)
         fscore = (2 * precision * recall) / (precision + recall)
@@ -1486,11 +1489,15 @@ def best_threshold(labels, y_true, y_pred, confidences, filename):
                 color=colour,
                 label=f"TX {point[1]}",
             )
-            print("plotted ", point, " with colour ", colour)
         label_f = filename.parent / f"{filename.stem}-{labels[i]}.png"
         plt.savefig(label_f, format="png")
         plt.clf()
-        print("Best Threshold=%f, F-Score=%.3f" % (thresholds[ix], fscore[ix]))
+        logging.info(
+            "Best for %s Threshold=%f, F-Score=%.3f",
+            class_of_interest,
+            thresholds[ix],
+            fscore[ix],
+        )
         thresholds_best.append(thresholds[ix])
 
     thresholds = np.array(thresholds_best)

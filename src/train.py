@@ -79,6 +79,11 @@ def load_config():
         help="Quantization aware training",
     )
     parser.add_argument(
+        "--dont-enlarge",
+        action="store_true",
+        help="Don't enlarge regions",
+    )
+    parser.add_argument(
         "name",
         default="unnammed",
         help="Name of training job",
@@ -111,6 +116,7 @@ def main():
         phase2=args.phase2,
         use_jitter=args.jitter,
         qat=args.qat,
+        dont_enlarge=args.dont_enlarge,
     )
 
 

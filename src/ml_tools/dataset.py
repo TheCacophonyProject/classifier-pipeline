@@ -304,6 +304,9 @@ class Dataset:
                 segment_frame_spacing = int(
                     round(self.segment_spacing * clip_header.frames_per_second)
                 )
+                rng = np.random.default_rng(None if seed is None
+                    else seed + track_header.clip_id + track_header.track_id)
+
                 segment_width = self.segment_length
                 track_header.get_segments(
                     segment_width,
@@ -314,7 +317,7 @@ class Dataset:
                     dont_filter=dont_filter_segment,
                     skip_ffc=self.skip_ffc,
                     ffc_frames=clip_header.ffc_frames,
-                    seed=seed + track_header.clip_id + track_header.track_id,
+                    rng = rng,
                     ceil_num_windows = False,
                 )
                 self.filtered_stats["segment_mass"] += track_header.filtered_stats[
@@ -775,6 +778,9 @@ def load_clip_multi(
                 round(segment_spacing * clip_header.frames_per_second)
             )
             segment_width = segment_length
+            rng = np.random.default_rng(None if seed is None
+                                else seed + track_header.clip_id + track_header.track_id)
+
             track_header.get_segments(
                 segment_width,
                 segment_frame_spacing,
@@ -784,11 +790,7 @@ def load_clip_multi(
                 dont_filter=dont_filter_segment,
                 skip_ffc=skip_ffc,
                 ffc_frames=clip_header.ffc_frames,
-                seed=(
-                    None
-                    if seed is None
-                    else seed + track_header.clip_id + track_header.track_id
-                ),
+                rng = rng,
                 min_frames=min_frames,
                 ceil_num_windows = False,
             )

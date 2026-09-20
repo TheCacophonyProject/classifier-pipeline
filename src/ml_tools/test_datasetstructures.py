@@ -65,7 +65,7 @@ def call_random_sections(label, num_frames, start_frame=100, seed=42, gap_every=
         num_frames, start_frame=start_frame, gap_every=gap_every
     )
     return random_sections(
-        label, fi, regions, mass, start_frame, seed=seed, **COMMON_KWARGS
+        label, fi, regions, mass, start_frame,         rng = np.random.default_rng(seed), **COMMON_KWARGS
     )
 
 
@@ -186,7 +186,7 @@ class TestRandomSectionsOutputShape:
         num_frames = 200
         fi, regions, mass = make_track(num_frames, start_frame=start_frame)
         segs = random_sections(
-            "possum", fi, regions, mass, start_frame, seed=42, **COMMON_KWARGS
+            "possum", fi, regions, mass, start_frame, rng = np.random.default_rng(42), **COMMON_KWARGS
         )
         fi_set = set(fi)
         for s in segs:
@@ -215,7 +215,7 @@ class TestRandomSectionsWithGaps:
         num_frames = 200
         fi, regions, mass = make_track(num_frames, start_frame=start_frame, gap_every=5)
         segs = random_sections(
-            "possum", fi, regions, mass, start_frame, seed=42, **COMMON_KWARGS
+            "possum", fi, regions, mass, start_frame, rng = np.random.default_rng(42), **COMMON_KWARGS
         )
         fi_set = set(fi)
         for s in segs:

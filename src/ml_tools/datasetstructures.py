@@ -394,12 +394,13 @@ class TrackHeader:
         frame_min_mass=None,
         filter_by_fp=True,
         min_segments=None,
-        seed=None,
+        rng=None,
         min_frames=0,
         ceil_num_windows = True,
     ):
         NO_MIN_FRAMES = ["stoat", "mustelid", "weasel", "ferret"]
-
+        if rng is None:
+            rng = np.random.default_rng()
         if segment_frames is not None:
             raise Exception("Have not implement this path")
         if self.label in NO_MIN_FRAMES:
@@ -433,7 +434,7 @@ class TrackHeader:
             fp_frames=self.fp_frames if filter_by_fp else None,
             rec_time=self.start_time,
             min_segments=min_segments,
-            seed=seed,
+            rng=rng,
             ceil_num_windows= ceil_num_windows,
         )
         self.filtered_stats.update(filtered_stats)
@@ -1190,14 +1191,15 @@ def random_sections(
     location,
     station_id,
     rec_time,
-    seed=None,
+    rng=None,
     max_samples=5,
     min_frames=1,
     min_segments=None,
     ceil_num_windows= True,
 ):   
     min_frames = max(min_frames,1)
-    rng = np.random.default_rng(seed=seed)
+    if rng is None:
+        rng = np.random.default_rng()
 
     chunks = 25    
 
@@ -1358,13 +1360,15 @@ def get_segments(
     fp_frames=None,
     repeat_frame_indices=False,
     min_segments=None,
-    seed=None,
+    rng=None,
     ceil_num_windows = True,
     from_last=None,
 ):
+    
+    if rng is None:
+        rng = np.random.default_rng()
+
     start = time.time()
-    print(segment_types)
-    segment_types = [SegmentType.ALL_RANDOM]
     if segment_types is None:
         segment_types = [SegmentType.ALL_RANDOM_MASKED]
     if min_frames is None:
@@ -1420,7 +1424,6 @@ def get_segments(
             s_min_mass = 1
             # remove blank frames
         # TODO Move this out of loop and maybe elsewhere tneirely it is a bit slow on PI
-        rng = np.random.default_rng(seed=seed)
 
         if segment_type == SegmentType.ELONGATION:
             # an idea for separating mustelid and rodents
@@ -1496,7 +1499,6 @@ def get_segments(
             SegmentType.ALL_RANDOM_MASKED,
             SegmentType.RANDOM_SECTIONS,
         ]
-        logging.info("Took %s",time.time()-start)
 
         for _ in range(repeats):
             if segment_type == SegmentType.RANDOM_SECTIONS:
@@ -1513,7 +1515,7 @@ def get_segments(
                     location,
                     station_id,
                     rec_time,
-                    seed,
+                    rng,
                     max_samples=max_segments,
                     min_frames=min_frames,
                     min_segments=min_segments,
@@ -1535,7 +1537,6 @@ def get_segments(
                 if random_frames:
                     # random_frames and not random_sections:
                     rng.shuffle(frame_indices)
-            logging.info("Shuffled Took %s",time.time()-start)
 
             for i in range(segment_count):
 
@@ -1589,7 +1590,18 @@ def get_segments(
                     segment_end = min(len(frame_indices), segment_end)
                     frames = frame_indices[segment_start:segment_end]
 
+                
+                if repeat_frame_indices:
+                    logging.info("Repeating frame indices")
+                    # dont think we ever want this it can be handled elsewhere
+                    if len(frames) < segment_width:
+                        extra_samples = rng.choice(frames, segment_width - len(frames))
+
+                        frames = list(frames)
+                        frames.extend(extra_samples)
+                frames.sort()
                 relative_frames = frames - start_frame
+
                 mass_slice = mass_history[relative_frames]
                 segment_mass = np.sum(mass_slice)
                 segment_avg_mass = segment_mass / len(mass_slice)
@@ -1600,21 +1612,9 @@ def get_segments(
                     else:
                         filtered_stats["segment_mass"] += 1
                         continue
-
                 region_slice = regions[relative_frames]
-
                 for z, f in enumerate(frames):
                     assert region_slice[z].frame_number == f
-
-                if repeat_frame_indices:
-                    logging.info("Repeating frame indices")
-                    # dont think we ever want this it can be handled elsewhere
-                    if len(frames) < segment_width:
-                        extra_samples = rng.choice(frames, segment_width - len(frames))
-
-                        frames = list(frames)
-                        frames.extend(extra_samples)
-                frames.sort()
                 segment = SegmentHeader(
                     clip_id,
                     track_id,

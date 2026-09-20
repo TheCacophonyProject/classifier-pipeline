@@ -98,34 +98,6 @@ class KerasModel(Interpreter):
         self.remapped_labels = None
         self.orig_labels = None
 
-    def load_training_meta(self, base_dir):
-        from ml_tools.thermalwriter import MeanData
-
-        file = f"{base_dir}/training-meta.json"
-        logging.info("loading meta %s", file)
-        with open(file, "r") as f:
-            meta = json.load(f)
-        self.labels = meta.get("labels", [])
-        self.data_type = meta.get("type", "thermal")
-        self.dataset_counts = meta.get("counts")
-        self.ds_by_label = meta.get("by_label", True)
-        self.excluded_labels = meta.get("excluded_labels")
-        self.remapped_labels = meta.get("remapped_labels")
-        self.params.set_use_segments(
-            meta.get("config", {}).get("build", {}).get("use_segments", True)
-        )
-        pads = meta.get("background_average")
-        if pads is None:
-            self.pads = MeanData()
-        else:
-            self.pads = MeanData(
-                thermal=pads["thermal"],
-                filtered=pads["filtered"],
-                thermal_norm=pads["thermal_norm"],
-                frames_used=1,
-            )
-            self.pads = self.pads * 255
-        logging.info("Pads are %s", self.pads)
 
     def shape(self):
         if self.model is None:
@@ -393,6 +365,7 @@ class KerasModel(Interpreter):
         dropout=None,
         multi_input=False,
         qat = False,
+        enlarge = True,
     ):
         RNN_MODEL = False
         if RNN_MODEL:
@@ -403,7 +376,9 @@ class KerasModel(Interpreter):
 
 
         # width = self.params.frame_size
-        width = self.params.output_dim[0] * 2
+        width = self.params.output_dim[0]
+        if enlarge:
+            width*= 2
         input_image = tf.keras.Input(
             shape=(width, width, len(self.params.channels)), name="input_image"
         )
@@ -507,9 +482,12 @@ class KerasModel(Interpreter):
             activation = "sigmoid" if qat else None
         logging.info("Using %s activation", activation)
         final_dense = tf.keras.layers.Dense(
-            len(self.labels), activation=activation, name="prediction"
+            len(self.labels), activation=None, name="prediction"
         )
         preds = final_dense(x)
+        if activation is not None:
+            preds = tf.keras.layers.Activation(activation, name="prediction_activation")(x)
+
         self.model = tf.keras.models.Model(input_image, outputs=preds)
 
         base_model.trainable = self.params.base_training
@@ -606,7 +584,8 @@ class KerasModel(Interpreter):
         rebalance=False,
         fine_tune=None,
         multi_input=False,
-        qat = False
+        qat = False,
+        enlarge = True
     ):
         # create a save point
         if run_name is None:
@@ -634,7 +613,7 @@ class KerasModel(Interpreter):
         else:
             self.model.save(str(self.checkpoint_folder / run_name / f"{run_name}.keras"))
         self.save_metadata(
-            run_name, history, test_results, rebalance, fine_tune, multi_input=multi_input
+            run_name, history, test_results, rebalance, fine_tune, multi_input=multi_input,enlarge=enlarge
         )
 
     def save_metadata(
@@ -645,6 +624,7 @@ class KerasModel(Interpreter):
         rebalance=False,
         fine_tune=None,
         multi_input=False,
+        enlarge = True,
     ):
         #  save metadata
         if run_name is None:
@@ -652,6 +632,8 @@ class KerasModel(Interpreter):
         model_stats = {}
         model_stats["name"] = self.params.model_name
         model_stats["labels"] = self.labels
+        model_stats["enlarge"] = True
+
         model_stats["multi_input"] = multi_input
 
         model_stats["hyperparams"] = self.params
@@ -791,6 +773,7 @@ class KerasModel(Interpreter):
         phase2=False,
         use_jitter=False,
         qat=False,
+        dont_enlarge=False,
     ):
         logging.info(
             "%s Training model for %s epochs with weights %s with multi input as: %s phase2 %s use_jitter %s qat %s",
@@ -840,6 +823,8 @@ class KerasModel(Interpreter):
                 dropout=self.params.dropout,
                 multi_input=multi_input,
                 qat = qat,
+                enlarge = not dont_enlarge,
+
             )
 
             if weights is not None:
@@ -887,6 +872,7 @@ class KerasModel(Interpreter):
             use_jitter=use_jitter or None,
             epoch_size=100 if test else None,
             current_epoch=CURRENT_EPOCH,
+            enlarge = not dont_enlarge,
         )
 
         steps = epoch_size // self.params.batch_size
@@ -911,6 +897,8 @@ class KerasModel(Interpreter):
             tf_mappings=tf_mappings,
             multi_input=multi_input,
             epoch_size=100 if test else None,
+            enlarge = not dont_enlarge,
+
         )
         logging.info(
             "Training on %s  with class weights %s",
@@ -921,7 +909,7 @@ class KerasModel(Interpreter):
 
 
 
-        self.save(run_name, fine_tune=fine_tune, rebalance=rebalance)
+        self.save(run_name, fine_tune=fine_tune, rebalance=rebalance,            enlarge = not dont_enlarge)
 
         checkpoints = self.checkpoints(
             run_name,
@@ -983,6 +971,9 @@ class KerasModel(Interpreter):
                 quantize_registry = tfmot.quantization.keras.default_8bit.Default8BitQuantizeRegistry()
 
                 def annotate_layer(layer):
+                    if layer.name == 'prediction_activation':
+                        logging.info("Skipping final activation %s", layer)
+                        return layer
                     if not quantize_registry.supports(layer):
                         return layer
                     return tfmot.quantization.keras.quantize_annotate_layer(layer)
@@ -1029,6 +1020,8 @@ class KerasModel(Interpreter):
                 tf_mappings=tf_mappings,
                 multi_input=multi_input,
                 epoch_size=100 if test else None,
+                enlarge = not dont_enlarge,
+
             )
             if self.test:
                 test_accuracy = self.model.evaluate(self.test)
@@ -1040,7 +1033,9 @@ class KerasModel(Interpreter):
             rebalance=rebalance,
             fine_tune=fine_tune,
             multi_input=multi_input,
-            qat = qat
+            qat = qat,
+            enlarge = not dont_enlarge,
+
             
         )
     def compile_training_model(self,opt,qat = False):

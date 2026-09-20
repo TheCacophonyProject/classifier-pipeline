@@ -51,6 +51,7 @@ def train_model(
     phase2=False,
     use_jitter=False,
     qat=False,
+    dont_enlarge=False,
 ):
     init_logging()
     if qat:
@@ -96,6 +97,7 @@ def train_model(
             phase2=phase2,
             use_jitter=use_jitter,
             qat=qat,
+            dont_enlarge=dont_enlarge,
         )
     except KeyboardInterrupt:
         pass

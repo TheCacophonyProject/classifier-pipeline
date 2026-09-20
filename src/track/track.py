@@ -477,57 +477,6 @@ class Track:
     def match(self, regions):
         return self.tracker.match(regions, self)
 
-    def get_segments(
-        self,
-        # frame_temp_median,
-        segment_width,
-        segment_frame_spacing=9,
-        repeats=1,
-        min_frames=1,
-        segment_types=None,
-        from_last=None,
-        available_frames=None,
-        max_segments=None,
-        ffc_frames=None,
-        dont_filter=False,
-        min_segments=1,
-        seed=None,
-        ceil_num_windows = True,
-    ):
-        from ml_tools.datasetstructures import get_segments, SegmentHeader
-
-        if from_last is not None:
-            if from_last == 0:
-                return []
-            # available_frames may be wider than from_last - the extra frames
-            # give get_segments room to filter out blank/invalid frames while
-            # still returning from_last valid ones
-            regions = np.array(self.bounds_history[-available_frames:])
-            start_frame = regions[0].frame_number
-        else:
-            start_frame = self.start_frame
-            regions = np.array(self.bounds_history)
-
-        segments, _ = get_segments(
-            self.clip_id,
-            self._id,
-            start_frame,
-            segment_frame_spacing=segment_frame_spacing,
-            segment_width=segment_width,
-            regions=regions,
-            ffc_frames=ffc_frames,
-            repeats=repeats,
-            min_frames=min_frames,
-            segment_types=segment_types,
-            from_last=from_last,
-            max_segments=max_segments,
-            dont_filter=dont_filter,
-            min_segments=min_segments,
-            seed=seed,
-            ceil_num_windows = ceil_num_windows,
-        )
-
-        return segments
 
     @classmethod
     def from_region(cls, clip, region, tracker_version=None, tracking_config=None):

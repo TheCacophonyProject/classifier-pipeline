@@ -270,7 +270,7 @@ def load_dataset(filenames, remap_lookup, labels, args):
             current_epoch=args.get("current_epoch"),
             use_velocity=USE_VELOCITY,
             multi_input=args.get("multi_input", False),
-            enlarge = args.get("enlarge",True)
+            enlarge = args.get("enlarge",True),
         ),
         num_parallel_calls=AUTOTUNE,
         deterministic=deterministic,
@@ -557,7 +557,7 @@ def read_tfrecord(
     enlarge = True,
 ):
     logging.info(
-        "Read tf record with image %s lbls %s aug  %s  prepr %s only features %s one hot %s include fetures %s num frames %s mosaic_size %s mosaic_enalrged %s padding %s",
+        "Read tf record with image %s lbls %s aug  %s  prepr %s only features %s one hot %s include fetures %s num frames %s mosaic_size %s mosaic_enalrged %s padding %s enlarge %s",
         image_size,
         num_labels,
         augment,
@@ -569,6 +569,7 @@ def read_tfrecord(
         mosaic_size,
         mosaic_larger_size,
         padding,
+        enlarge,
     )
     logging.info("Channels are %s", channels)
     load_images = not only_features

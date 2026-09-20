@@ -19,7 +19,6 @@ from ml_tools.datasetstructures import Camera
 from ml_tools.tfwriter import create_tf_records
 from ml_tools.thermalwriter import MeanData
 from ml_tools.tools import CustomJSONEncoder
-import attrs
 import numpy as np
 
 from pathlib import Path
@@ -558,6 +557,7 @@ def validate_datasets(datasets, test_bins, after_date):
 
     for i, dataset in enumerate(datasets[:2]):
         bins = set([sample.bin_id for sample in dataset.samples_by_id.values()])
+        clips = set([sample.clip_id for sample in dataset.samples_by_id.values()])
 
         if test_bins is not None and dataset.name != "test":
             assert (
@@ -579,12 +579,20 @@ def validate_datasets(datasets, test_bins, after_date):
             #     )
             #     dont_check = dont_check_other
             other_bins = set([sample.bin_id for sample in other.samples_by_id.values()])
+            other_clips = set(
+                [sample.clip_id for sample in other.samples_by_id.values()]
+            )
+
             if dont_check is not None:
                 other_bins = other_bins - dont_check
 
             assert (
                 len(bins.intersection(set(other_bins))) == 0
             ), "bins should only be in one set"
+
+            assert (
+                len(clips.intersection(set(other_clips))) == 0
+            ), "clips should only be in one set"
 
 
 land_birds = [
@@ -953,7 +961,7 @@ def main():
         "type": config.train.type,
         "counts": dataset_counts,
         "by_label": False,
-        "config": attrs.asdict(config),
+        "config": config.as_dict(),
         "segment_types": master_dataset.segment_types,
     }
     meta_data["dataset_backgrounds"] = {}

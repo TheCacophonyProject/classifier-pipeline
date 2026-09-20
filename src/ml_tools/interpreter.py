@@ -15,7 +15,17 @@ class Interpreter(ABC):
         self.run_over_network = run_over_network
         self.port = 8123
         self.id = None
-        self.seed = None
+        self._seed = None
+        self.rng = np.random.default_rng(seed=self.seed)
+
+    @property
+    def seed(self):
+        return self._seed
+
+    @seed.setter
+    def seed(self, value):
+        self._seed = value
+        self.rng = np.random.default_rng(seed=value)
 
     def load_json(self, filename):
         """Loads model and parameters from file."""
@@ -490,7 +500,7 @@ class Interpreter(ABC):
                 max_segments=max_predictions,
                 dont_filter=dont_filter,
                 min_segments=args.get("min_segments"),
-                seed=self.seed,
+                rng=self.rng,
                 # min_frames = args.get("min_frames")
             )
             return segments
@@ -627,6 +637,8 @@ class Interpreter(ABC):
 
                 if region.frame_number in track_data:
                     cropped_frame = track_data[region.frame_number]
+                    if cropped_frame is None:
+                        continue
                 else:
                     frame = clip.get_frame(region.frame_number)
                     result = preprocess_frame_v2(
@@ -641,8 +653,8 @@ class Interpreter(ABC):
                         track_data[region.frame_number] = None
                         continue
                     cropped_frame, _, _ = result
-                track_data[region.frame_number] = cropped_frame
-                segment_data.append(cropped_frame.copy())
+                    track_data[region.frame_number] = cropped_frame
+                segment_data.append(cropped_frame)
             input_image = preprocess_movement(
                 segment_data,
                 self.params.square_width,
@@ -850,6 +862,8 @@ class LiteInterpreter(Interpreter):
 
         self.input = self.interpreter.get_input_details()[0]  # Model has single input.
         self.preprocess_fn = self.get_preprocess_fn()
+        self.in_idx = self.input["index"]
+        self.out_idx = self.output["index"]
         # inc3_preprocess
 
     def predict(self, input_x):
@@ -858,17 +872,10 @@ class LiteInterpreter(Interpreter):
         input_x = np.float32(input_x)
         preds = []
         # only works on input of 1
-        print(input_x.shape)
         for data in input_x:
-            self.interpreter.set_tensor(self.input["index"], data[np.newaxis, :])
+            self.interpreter.set_tensor(self.in_idx, data[np.newaxis, :])
             self.interpreter.invoke()
-            pred = self.interpreter.get_tensor(self.output["index"])
-
-            # logging.error("Just for debugg delete me")
-            # DELET ME
-            import tensorflow as tf
-            pred[0] = tf.math.sigmoid(pred[0]).numpy()
-
+            pred = self.interpreter.get_tensor(self.out_idx)
             preds.append(pred[0])
         return preds
 
