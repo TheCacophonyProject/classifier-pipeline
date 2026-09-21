@@ -39,7 +39,7 @@ class DummyRecorder(Recorder):
         self.frames += 1
 
     def start_recording(
-        self, background_frame, preview_frames, temp_thresh, frame_time, test=False
+        self, background_frame, preview_frames, temp_thresh, frame_time, motion_config,test=False
     ):
         if self.recording:
             return False

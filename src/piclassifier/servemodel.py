@@ -18,6 +18,7 @@ def is_ready():
 
 @app.route("/predict", methods=["POST"])
 def main():
+    start = time.time()
     data = request.data
     input_data = np.frombuffer(data, dtype=np.float32)
     input_data = input_data.reshape(input_shape)
@@ -30,6 +31,7 @@ def main():
     else:
         predictions = interpreter.predict(input_data)
     response = Response(predictions.tobytes(), mimetype="application/octet-stream")
+    logging.info("Time to predict is %s",time.time()-start)
     return response
 
 
@@ -96,7 +98,7 @@ def main(warmup=True,model_file = None):
         startup_classifier()
     # make sure only 1 thread at a time as classifier is not thread safe
     logging.info("Serve model ready in %s",time.time()-start)
-    serve(app, port=network_model.port, threads=1)
+    serve(app, port=interpreter.port, threads=1)
 
 
 if __name__ == "__main__":

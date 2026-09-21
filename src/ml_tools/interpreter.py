@@ -362,6 +362,7 @@ class Interpreter(ABC):
             return None
         try:
             prediction = self.predict(preprocessed)
+
         except:
             logging.error("Could not predict", exc_info=True)
             return None
@@ -646,7 +647,7 @@ class Interpreter(ABC):
                         self.params.frame_size,
                         region,
                         clip.crop_rectangle,
-                        enlarge=True,
+                        enlarge=self.enlarge,
                         new_max=255.0,
                     )
                     if result is None:
@@ -658,7 +659,7 @@ class Interpreter(ABC):
             input_image = preprocess_movement(
                 segment_data,
                 self.params.square_width,
-                self.params.frame_size * 2,
+                self.params.frame_size * 2 if self.enlarge else self.params.frame_size,
                 self.params.channels,
                 self.preprocess_fn,
                 sample=f"Clip-{clip.get_id()}-track-{track.get_id()}",

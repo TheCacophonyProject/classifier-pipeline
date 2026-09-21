@@ -30,6 +30,27 @@ def apply_fair_clahe(resized_crop, resize_amount):
     )
 
 
+def apply_fair_clahe_cv2(resized_crop, resize_amount, clip_limit=2.0):
+    # cv2 CLAHE only accepts 8U/16U, and its clipLimit is an absolute
+    # per-bin pixel count (not skimage's 0-1 normalized fraction), so
+    # clip_limit needs re-tuning by eye against the skimage output rather
+    # than being derived from the 0.01 value above.
+    base_kernel = 8
+    calculated_kernel = int(base_kernel * resize_amount)
+    kernel_dim = max(2, calculated_kernel)
+
+    h, w = resized_crop.shape[:2]
+    tiles_x = max(1, round(w / kernel_dim))
+    tiles_y = max(1, round(h / kernel_dim))
+
+    resized_crop = (resized_crop * 255).astype(np.uint8)
+
+    clahe = cv2.createCLAHE(clipLimit=clip_limit, tileGridSize=(tiles_x, tiles_y))
+    equalized = clahe.apply(resized_crop)
+
+    return (equalized / np.float32(255)).astype(np.float32)
+
+
 def resize_and_pad(
     frame,
     new_dim,

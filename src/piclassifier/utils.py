@@ -5,10 +5,11 @@ import time
 def preview_socket(headers, frame_queue):
     import yaml
     import socket
+    import dataclasses
     from .signals import STOP_SIGNAL
 
     # convert casing
-    python_dic = headers.__dict__
+    python_dic = dataclasses.asdict(headers)
     go_dic = {}
     for k, v in python_dic.items():
         new_key = f"{k[0].upper()}{k[1:]}"

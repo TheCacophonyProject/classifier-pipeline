@@ -486,7 +486,7 @@ class KerasModel(Interpreter):
         )
         preds = final_dense(x)
         if activation is not None:
-            preds = tf.keras.layers.Activation(activation, name="prediction_activation")(x)
+            preds = tf.keras.layers.Activation(activation, name="prediction_activation")(preds)
 
         self.model = tf.keras.models.Model(input_image, outputs=preds)
 
@@ -1042,7 +1042,7 @@ class KerasModel(Interpreter):
         self.model.compile(
             optimizer=opt,
             loss=loss(self.params,from_logits = not qat),
-            metrics={"quant_prediction" if qat else "prediction" : metrics(self.params.multi_label,from_logits = not qat)},
+            metrics={"prediction_activation" if qat else "prediction" : metrics(self.params.multi_label,from_logits = not qat)},
         )
     def phase2(self,epochs):
         logging.info(

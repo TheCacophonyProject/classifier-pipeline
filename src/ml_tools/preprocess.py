@@ -62,7 +62,7 @@ def preprocess_frame_v2(
     new_max=1,
 ):
     import math
-    from ml_tools.imageprocessing import adapt_hist, normalize, apply_fair_clahe
+    from ml_tools.imageprocessing import normalize,apply_fair_clahe_cv2
     from ml_tools.thermalwriter import THERMAL_MAX_KV, THERMAL_MIN_KV, MeanData
     from ml_tools.frame import repeat_border
 
@@ -116,7 +116,9 @@ def preprocess_frame_v2(
     cropped_frame = frame.crop_and_copy_as_float(content_region, make_copy=True)
     cropped_frame.thermal_norm = cropped_frame.thermal.copy()
     cropped_frame.thermal_norm -= median
-    if np.median(cropped_frame.thermal_norm) >= 0:
+
+    # just using mean because its faster
+    if np.mean(cropped_frame.thermal_norm) >= 0:
         np.clip(
             cropped_frame.thermal_norm,
             a_min=0,
@@ -130,7 +132,7 @@ def preprocess_frame_v2(
         cropped_frame.thermal_norm= None
         return None
 
-    if np.median(cropped_frame.filtered) >= 0:
+    if np.mean(cropped_frame.filtered) >= 0:
         np.clip(
             cropped_frame.filtered,
             a_min=0,
@@ -163,6 +165,7 @@ def preprocess_frame_v2(
     needs_resize = (
         cropped_frame.region.width > out_dim or cropped_frame.region.height > out_dim
     )
+
     if needs_resize:
         # resize the real content first, then pad - padding
         # the full (new_height, new_width) canvas before
@@ -234,13 +237,12 @@ def preprocess_frame_v2(
         needs_pad = (
             pad_top > 0 or pad_left > 0 or scaled_w < new_width or scaled_h < new_height
         )
-
     # CLAHE after resize
-    cropped_frame.filtered = apply_fair_clahe(
+    cropped_frame.filtered = apply_fair_clahe_cv2(
         cropped_frame.filtered, resize_times if resize_times else 1
     )
 
-    cropped_frame.thermal_norm = apply_fair_clahe(
+    cropped_frame.thermal_norm = apply_fair_clahe_cv2(
         cropped_frame.thermal_norm, resize_times if resize_times else 1
     )
 
@@ -302,6 +304,7 @@ def preprocess_frame_v2(
         cropped_frame.thermal_norm *= new_max
         cropped_frame.filtered *= new_max
     cropped_frame.preprocessed = True
+
     return cropped_frame, mean_value, data_region
 
 
