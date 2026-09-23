@@ -233,7 +233,7 @@ class Previewer:
         for track in clip.tracks:
             guesses = []
             for model_pred in predictions.values():
-                guesses.extend(model_pred.guesses_for(track.get_id()))
+                guesses.extend(model_pred.guesses_for(track.id))
             track_description = "\n".join(guesses)
             track_description.strip()
             self.track_descs[track] = track_description
@@ -265,7 +265,7 @@ class Previewer:
                 if track_predictions:
                     # need to handle mulitple models better here
                     model_pred = list(track_predictions.values())[1]
-                    prediction = model_pred.prediction_for(track.get_id())
+                    prediction = model_pred.prediction_for(track.id)
                 add_track(
                     draw,
                     track,
@@ -547,7 +547,7 @@ def add_last_frame_tracking(
                 add_text_to_track(
                     draw,
                     region,
-                    str(track.get_id()),
+                    str(track.id),
                     footer_text,
                     screen_bounds,
                     v_offset,
@@ -575,7 +575,7 @@ def add_debug_text(
 ):
     font = get_font()
     if text is None:
-        text = "id {}".format(track.get_id())
+        text = "id {}".format(track.id)
 
         text += "mass {} var {} vel ({},{}) blank? {}".format(
             region.mass,

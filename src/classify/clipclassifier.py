@@ -271,7 +271,7 @@ class ClipClassifier:
             if reuse_frames:
                 tracks = meta_data.get("tracks")
                 meta_track = next(
-                    (x for x in tracks if x["id"] == track.get_id()), None
+                    (x for x in tracks if x["id"] == track.id), None
                 )
                 if meta_track is not None:
                     prediction_tag = next(
@@ -291,11 +291,11 @@ class ClipClassifier:
                 clip, track, segment_frames=segment_frames, min_segments=1
             )
             if prediction is not None:
-                predictions.prediction_per_track[track.get_id()] = prediction
+                predictions.prediction_per_track[track.id] = prediction
                 description = prediction.description()
                 logging.info(
                     "{} - [{}/{}] prediction: {}".format(
-                        track.get_id(), i + 1, len(clip.tracks), description
+                        track.id, i + 1, len(clip.tracks), description
                     )
                 )
         if self.config.verbose:
@@ -325,7 +325,7 @@ class ClipClassifier:
 
         tracks = meta_data.get("tracks")
         for track in clip.tracks:
-            meta_track = next((x for x in tracks if x["id"] == track.get_id()), None)
+            meta_track = next((x for x in tracks if x["id"] == track.id), None)
             if meta_track is None:
                 logging.error(
                     "Got prediction for track which doesn't exist in metadata"
@@ -333,7 +333,7 @@ class ClipClassifier:
                 continue
             prediction_info = []
             for model_id, predictions in predictions_per_model.items():
-                prediction = predictions.prediction_for(track.get_id())
+                prediction = predictions.prediction_for(track.id)
                 if prediction is None:
                     continue
                 prediction_meta = prediction.get_metadata(
@@ -483,7 +483,7 @@ class ClipClassifier:
             if len(pred_frames) == 0:
                 continue
             track_length += len(track)
-            track_data[track.get_id()] = {
+            track_data[track.id] = {
                 "pred_frames": pred_frames,
                 "limits": None,
                 "frames": {},
@@ -494,7 +494,7 @@ class ClipClassifier:
             for seg in pred_frames:
                 for r in seg.regions:
                     frame_data = track_samples.setdefault(r.frame_number, {})
-                    frame_data[track.get_id()] = r
+                    frame_data[track.id] = r
                     # frame_samples.append(r)
         reader = CptvReader(str(clip.source_file))
         current_frame_num = 0
@@ -624,7 +624,7 @@ class ClipClassifier:
                     classifier.params.frame_size,
                     classifier.params.channels,
                     classifier.preprocess_fn,
-                    sample=f"{clip.get_id()}-{track_id}",
+                    sample=f"{clip.id}-{track_id}",
                 )
                 preprocessed.append(frames)
                 masses.append(segment.mass)

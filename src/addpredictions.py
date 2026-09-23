@@ -161,7 +161,7 @@ def load_clip_data(cptv_file):
 
                 data.append(
                     (
-                        track.get_id(),
+                        track.id,
                         track.label,
                         frames,
                         preprocessed,

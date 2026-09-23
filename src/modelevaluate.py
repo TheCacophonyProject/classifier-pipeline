@@ -622,7 +622,7 @@ def load_clip_data(cptv_file):
                     num_preds = len(preprocessed["input_image"])
             data.append(
                 [
-                    f"{track.clip_id}-{track.get_id()}",
+                    f"{track.clip_id}-{track.id}",
                     track.label,
                     frames,
                     num_preds,

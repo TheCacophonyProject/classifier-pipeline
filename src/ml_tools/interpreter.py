@@ -408,10 +408,10 @@ class Interpreter(ABC):
             min_segments=min_segments,
         )
         if output is None:
-            logging.info("Skipping track %s", track.get_id())
+            logging.info("Skipping track %s", track.id)
             return None
         track_pred = self.track_prediction_from_raw(
-            track.get_id(), prediction_frames, output, masses
+            track.id, prediction_frames, output, masses
         )
         track_pred.classify_time = time.time() - start
 
@@ -487,7 +487,7 @@ class Interpreter(ABC):
 
             segments, _ = get_segments(
                 track.clip_id,
-                track._id,
+                track.id,
                 start_frame,
                 segment_frame_spacing=9,
                 segment_width=self.params.square_width**2,
@@ -536,13 +536,13 @@ class Interpreter(ABC):
             if frame is None:
                 logging.error(
                     "Clasifying clip %s track %s can't get frame %s",
-                    clip.get_id(),
-                    track.get_id(),
+                    clip.id,
+                    track.id,
                     region.frame_number,
                 )
                 raise Exception(
                     "Clasifying clip {} track {} can't get frame {}".format(
-                        clip.get_id(), track.get_id(), region.frame_number
+                        clip.id, track.id, region.frame_number
                     )
                 )
             logging.debug(
@@ -660,7 +660,7 @@ class Interpreter(ABC):
                 self.params.frame_size * 2 if self.enlarge else self.params.frame_size,
                 self.params.channels,
                 self.preprocess_fn,
-                sample=f"Clip-{clip.get_id()}-track-{track.get_id()}",
+                sample=f"Clip-{clip.id}-track-{track.id}",
                 pad_with=0,  # dont repeat frames
             )
             if input_image is None:
@@ -697,13 +697,13 @@ class Interpreter(ABC):
                     if frame is None:
                         logging.error(
                             "Clasifying clip %s track %s can't get frame %s",
-                            clip.get_id(),
-                            track.get_id(),
+                            clip.id,
+                            track.id,
                             region.frame_number,
                         )
                         raise Exception(
                             "Clasifying clip {} track {} can't get frame {}".format(
-                                clip.get_id(), track.get_id(), region.frame_number
+                                clip.id, track.id, region.frame_number
                             )
                         )
                     frame_temp_medians[region.frame_number] = np.median(frame.thermal)
@@ -734,13 +734,13 @@ class Interpreter(ABC):
             if frame is None:
                 logging.error(
                     "Clasifying clip %s track %s can't get frame %s",
-                    clip.get_id(),
-                    track.get_id(),
+                    clip.id,
+                    track.id,
                     region.frame_number,
                 )
                 raise Exception(
                     "Clasifying clip {} track {} can't get frame {}".format(
-                        clip.get_id(), track.get_id(), region.frame_number
+                        clip.id, track.id, region.frame_number
                     )
                 )
             cropped_frame = preprocess_frame(
@@ -778,7 +778,7 @@ class Interpreter(ABC):
                 self.params.frame_size,
                 self.params.channels,
                 self.preprocess_fn,
-                sample=f"Clip-{clip.get_id()}-track-{track.get_id()}",
+                sample=f"Clip-{clip.id}-track-{track.id}",
             )
             if frames is None:
                 logging.warn("No frames to predict on")

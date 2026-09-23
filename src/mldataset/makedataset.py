@@ -139,9 +139,9 @@ class ClipLoader:
 
         with h5py.File(out_file, "w") as f:
             try:
-                logging.info("creating clip %s", clip.get_id())
+                logging.info("creating clip %s", clip.id)
 
-                clip_id = str(clip.get_id())
+                clip_id = str(clip.id)
 
                 clip_node = f
                 triggered_temp_thresh = None

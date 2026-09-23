@@ -609,7 +609,7 @@ class PiClassifier(Processor):
                 start = time.time()
                 if self.classifier is not None:
                     full_model = self.predictions[self.classifier.id].prediction_for(
-                        track.get_id()
+                        track.id
                     )
                     if full_model is not None and full_model.num_frames_classified > 0:
                         logging.debug(
@@ -718,13 +718,13 @@ class PiClassifier(Processor):
 
         for i, track in enumerate(active_tracks):
             if self.tracking_events:
-                track_prediction, model_id = self.get_best_prediction(track.get_id())
+                track_prediction, model_id = self.get_best_prediction(track.id)
                 if track_prediction is None:
                     continue
                 predicted_tags = track_prediction.predicted_tags(group_by_parents = False) 
                 if  "false-positive" not in predicted_tags:
                     track_prediction.tracking = True
-                    self.monitored_tracks[track.get_id()] = track
+                    self.monitored_tracks[track.id] = track
                 elif track_prediction.tracking:
                     # tracking ended as is false-positive
                     track_prediction.tracking = False
@@ -742,15 +742,15 @@ class PiClassifier(Processor):
                         model_id,
                         track.received_at,
                     )
-                    if track.get_id() in self.monitored_tracks:
-                        del self.monitored_tracks[track.get_id()]
+                    if track.id in self.monitored_tracks:
+                        del self.monitored_tracks[track.id]
 
         if self.bluetooth_beacons:
             if new_prediction:
                 active_predictions = []
                 for track in self.clip.active_tracks:
                     track_prediction, model_id = self.get_best_prediction(
-                        track.get_id()
+                        track.id
                     )
                     if track_prediction:
                         active_predictions.append(track_prediction)
@@ -763,12 +763,12 @@ class PiClassifier(Processor):
         least_fp_track = None
         for track in active_tracks:
             if self.fp_model is not None:
-                pred, model_id = self.get_best_prediction(track.get_id())
+                pred, model_id = self.get_best_prediction(track.id)
                 predicted_tags = pred.predicted_tags(  group_by_parents=False)
 
                 logging.debug(
                     "track %s -%s - %s",
-                    track.get_id(),
+                    track.id,
                     predicted_tags,
                     pred.normalized_best_score(),
                 )
@@ -789,7 +789,7 @@ class PiClassifier(Processor):
             pred = None
             if self.predictions is not None:
                 pred = self.predictions[self.classifier.id].prediction_for(
-                    track.get_id()
+                    track.id
                 )
             if pred is not None:
                 if len(pred.predictions) < 2:
@@ -829,7 +829,7 @@ class PiClassifier(Processor):
         return active_tracks
 
     def animal_ranking(self, track):
-        track_pred, model_id = self.get_best_prediction(track.get_id())
+        track_pred, model_id = self.get_best_prediction(track.id)
 
         if track_pred is None or track_pred.class_best_score is None:
             return 0
@@ -848,13 +848,13 @@ class PiClassifier(Processor):
             confidence = None
             tags = None
             if predictions is not None:
-                pred, model_id = self.get_best_prediction(track.get_id())
+                pred, model_id = self.get_best_prediction(track.id)
                 if pred is not None and pred.max_score is not None:
                     confidence = round(100 * pred.max_score)
                     tags = pred.predicted_tags( group_by_parents=False)
             regions = track.bounds_history
             if track.thumb_info is None:
-                track.thumb_info = ThumbInfo(track.get_id())
+                track.thumb_info = ThumbInfo(track.id)
             track.thumb_info.predicted_confidence = confidence
             track.thumb_info.predicted_tags = tags
             track.thumb_info.is_fp = tags is not None and "false-positive" in tags
@@ -943,7 +943,7 @@ class PiClassifier(Processor):
                         iter(
                             track
                             for track in self.prev_clip.tracks
-                            if track.get_id() == track_id
+                            if track.id == track_id
                         ),
                         None,
                     )
@@ -971,7 +971,7 @@ class PiClassifier(Processor):
         with self.clip.frame_buffer.frame_lock:
             if track_id is not None:
                 tracks = clip.tracks
-                tracks = [track for track in tracks if track.get_id() == track_id]
+                tracks = [track for track in tracks if track.id == track_id]
                 if len(tracks) == 0:
                     logging.info("Couldn't find track %s", track_id)
                     return None
@@ -1143,7 +1143,7 @@ class PiClassifier(Processor):
                         "tracking by biggest mass %s",
                         active_tracks[0],
                     )
-                    self.monitored_tracks[active_tracks[0].get_id()] = active_tracks[0]
+                    self.monitored_tracks[active_tracks[0].id] = active_tracks[0]
 
             if len(self.monitored_tracks) > 0:
                 monitored_tracks = list(self.monitored_tracks.values())
@@ -1157,7 +1157,7 @@ class PiClassifier(Processor):
                     last_prediction = 0
                     if self.classify:
                         track_prediction, model_id = self.get_best_prediction(
-                            monitored_track.get_id()
+                            monitored_track.id
                         )
                         all_scores = track_prediction.get_normalized_score()
                         last_prediction = track_prediction.last_frame_classified
@@ -1174,7 +1174,7 @@ class PiClassifier(Processor):
                     )
 
                     if not tracking:
-                        del self.monitored_tracks[monitored_track.get_id()]
+                        del self.monitored_tracks[monitored_track.id]
                         if self.classify:
                             track_prediction.tracking = False
         elif self.clip is not None:
@@ -1220,7 +1220,7 @@ class PiClassifier(Processor):
 
         previewer = Previewer(self.config, self.preview_type)
         previewer.export_clip_preview(
-            os.path.join(self.output_dir, self.clip.get_id() + ".mp4"),
+            os.path.join(self.output_dir, str(self.clip.id) + ".mp4"),
             self.clip,
             self.predictions if self.classify else None,
         )
@@ -1257,7 +1257,7 @@ class PiClassifier(Processor):
                         if prediction.max_score:
                             logging.info(
                                 "Clip {} {} {} ".format(
-                                    self.clip.get_id(),
+                                    self.clip.id,
                                     t_id,
                                     prediction.description(),
                                 )
@@ -1293,7 +1293,7 @@ def on_track_trapped(track):
 
     tag = None
     if predictions is not None:
-        pred = predictions.prediction_for(track.get_id())
+        pred = predictions.prediction_for(track.id)
         if pred is not None:
             tag = pred.predicted_tag()
             track.trap_tag = tag
@@ -1318,12 +1318,12 @@ def on_recording_stopping(
         filtered_tracks = track_extractor.apply_track_filtering(clip)
         if tracking_events:
             for track in filtered_tracks:
-                service.track_filtered(clip._id, track.get_id())
+                service.track_filtered(clip._id, track.id)
         for track in clip.tracks:
             if track.thumb_info is not None:
                 try:
                     np.save(
-                        f"{str(output_dir)}/thumbnails/{clip.get_id()}-{track.get_id()}.npy",
+                        f"{str(output_dir)}/thumbnails/{clip.id}-{track.id}.npy",
                         track.thumb_info.thumb,
                     )
                 except:
@@ -1334,7 +1334,7 @@ def on_recording_stopping(
             # remove track prediction
             for track in clip.tracks:
                 for model_pred in predictions.values():
-                    pred = model_pred.prediction_for(track.get_id())
+                    pred = model_pred.prediction_for(track.id)
                     if pred is not None:
                         pred.normalize_score()
             #             valid_preds[model_pred.model.id] = pred

@@ -133,7 +133,7 @@ class ForestModel(Interpreter):
         self, clip, track, last_x_frames=None, segment_frames=None, min_segments=None
     ):
         track_prediction = TrackPrediction(
-            track.get_id(),
+            track.id,
             self.labels,
             smooth_preds=self.params.smooth_predictions,
             parent_mappings=self.parent_mappings,

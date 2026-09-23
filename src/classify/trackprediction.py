@@ -24,9 +24,9 @@ class Predictions:
 
     def get_or_create_prediction(self, track, keep_all=True, smooth_preds=False):
         prediction = self.prediction_per_track.setdefault(
-            track.get_id(),
+            track.id,
             TrackPrediction(
-                track.get_id(),
+                track.id,
                 self.labels,
                 keep_all=keep_all,
                 start_frame=track.start_frame,

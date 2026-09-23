@@ -138,7 +138,7 @@ class ClipTracker(ABC):
         used_regions = set()
         unmatched_regions = set(regions)
         active = list(clip.active_tracks)
-        active.sort(key=lambda x: x.get_id())
+        active.sort(key=lambda x: x.id)
         for track in active:
             scores.extend(track.match(regions))
 
@@ -226,7 +226,7 @@ class ClipTracker(ABC):
             clip._add_active_track(track)
             self.print_if_verbose(
                 "Creating a new track {} with region {} mass{} area {} frame {}".format(
-                    track.get_id(),
+                    track.id,
                     region,
                     track.last_bound.mass,
                     track.last_bound.area,
@@ -244,7 +244,7 @@ class ClipTracker(ABC):
                 clip.active_tracks.add(track)
                 logging.debug(
                     "frame {} adding a blank frame to {} ".format(
-                        clip.current_frame, track.get_id()
+                        clip.current_frame, track.id
                     )
                 )
             else:
@@ -383,7 +383,7 @@ class ClipTracker(ABC):
                 start_s, end_s = clip.start_and_end_in_secs(track)
                 logging.info(
                     " - track %s duration: %.1fsec, number of frames:%s, stats %s",
-                    track.get_id(),
+                    track.id,
                     end_s - start_s,
                     len(track),
                     track.stats,
@@ -422,7 +422,7 @@ class ClipTracker(ABC):
 
         for key in clip.filtered_tracks:
             self.print_if_verbose(
-                "filtered track {} because {}".format(key[1].get_id(), key[0])
+                "filtered track {} because {}".format(key[1].id, key[0])
             )
         return filtered_tracks
 

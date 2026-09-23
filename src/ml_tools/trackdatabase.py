@@ -145,8 +145,8 @@ class TrackDatabase:
         :param tracker: if provided stats from tracker are used for the clip stats
         :param overwrite: Overwrites existing clip (if it exists).
         """
-        logging.info("creating clip %s", clip.get_id())
-        clip_id = str(clip.get_id())
+        logging.info("creating clip %s", clip.id)
+        clip_id = str(clip.id)
         with HDF5Manager(self.database, "a") as f:
             clips = f["clips"]
             if overwrite and clip_id in clips:
@@ -682,7 +682,7 @@ class TrackDatabase:
         :param opts: additional parameters used when creating dataset, if not provided defaults to no compression.
         """
 
-        track_id = str(track.get_id())
+        track_id = str(track.id)
         logging.info("Adding track %s", track_id)
         if opts is None:
             opts = {}
