@@ -311,7 +311,7 @@ class RawDatabase:
                     mega_missed_regions=track_meta.get("mega_missed_regions"),
                     station_id=clip_header.station_id,
                     fp_frames=fp_frames,
-                    start_time=clip_header.rec_time + timedelta(seconds=start / FPS),
+                    start_time=clip_header.rec_time + timedelta(seconds=start / FPS) if start else None,
                     # frame_temp_median=frame_temp_median,
                 )
                 clip_header.tracks.append(header)

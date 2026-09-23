@@ -126,18 +126,10 @@ class TrackPrediction:
         self.labels = labels
         self.classify_time = None
         self.tracking = False
-        self.normalized = False
         self.multi_label = multi_label
         self.scale_thresholds = scale_thresholds
         # TODO set this based of model
         self.frames_per_prediction = 25
-        self.normalize_score = None
-
-    # def cap_confidences(self, max_confidence):
-    #     max_score = np.sum(self.class_best_score)
-    #     if max_score > max_confidence:
-    #         scale = max_confidence / max_score
-    #         self.class_best_score *= scale
 
     def classified_track(
         self,
@@ -168,46 +160,21 @@ class TrackPrediction:
                 self.class_best_score = self.class_best_score / np.sum(
                     self.class_best_score
                 )
-        self.normalized = True
 
     def normalized_best_score(self):
-        if self.multi_label:
-            return self.class_best_score[self.best_label_index] / self.num_predictions
-        else:
-            return self.class_best_score[self.best_label_index] / np.sum(
-                self.class_best_score
-            )
+        # class_best_score is always kept normalized, see classified_frames/classified_frame
+        return self.class_best_score[self.best_label_index]
 
     def get_normalized_score(self):
-        score = None
-        if self.class_best_score is not None:
-            if self.normalized:
-                score = self.class_best_score
-            
-            elif self.multi_label:
-                score = self.class_best_score / self.num_predictions
-            else:
-                score = self.class_best_score / np.sum(self.class_best_score)
-        return score
-
-    def normalize_score(self):
-        # normalize so it sums to 1
-        # this isn't 100% correct since our predictions don't nessesarily add up to 1
-        # need to inverstigate on a test set,what gives the best results.
-        # correct way would be to calculate the max for each prediction and divide by the sum of that
-        # per pred (np.sum(p.prediction) ** 2) * p.mass
-        if self.class_best_score is not None and not  self.normalized:
-            if self.multi_label:
-                self.class_best_score = self.class_best_score / self.num_predictions
-            else:
-                self.class_best_score = self.class_best_score / np.sum(
-                    self.class_best_score
-                )
-            self.normalized = True
+        # class_best_score is always kept normalized, see classified_frames/classified_frame
+        return self.class_best_score
 
     def classified_frames(self, frame_numbers, predictions, masses):
         total_pred = np.sum(predictions, axis=0)
-
+        # rescale the existing (already normalized) average back to a sum,
+        # add the new batch's sum, then renormalize - keeps class_best_score
+        # always normalized, so a reader never needs num_predictions too
+        previous_total = self.class_best_score * self.num_predictions
         self.num_predictions += len(predictions)
         last_frame_classified = 0
         for frames, pred, mass in zip(frame_numbers, predictions, masses):
@@ -229,16 +196,13 @@ class TrackPrediction:
             else:
                 self.predictions = [prediction]
 
-        if self.normalized:
-            logging.warning("Already normalized and still adding predictions")
-
-        if self.class_best_score is None:
-            self.class_best_score = total_pred
+        combined = previous_total + total_pred
+        if self.multi_label:
+            self.class_best_score = combined / self.num_predictions
         else:
-            self.class_best_score += total_pred
-
+            self.class_best_score = combined / np.sum(combined)
         self.last_frame_classified = last_frame_classified
-        self.get_normalized_score()
+
     def previous_prediction_was_short(self):
         if self.num_predictions ==0:
             return False
@@ -264,11 +228,11 @@ class TrackPrediction:
         self.num_predictions = 0
         self.last_frame_classified = None
         self.num_frames_classified = 0
-        self.normalized = False
 
     def classified_frame(self, frame_number, predictions, mass):
         self.last_frame_classified = frame_number
         self.num_frames_classified += 1
+        previous_total = self.class_best_score * self.num_predictions
         self.num_predictions += 1
         prediction = Prediction(
             predictions,
@@ -281,12 +245,11 @@ class TrackPrediction:
         else:
             self.predictions = [prediction]
 
-        if self.normalized:
-            logging.warning("Already normalized and still adding predicitions")
-        if self.class_best_score is None:
-            self.class_best_score = predictions
+        combined = previous_total + predictions
+        if self.multi_label:
+            self.class_best_score = combined / self.num_predictions
         else:
-            self.class_best_score += predictions
+            self.class_best_score = combined / np.sum(combined)
 
     def get_priority(self, frame_number):
         if self.tracking:
@@ -537,7 +500,6 @@ class TrackPrediction:
         prediction_meta = {}
         if self.classify_time is not None:
             prediction_meta["classify_time"] = round(self.classify_time, 1)
-        self.normalize_score()
         tag = self.predicted_tags(group_by_parents=True)
         tag = tag[0] if len(tag)!=0 else None
         threshold = DEFAULT_THRESHOLD

@@ -702,6 +702,7 @@ def run_classifier(frame_queue):
                 tracking_events = []
             logging.info("Making a new clip")
             monitored_tracks = {}
+            stale_track_ids = set()
             # note: predicting_track_id is deliberately left alone here. If a
             # prediction from the previous clip is still running, the worker
             # thread will write its result into an orphaned track_pred/dict
@@ -751,7 +752,7 @@ def run_classifier(frame_queue):
                                 dbus_service.tracking(
                                     clip.id,
                                     track,
-                                    track_pred.normalized_score(),
+                                    track_pred.get_normalized_score(),
                                     track.bounds_history[-1],
                                     False,
                                     track_pred.last_frame_classified,
@@ -815,31 +816,13 @@ def run_classifier(frame_queue):
                     if frame_i == 1:
                         logging.info("Recording started")
 
-                    # remove stale tracks
-                    if len(monitored_tracks) > 0 and dbus_service:
+                    # mark stale tracks for removal - actually finalized in
+                    # the reporting loop below, which defers whichever one is
+                    # currently being predicted so its last report is fresh
+                    if len(monitored_tracks) > 0:
                         for track in stale_tracks:
-                            if track._id == predicting_track_id:
-                                # worker thread is mid-update for this one,
-                                # leave it for the next stale-track pass
-                                continue
                             if track._id in monitored_tracks:
-                                track_pred = monitored_tracks[track._id]
-                                # predicted_as = classifier.labels[
-                                #     track_pred.best_label_index
-                                # ]
-
-                                dbus_service.tracking(
-                                    clip.id,
-                                    track,
-                                    track_pred.get_normalized_score(),
-                                    track.bounds_history[-1],
-                                    False,
-                                    track_pred.last_frame_classified,
-                                    classifier.labels,
-                                    classifier.id,
-                                    track.received_at,
-                                )
-                                del monitored_tracks[track._id]
+                                stale_track_ids.add(track._id)
                     logging.info(
                         "%s Predicting behind by %s ",
                         frame_i,
@@ -848,22 +831,35 @@ def run_classifier(frame_queue):
 
                     
                     if dbus_service:
-                        for track_id, track_pred in monitored_tracks.items():
-                            if track_id == predicting_track_id:
-                                # worker thread is mid-update for this one
-                                continue
-                            # predicted_as = classifier.labels[track_pred.best_label_index]
-                            track = [
-                                track
-                                for track in clip.active_tracks
-                                if track._id == track_id
-                            ][0]
+                        # list(...) snapshots the items so popping a stale
+                        # entry below doesn't disturb this iteration
+                        for track_id, track_pred in list(monitored_tracks.items()):
+                            if track_id in stale_track_ids:
+                                if track_id == predicting_track_id:
+                                    # worker is still mid-update for this one -
+                                    # wait so the final report has its result,
+                                    # not whatever was there before
+                                    continue
+                                stale_track_ids.discard(track_id)
+                                monitored_tracks.pop(track_id, None)
+                                track = [t for t in clip.tracks if t._id == track_id]
+                                if len(track) == 0:
+                                    continue
+                                track = track[0]
+                                tracking = False
+                            else:
+                                track = [
+                                    track
+                                    for track in clip.active_tracks
+                                    if track._id == track_id
+                                ][0]
+                                tracking = True
                             dbus_service.tracking(
                                 clip.id,
                                 track,
                                 track_pred.get_normalized_score(),
                                 track.bounds_history[-1],
-                                True,
+                                tracking,
                                 track_pred.last_frame_classified,
                                 classifier.labels,
                                 classifier.id,
@@ -875,12 +871,7 @@ def run_classifier(frame_queue):
                             frame_i,
                             time.time() - time_sent,
                         )
-                        if predicting_track_id is None:
-                            submit_prediction(clip, monitored_tracks, tracking_events)
-                        else:
-                            logging.info(
-                                "Previous prediction still running, skipping submit"
-                            )
+                        submit_prediction(clip, monitored_tracks, tracking_events)
     except:
         logging.error("Error running classifier restarting ..", exc_info=True)
         if PROCESS_LOAD:

@@ -999,7 +999,12 @@ class Track:
                     path_one = tag.get("path","")
                     path_two = track_tag.get("path","")
                     # longer path is more specific..
-                    if len(path_two) > len(path_one):
+                    if path_one is None:
+                        path_one = ""
+                    if path_two is None:
+                        path_two = ""
+                    
+                    elif len(path_two) > len(path_one):
                         tag = track_tag
             elif best is None or ranking < best:
                 best = ranking

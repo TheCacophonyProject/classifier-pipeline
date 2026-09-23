@@ -1414,7 +1414,6 @@ class KerasModel(Interpreter):
 
         output = self.model.predict(data)
         track_prediction.classified_track(output, np.array(frames_used))
-        track_prediction.normalize_score()
         return track_prediction
 
     def predict(self, frames):

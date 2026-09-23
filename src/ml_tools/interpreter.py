@@ -179,7 +179,6 @@ class Interpreter(ABC):
         totals_row = np.zeros(len(labels))
 
         for y_true, pred in pred_per_track.values():
-            pred.normalize_score()
             preds = np.array([p.prediction for p in pred.predictions])
             # if we do multi label we may of multiple y_true and preds
             # otherwise this will calculate the same as before

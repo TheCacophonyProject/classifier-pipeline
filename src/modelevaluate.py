@@ -1379,8 +1379,7 @@ def best_threshold_for_ds(model, labels, dataset, filename, tflite=False):
     confidences = []
     y_pred = []
     for y, pred in pred_per_track.values():
-        pred.normalize_score()
-        confidences.append(pred.class_best_score)
+        confidences.append(pred.get_normalized_score())
         flat_y.append(y)
         y_pred.append(pred.best_label_index)
     flat_y = np.array(flat_y)

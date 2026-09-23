@@ -727,13 +727,12 @@ class PiClassifier(Processor):
                 elif track_prediction.tracking:
                     # tracking ended as is false-positive
                     track_prediction.tracking = False
-                    track_prediction.normalize_score()
                     logging.info("Track received at %s", track.received_at)
 
                     self.service.tracking(
                         self.clip._id,
                         track,
-                        track_prediction.class_best_score,
+                        track_prediction.get_normalized_score(),
                         track.bounds_history[-1],
                         False,
                         track_prediction.last_frame_classified,
@@ -1327,19 +1326,6 @@ def on_recording_stopping(
                     )
                 except:
                     logging.error("Couldn't save thumbnail file ", exc_info=True)
-        if predictions is not None:
-            valid_preds = {}
-
-            # remove track prediction
-            for track in clip.tracks:
-                for model_pred in predictions.values():
-                    pred = model_pred.prediction_for(track.get_id())
-                    if pred is not None:
-                        pred.normalize_score()
-            #             valid_preds[model_pred.model.id] = pred
-            # for model_id in predictions.keys():
-            #     if model_id in valid_preds:
-            #         predictions[model_id].prediction_per_track = valid_preds[model_id].prediction_per_track
 
         # filter criteria has been scaled so resize after
         # if track_extractor.scale is not None:
