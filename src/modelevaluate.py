@@ -767,6 +767,7 @@ def evaluate_dir(
                     multi_label=model.params.multi_label,
                     parent_mappings=model.parent_mappings,
                     thresholds_per_label=model.thresholds_per_label,
+                    scale_thresholds=True,
                 )
                 masses = np.array(data[4])
                 masses = masses[:, None]
