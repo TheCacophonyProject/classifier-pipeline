@@ -432,7 +432,6 @@ class Interpreter(ABC):
         track_prediction = TrackPrediction(
             track_id,
             self.labels,
-            smooth_preds=self.params.smooth_predictions,
             multi_label=self.params.multi_label,
             parent_mappings=self.parent_mappings,
             scale_thresholds=self.scale_thresholds,
@@ -443,13 +442,13 @@ class Interpreter(ABC):
             prediction_frames,
             masses,
         )
-        if (
-            len(prediction_frames) == 1
-            and len(set(prediction_frames[0])) < self.params.square_width**2 / 4
-        ):
+        # if (
+        #     len(prediction_frames) == 1
+        #     and len(set(prediction_frames[0])) < self.params.square_width**2 / 4
+        # ):
             # if we don't have many frames to get a good prediction, lets assume only false-positive is a good prediction and filter the rest to a maximum of 0.5
-            if track_prediction.predicted_tags() != "false-positive":
-                track_prediction.cap_confidences(0.5)
+            # if track_prediction.predicted_tags() != "false-positive":
+            #     track_prediction.cap_confidences(0.5)
         return track_prediction
 
     def predict_track(self, clip, track, **args):

@@ -35,8 +35,8 @@ def log_event(event_type, details=None):
 
 
 class CustomJSONEncoder(json.JSONEncoder):
-    import numpy as np
     def default(self, obj):
+        import numpy as np
         if isinstance(obj, np.integer):
             return int(obj)
         elif isinstance(obj, np.floating):

@@ -6,8 +6,6 @@ import time
 import logging
 import sys
 from multiprocessing import Queue, Process
-import queue
-import threading
 import numpy as np
 from pathlib import Path
 from datetime import datetime
@@ -28,8 +26,9 @@ if TEST:
     MODEL_PATH = "./thermal-model/converted_model.tflite"
 else:
     MODEL_PATH = "/home/pi/tflite/converted_model.tflite"
+MODEL_PATH = "/home/pi/tflite/converted_model.tflite"
 
-MODEL_PATH = "/home/gp/cacophony/classifier-data/thermal-training/2026Aug/v11/160/qat/singleExclude160QAT.tflite"
+# MODEL_PATH = "/home/gp/cacophony/classifier-data/thermal-training/2026Aug/v11/160/qat/singleExclude160QAT.tflite"
 def parse_cptv(cptv_file, frame_queue):
     from cptv_rs_python_bindings import CptvReader
     from cptv import Frame
@@ -488,6 +487,8 @@ def get_active_tracks(clip):
 
 
 last_frame_predicted = None
+classify_executor = None
+predicting_track_id = None
 
 
 # classify first animal track
@@ -527,58 +528,98 @@ def best_track_to_classify(clip, monitored_tracks):
     # return longest track?
 
 
-def identify_last_frame(monitored_tracks, clip):
-    from classify.trackprediction import TrackPrediction
+def submit_prediction(clip, monitored_tracks, tracking_events):
+    """Preprocesses the best track (needs live clip/track state, so runs on
+    the caller's thread) then hands the actual inference off to a single
+    background worker so the frame/tracking loop doesn't block on it.
 
-    global last_frame_predicted
+    The TrackPrediction entry is created here, on the caller's thread,
+    before the job is submitted - so the worker only ever updates an
+    existing value in monitored_tracks and never inserts or removes a key.
+    That means it can safely run while the main thread is iterating
+    monitored_tracks.items() elsewhere, no locking needed."""
     track = best_track_to_classify(clip, monitored_tracks)
     if track is None:
         logging.info("No active tracks %s", len(clip.active_tracks))
-        return None
+        return
     if classifier is None:
         logging.info("Not classifying as couldn't load model")
-        return None
-    start = time.time()
-    preprocessed_result = classifier.preprocess_track(        clip,
+        return
+    from classify.trackprediction import TrackPrediction
+
+    track_pred = monitored_tracks.setdefault(
+        track._id,
+        TrackPrediction(
+            track._id,
+            classifier.labels,
+            keep_all=False,
+            parent_mappings=classifier.parent_mappings,
+            scale_thresholds=classifier.scale_thresholds,
+            thresholds_per_label=classifier.thresholds_per_label,
+            multi_label=classifier.params.multi_label,
+        ),
+    )
+    if track_pred.previous_prediction_was_short():
+        logging.info("Resetting as was short")
+        track_pred.reset()
+
+    preprocessed_result = classifier.preprocess_track(
+        clip,
         track,
-        num_predictions =1,
-        predict_from_last = 100)
+        num_predictions=1,
+        predict_from_last=100,
+    )
     if preprocessed_result is None:
         logging.error("Pred is none for %s", track)
+        return
+    frames, preprocessed, mass = preprocessed_result
 
-        return None
-    else:
-        # doing this async
-        frames, preprocessed, mass  = preprocessed_result
+    global predicting_track_id
+    predicting_track_id = track._id
+    classify_executor.submit(
+        _predict_and_apply, track, track_pred, preprocessed, frames, mass, start, tracking_events
+    )
+
+
+def _predict_and_apply(track, track_pred, preprocessed, frames, mass, start, tracking_events):
+    """Runs entirely on the single worker thread: infers then writes the
+    result straight into monitored_tracks. Sets predicting_track_id itself,
+    at the moment it actually starts running rather than when it was queued,
+    so the flag always names whichever track is truly mid-update right now -
+    correct even if more than one job is queued, since max_workers=1
+    guarantees only one ever executes at a time. Safe without a lock because
+    the dict entry already exists (created on the caller's thread before
+    this was submitted) and predicting_track_id is a plain attribute
+    assignment, which the GIL makes atomic regardless of which thread does it."""
+    global predicting_track_id
+    try:
         prediction = classifier.predict(preprocessed)
-        preprocessed = None
-        pred_result = classifier.predict_recent_frames(
-            clip,
+        track_pred.classified_frames(frames, prediction, mass)
+        logging.info(
+            "Track %s is predicted as %s conf %s took %s track frames %s",
             track,
-            num_predictions =1,
-            predict_from_last = 100,
+            classifier.labels[track_pred.best_label_index],
+            track_pred.description(),
+            time.time() - start,
+            len(track),
         )
-        track_pred = None
-        if pred_result is not None:
-            track_pred = monitored_tracks.setdefault(track._id, TrackPrediction(track._id,classifier.labels, keep_all=False,parent_mappings = classifier.parent_mappings,scale_thresholds= classifier.scale_thresholds,thresholds_per_label = classifier.thresholds_per_label,multi_label=classifier.params.multi_label))
-            prediction, frames, mass = pred_result
-            if track_pred.previous_prediction_was_short():
-                logging.info("Resetting as was short")
-                track_pred.reset()
-
-            track_pred.classified_frames(frames, prediction,mass)
-
-            # predicted_as= classifier.labels[track_pred.best_label_index]
-            logging.info(
-                "Track %s is predicted as %s conf %s took %s track frames %s",
-                track,
-                classifier.labels[track_pred.best_label_index],
-                track_pred.description(),
-                # round(track_pred.normalized_best_score() * 100),
-                time.time() - start,
-                len(track),
+        predicted_as = classifier.labels[track_pred.best_label_index]
+        conf = track_pred.normalized_best_score()
+        now = datetime.now()
+        tracking_events.append(
+            (
+                track_pred.track_id,
+                predicted_as,
+                conf,
+                track.bounds_history[-1],
+                track_pred.last_frame_classified,
+                now.strftime("%B %d, %Y %I:%M:%S %p"),
             )
-    return track, track_pred
+        )
+    except Exception:
+        logging.error("Could not predict", exc_info=True)
+    finally:
+        predicting_track_id = None
 
 
 classifier = None
@@ -601,8 +642,9 @@ def load_model(over_network=False):
 
 
 def run_classifier(frame_queue):
-    from piclassifier.motiondetector import RunningMean
 
+
+    global predicting_track_id
     run_classifier_start = time.time()
     if PROCESS_LOAD:
         # this needs ot be killed
@@ -615,6 +657,12 @@ def run_classifier(frame_queue):
         time.time() - run_classifier_start,
         PROCESS_LOAD,
     )
+
+    from piclassifier.motiondetector import RunningMean
+    from concurrent.futures import ThreadPoolExecutor
+    global classify_executor
+    classify_executor = ThreadPoolExecutor(max_workers=1)
+
     headers = {}
     frame_i = 0
     predict_every = 10
@@ -654,6 +702,12 @@ def run_classifier(frame_queue):
                 tracking_events = []
             logging.info("Making a new clip")
             monitored_tracks = {}
+            # note: predicting_track_id is deliberately left alone here. If a
+            # prediction from the previous clip is still running, the worker
+            # thread will write its result into an orphaned track_pred/dict
+            # (harmless) and clear the flag itself when done; the guard at
+            # the predict_every check below already waits for that before
+            # submitting the new clip's first prediction.
 
             track_extractor, clip = new_clip()
             logging.info(
@@ -689,7 +743,11 @@ def run_classifier(frame_queue):
                                     track
                                     for track in clip.tracks
                                     if track._id == track_id
-                                ][0]
+                                ]
+                                if len(track)==0:
+                                    # guessing its finished now probably can be deleted need to check
+                                    continue
+                                track = track[0]
                                 dbus_service.tracking(
                                     clip.id,
                                     track,
@@ -760,6 +818,10 @@ def run_classifier(frame_queue):
                     # remove stale tracks
                     if len(monitored_tracks) > 0 and dbus_service:
                         for track in stale_tracks:
+                            if track._id == predicting_track_id:
+                                # worker thread is mid-update for this one,
+                                # leave it for the next stale-track pass
+                                continue
                             if track._id in monitored_tracks:
                                 track_pred = monitored_tracks[track._id]
                                 # predicted_as = classifier.labels[
@@ -778,55 +840,47 @@ def run_classifier(frame_queue):
                                     track.received_at,
                                 )
                                 del monitored_tracks[track._id]
+                    logging.info(
+                        "%s Predicting behind by %s ",
+                        frame_i,
+                        time.time() - time_sent,
+                    )
 
-                    if frame_i % predict_every == 0:
+                    
+                    if dbus_service:
+                        for track_id, track_pred in monitored_tracks.items():
+                            if track_id == predicting_track_id:
+                                # worker thread is mid-update for this one
+                                continue
+                            # predicted_as = classifier.labels[track_pred.best_label_index]
+                            track = [
+                                track
+                                for track in clip.active_tracks
+                                if track._id == track_id
+                            ][0]
+                            dbus_service.tracking(
+                                clip.id,
+                                track,
+                                track_pred.get_normalized_score(),
+                                track.bounds_history[-1],
+                                True,
+                                track_pred.last_frame_classified,
+                                classifier.labels,
+                                classifier.id,
+                                track.received_at,
+                            )
+                    if predicting_track_id is None:
                         logging.info(
                             "%s Predicting behind by %s ",
                             frame_i,
                             time.time() - time_sent,
                         )
-                        new_prediction = identify_last_frame(
-                            monitored_tracks, clip
-                        )
-                        if new_prediction is not None:
-                            track, track_pred = new_prediction
-                            if track_pred is not None:
-                                predicted_as = classifier.labels[
-                                    track_pred.best_label_index
-                                ]
-                                conf = track_pred.normalized_best_score()
-                                now = datetime.now()
-                                tracking_events.append(
-                                    (
-                                        track_pred.track_id,
-                                        predicted_as,
-                                        conf,
-                                        track.bounds_history[-1],
-                                        track_pred.last_frame_classified,
-                                        now.strftime("%B %d, %Y %I:%M:%S %p"),
-                                    )
-                                )
-                            #    time.time()))
-                if dbus_service:
-                    for track_id, track_pred in monitored_tracks.items():
-                        # predicted_as = classifier.labels[track_pred.best_label_index]
-                        track = [
-                            track
-                            for track in clip.active_tracks
-                            if track._id == track_id
-                        ][0]
-                        dbus_service.tracking(
-                            clip.id,
-                            track,
-                            track_pred.get_normalized_score(),
-                            track.bounds_history[-1],
-                            True,
-                            track_pred.last_frame_classified,
-                            classifier.labels,
-                            classifier.id,
-                            track.received_at,
-                        )
-
+                        if predicting_track_id is None:
+                            submit_prediction(clip, monitored_tracks, tracking_events)
+                        else:
+                            logging.info(
+                                "Previous prediction still running, skipping submit"
+                            )
     except:
         logging.error("Error running classifier restarting ..", exc_info=True)
         if PROCESS_LOAD:

@@ -26,7 +26,6 @@ class HyperParams(dict):
         self["diff_norm"] = self.diff_norm
         self["thermal_diff_norm"] = self.thermal_diff_norm
 
-        self["smooth_predictions"] = self.smooth_predictions
         self["channels"] = self.channels
         self["image_modality_dropout"] = self.image_modality_dropout
 
@@ -52,10 +51,6 @@ class HyperParams(dict):
                 len(self.channels),
             )
         return (self.frame_size, self.frame_size, len(self.channels))
-
-    @property
-    def smooth_predictions(self):
-        return self.get("smooth_predictions", False)
 
     @property
     def excluded_labels(self):

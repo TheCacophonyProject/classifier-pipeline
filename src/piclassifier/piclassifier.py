@@ -622,7 +622,6 @@ class PiClassifier(Processor):
                 ].get_or_create_prediction(
                     track,
                     keep_all=True,
-                    smooth_preds=self.fp_model.params.smooth_predictions,
                 )
                 if (
                     track_prediction.last_frame_classified is not None

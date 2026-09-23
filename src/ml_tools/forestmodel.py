@@ -135,7 +135,6 @@ class ForestModel(Interpreter):
         track_prediction = TrackPrediction(
             track.get_id(),
             self.labels,
-            smooth_preds=self.params.smooth_predictions,
             parent_mappings=self.parent_mappings,
         )
         result = self.predict_track(

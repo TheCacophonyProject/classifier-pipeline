@@ -763,7 +763,6 @@ def evaluate_dir(
                 prediction = TrackPrediction(
                     data[0],
                     model.labels,
-                    smooth_preds=False,
                     multi_label=model.params.multi_label,
                     parent_mappings=model.parent_mappings,
                     thresholds_per_label=model.thresholds_per_label,
