@@ -1082,7 +1082,7 @@ def get_segment_indices(
 ):
     segment_frames = []
     seg_regions = []
-    mass = np.uint16(0)
+    mass = np.uint32(0)
     skipped_chunks = 0
     max_chunk_gap = 2
     stopped_early = False
@@ -1172,7 +1172,6 @@ def get_segment_indices(
         region_index = frame_num - start_frame
         seg_regions.append(regions[region_index])
         assert seg_regions[-1].frame_number == frame_num
-        print("Mass history is ", mass_history.dtype)
         mass += mass_history[frame_num - start_frame]
         if last_chunk:
             break
@@ -1919,6 +1918,7 @@ class MeanData:
         )
 
     def to_dict(self):
+        from ml_tools.frame import TrackChannels
         return {
             TrackChannels.thermal.name: self.thermal,
             TrackChannels.filtered.name: self.filtered,
