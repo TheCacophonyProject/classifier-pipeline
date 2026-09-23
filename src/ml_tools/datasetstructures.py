@@ -1172,6 +1172,7 @@ def get_segment_indices(
         region_index = frame_num - start_frame
         seg_regions.append(regions[region_index])
         assert seg_regions[-1].frame_number == frame_num
+        print("Mass history is ", mass_history.dtype)
         mass += mass_history[frame_num - start_frame]
         if last_chunk:
             break
@@ -1228,9 +1229,11 @@ def random_sections(
     # chunk_size = window_frames / chunks
     # try to get an extra sample if its short
     num_frames_sampled =  max(1,window_frames / chunk_size )
-    if num_frames_sampled < 2 and round(num_frames_sampled) >num_frames_sampled:
-        chunk_size =int(window_frames  / round(num_frames_sampled))
 
+    # ceil num windows is only set at inference time, so really checking if we are doing inference
+    doing_inference = ceil_num_windows
+    if doing_inference and num_frames_sampled < 2 and round(num_frames_sampled) >num_frames_sampled:
+        chunk_size =int(window_frames  / round(num_frames_sampled))
         logging.info("set chunk size %s",chunk_size)
 
     # over sampling logic more samples than windows, used for low data labels
@@ -1876,3 +1879,51 @@ class TrackingSample(Sample):
         return f"{self.clip_id}-{self.track_id}-{frames_numbers}"
         # this should be used but dont have much data
         # return f"{self.clip_id}-{self.track_id}"
+
+
+
+@dataclass
+class MeanData:
+    """Holds per-channel border pixel lists (during collection) or mean values (after aggregation)."""
+
+    thermal: float = 0
+    filtered: float = 0
+    thermal_norm: float = 0
+    frames_used: int = 0
+
+    def add_means(self, other):
+        self.thermal = (
+            other.thermal * other.frames_used + self.thermal * self.frames_used
+        )
+        self.filtered = (
+            other.filtered * other.frames_used + self.filtered * self.frames_used
+        )
+        self.thermal_norm = (
+            other.thermal_norm * other.frames_used
+            + self.thermal_norm * self.frames_used
+        )
+        self.frames_used += other.frames_used
+        if self.frames_used > 0:
+            self.thermal /= self.frames_used
+            self.filtered /= self.frames_used
+            self.thermal_norm /= self.frames_used
+
+    def __mul__(self, scalar):
+        return MeanData(
+            self.thermal * scalar, self.filtered * scalar, self.thermal_norm * scalar
+        )
+
+    def __truediv__(self, scalar):
+        return MeanData(
+            self.thermal / scalar, self.filtered / scalar, self.thermal_norm / scalar
+        )
+
+    def to_dict(self):
+        return {
+            TrackChannels.thermal.name: self.thermal,
+            TrackChannels.filtered.name: self.filtered,
+            TrackChannels.thermal_norm.name: self.thermal_norm,
+        }
+
+    def __len__(self):
+        return self.frames_used

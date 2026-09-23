@@ -12,7 +12,7 @@ DEFAULT_THRESHOLD = 0.8
 
 
 class Predictions:
-    def __init__(self, labels, model, thresholds_per_label, parent_mappings=None,scale_thresholds = False):
+    def __init__(self, labels, model, thresholds_per_label, parent_mappings=None,scale_thresholds = False,multi_label = True):
         self.labels = labels
         self.prediction_per_track = {}
         self.model = model
@@ -20,6 +20,7 @@ class Predictions:
         self.thresholds_per_label = thresholds_per_label
         self.parent_mappings = parent_mappings
         self.scale_thresholds = scale_thresholds
+        self.multi_label = multi_label
 
     def get_or_create_prediction(self, track, keep_all=True, smooth_preds=False):
         prediction = self.prediction_per_track.setdefault(
@@ -32,7 +33,8 @@ class Predictions:
                 smooth_preds=smooth_preds,
                 parent_mappings=self.parent_mappings,
                 scale_thresholds=self.scale_thresholds,
-                thresholds_per_label = self.thresholds_per_label
+                thresholds_per_label = self.thresholds_per_label,
+                multi_label=self.multi_label
             ),
         )
         return prediction
@@ -278,14 +280,12 @@ class TrackPrediction:
         if self.num_predictions ==0:
             return False
         previous = self.predictions[-1]
-        logging.info("Previous prediction is %s num frames %s",previous,len(previous.frames))
+        # logging.info("Previous prediction is %s num frames %s",previous,len(previous.frames))
         return len(previous.frames) < self.frames_per_prediction
     def scale_by_overlap(self,frames):
         previous = self.predictions[-1]
         first_frame =frames[0]
-        print("FIrst frmae ",first_frame)
         for index, f in enumerate(previous.frames):
-            print(index)
             if  first_frame  >(int(f)-5) :
 
                 break
@@ -567,6 +567,7 @@ class TrackPrediction:
 
     def prediction_with_confidence(self):
         score = self.get_normalized_score()
+
         tag = self.predicted_tags(group_by_parents=True)
         tag = tag[0] if len(tag)!=0 else None
         threshold = DEFAULT_THRESHOLD
@@ -586,7 +587,6 @@ class TrackPrediction:
         if tag in self.labels:
             index = self.labels.index(tag)
             confidence = float(score[index])
-        
         return tag,confidence,threshold
     
     def get_metadata(self):

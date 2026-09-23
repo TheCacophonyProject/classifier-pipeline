@@ -31,107 +31,12 @@ from absl import logging
 import numpy as np
 
 from . import tfrecord_util
-from ml_tools.frame import TrackChannels
 from ml_tools.imageprocessing import normalize
 from ml_tools.rawdb import RawDatabase
 from ml_tools.rectangle import Rectangle
-
-THERMAL_MIN_KV = 27315
-THERMAL_MAX_KV = 31515  # 42 celcius
+from ml_tools.datasetstructures import MeanData
 
 
-@dataclass
-class MeanData:
-    """Holds per-channel border pixel lists (during collection) or mean values (after aggregation)."""
-
-    thermal: float = 0
-    filtered: float = 0
-    thermal_norm: float = 0
-    frames_used: int = 0
-
-    def add_means(self, other):
-        self.thermal = (
-            other.thermal * other.frames_used + self.thermal * self.frames_used
-        )
-        self.filtered = (
-            other.filtered * other.frames_used + self.filtered * self.frames_used
-        )
-        self.thermal_norm = (
-            other.thermal_norm * other.frames_used
-            + self.thermal_norm * self.frames_used
-        )
-        self.frames_used += other.frames_used
-        if self.frames_used > 0:
-            self.thermal /= self.frames_used
-            self.filtered /= self.frames_used
-            self.thermal_norm /= self.frames_used
-
-    def __mul__(self, scalar):
-        return MeanData(
-            self.thermal * scalar, self.filtered * scalar, self.thermal_norm * scalar
-        )
-
-    def __truediv__(self, scalar):
-        return MeanData(
-            self.thermal / scalar, self.filtered / scalar, self.thermal_norm / scalar
-        )
-
-    def to_dict(self):
-        return {
-            TrackChannels.thermal.name: self.thermal,
-            TrackChannels.filtered.name: self.filtered,
-            TrackChannels.thermal_norm.name: self.thermal_norm,
-        }
-
-    def __len__(self):
-        return self.frames_used
-
-
-# @dataclass
-# class BorderData:
-#     """Holds per-channel border pixel lists (during collection) or mean values (after aggregation)."""
-
-#     thermal: list = field(default_factory=list)
-#     filtered: list = field(default_factory=list)
-#     thermal_norm: list = field(default_factory=list)
-
-#     def __len__(self):
-#         return len(self.thermal)
-
-#     def mean(self):
-#         n = len(self)
-#         return MeanData(
-#              float(np.mean(self.thermal)) if n > 0 else 0.0,
-#              float(np.mean(self.filtered)) if n > 0 else 0.0,
-#              float(np.mean(self.thermal_norm)) if n > 0 else 0.0,
-#             n,
-#         )
-
-#     # def __iadd__(self, other):
-#     #     self.thermal += other.thermal
-#     #     self.filtered += other.filtered
-#     #     self.thermal_norm += other.thermal_norm
-#     #     return self
-
-#     # def __mul__(self, scalar):
-#     #     return BorderData(self.thermal * scalar, self.filtered * scalar, self.thermal_norm * scalar)
-
-#     # __rmul__ = __mul__
-
-#     def __truediv__(self, scalar):
-#         return BorderData(
-#             self.thermal / scalar,
-#             self.filtered / scalar,
-#             self.thermal_norm / scalar,
-#             frames_used=scalar,
-#         )
-
-#     def to_dict(self):
-#         return {
-#             TrackChannels.thermal.name: self.thermal,
-#             TrackChannels.filtered.name: self.filtered,
-#             TrackChannels.thermal_norm.name: self.thermal_norm,
-#         }
 
 
 crop_rectangle = Rectangle(0, 0, 640, 480)

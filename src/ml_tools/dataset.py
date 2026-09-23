@@ -203,7 +203,7 @@ class Dataset:
         counter = 0
         logging.info("Loading clips")
         clips = list(self.dataset_dir.glob(f"**/*{self.ext}"))
-
+        clips.sort()
         load_func = partial(
             load_clip_multi,
             tag_precedence=self.tag_precedence,
@@ -258,7 +258,9 @@ class Dataset:
                         if track_header.label not in self.labels:
                             self.labels.append(track_header.label)
                     self.tracks.append(track_header)
-                self.samples_by_clip_id[clip_header.clip_id] = clip_header.get_samples()
+                clip_samples = clip_header.get_samples()
+                if len(clip_samples)>0:
+                    self.samples_by_clip_id[clip_header.clip_id] = clip_samples
 
     def merge_filtered(self, filtered_stats):
         for reason, count in filtered_stats.items():

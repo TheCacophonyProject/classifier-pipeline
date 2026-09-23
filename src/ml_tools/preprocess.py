@@ -63,8 +63,11 @@ def preprocess_frame_v2(
 ):
     import math
     from ml_tools.imageprocessing import normalize,apply_fair_clahe_cv2
-    from ml_tools.thermalwriter import THERMAL_MAX_KV, THERMAL_MIN_KV, MeanData
     from ml_tools.frame import repeat_border
+    from ml_tools.datasetstructures import MeanData
+
+    THERMAL_MIN_KV = 27315
+    THERMAL_MAX_KV = 31515  # 42 celcius
 
     if original_dim is None:
         original_dim = out_dim

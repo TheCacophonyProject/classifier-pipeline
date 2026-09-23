@@ -324,6 +324,7 @@ class PiClassifier(Processor):
 
                 if frame.background_frame:
                     self.motion_detector._background._background = frame.pix
+
                     continue
                 try:
                     self.process_frame(frame, time.time(), FILE_SOURCE)
@@ -470,7 +471,7 @@ class PiClassifier(Processor):
                 * self.classifier.params.square_width
             )
             if self.frames_per_classify > 1:
-                self.predict_from_last = 9*12
+                self.predict_from_last = 100
 
             self.max_keep_frames = (
                 self.frames_per_classify * 2 if not preview_type else None
@@ -506,7 +507,6 @@ class PiClassifier(Processor):
 
     def new_clip(self, preview_frames, received_at):
         from track.clip import Clip
-
         self.clip = Clip(
             self.tracking_config,
             "stream",
@@ -1055,8 +1055,7 @@ class PiClassifier(Processor):
                 )
                 if self.recording and not self.use_low_power_mode:
                     set_recording_state(True)
-        if (
-            not self.recorder.recording
+        if ( not self.recorder.recording
             and self.motion_detector.movement_detected
             and not lepton_frame.ffc_imminent
             and not lepton_frame.ffc_status in [1, 2]

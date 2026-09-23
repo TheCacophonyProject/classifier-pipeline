@@ -104,7 +104,6 @@ class ClipTracker(ABC):
             )
         else:
             avg_change = 0
-
         filtered = np.clip(filtered - avg_change, 0, None)
 
 

@@ -362,7 +362,6 @@ class Interpreter(ABC):
             return None
         try:
             prediction = self.predict(preprocessed)
-
         except:
             logging.error("Could not predict", exc_info=True)
             return None
@@ -628,7 +627,6 @@ class Interpreter(ABC):
 
     def preprocess_segments_v2(self, clip, track, segments, predict_from_last=None):
         from ml_tools.preprocess import preprocess_frame_v2, preprocess_movement
-
         track_data = {}
         masses = []
         preprocessed = {}
@@ -946,8 +944,6 @@ def get_interpreter(model, run_over_network=False, load_model=True, seed=None):
         classifier = ForestModel(model.model_file, load_model=load_model)
     else:
         from ml_tools.kerasmodel import KerasModel
-
-        print("Run over netowrk", run_over_network)
         classifier = KerasModel(run_over_network=run_over_network)
         classifier.init_model(
             model.model_file, weights=model.model_weights, load_model=load_model
@@ -1027,7 +1023,6 @@ def dl_mappings():
     response.raise_for_status()
 
     mapping_content = response.content.decode()
-    print(mapping_content)
     with open("label_paths.json", "w") as f:
         f.write(mapping_content)
     return mapping_content
