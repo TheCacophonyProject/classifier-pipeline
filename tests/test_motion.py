@@ -57,7 +57,7 @@ def test_motion(
         )
 
         motion_detector = CPTVMotionDetector(
-            thermal_config, config.tracking.motion,config.tracking.motion.dynamic_thresh, headers
+            thermal_config, thermal_config.base_motion.use_defaults_for("lepton3.5"),config.tracking.motion.dynamic_thresh, headers
         )
         for i, frame in enumerate(reader):
             motion_detector.process_frame(frame)
