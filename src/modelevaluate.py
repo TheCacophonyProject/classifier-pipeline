@@ -543,9 +543,10 @@ def init_worker(model_file, weights, date):
             worker_model.model.load_weights(weights)
         after_date = date
 
-        if not has_activation(worker_model.model):
-            worker_model.model = add_sigmoid_output(worker_model.model)
-        worker_model.model.summary()
+        if worker_model.TYPE != "TFLite":
+            if not has_activation(worker_model.model):
+                worker_model.model = add_sigmoid_output(worker_model.model)
+            worker_model.model.summary()
     except:
         logging.error("init_worker error", exc_info=True)
 
@@ -701,7 +702,7 @@ def evaluate_dir(
     label_mapping = get_mappings(label_paths)
     reason = {}
     y_true = []
-    y_pred = []
+    fscore_pred = []
     if split_file is not None:
         split_json = load_split_file(split_file)
         files = split_json.get(split_dataset)
@@ -718,7 +719,7 @@ def evaluate_dir(
     else:
         files = list(dir.glob(f"**/*cptv"))
     files.sort()
-    logging.info("Files are %s", files)
+    logging.info("Files are %s", files[:10])
     start = time.time()
     processed = 0
     # quite faster with just one process for loading and using main process for predicting
@@ -757,7 +758,7 @@ def evaluate_dir(
                     raw_confs.append(0)
                     raw_class_confidences.append(np.zeros(len(model.labels)))
                     y_true.append(label_mapping.get(label, label))
-                    y_pred.append("None")
+                    fscore_pred.append("None")
                     continue
 
                 prediction = TrackPrediction(
@@ -780,24 +781,28 @@ def evaluate_dir(
                 prediction.classified_track(output, data[2], masses)
                 y_true.append(label_mapping.get(label, label))
                 tag, confidence, threshold = prediction.prediction_with_confidence()
-                raw_preds.append(tag)
-                raw_confs.append(confidence)
+                if tag is None:
+                    raw_preds.append("None")
+                    raw_confs.append(0)
+                else:
+                    raw_preds.append(tag)
+                    raw_confs.append(confidence)
                 raw_class_confidences.append(prediction.class_best_score)
-                logging.info(
+                logging.debug(
                     "Prediction %s is %s with %s and threshold %s",
                     np.round(100 * prediction.class_best_score),
                     tag,
                     confidence,
                     threshold,
                 )
-                # predicted_tag = "None"
-                if confidence is not None and confidence < threshold:
-                    y_pred.append("unidentified")
+                if  confidence is not None and confidence < threshold:
+                    fscore_pred.append("None")
                 elif tag is None:
-                    y_pred.append("None")
+                    # this
+                    fscore_pred.append("None")
                 else:
-                    y_pred.append(tag)
-                if y_pred[-1] != y_true[-1]:
+                    fscore_pred.append(tag)
+                if fscore_pred[-1] != y_true[-1]:
                     if tag == y_true[-1]:
                         stats["low-confidence"].append(data[0])
                     else:
@@ -805,7 +810,7 @@ def evaluate_dir(
                     logging.info(
                         "%s predicted %s but should be %s with confidence %s",
                         data[0],
-                        y_pred[-1],
+                        fscore_pred[-1],
                         label,
                         np.round(100 * prediction.class_best_score),
                     )
@@ -845,8 +850,7 @@ def evaluate_dir(
         model.labels.index(y_t) if y_t in model.labels else -1 for y_t in y_true
     ]
 
-    results = np.array(raw_preds)
-    confidences = np.array(raw_confs)
+    raw_preds = np.array(raw_preds)
     raw_preds_i = np.uint8(raw_preds_i)
     raw_class_confidences = np.array(raw_class_confidences)
     y_true_i = np.array(y_true_i)
@@ -857,61 +861,36 @@ def evaluate_dir(
         np.save(f, y_true_i)
         np.save(f, raw_preds_i)
         np.save(f, raw_class_confidences)
-    # print("Y true ", y_true_i)
-    # print(raw_preds_i)
-    # thresholds found from best_score
-    thresholds_per_label = model.thresholds_per_label
 
-    preds = results.copy()
-    for label in model.labels:
-        threshold = thresholds_per_label.get(label, 0.8)
-        if label not in thresholds_per_label:
-            logging.info("No threshold for %s so using 0.8", label)
-        threshold = np.clip(threshold, 0.5, 0.8)
-        pred_mask = preds == label
-        conf_mask = confidences < threshold
-        preds[pred_mask & conf_mask] = "None"
 
-    # print("Y true is", y_true, preds)
-    cm = confusion_matrix(y_true, preds, labels=model.labels)
+    assert set(list(fscore_pred)) <=set(model.labels)
+    cm = confusion_matrix(y_true, fscore_pred, labels=model.labels)
 
     # Log the confusion matrix as an image summary.
-    figure = plot_confusion_matrix(cm, class_names=model.labels)
+    plot_confusion_matrix(cm, class_names=model.labels)
     smoothing_file = filename.parent / f"{filename.stem}-fscore"
     plt.savefig(smoothing_file.with_suffix(".png"), format="png")
     np.savez(smoothing_file.with_suffix(".npz"), cm=cm, labels=np.array(model.labels))
 
     logging.info("Fscore model score ")
     model_score(cm, model.labels)
-    thresholds = [0.8]
-    for threshold in thresholds:
-        preds = results.copy()
-        # set these to None
-        preds[confidences < threshold] = "None"
-        cm = confusion_matrix(y_true, preds, labels=model.labels)
-        # Log the confusion matrix as an image summary.
-        figure = plot_confusion_matrix(cm, class_names=model.labels)
-        smoothing_file = filename.parent / f"{filename.stem}-{round(100*threshold)}%"
-        plt.savefig(smoothing_file.with_suffix(".png"), format="png")
-        np.savez(
-            smoothing_file.with_suffix(".npz"), cm=cm, labels=np.array(model.labels)
-        )
 
-        logging.info("%s model score ", threshold)
 
-        model_score(cm, model.labels)
 
-    # model.labels.append("None")
-    model.labels.append("unidentified")
-    cm = confusion_matrix(y_true, y_pred, labels=model.labels)
+    assert set(list(raw_preds)) <=set(model.labels)
+    # note this is not quite the raw preds as with different thresholds per label its possible that a 
+    # label with 50% is chosen over 80% but probably unlikely
+    cm = confusion_matrix(y_true, raw_preds, labels=model.labels)
+    plot_confusion_matrix(cm, class_names=model.labels)
     npy_file = confusion_file.with_suffix(".npy")
-    logging.info("Saving %s", npy_file)
-    np.savez(npy_file, cm=cm, labels=np.array(model.labels))
-
-    # Log the confusion matrix as an image summary.
-    figure = plot_confusion_matrix(cm, class_names=model.labels)
     plt.savefig(confusion_file.with_suffix(".png"), format="png")
-    logging.info("Saving %s", confusion_file.with_suffix(".png"))
+    np.savez(npy_file, cm=cm, labels=np.array(model.labels))
+    logging.info("Saving %s", npy_file)
+
+    # # Log the confusion matrix as an image summary.
+    # figure = plot_confusion_matrix(cm, class_names=model.labels)
+    # plt.savefig(confusion_file.with_suffix(".png"), format="png")
+    # logging.info("Saving %s", confusion_file.with_suffix(".png"))
 
 
 min_tag_clarity = 0.2

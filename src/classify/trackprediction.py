@@ -453,6 +453,8 @@ class TrackPrediction:
         index = self.best_label_index
         if index is None:
             return None
+        if self.class_best_score[index] == 0:
+            return None
         tag = self.labels[index]
         return tag
     
