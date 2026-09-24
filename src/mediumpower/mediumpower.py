@@ -10,6 +10,11 @@ import numpy as np
 from pathlib import Path
 from datetime import datetime
 
+
+import zlib
+import io
+import struct
+import gzip
 fmt = "%(asctime)s %(process)d %(thread)s:%(levelname)7s %(message)s"
 
 logging.basicConfig(
@@ -106,15 +111,15 @@ def main(config=None):
     sock.settimeout(3 * 60)  # 3 minutes
     sock.listen(1)
     global start
-
-    while True:
+    keep_running = True
+    while keep_running:
         logging.info("waiting for a connection %s", time.time() - start)
         try:
             connection, client_address = sock.accept()
             connected = True
             logging.info("connection from %s", client_address)
             # log_event("camera-connected", {"type": "thermal"})
-            medium_power(connection, frame_queue, processor, config)
+            keep_running = medium_power(connection, frame_queue, processor, config)
         except KeyboardInterrupt:
             logging.info("\nCtrl+C pressed. Exiting gracefully.")
             break
@@ -196,7 +201,11 @@ def medium_power(connection, frame_queue, processor, config):
     logging.info("Medium Power =======")
     asked_to_stay_on = False
 
+    inital_header_length = 8+4 +4 #Timestamp, lepton serial and firmware in the first message
     while True:
+        if config is not None and not config.recorder.rec_window.inside_window():
+            logging.info("No longer inside recorder window, leaving medium power")
+            return False
         # wait for start message
         if extra_b is None or len(extra_b) == 0:
             try:
@@ -235,7 +244,7 @@ def medium_power(connection, frame_queue, processor, config):
         min_value = None
         max_value = None
 
-        while len(extra_b)< 8+4+4:
+        while len(extra_b)< inital_header_length:
             logging.info("Missing timestamp info waiting for more data")
             try:
                 byte_data = connection.recv(headers.frame_size)
@@ -258,17 +267,16 @@ def medium_power(connection, frame_queue, processor, config):
 
         extra_b = extra_b[8+4+4:]
         if WRITE_CPTV:
+            from mediumpower.cptvwriter import CPTVWriter
+
             # write header and cptv file seperately and then concat later
             # this way can write header with total frames and min max value
-            f = open(f"/var/spool/cptv/temp/{formatted_time}.cptv", "wb")
-            logging.info(f"Writing cptv file %s", f.name)
-            # from cptvwriter import write_header
-            # write_header(f"/var/spool/cptv/temp/raw{stream_i}-{time.time()}-header.gz",headers, config,timestamp)
+            writer = CPTVWriter(f"/var/spool/cptv/temp/{formatted_time}")
         byte_data = b""
         if extra_b is not None:
             data = extra_b
             if WRITE_CPTV:
-                f.write(extra_b)
+                writer.write(extra_b)
         stream_i += 1
         while not finished:
             try:
@@ -278,17 +286,17 @@ def medium_power(connection, frame_queue, processor, config):
                     logging.info("Disconnected from socket")
                     if recording:
                         logging.error("Mid recording failed to receive more data")
-                        frame_queue.put(CLEAR_SIGNAL)
-                        f.close()
-                        remove_file(f.name)
+                        # Do we want to keep these files or delete them
+                        # i think for until tested thoroughly keep them as it will highlight any possible issues
+                        writer.combine_headers(headers,config,timestamp, min_value,max_value,frame_i)
 
-                    return
+                    return True
             except:
                 if recording:
                     logging.error("Mid recording failed to receive more data")
                     frame_queue.put(CLEAR_SIGNAL)
-                    f.close()
-                    remove_file(f.name)
+                    # once tested this file could be deleted instead
+                    writer.combine_headers(headers,config,timestamp, min_value,max_value,frame_i)
                     break
                 time.sleep(1)
                 continue
@@ -303,18 +311,10 @@ def medium_power(connection, frame_queue, processor, config):
                 finished = True
                 frame_queue.put(CLEAR_SIGNAL)
                 if WRITE_CPTV:
-                    f.write(byte_data)
-                    f.close()
-                    from cptvwriter import write_header
-                    file_path = Path(f.name)
-                    if config is None:
-                        from config.thermalconfig import ThermalConfig
-                        config =   ThermalConfig.load_from_file()
+                    writer.write(byte_data)
+                    writer.combine_headers(headers,config,timestamp, min_value,max_value,frame_i)
 
-                    write_header(f"/var/spool/cptv/temp/{formatted_time}-header.gz",headers,config,timestamp, min_value,max_value,frame_i)
-                    combine_file(f"/var/spool/cptv/temp/{formatted_time}-header.gz", f.name,file_path.parent.parent / file_path.name)
-                    # move from temp to actual folder
-                    # shutil.move(file_path, file_path.parent.parent / file_path.name)
+
 
                 # might have another start
                 extra_b = byte_data[clear_index + len("clear") :]
@@ -323,12 +323,11 @@ def medium_power(connection, frame_queue, processor, config):
                 finished = True
                 frame_queue.put(CLEAR_SIGNAL)
                 if WRITE_CPTV:
-                    f.close()
-                    os.remove(f.name)
+                    writer.remove()
                 break
             else:
                 if WRITE_CPTV:
-                    f.write(byte_data)
+                    writer.write(byte_data)
                 logging.debug(
                     "Adding new data %s to old data %s", len(byte_data), len(data)
                 )
@@ -346,7 +345,7 @@ def medium_power(connection, frame_queue, processor, config):
             except:
                 # if this happens log it and then get the file from rp2040
                 logging.error("Error decompressing ", exc_info=True)
-                return
+                return True
                 # time.sleep(1)
                 # continue
 
@@ -400,11 +399,7 @@ def medium_power(connection, frame_queue, processor, config):
         data = b""
         reader = None
         asked_to_stay_on = ask_to_stay_on()
-        if config is not None:
-            if not config.recorder.rec_window.inside_window():
-                logging.info("No longer inside recorder window, leaving medium power")
-                break
-
+    return True
 
 def combine_file(header_file, frame_file,output_file):
     import subprocess
@@ -427,10 +422,6 @@ def remove_file(file_name):
     except:
         logging.error("Failed to remove %s",file_name,exc_info=True)
 
-import zlib
-import io
-import struct
-import gzip
 
 
 def decompress(decompressor, data, read_header=False):
