@@ -22,10 +22,6 @@ start = time.time()
 WRITE_CPTV = True
 PROCESS_LOAD = True
 TEST = len(sys.argv) > 1
-if TEST:
-    MODEL_PATH = "./thermal-model/converted_model.tflite"
-else:
-    MODEL_PATH = "/home/pi/tflite/converted_model.tflite"
 MODEL_PATH = "/home/pi/tflite/converted_model.tflite"
 
 # MODEL_PATH = "/home/gp/cacophony/classifier-data/thermal-training/2026Aug/v11/160/qat/singleExclude160QAT.tflite"
@@ -34,6 +30,9 @@ def parse_cptv(cptv_file, frame_queue):
     from cptv import Frame
 
     reader = CptvReader(cptv_file)
+    header = reader.get_header()
+    timestamp = header.timestamp
+    frame_queue.put(time.time())
     while True:
         frame = reader.next_frame()
         if frame is None:
@@ -81,11 +80,10 @@ def run_cmd(cmd):
 #     )
 #     main(thermal_config)
 
-def main():
-    logging.info("Main started")
+def main(config=None):
+    logging.info("Medium Power started")
     global connected
     frame_queue = Queue()
-    config = None
     processor = get_processor(frame_queue)
     processor.start()
 
@@ -256,6 +254,7 @@ def medium_power(connection, frame_queue, processor, config):
         headers.serial = str(lepton_serial)
         logging.info("Timestamp received is %s serial %s firmware %s",timestamp,lepton_serial,firmware)
         formatted_time = datetime.fromtimestamp(timestamp/1e+6).strftime("%Y%m%d-%H%M%S.%f")
+        frame_queue.put(timestamp/1e+6)
 
         extra_b = extra_b[8+4+4:]
         if WRITE_CPTV:
@@ -308,6 +307,9 @@ def medium_power(connection, frame_queue, processor, config):
                     f.close()
                     from cptvwriter import write_header
                     file_path = Path(f.name)
+                    if config is None:
+                        from config.thermalconfig import ThermalConfig
+                        config =   ThermalConfig.load_from_file()
 
                     write_header(f"/var/spool/cptv/temp/{formatted_time}-header.gz",headers,config,timestamp, min_value,max_value,frame_i)
                     combine_file(f"/var/spool/cptv/temp/{formatted_time}-header.gz", f.name,file_path.parent.parent / file_path.name)
@@ -359,9 +361,7 @@ def medium_power(connection, frame_queue, processor, config):
                     (u8_data, np.frombuffer(decompressed_chunk, dtype=np.uint8)), axis=0
                 )
 
-            # logging.info("Loading frames wtih %s", len(u8_data))
             while True:
-                # need to figure out whats happening with the endiness
                 result = reader.next_frame_from_data(u8_data, False)
                 if result is not None:
                     frame, used = result
@@ -400,7 +400,10 @@ def medium_power(connection, frame_queue, processor, config):
         data = b""
         reader = None
         asked_to_stay_on = ask_to_stay_on()
-
+        if config is not None:
+            if not config.recorder.rec_window.inside_window():
+                logging.info("No longer inside recorder window, leaving medium power")
+                break
 
 
 def combine_file(header_file, frame_file,output_file):
@@ -576,6 +579,7 @@ def submit_prediction(clip, monitored_tracks, tracking_events):
 
     global predicting_track_id
     predicting_track_id = track._id
+    start = time.time()
     classify_executor.submit(
         _predict_and_apply, track, track_pred, preprocessed, frames, mass, start, tracking_events
     )
@@ -593,6 +597,7 @@ def _predict_and_apply(track, track_pred, preprocessed, frames, mass, start, tra
     assignment, which the GIL makes atomic regardless of which thread does it."""
     global predicting_track_id
     try:
+        last_region = track.bounds_history[-1]
         prediction = classifier.predict(preprocessed)
         track_pred.classified_frames(frames, prediction, mass)
         logging.info(
@@ -611,11 +616,13 @@ def _predict_and_apply(track, track_pred, preprocessed, frames, mass, start, tra
                 track_pred.track_id,
                 predicted_as,
                 conf,
-                track.bounds_history[-1],
+                last_region,
                 track_pred.last_frame_classified,
                 now.strftime("%B %d, %Y %I:%M:%S %p"),
             )
         )
+        if timestamp is not None:
+            logging.info("Prediction behind by %s",time.time() - timestamp  -last_region.frame_number/9 )
     except Exception:
         logging.error("Could not predict", exc_info=True)
     finally:
@@ -623,6 +630,7 @@ def _predict_and_apply(track, track_pred, preprocessed, frames, mass, start, tra
 
 
 classifier = None
+timestamp = None
 
 
 def load_model(over_network=False):
@@ -639,7 +647,6 @@ def load_model(over_network=False):
         logging.info("Loaded tflite model in %.2fs", time.time() - load_start)
     except:
         logging.error("Could not load model", exc_info=True)
-
 
 def run_classifier(frame_queue):
 
@@ -670,6 +677,8 @@ def run_classifier(frame_queue):
     tracking_events = []
     # only need for over network
     imported_requests = not PROCESS_LOAD
+    global timestamp
+    timestamp= time.time()
     try:
         while True:
             running_mean = None
@@ -772,6 +781,8 @@ def run_classifier(frame_queue):
                             from piclassifier.utils import kill_process_with_timeout
                             kill_process_with_timeout(classifier_process)
                         return
+                elif isinstance(frame,float):
+                    timestamp = frame
                 else:
                     frame, time_sent = frame
                     if running_mean is None:
@@ -823,11 +834,6 @@ def run_classifier(frame_queue):
                         for track in stale_tracks:
                             if track._id in monitored_tracks:
                                 stale_track_ids.add(track._id)
-                    logging.info(
-                        "%s Predicting behind by %s ",
-                        frame_i,
-                        time.time() - time_sent,
-                    )
 
                     
                     if dbus_service:
@@ -866,11 +872,6 @@ def run_classifier(frame_queue):
                                 track.received_at,
                             )
                     if predicting_track_id is None:
-                        logging.info(
-                            "%s Predicting behind by %s ",
-                            frame_i,
-                            time.time() - time_sent,
-                        )
                         submit_prediction(clip, monitored_tracks, tracking_events)
     except:
         logging.error("Error running classifier restarting ..", exc_info=True)

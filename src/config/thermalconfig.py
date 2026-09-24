@@ -2,8 +2,7 @@ from pathlib import Path
 from dataclasses import dataclass, asdict
 from typing import Any
 import toml
-import portalocker
-import os
+import fcntl
 
 from .locationconfig import LocationConfig
 from .timewindow import RelAbsTime, TimeWindow
@@ -16,18 +15,13 @@ class LockSafeConfig:
     def __init__(self, filename):
         self.lock_file = filename + ".lock"
         self.filename = filename
+        self.lock_f = None
         self.f = None
-        self.lock = portalocker.Lock(
-            self.lock_file, "r", flags=portalocker.LOCK_SH, timeout=1
-        )
-        if not os.path.exists(self.lock_file):
-            f = open(self.lock_file, "w+")
-            f.close()
 
     def __enter__(self):
-        # note: we might not have to lock when in read only mode?
-        # this could improve performance
-        self.lock.acquire()
+        # shared lock so we don't read while another process is writing the config
+        self.lock_f = open(self.lock_file, "a")
+        fcntl.flock(self.lock_f, fcntl.LOCK_SH)
         self.f = open(self.filename)
         return self.f
 
@@ -35,7 +29,8 @@ class LockSafeConfig:
         try:
             self.f.close()
         finally:
-            self.lock.release()
+            fcntl.flock(self.lock_f, fcntl.LOCK_UN)
+            self.lock_f.close()
 
 
 @dataclass(slots=True)

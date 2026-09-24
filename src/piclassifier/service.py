@@ -369,11 +369,10 @@ class DbusService:
         )
         if self.service is None:
             return
-        if prediction is not None:
+        if prediction is not None and last_prediction_frame is not None:
             predictions = prediction.copy()
             predictions = np.uint8(np.round(predictions * 100))
             best = np.argmax(predictions)
-
             self.service.Tracking(
                 clip_id,
                 track.get_id(),
@@ -401,7 +400,7 @@ class DbusService:
                 region.mass,
                 region.blank,
                 tracking,
-                last_prediction_frame,
+                0,
                 "0",
                 int(track_start_time * 1000),  # convert to ms
             )

@@ -8,7 +8,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "classifier_pipeline"
-version = "0.0.65"
+version = "0.0.60"
 authors = [
   { name="Giampaolo Ferraro", email="giampaolo@cacophony.org.nz" },
 ]
@@ -31,9 +31,6 @@ dependencies = [
   "pyyaml==6.0",
   "attrs==24.2.0",
   "filelock==3.0.12",
-  "Astral==1.10.1",
-  "timezonefinder==4.1.0",
-  "portalocker==1.5.2",
   "toml==0.10.2",
   "psutil==7.2.2",
   "PyGObject==3.44.0",

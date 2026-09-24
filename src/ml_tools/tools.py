@@ -203,17 +203,6 @@ def saveclassify_image(data, filename):
     img.save(filename.with_suffix(".png"))
 
 
-def get_timezone_str(lat, lng):
-    import timezonefinder
-
-    tf = timezonefinder.TimezoneFinder()
-    timezone_str = tf.certain_timezone_at(lat=lat, lng=lng)
-
-    if timezone_str is None:
-        timezone_str = "Pacific/Auckland"
-    return timezone_str
-
-
 def saveclassify_rgb(data, filename):
     from PIL import Image
 

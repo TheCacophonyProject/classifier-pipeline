@@ -66,17 +66,14 @@ def parse_args():
 
 
 # Links to socket and continuously waits for 1 connection
-def main():
+def main(thermal_config=None):
     init_logging()
     args = parse_args()
 
     config = Config.load_from_file(args.config_file)
-    thermal_config = ThermalConfig.load_from_file(args.thermal_config_file)
+    if thermal_config is None or args.thermal_config_file is not None:
+        thermal_config = ThermalConfig.load_from_file(args.thermal_config_file)
 
-    thermal_config.recorder.rec_window.set_location(
-        *thermal_config.location.get_lat_long(use_default=True),
-        thermal_config.location.altitude,
-    )
     if thermal_config.recorder.instant_classify and thermal_config.recorder.rec_window.inside_window():
         from mediumpower.mediumpower import main
         main(thermal_config)
