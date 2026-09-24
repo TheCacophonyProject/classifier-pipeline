@@ -43,7 +43,7 @@ jobs:
         run: |
           sudo mkdir /var/spool/cptv
           sudo chmod -R 777 /var/spool/cptv
-          wget -O thermal-model.tar https://github.com/TheCacophonyProject/AI-Model/releases/download/pi-v0.6/inc3-tflite-15122023.tar
+          wget -O thermal-model.tar https://github.com/TheCacophonyProject/AI-Model/releases/download/pi-v1.0/model.tar
           mkdir thermal-model
           tar xzvf thermal-model.tar -C thermal-model --strip-components=1
           pip install ai-edge-litert
