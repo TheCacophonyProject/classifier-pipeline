@@ -84,8 +84,9 @@ def record(
         writer.latitude = location_config.latitude
         writer.longitude = location_config.longitude
         writer.preview_secs = preview_secs
-        motion_config.temp_thresh = temp_thresh
-        writer.motion_config = yaml.dump(motion_config.as_dict()).encode()[:255]
+        if motion_config is not None:
+            motion_config.temp_thresh = temp_thresh
+            writer.motion_config = yaml.dump(motion_config.as_dict()).encode()[:255]
         if headers.model:
             writer.model = headers.model.encode()
         if headers.brand:

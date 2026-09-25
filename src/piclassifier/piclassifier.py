@@ -1012,6 +1012,7 @@ class PiClassifier(Processor):
             [],
             self.motion_detector.temp_thresh,
             time.time(),
+            None,
             test=self.parsing_file,
         )
         if not started:
@@ -1050,6 +1051,7 @@ class PiClassifier(Processor):
                     [],
                     self.motion_detector.temp_thresh,
                     time.time(),
+                    motion_config = self.motion_detector.config,
                 )
                 if self.recording and not self.use_low_power_mode:
                     set_recording_state(True)
