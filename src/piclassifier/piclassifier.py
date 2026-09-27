@@ -976,9 +976,6 @@ class PiClassifier(Processor):
             else:
                 tracks = self.clip.active_tracks
             best_contour = self.update_thumbnail(self.clip, tracks)
-            if track_id is not None:
-                track = tracks[0]
-
             if best_contour is None:
                 return None
             return best_contour

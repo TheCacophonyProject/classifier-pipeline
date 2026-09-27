@@ -195,7 +195,7 @@ def main():
                         dbus_object, bus, _, loop = connect_to_dbus(callback_fn)
                     except Exception as ex:
                         # this may not be running due to tc2-agent stopping it
-                        start_thermal_recorder()
+                        # start_thermal_recorder()
                         logging.info(
                             "Couldn't connect to dbus (%s) waiting 20 seconds and trying again",
                             service.DBUS_NAME,

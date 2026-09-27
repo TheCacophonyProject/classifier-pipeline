@@ -406,7 +406,7 @@ class ClipClassifier:
         from piclassifier.motiondetector import RunningMean, SlidingWindow
         from piclassifier.cptvmotiondetector import CPTVMotionDetector
         from ml_tools.frame import Frame
-        from ml_tools.preprocess import preprocess_frame, preprocess_movement
+        from ml_tools.preprocess import preprocess_frame, preprocess_movement,preprocess_frame_v2
         from datetime import datetime
 
         filename = Path(filename)
@@ -524,20 +524,30 @@ class ClipClassifier:
             if current_frame_num in track_samples:
                 thermal_median = np.median(frame.pix)
                 for track_id, region in track_samples[current_frame_num].items():
-                    # region = track_samples[current_frame_num]
-                    thermal = region.subimage(frame.pix).astype(np.float32)
-                    background = region.subimage(
-                        track_extractor.background_alg.background
-                    )
-                    filtered = thermal - background
-                    thermal -= thermal_median
-                    f = Frame(thermal, filtered, current_frame_num, region=region)
-                    if cache:
-                        frame_cache.add_frame(f, track_id)
-                        track_data[track_id]["regions"][region.frame_number] = region
-                    else:
-                        track_data[track_id]["frames"][region.frame_number] = f
-                    if classifier.params.diff_norm:
+
+                    if classifier.preprocess_v2:
+                        background = track_extractor.background_alg.background
+                            
+                        filtered = np.float32(frame.pix) - background
+                        f = Frame(frame.pix, filtered, current_frame_num, region=region)
+                        f,_,_ = preprocess_frame_v2(
+                            f,
+                            classifier.params.frame_size,
+                            f.region,
+                            clip.crop_rectangle,
+                            enlarge=classifier.enlarge,
+                            new_max=255.0,
+                        )
+                        f.preprocessed = True
+                    elif classifier.params.diff_norm:
+                        # support for previous models is obselete now
+                        thermal = region.subimage(frame.pix).astype(np.float32)
+                        background = region.subimage(
+                            track_extractor.background_alg.background
+                        )
+                        filtered = thermal - background
+                        thermal -= thermal_median
+                        f = Frame(thermal, filtered, current_frame_num, region=region)
                         f_min = np.min(filtered)
                         f_max = np.max(filtered)
                         existing_limits = track_data[track_id]["limits"]
@@ -550,6 +560,12 @@ class ClipClassifier:
                             if f_max > existing_limits[1]:
                                 existing_limits[1] = f_max
                             track_data[track_id]["limits"] = existing_limits
+                    
+                    if cache:
+                        frame_cache.add_frame(f, track_id)
+                        track_data[track_id]["regions"][region.frame_number] = region
+                    else:
+                        track_data[track_id]["frames"][region.frame_number] = f
             # track_extractor.process_frame(clip, frame)
             is_ffc = is_affected_by_ffc(frame)
             oldest_thermal = thermal_window.oldest
@@ -602,26 +618,37 @@ class ClipClassifier:
                     else:
                         f = data["frames"][frame_i]
                     if not f.preprocessed:
-                        f = preprocess_frame(
-                            f,
-                            (
+                        if classifier.preprocess_v2:
+                            f = preprocess_frame_v2(
+                                f,
                                 classifier.params.frame_size,
-                                classifier.params.frame_size,
-                            ),
-                            clip.background,
-                            clip.crop_rectangle,
-                            calculate_filtered=False,
-                            filtered_norm_limits=data["limits"],
-                            cropped=True,
-                            sub_median=False,
-                        )
+                                f.region,
+                                clip.crop_rectangle,
+                                enlarge=classifier.enlarge,
+                                new_max=255.0,
+                            )
+                            print("Preprocessed f",f)
+                        else:
+                            f = preprocess_frame(
+                                f,
+                                (
+                                    classifier.params.frame_size,
+                                    classifier.params.frame_size,
+                                ),
+                                clip.background,
+                                clip.crop_rectangle,
+                                calculate_filtered=False,
+                                filtered_norm_limits=data["limits"],
+                                cropped=True,
+                                sub_median=False,
+                            )
                         data["frames"][frame_i] = f
                     # probably no need to copy
                     segment_frames.append(f)
                 frames = preprocess_movement(
                     segment_frames,
                     classifier.params.square_width,
-                    classifier.params.frame_size,
+                    self.params.frame_size * 2 if classifier.enlarge else classifier.params.frame_size,
                     classifier.params.channels,
                     classifier.preprocess_fn,
                     sample=f"{clip.get_id()}-{track_id}",
@@ -692,7 +719,7 @@ class ClipClassifier:
                 "Finished predicting track %s memory %s", track_id, process_mem()
             )
             track_prediction = classifier.track_prediction_from_raw(
-                track_id, pred_frame_numbers, preds
+                track_id, pred_frame_numbers, preds,masses
             )
             predictions.prediction_per_track[track_id] = track_prediction
 

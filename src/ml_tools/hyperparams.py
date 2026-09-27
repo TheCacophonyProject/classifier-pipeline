@@ -66,7 +66,7 @@ class HyperParams(dict):
 
     @property
     def diff_norm(self):
-        return self.get("diff_norm", True)
+        return self.get("diff_norm", False)
 
     @property
     def multi_label(self):

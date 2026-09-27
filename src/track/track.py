@@ -362,7 +362,7 @@ class ThumbInfo:
 
     def to_metadata(self):
         thumbnail_info = {
-            "region": self.region.meta_dictionary(),
+            "region": self.region.meta_dictionary() if self.region else {},
             "contours": self.points,
             "score": round(self.score()),
         }

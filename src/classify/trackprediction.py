@@ -308,29 +308,7 @@ class TrackPrediction:
 
         tag, confidence, threshold = self.prediction_with_confidence()
         return f"{tag} {confidence:.0%} threshold: {threshold:.0%}"
-        # TODO this is out of date and should use thresholds etc
-        score = self.max_score
-        if score is None:
-            return None
-        if score > 0.5:
-            first_guess = "{} {:.1f} (clarity {:.1f})".format(
-                self.labels[self.best_label_index], score * 10, self.clarity * 10
-            )
-        else:
-            first_guess = "[nothing] {} {:.1f} (clarity {:.1f})".format(
-                self.labels[self.best_label_index], score * 10, self.clarity * 10
-            )
-
-        second_score = self.score(2)
-
-        if second_score > 0.5:
-            second_guess = "[second guess - {} {:.1f}]".format(
-                self.labels[self.label_index(2)], second_score * 10
-            )
-        else:
-            second_guess = ""
-
-        return (first_guess + " " + second_guess).strip()
+       
 
     @property
     def num_frames(self):

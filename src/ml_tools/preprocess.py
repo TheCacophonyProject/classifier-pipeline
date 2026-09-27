@@ -68,7 +68,6 @@ def preprocess_frame_v2(
 
     THERMAL_MIN_KV = 27315
     THERMAL_MAX_KV = 31515  # 42 celcius
-
     if original_dim is None:
         original_dim = out_dim
     median = np.median(frame.thermal)
@@ -76,7 +75,6 @@ def preprocess_frame_v2(
     enlarged_region = region.copy()
     resize_times = None
     if region.width > out_dim or region.height > out_dim:
-
         enlarged_region.enlarge_for_rotation(final_dim=out_dim, extra_needed=0)
     else:
         # we are going to resize up to 4 times.
@@ -86,7 +84,7 @@ def preprocess_frame_v2(
         if resize_times < 1:
             enlarged_region.enlarge_to(out_dim)
             # logging.info("Resizing %s enlarging to %s region %s  enlarged %s",resize_times,resize_dim ,region,enlarged_region)
-
+            
             resize_times = None
         else:
 
