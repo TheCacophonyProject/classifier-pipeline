@@ -170,16 +170,6 @@ class TrackingConfig(DefaultConfig):
         )
         return default_tracking
 
-    #
-    # def load_trackers(raw):
-    #     if raw is None:
-    #         return None
-    #     trackers = {}
-    #     for raw_tracker in raw.values():
-    #         tracker = TrackingConfig.load(raw_tracker)
-    #         trackers[tracker.type] = tracker
-    #     return trackers
-
     def validate(self):
         return True
 
@@ -202,43 +192,3 @@ class TrackingConfig(DefaultConfig):
         self.track_min_mass *= scale
         self.aoi_min_mass *= scale
 
-
-#
-#
-# @attr.s
-# class TrackerConfig(DefaultConfig):
-#
-#     tracker = attr.ib()
-#     params = attr.ib()
-#     type = attr.ib()
-#
-#     @classmethod
-#     def load(cls, raw):
-#         defaults = cls.get_defaults()
-#         deep_copy_map_if_key_not_exist(defaults.as_dict(), raw)
-#
-#         return cls(
-#             tracker=raw["tracker"],
-#             params=raw["params"],
-#             type=raw["type"],
-#         )
-#
-#     def as_dict(self):
-#         return attr.asdict(self)
-#
-#     @classmethod
-#     def get_defaults(cls):
-#         return cls(
-#             tracker="RegionTracker",
-#             type="IR",
-#             params={
-#                 "base_distance_change": 11250,
-#                 "min_mass_change": 20 * 4,
-#                 "restrict_mass_after": 1.5,
-#                 "mass_change_percent": 0.55,
-#                 "max_distance": 30752,
-#             },
-#         )
-#
-#     def validate(self):
-#         return True

@@ -74,10 +74,6 @@ def main(thermal_config=None):
     if thermal_config is None or args.thermal_config_file is not None:
         thermal_config = ThermalConfig.load_from_file(args.thermal_config_file)
 
-    if thermal_config.recorder.instant_classify and thermal_config.recorder.rec_window.inside_window():
-        from mediumpower.mediumpower import main
-        main(thermal_config)
-        return
     other_services = []
     if args.file:
         if thermal_config.base_motion.run_classifier:
