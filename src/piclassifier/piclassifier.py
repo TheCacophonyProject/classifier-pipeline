@@ -684,7 +684,7 @@ class PiClassifier(Processor):
                     num_predictions=1,
                 )
                 if pred_result is None:
-                    logging.info("not prediction %s",track)
+                    logging.info("Cant predict %s at %s",track, clip.current_frame)
                     track_prediction.last_frame_classified = self.clip.current_frame
                     continue
                 prediction, frames, mass = pred_result

@@ -38,7 +38,7 @@ class CPTVWriter:
     def remove(self):
         self.f.close()
         remove_file(self.f.name)
-    # writes a header file and then combiens the frames and the headers into the final file
+    # writes a header file and then combines the frames and the headers into the final file
     # this is done so we can add min and max values of the entire clip into the header 
     def combine_file(self, headers,config,timestamp_micros, min_value = 0,max_value=0,num_frames = 0):
         from pathlib import Path

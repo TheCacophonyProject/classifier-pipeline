@@ -95,9 +95,9 @@ def record(
             writer.firmware = headers.firmware.encode()
         writer.camera_serial = headers.serial
         if background_frame is not None:
-            f = Frame(background_frame, timedelta(), timedelta(), 0, 0)
-            f.background_frame = True
-            writer.background_frame = f
+            frame = Frame(background_frame, timedelta(), timedelta(), 0, 0)
+            frame.background_frame = True
+            writer.background_frame = frame
         # add brand model fps etc to cptv when python-cptv supports
         if device_config.name:
             writer.device_name = device_config.name.encode()
@@ -124,4 +124,7 @@ def record(
             writer.close()
         except:
             pass
+    finally:
+        if not f.closed:
+            f.close()
     logging.info("%s Recorder %s Written %s", name, filename.resolve(), frames)

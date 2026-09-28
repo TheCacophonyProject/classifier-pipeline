@@ -648,7 +648,7 @@ class ClipClassifier:
                 frames = preprocess_movement(
                     segment_frames,
                     classifier.params.square_width,
-                    self.params.frame_size * 2 if classifier.enlarge else classifier.params.frame_size,
+                    classifier.params.frame_size * 2 if classifier.enlarge else classifier.params.frame_size,
                     classifier.params.channels,
                     classifier.preprocess_fn,
                     sample=f"{clip.get_id()}-{track_id}",
@@ -740,11 +740,16 @@ class ClipClassifier:
                 dbus_preds = np.uint8(np.round(dbus_preds * 100))
                 dbus_preds = dbus_preds.tolist()
                 try:
+
+                    # since grouped by parents this should only ever be at most one tag
+                    tags = track_prediction.predicted_tags()
+                    if tags is not None:
+                        tag = tags[0]
                     service.TrackReprocessed(
                         meta_data.get("id", 0),
                         track_id,
                         dbus_preds,
-                        track_prediction.predicted_tag(),
+                        tag,
                         int(round(100 * track_prediction.max_score)),
                         np.uint8(region.to_ltrb()).tolist(),
                         region.frame_number,

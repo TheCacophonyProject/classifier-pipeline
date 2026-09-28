@@ -870,7 +870,6 @@ class LiteInterpreter(Interpreter):
         self.preprocess_fn = self.get_preprocess_fn()
         self.in_idx = self.input["index"]
         self.out_idx = self.output["index"]
-        # inc3_preprocess
 
     def predict(self, input_x):
         if self.run_over_network:
