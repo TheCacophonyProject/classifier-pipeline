@@ -627,7 +627,6 @@ class ClipClassifier:
                                 enlarge=classifier.enlarge,
                                 new_max=255.0,
                             )
-                            print("Preprocessed f",f)
                         else:
                             f = preprocess_frame(
                                 f,

@@ -154,12 +154,8 @@ class TrackPrediction:
         if self.num_frames_classified > 0:
             self.class_best_score = np.sum(predictions, axis=0)
             # normalize so it sums to 1
-            if self.multi_label:
-                self.class_best_score = self.class_best_score / len(predictions)
-            else:
-                self.class_best_score = self.class_best_score / np.sum(
-                    self.class_best_score
-                )
+            self.class_best_score = self.class_best_score / len(predictions)
+
 
     def normalized_best_score(self):
         # class_best_score is always kept normalized, see classified_frames/classified_frame
@@ -197,10 +193,7 @@ class TrackPrediction:
                 self.predictions = [prediction]
 
         combined = previous_total + total_pred
-        if self.multi_label:
-            self.class_best_score = combined / self.num_predictions
-        else:
-            self.class_best_score = combined / np.sum(combined)
+        self.class_best_score = combined / self.num_predictions
         self.last_frame_classified = last_frame_classified
 
     def previous_prediction_was_short(self):
@@ -246,10 +239,7 @@ class TrackPrediction:
             self.predictions = [prediction]
 
         combined = previous_total + predictions
-        if self.multi_label:
-            self.class_best_score = combined / self.num_predictions
-        else:
-            self.class_best_score = combined / np.sum(combined)
+        self.class_best_score = combined / self.num_predictions
 
     def get_priority(self, frame_number):
         if self.tracking:
