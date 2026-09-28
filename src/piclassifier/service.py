@@ -365,7 +365,7 @@ class DbusService:
             tracking,
             region,
             prediction,
-            track.get_id(),
+            track.id,
         )
         if self.service is None:
             return
@@ -375,7 +375,7 @@ class DbusService:
             best = np.argmax(predictions)
             self.service.Tracking(
                 clip_id,
-                track.get_id(),
+                track.id,
                 predictions,
                 labels[best],
                 predictions[best],
@@ -391,7 +391,7 @@ class DbusService:
         else:
             self.service.Tracking(
                 clip_id,
-                track.get_id(),
+                track.id,
                 [],
                 "",
                 0,

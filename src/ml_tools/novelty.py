@@ -135,7 +135,7 @@ def preprocess_file(classifier, filename):
         print("Track is ", track)
         pred_frames = classifier.frames_for_prediction(clip, track)
 
-        track_data[track.get_id()] = {
+        track_data[track.id] = {
             "pred_frames": pred_frames,
             "limits": None,
             "frames": {},
@@ -146,7 +146,7 @@ def preprocess_file(classifier, filename):
 
             for r in seg.regions:
                 frame_data = track_samples.setdefault(r.frame_number, {})
-                frame_data[track.get_id()] = r
+                frame_data[track.id] = r
                 # frame_samples.append(r)
     reader = CptvReader(str(clip.source_file))
     current_frame_num = 0
@@ -217,7 +217,7 @@ def preprocess_file(classifier, filename):
                 classifier.params.frame_size,
                 classifier.params.channels,
                 classifier.preprocess_fn,
-                sample=f"{clip.get_id()}-{track_id}",
+                sample=f"{clip.id}-{track_id}",
                 enlarge=True,
             )
             print(segment.frame_indices)

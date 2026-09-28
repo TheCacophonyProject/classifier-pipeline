@@ -53,6 +53,10 @@ class RawDatabase:
         self.clip_id = None
         self.timestamp = None
 
+    @property
+    def id(self):
+        return self.clip_id
+    
     def frames_kept(self):
         return None
 

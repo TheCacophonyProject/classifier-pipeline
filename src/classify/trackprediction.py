@@ -24,9 +24,9 @@ class Predictions:
 
     def get_or_create_prediction(self, track, keep_all=True):
         prediction = self.prediction_per_track.setdefault(
-            track.get_id(),
+            track.id,
             TrackPrediction(
-                track.get_id(),
+                track.id,
                 self.labels,
                 keep_all=keep_all,
                 start_frame=track.start_frame,
@@ -346,6 +346,8 @@ class TrackPrediction:
     def most_confident_tag(self):
         index = self.best_label_index
         if index is None:
+            return None
+        if self.class_best_score[index] == 0:
             return None
         tag = self.labels[index]
         return tag

@@ -25,7 +25,6 @@ RUN touch /etc/cacophony/classifier
 RUN python3 latestmodel.py
 
 
-# 1. Install the legacy engine package
 RUN pip install --no-cache-dir --upgrade keras==3.14.1
 
 COPY docker/ready.sh .

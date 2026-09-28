@@ -1372,13 +1372,13 @@ class KerasModel(Interpreter):
             if frame is None:
                 logging.error(
                     "Clasifying clip %s track %s can't get frame %s",
-                    clip.get_id(),
-                    track.get_id(),
+                    clip.id,
+                    track.id,
                     region.frame_number,
                 )
                 raise Exception(
                     "Clasifying clip {} track {} can't get frame {}".format(
-                        clip.get_id(), track.get_id(), region.frame_number
+                        clip.id, track.id, region.frame_number
                     )
                 )
             logging.debug(
@@ -1410,7 +1410,7 @@ class KerasModel(Interpreter):
         if len(data) == 0:
             return None
         data = np.float32(data)
-        track_prediction = TrackPrediction(track.get_id(), self.labels)
+        track_prediction = TrackPrediction(track.id, self.labels)
 
         output = self.model.predict(data)
         track_prediction.classified_track(output, np.array(frames_used))

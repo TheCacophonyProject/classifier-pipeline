@@ -190,12 +190,7 @@ class Clip:
 
     @property
     def id(self):
-        return self._id
-
-    # TODO check if this needs to be string this was 
-    # historically for the hd5b database which isnt used anymore
-    def get_id(self):
-        return str(self._id)
+        return int(self._id)
 
     # def set_temp_thresh(self):
     #     if self.config.motion.dynamic_thresh:
@@ -248,7 +243,7 @@ class Clip:
         tracks = []
         # get track data
         for track_meta in tracks_meta:
-            track = Track(self.get_id())
+            track = Track(self.id)
             if track.load_track_meta(
                 track_meta,
                 self.frames_per_second,

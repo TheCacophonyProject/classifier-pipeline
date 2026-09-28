@@ -307,5 +307,5 @@ def thumbnail_debug(clip):
         h_info = [mass_frames, contour_frames, median_diff, scored_frames]
         display_track(
             h_info,
-            f"{clip.get_id()}-{track.start_frame}-{track.end_frame}",
+            f"{clip.id}-{track.start_frame}-{track.end_frame}",
         )

@@ -147,7 +147,7 @@ class RegionTracker(Tracker):
             if max_mass_change and abs(avg_mass - region.mass) > max_mass_change:
                 logging.debug(
                     "track %s region mass %s deviates too much from %s for region %s max change is %s",
-                    track.get_id(),
+                    track.id,
                     region.mass,
                     avg_mass,
                     region,
@@ -161,7 +161,7 @@ class RegionTracker(Tracker):
                 if distance > max_distance:
                     logging.debug(
                         "track %s distance score %s bigger than max distance %s for region %s",
-                        track.get_id(),
+                        track.id,
                         distance,
                         max_distance,
                         region,
@@ -175,7 +175,7 @@ class RegionTracker(Tracker):
             if size_change > max_size_change:
                 logging.debug(
                     "track % size_change %s bigger than max size_change %s for region %s",
-                    track.get_id(),
+                    track.id,
                     size_change,
                     max_size_change,
                     region,
@@ -448,7 +448,7 @@ class Track:
         if tracking_config is not None:
             self.tracker = self.get_tracker(tracking_config)
         # self.tracker = RegionTracker(
-        #     self.get_id(), tracking_config, self.crop_rectangle
+        #     self.id, tracking_config, self.crop_rectangle
         #
         self.thumb_info = None
         self.score = None
@@ -456,7 +456,7 @@ class Track:
     def get_tracker(self, tracking_config):
         tracker = tracking_config.tracker
         if tracker == "RegionTracker":
-            return RegionTracker(self.get_id(), tracking_config, self.crop_rectangle)
+            return RegionTracker(self.id, tracking_config, self.crop_rectangle)
         else:
             raise Exception(f"Cant find for tracker {tracker}")
 
@@ -481,7 +481,7 @@ class Track:
     @classmethod
     def from_region(cls, clip, region, tracker_version=None, tracking_config=None):
         track = cls(
-            clip.get_id(),
+            clip.id,
             fps=clip.frames_per_second,
             tracker_version=tracker_version,
             crop_rectangle=clip.crop_rectangle,
@@ -492,7 +492,8 @@ class Track:
         track.add_region(region)
         return track
 
-    def get_id(self):
+    @property
+    def id(self):
         return self._id
 
     def add_prediction_info(self, track_prediction):
@@ -919,7 +920,7 @@ class Track:
         return self.bounds_history[-1]
 
     def __repr__(self):
-        return "Track: {} frames# {}".format(self.get_id(), len(self))
+        return "Track: {} frames# {}".format(self.id, len(self))
 
     def __len__(self):
         return len(self.bounds_history)
@@ -937,7 +938,7 @@ class Track:
         track_info = {}
         start_s, end_s = self.start_and_end_in_secs()
 
-        track_info["id"] = self.get_id()
+        track_info["id"] = self.id
         if self.in_trap:
             track_info["trap_triggered"] = self.in_trap
             track_info["trigger_frame"] = self.trigger_frame
@@ -956,7 +957,7 @@ class Track:
         prediction_info = []
         if predictions_per_model:
             for model_id, predictions in predictions_per_model.items():
-                prediction = predictions.prediction_for(self.get_id())
+                prediction = predictions.prediction_for(self.id)
                 if prediction is None:
                     continue
                 prediction_meta = prediction.get_metadata()
