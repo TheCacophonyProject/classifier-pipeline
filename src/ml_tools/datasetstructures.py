@@ -1109,6 +1109,7 @@ def get_segment_indices(
                 region_index += 1
                 skip += 1
                 frame_num = regions[region_index].frame_number
+
             if region_index >= len(regions) - 1:
                 break
             start =frame_num
@@ -1202,18 +1203,17 @@ def random_sections(
         rng = np.random.default_rng()
 
     chunks = 25    
-
+    max_window_frames = 100
+    
     # number that rouunds chunk size to 4, roughly 11 seconds
-    window_frames =100 
-    chunk_size = int(window_frames / 25)
+    chunk_size = int(max_window_frames / 25)
     
     num_frames = frame_indices[-1] - frame_indices[0]  + 1
-
     frame_indices = list(frame_indices.copy())
     samples, num_windows, stride_offset = get_samples_by_label_urgency(
-        label, num_frames, window_frames=window_frames, max_samples=max_samples,ceil_num_windows=ceil_num_windows,
+        label, num_frames, window_frames=max_window_frames, max_samples=max_samples,ceil_num_windows=ceil_num_windows,
     )
-    window_frames = min(window_frames ,num_frames)
+    window_frames = min(max_window_frames ,num_frames)
     upsampled = False
     step = window_frames// 2
     if ceil_num_windows:
@@ -1298,7 +1298,7 @@ def random_sections(
                 mass_history,
                 last_index,
                 frame_to_closest_valid,
-                num_frames < window_frames,
+                num_frames < max_window_frames,
                 vel_x,
                 vel_y,
             )
