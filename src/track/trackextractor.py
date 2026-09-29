@@ -133,7 +133,6 @@ def extract_file(
 
         track_extractor = ClipTrackExtractor(
             config.tracking,
-            config.use_opt_flow,
             cache_to_disk,
             verbose=config.verbose,
             max_frames=max_frames,
@@ -237,7 +236,6 @@ def get_metadata(
     metadata["algorithm"] = {}
     metadata["algorithm"]["tracker_version"] = track_extractor.tracker_version
     metadata["algorithm"]["tracker_config"] = track_extractor.config.as_dict()
-
     if existing_metadata is not None:
         # merge new metadata with old, think tracks is all that should be removed first
         if "tracks" in existing_metadata:

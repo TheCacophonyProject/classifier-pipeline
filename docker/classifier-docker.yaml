@@ -1,7 +1,7 @@
 classify:
   meta_to_stdout: False
   models:
-    - id: 2
+    - id: 0
       name : "WR"
       model_file: "/etc/cacophony/models/server-x/default/saved_model.pb"
       thumbnail_model: True

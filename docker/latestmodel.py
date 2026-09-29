@@ -69,7 +69,9 @@ def main():
     ]
 
     rf_releases = sorted(rf_releases, key=lambda r: r["tag_name"], reverse=True)
-    server_releases = sorted(server_releases, key=lambda r: r["tag_name"], reverse=True)
+    server_releases = sorted(
+        server_releases, key=lambda r: version_number(r["tag_name"]), reverse=True
+    )
     if len(rf_releases) == 0 and len(server_releases) == 0:
         print("No releases found for server")
         sys.exit(0)
@@ -83,13 +85,23 @@ def main():
         config = {"classify": {"models": []}}
 
     output_dir = add_to_config(server_releases[0], config, 1, "Keras")
-    if output_dir:
-        os.symlink(output_dir, output_dir.parent / "NZ")
-
+    try:
+        if output_dir:
+            os.symlink(output_dir, output_dir.parent / "NZ")
+    except:
+        pass
     add_to_config(rf_releases[0], config, 2, "RandomForest")
 
     with open(config_file, "w") as stream:
         raw = yaml.dump(config, stream)
+
+
+def version_number(tag):
+    v_index = tag.rindex("v")
+    version = float(tag[v_index + 1 :])
+    version = int(10 * version)
+
+    return version
 
 
 def add_to_config(release, config, model_id, model_type):
@@ -109,16 +121,18 @@ def add_to_config(release, config, model_id, model_type):
     else:
         existing_models.mkdir()
     print("Have existing", model_versions)
+    model_dir = existing_models / release["tag_name"] / "default"
+
     if release["tag_name"] in model_versions:
         print("Already have latest model")
-        return None
-
-    # Download and extract new model
-    print("Downloading model", asset["name"])
-    model_dir = existing_models / release["tag_name"] / "default"
-    model_dir.mkdir(exist_ok=True, parents=True)
-    print("Made dir", model_dir)
-    download_file(asset["browser_download_url"], asset["name"], model_dir)
+        # return None
+    else:
+        # Download and extract new model
+        print("Downloading model", asset["name"])
+        model_dir = existing_models / release["tag_name"] / "default"
+        model_dir.mkdir(exist_ok=True, parents=True)
+        print("Made dir", model_dir)
+        download_file(asset["browser_download_url"], asset["name"], model_dir)
 
     # Get model metadata to extract model name
     meta_data = model_dir.glob("*.json")
@@ -140,13 +154,18 @@ def add_to_config(release, config, model_id, model_type):
     #     }
     #     config["classify"]["models"] = [config_model]
     # else:
+
+    # version number
+    version = version_number(release["tag_name"])
+    print("Version is", version)
+    # this will be the digits at the end of the tagname starting with v
     config_model = config["classify"]["models"][model_id - 1]
     config_model["name"] = model_name
     if model_type == "RandomForest":
         config_model["model_file"] = str(meta_data.with_suffix(".pkl"))
     else:
         config_model["model_file"] = str(model_dir / "saved_model.keras")
-    config_model["id"] = config_model["id"] + 1
+    config_model["id"] = config_model["id"] + version
     config_model["type"] = model_type
 
     return model_dir

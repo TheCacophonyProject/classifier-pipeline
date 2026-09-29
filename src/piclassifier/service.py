@@ -1,15 +1,9 @@
-import threading
+from threading import Thread
 import logging
-import json
 import numpy as np
-import time
 import dbus
 import dbus.service
-import dbus.mainloop.glib
-from gi.repository import GLib
-from ml_tools.tools import CustomJSONEncoder
 from dbus.exceptions import DBusException
-from dbus.mainloop.glib import DBusGMainLoop
 
 DBUS_NAME = "org.cacophony.thermalrecorder"
 DBUS_PATH = "/org/cacophony/thermalrecorder"
@@ -54,22 +48,9 @@ class Service(dbus.service.Object):
         except:
             logging.error("Could not update service labels", exc_info=True)
 
-    def start_service(self,dbus):
-        super().__init__(dbus, DBUS_PATH)
-        self.ServiceStarted()
-
-
-    def update_labels(self, labels):
-        self.labels = labels
-        self.classifier_loaded = True
-        try:
-            self.LabelsUpdated()
-        except:
-            logging.error("Could run labels updated",exc_info=True)
-        
     @dbus.service.method(
         DBUS_NAME,
-    in_signature="",
+        in_signature="",
         out_signature="a{si}",
     )
     def CameraInfo(self):
@@ -92,14 +73,13 @@ class Service(dbus.service.Object):
         logging.debug("Sending headers %s", headers)
         return headers
 
-
     @dbus.service.method(
         DBUS_NAME,
         out_signature="b",
     )
     def IsReady(self):
         return self.is_ready()
-    
+
     @dbus.service.method(
         DBUS_NAME,
         out_signature="s",
@@ -116,9 +96,7 @@ class Service(dbus.service.Object):
         parsing_file = self.is_parsing_file()
         if parsing_file is not None:
             raise ParseFileError(f"Already parsing {parsing_file}")
-        threading.Thread(
-            target=self.parse_file, args=(file, fps, seed), daemon=True
-        ).start()
+        Thread(target=self.parse_file, args=(file, fps, seed), daemon=True).start()
         return "Parsing file"
 
     @dbus.service.method(
@@ -144,11 +122,8 @@ class Service(dbus.service.Object):
         parsing_file = self.is_parsing_file()
         if parsing_file is not None:
             raise ParseFileError(f"Already parsing {parsing_file}")
-        threading.Thread(
-            target=self.parse_file, args=(file, fps, seed), daemon=True
-        ).start()
+        Thread(target=self.parse_file, args=(file, fps, seed), daemon=True).start()
         return "Parsing file"
-
 
     @dbus.service.method(
         DBUS_NAME,
@@ -194,7 +169,7 @@ class Service(dbus.service.Object):
     def ClassificationLabels(self):
         if not self.classifier_loaded:
             raise DBusException("Labels have not been initialized")
-        logging.info("Getting labels %s", self.labels)
+        # logging.info("Getting labels %s", self.labels)
         if len(self.labels) == 0:
             return dbus.Array([], signature="(ias)")
         return self.labels
@@ -289,7 +264,7 @@ class Service(dbus.service.Object):
         pass
 
 
-class SnapshotService:
+class DbusService:
     def __init__(
         self,
         headers,
@@ -302,6 +277,10 @@ class SnapshotService:
         is_ready,
         classifier_loaded=True,
     ):
+        import dbus.mainloop.glib
+        from dbus.mainloop.glib import DBusGMainLoop
+        from gi.repository import GLib
+
         DBusGMainLoop(set_as_default=True)
         dbus.mainloop.glib.threads_init()
         self.loop = GLib.MainLoop()
@@ -317,9 +296,10 @@ class SnapshotService:
             is_ready,
             classifier_loaded,
         )
-        self.t = threading.Thread(
+        self.t = Thread(
             target=self.run_server,
         )
+        self.started = False
         self.t.daemon = True
         self.t.start()
 
@@ -348,13 +328,17 @@ class SnapshotService:
     def run_server(
         self,
     ):
+        from dbus.mainloop.glib import DBusGMainLoop
+
         try:
             session_bus = dbus.SystemBus(mainloop=DBusGMainLoop())
             name = dbus.service.BusName(DBUS_NAME, session_bus)
             self.service.start_service(session_bus)
+            self.started = True
             self.loop.run()
         except:
             logging.error("Couldn't run loop", exc_info=True)
+            self.started = True
             self.quit()
 
     def tracking(
@@ -374,17 +358,17 @@ class SnapshotService:
             tracking,
             region,
             prediction,
-            track.get_id(),
+            track.id,
         )
         if self.service is None:
             return
-        if prediction is not None:
+        if prediction is not None and last_prediction_frame is not None:
             predictions = prediction.copy()
             predictions = np.uint8(np.round(predictions * 100))
             best = np.argmax(predictions)
             self.service.Tracking(
                 clip_id,
-                track.get_id(),
+                track.id,
                 predictions,
                 labels[best],
                 predictions[best],
@@ -400,7 +384,7 @@ class SnapshotService:
         else:
             self.service.Tracking(
                 clip_id,
-                track.get_id(),
+                track.id,
                 [],
                 "",
                 0,
@@ -409,7 +393,7 @@ class SnapshotService:
                 region.mass,
                 region.blank,
                 tracking,
-                last_prediction_frame,
+                0,
                 "0",
                 int(track_start_time * 1000),  # convert to ms
             )

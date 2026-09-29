@@ -2,7 +2,54 @@ import cv2
 import numpy as np
 
 from pathlib import Path
-from PIL import Image
+import logging
+
+
+def adapt_hist(image):
+    from skimage import exposure
+
+    return exposure.equalize_adapthist(
+        image, kernel_size=(image.shape[0] // 2, image.shape[1] // 2), clip_limit=0.008
+    )
+
+
+def apply_fair_clahe(resized_crop, resize_amount):
+    from skimage import exposure
+
+    # TODO test these values can run a small training and check the GRAD CAM
+    # for now these are safe values
+    # Base kernel size on the raw sensor scale (e.g., 2x2 pixels)
+    base_kernel = 8
+
+    # Scale the kernel size directly by the exact magnification factor
+    calculated_kernel = int(base_kernel * resize_amount)
+
+    # Ensure it is at least 2x2 to satisfy CLAHE mathematical limits
+    kernel_dim = max(2, calculated_kernel)
+    return exposure.equalize_adapthist(
+        resized_crop, kernel_size=(kernel_dim, kernel_dim), clip_limit=0.01
+    )
+
+
+def apply_fair_clahe_cv2(resized_crop, resize_amount, clip_limit=2.0):
+    # cv2 CLAHE only accepts 8U/16U, and its clipLimit is an absolute
+    # per-bin pixel count (not skimage's 0-1 normalized fraction), so
+    # clip_limit needs re-tuning by eye against the skimage output rather
+    # than being derived from the 0.01 value above.
+    base_kernel = 8
+    calculated_kernel = int(base_kernel * resize_amount)
+    kernel_dim = max(2, calculated_kernel)
+
+    h, w = resized_crop.shape[:2]
+    tiles_x = max(1, round(w / kernel_dim))
+    tiles_y = max(1, round(h / kernel_dim))
+
+    resized_crop = (resized_crop * 255).astype(np.uint8)
+
+    clahe = cv2.createCLAHE(clipLimit=clip_limit, tileGridSize=(tiles_x, tiles_y))
+    equalized = clahe.apply(resized_crop)
+
+    return (equalized / np.float32(255)).astype(np.float32)
 
 
 def resize_and_pad(
@@ -24,8 +71,8 @@ def resize_and_pad(
     width = max(width, 1)
     height = max(height, 1)
 
-    width = min(width, new_dim[0])
-    height = min(height, new_dim[1])
+    width = min(width, new_dim[1])
+    height = min(height, new_dim[0])
 
     if len(frame.shape) == 3:
         resize_dim = (width, height, frame.shape[2])
@@ -79,70 +126,33 @@ def resize_cv(image, dim, interpolation=cv2.INTER_LINEAR, extra_h=0, extra_v=0):
     )
 
 
-def square_clip(data, frames_per_row, tile_dim, frame_samples, normalize=True):
+def square_clip(data, frames_per_row, tile_dim, frame_samples=None, pad_with=None):
     # lay each frame out side by side in rows
-    new_frame = np.zeros((frames_per_row * tile_dim[0], frames_per_row * tile_dim[1]))
-    i = 0
-    success = False
-    for x in range(frames_per_row):
-        for y in range(frames_per_row):
-            frame = data[frame_samples[i]]
-            if normalize:
-                frame, stats = normalize(frame, new_max=255)
-                if not stats[0]:
-                    continue
-            success = True
-            new_frame[
-                x * tile_dim[0] : (x + 1) * tile_dim[0],
-                y * tile_dim[1] : (y + 1) * tile_dim[1],
-            ] = np.float32(frame)
-            i += 1
+    n_tiles = frames_per_row * frames_per_row
 
-    return new_frame, success
-
-
-def square_clip_flow(data_flow, frames_per_row, tile_dim, use_rgb=False):
-    if use_rgb:
-        new_frame = np.zeros(
-            (frames_per_row * tile_dim[0], frames_per_row * tile_dim[1], 3)
-        )
+    if frame_samples is not None:
+        idx = np.asarray(frame_samples[:n_tiles])
+        frames = np.float32(np.asarray(data)[idx])
     else:
-        new_frame = np.zeros(
-            (frames_per_row * tile_dim[0], frames_per_row * tile_dim[1])
+        frames = np.array(data)
+    if len(frames) < n_tiles:
+        if pad_with is None:
+            pad_with = 0
+            # logging.warning(
+            #     "Since there are less than %s frames padding with default of 0 since pad_with was None",
+            #     n_tiles,
+            # )
+        pad = np.full(
+            (n_tiles - len(frames), tile_dim[0], tile_dim[1]),
+            pad_with,
+            dtype=frames.dtype,
         )
-
-    i = 0
-    success = False
-    hsv = np.zeros((tile_dim[0], tile_dim[1], 3), dtype=np.float32)
-    hsv[..., 1] = 255
-    for x in range(frames_per_row):
-        for y in range(frames_per_row):
-            if i >= len(data_flow):
-                flow = data_flow[-1]
-            else:
-                flow = data_flow[i]
-            flow_h = flow[:, :, 0]
-            flow_v = flow[:, :, 1]
-
-            mag, ang = cv2.cartToPolar(flow_h, flow_v)
-            hsv[..., 0] = ang * 180 / np.pi / 2
-            hsv[..., 2] = cv2.normalize(mag, None, 0, 255, cv2.NORM_MINMAX)
-            rgb = cv2.cvtColor(hsv, cv2.COLOR_HSV2BGR)
-            if use_rgb:
-                flow_magnitude = rgb
-            else:
-                flow_magnitude = cv2.cvtColor(rgb, cv2.COLOR_BGR2GRAY)
-            frame, norm_success = normalize(flow_magnitude)
-
-            if not norm_success:
-                continue
-            success = True
-            new_frame[
-                x * tile_dim[0] : (x + 1) * tile_dim[0],
-                y * tile_dim[1] : (y + 1) * tile_dim[1],
-            ] = np.float32(frame)
-            i += 1
-    return new_frame, success
+        frames = np.concatenate([frames, pad], axis=0)
+    grid = frames.reshape(frames_per_row, frames_per_row, tile_dim[0], tile_dim[1])
+    new_frame = grid.transpose(0, 2, 1, 3).reshape(
+        frames_per_row * tile_dim[0], frames_per_row * tile_dim[1]
+    )
+    return new_frame
 
 
 def normalize(data, min=None, max=None, new_max=1):
@@ -151,14 +161,14 @@ def normalize(data, min=None, max=None, new_max=1):
     Returns normalized array, stats tuple (Success, min used, max used)
     """
     if data.size == 0:
-        return np.zeros((data.shape)), (False, None, None)
+        return data, (False, None, None)
     if max is None:
         max = np.amax(data)
     if min is None:
         min = np.amin(data)
     if max == min:
         if max == 0:
-            return np.zeros((data.shape)), (False, max, min)
+            return data, (False, max, min)
         data = data / max
         return data, (True, max, min)
 
@@ -167,6 +177,8 @@ def normalize(data, min=None, max=None, new_max=1):
 
 
 def save_image_channels(data, filename):
+    from PIL import Image
+
     Path(filename).parent.mkdir(parents=True, exist_ok=True)
     r = Image.fromarray(np.uint8(data[:, :, 0] * 255))
     g = Image.fromarray(np.uint8(data[:, :, 1] * 255))

@@ -1,3 +1,5 @@
+import os
+import time
 import pytest
 from datetime import datetime, timedelta
 
@@ -44,6 +46,19 @@ class TestWindow:
     # christchurch
     DEFAULT_LAT = -43.5321
     DEFAULT_LONG = 172.6362
+
+    @pytest.fixture(autouse=True)
+    def local_timezone(self):
+        # sun times are converted to system local time, so match the test location
+        old_tz = os.environ.get("TZ")
+        os.environ["TZ"] = "Pacific/Auckland"
+        time.tzset()
+        yield
+        if old_tz is None:
+            del os.environ["TZ"]
+        else:
+            os.environ["TZ"] = old_tz
+        time.tzset()
 
     @freeze_time(lambda: datetime.now().replace(hour=1, minute=59))
     def test_before_sunrise(self):

@@ -19,6 +19,7 @@ along with this program. If not, see <http://www.gnu.org/licenses/>.
 
 import os
 import logging
+import pytz
 import time
 from multiprocessing import Process, Queue
 import traceback
@@ -121,14 +122,16 @@ class ClipLoader:
                 if f.attrs.get("rec_time") is None:
                     with open(filename, "rb") as cptv:
                         reader = CPTVReader(cptv)
-                        video_start_time = reader.timestamp.astimezone(Clip.local_tz)
+                        video_start_time = reader.timestamp.astimezone(
+                            pytz.timezone("Pacific/Auckland")
+                        )
                     f.attrs["rec_time"] = video_start_time.isoformat()
             return
         if len(metadata.get("Tracks")) == 0:
             logging.error("No tracks found for %s", filename)
             return
 
-        clip = Clip(config.tracking["thermal"], filename)
+        clip = Clip(config.tracking, filename)
         clip.load_metadata(
             metadata,
             config.build.tag_precedence,
@@ -136,9 +139,9 @@ class ClipLoader:
 
         with h5py.File(out_file, "w") as f:
             try:
-                logging.info("creating clip %s", clip.get_id())
+                logging.info("creating clip %s", clip.id)
 
-                clip_id = str(clip.get_id())
+                clip_id = str(clip.id)
 
                 clip_node = f
                 triggered_temp_thresh = None
@@ -161,7 +164,9 @@ class ClipLoader:
                         if triggered_temp_thresh:
                             clip.temp_thresh = triggered_temp_thresh
 
-                    video_start_time = reader.timestamp.astimezone(Clip.local_tz)
+                    video_start_time = reader.timestamp.astimezone(
+                        pytz.timezone("Pacific/Auckland")
+                    )
                     clip.set_video_stats(video_start_time)
                     print("Adding rec time", video_start_time)
                     frames = clip_node.create_group("frames")

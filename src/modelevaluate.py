@@ -10,12 +10,13 @@ Some tools to evaluate a model
 
 import argparse
 import logging
+import math
 import sys
 import time
 import matplotlib.ticker as mtick
 from config.config import Config
 import os
-
+import psutil
 import json
 
 # from config.config import Config
@@ -25,7 +26,7 @@ import json
 #     get_dataset,
 #     get_excluded,
 # )
-from classify.trackprediction import TrackPrediction
+from classify.trackprediction import TrackPrediction, DEFAULT_THRESHOLD
 
 from ml_tools import tools
 from ml_tools.rawdb import RawDatabase
@@ -36,7 +37,6 @@ from sklearn.metrics import confusion_matrix
 import matplotlib.pyplot as plt
 import numpy as np
 from pathlib import Path
-import cv2
 from config.buildconfig import BuildConfig
 from sklearn.metrics import confusion_matrix
 from multiprocessing import Pool
@@ -66,6 +66,7 @@ land_birds = [
 # basic formula to give a number to compare models
 def model_score(cm, labels):
     labels = labels.copy()
+    labels = list(labels)
     if "None" not in labels:
         labels.append("None")
 
@@ -80,14 +81,16 @@ def model_score(cm, labels):
     unid_index = None
     if "None" in labels:
         none_index = labels.index("None")
-    if "unidentified" in labels:
-        unid_index = labels.index("unidentified")
+
+    print("Labels are ", labels, " none index is ", none_index, len(cm), len(labels))
     total_score = 0
+    other_animals_total = 0
+    none_total = 0
     for l_i, l in enumerate(labels):
         # if l in ["static", "animal", "deer", "sheep"]:
         # continue
         fp_acc = 0
-        if fp_index is not None:
+        if fp_index is not None and l_i != fp_index:
             fp_acc = cm[l_i][fp_index]
         none_acc = 0
         unid_acc = 0
@@ -96,7 +99,10 @@ def model_score(cm, labels):
             none_acc = cm[l_i][none_index]
         if unid_index:
             unid_acc = cm[l_i][unid_index]
-        other_animals = 1 - (fp_acc + none_acc + unid_acc + accuracy)
+
+        other_animals = np.sum(cm[l_i]) - (fp_acc + none_acc + unid_acc + accuracy)
+        none_total += none_acc
+        other_animals_total += other_animals
         if np.sum(cm[l_i]) == 0:
             other_animals = 0
         if l == "bird":
@@ -122,10 +128,15 @@ def model_score(cm, labels):
             score = accuracy * 1
 
         print(
-            f"score for {l} is {score} unid {unid_acc} other animasl {round(other_animals,2)}"
+            f"score for {l} is {round(score,1)} none {round(none_acc,1)} other animals {round(other_animals,1)} fp {fp_acc}"
         )
         total_score += score
-    logging.info("Model accuracy score is %s", total_score)
+    logging.info(
+        "Model accuracy score is %s none %s other %s",
+        total_score,
+        none_total,
+        other_animals_total,
+    )
 
 
 def get_mappings(label_paths):
@@ -190,6 +201,7 @@ def load_args():
     parser.add_argument("-c", "--config-file", help="Path to config file to use")
 
     parser.add_argument("-d", "--date", help="Use clips after this")
+    parser.add_argument("--source-file", help="Use split for evaluation")
 
     parser.add_argument("--split-file", help="Use split for evaluation")
     parser.add_argument(
@@ -224,11 +236,18 @@ def load_args():
         "--prediction-results",
         help="Results npy file to calculate from",
     )
+    parser.add_argument(
+        "--evaluate",
+        action="store_true",
+        help="Used to just evaluate a dataset",
+    )
 
     args = parser.parse_args()
     if args.date:
         args.date = parse_date(args.date)
         args.date = args.date.replace(tzinfo=pytz.UTC)
+    if args.source_file is not None:
+        args.source_file = Path(args.source_file)
     return args
 
 
@@ -417,72 +436,72 @@ def metadata_confusion(dir, confusion_file, after_date=None, model_metadata=None
 
     # print("True vs pred",y_true,y_pred, y_true == y_pred, median_areas[indices],y_true[indices])
 
-    label_graphs = {}
-    for l in labels:
-        label_graphs[l] = LabelGraph()
-    unid_index = labels.index("unidentified")
-    for width in range(4, 41):
-        # if width == 40:
-        #     median = 160 * 120
-        # else:
-        median = width * width
-        print("doing median ", median)
-        indices = (median_areas > prev_median) & (median_areas <= median)
+    # label_graphs = {}
+    # for l in labels:
+    #     label_graphs[l] = LabelGraph()
+    # unid_index = labels.index("unidentified")
+    # for width in range(4, 41):
+    #     # if width == 40:
+    #     #     median = 160 * 120
+    #     # else:
+    #     median = width * width
+    #     print("doing median ", median)
+    #     indices = (median_areas > prev_median) & (median_areas <= median)
 
-        med_y_true = y_true[indices]
-        if len(med_y_true) == 0:
-            # all_labels.blank(median)
-            prev_median = median
-            # for i, l in enumerate(labels):
-            #     label_graphs[l].blank(median)
-            continue
+    #     med_y_true = y_true[indices]
+    #     if len(med_y_true) == 0:
+    #         # all_labels.blank(median)
+    #         prev_median = median
+    #         # for i, l in enumerate(labels):
+    #         #     label_graphs[l].blank(median)
+    #         continue
 
-        med_y_pred = y_pred[indices]
-        cm = confusion_matrix(med_y_true, med_y_pred, labels=labels)
+    #     med_y_pred = y_pred[indices]
+    #     cm = confusion_matrix(med_y_true, med_y_pred, labels=labels)
 
-        all_total = 0
-        all_correct = 0
-        all_unid = 0
-        all_incorrect = 0
-        for i, l in enumerate(labels):
-            total = np.sum(cm[i])
-            correct = cm[i][i]
-            if total == 0:
-                continue
-            print("Adding correct for ", l, correct, total, median)
-            unided = cm[i][unid_index]
-            incorrect = total - correct - unided
-            label_graphs[l].add(median, correct, incorrect, unided, total)
+    #     all_total = 0
+    #     all_correct = 0
+    #     all_unid = 0
+    #     all_incorrect = 0
+    #     for i, l in enumerate(labels):
+    #         total = np.sum(cm[i])
+    #         correct = cm[i][i]
+    #         if total == 0:
+    #             continue
+    #         print("Adding correct for ", l, correct, total, median)
+    #         unided = cm[i][unid_index]
+    #         incorrect = total - correct - unided
+    #         label_graphs[l].add(median, correct, incorrect, unided, total)
 
-            all_total += total
-            all_correct += correct
-            all_unid += unided
-            all_incorrect += incorrect
-        all_labels.add(median, all_correct, all_incorrect, all_unid, all_total)
-        # Log the confusion matrix as an image summary.
-        figure = plot_confusion_matrix(
-            cm, class_names=labels, title=f"{prev_median} - {median} Median Area"
-        )
+    #         all_total += total
+    #         all_correct += correct
+    #         all_unid += unided
+    #         all_incorrect += incorrect
+    #     all_labels.add(median, all_correct, all_incorrect, all_unid, all_total)
+    #     # Log the confusion matrix as an image summary.
+    #     figure = plot_confusion_matrix(
+    #         cm, class_names=labels, title=f"{prev_median} - {median} Median Area"
+    #     )
 
-        med_file = confusion_file.parent / f"{confusion_file.stem}-{median}"
-        plt.savefig(med_file.with_suffix(".png"), format="png")
-        np.save(med_file.with_suffix(".npy"), cm)
-        prev_median = median
+    #     med_file = confusion_file.parent / f"{confusion_file.stem}-{median}"
+    #     plt.savefig(med_file.with_suffix(".png"), format="png")
+    #     np.save(med_file.with_suffix(".npy"), cm)
+    #     prev_median = median
 
-    for lbl, lbl_graph in label_graphs.items():
+    # for lbl, lbl_graph in label_graphs.items():
 
-        graph_file = (
-            confusion_file.parent / f"{confusion_file.stem}-{lbl.replace('/','-')}"
-        )
-        lbl_graph.plot(f"{lbl} Median vs Accuracy", graph_file)
+    #     graph_file = (
+    #         confusion_file.parent / f"{confusion_file.stem}-{lbl.replace('/','-')}"
+    #     )
+    #     lbl_graph.plot(f"{lbl} Median vs Accuracy", graph_file)
 
-    graph_file = confusion_file.parent / f"{confusion_file.stem}-all"
-    all_labels.plot(f"All Median vs Accuracy", graph_file)
+    # graph_file = confusion_file.parent / f"{confusion_file.stem}-all"
+    # all_labels.plot(f"All Median vs Accuracy", graph_file)
 
     cm = confusion_matrix(y_true, y_pred, labels=labels)
     # Log the confusion matrix as an image summary.
     figure = plot_confusion_matrix(cm, class_names=labels)
-    plt.savefig(confusion_file, format="png")
+    plt.savefig(confusion_file.with_suffix(".png"), format="png")
     np.save(confusion_file.with_suffix(".npy"), cm)
 
     # cm = np.around(cm.astype("float") / cm.sum(axis=1)[:, np.newaxis], decimals=2)
@@ -495,15 +514,39 @@ worker_model = None
 after_date = None
 
 
+def has_activation(model):
+    activation = getattr(model.layers[-1], "activation", None)
+    if activation is None:
+        return False
+    activation = getattr(activation, "__name__", None)
+    return activation in ["sigmoid", "softmax"]
+
+
+def add_sigmoid_output(model):
+    import tensorflow as tf
+
+    logging.info("Applying sigmoid")
+    probabilities = tf.keras.layers.Activation("sigmoid", name="sigmoid_output")(
+        model.output
+    )
+    return tf.keras.Model(inputs=model.inputs, outputs=probabilities)
+
+
 def init_worker(model_file, weights, date):
     global worker_model, after_date
-    import tensorflow as tf
+
+    init_logging()
 
     try:
         worker_model = get_interpreter_from_path(model_file)
         if weights is not None:
             worker_model.model.load_weights(weights)
         after_date = date
+
+        if worker_model.TYPE != "TFLite":
+            if not has_activation(worker_model.model):
+                worker_model.model = add_sigmoid_output(worker_model.model)
+            worker_model.model.summary()
     except:
         logging.error("init_worker error", exc_info=True)
 
@@ -511,8 +554,14 @@ def init_worker(model_file, weights, date):
 def load_clip_data(cptv_file):
     # for clip in dataset.clips:
     reason = {}
-    clip_db = RawDatabase(cptv_file)
-    clip = clip_db.get_clip_tracks(BuildConfig.DEFAULT_GROUPS)
+    cptv_file = Path(cptv_file)
+
+    try:
+        clip_db = RawDatabase(cptv_file)
+        clip = clip_db.get_clip_tracks(BuildConfig.DEFAULT_GROUPS)
+    except:
+        logging.error("Couldnot parse file %s ", cptv_file, exc_info=True)
+        return None
     if clip is None:
         logging.warn("No clip for %s", cptv_file)
         return None
@@ -530,17 +579,24 @@ def load_clip_data(cptv_file):
         logging.info("No tracks after filtering %s", cptv_file)
         return None
     clip_db.load_frames()
+
     segment_frame_spacing = int(round(clip.frames_per_second))
     thermal_medians = []
     for f in clip_db.frames:
         thermal_medians.append(np.median(f.thermal))
     thermal_medians = np.uint16(thermal_medians)
     data = []
-    preprocess_data = []
+    # this wont work for old models that dont use multi inputs, but dont think that matters
+    preprocess_data = {"input_image": [], "input_mask": []}
+    worker_model.seed = clip_db.timestamp
     for track in clip.tracks:
         try:
             samples = worker_model.frames_for_prediction(
-                clip, track, frames_per_classify=25, dont_filter=True, min_segments=1
+                clip,
+                track,
+                frames_per_classify=25,
+                dont_filter=True,
+                min_segments=1,
             )
 
             frames, preprocessed, masses = worker_model.preprocess(
@@ -552,27 +608,42 @@ def load_clip_data(cptv_file):
                 min_segments=1,
             )
             output = None
-            if len(preprocessed) > 0:
-                preprocess_data.extend(preprocessed)
+            num_preds = None
+            if len(preprocessed) > 0 and (
+                not worker_model.multi_input or len(preprocessed["input_image"]) > 0
+            ):
 
+                if not worker_model.multi_input:
+                    num_preds = len(preprocessed)
+                    preprocess_data["input_image"].extend(preprocessed)
+                else:
+                    preprocess_data["input_image"].extend(preprocessed["input_image"])
+
+                    preprocess_data["input_mask"].extend(preprocessed["input_mask"])
+                    num_preds = len(preprocessed["input_image"])
             data.append(
                 [
-                    f"{track.clip_id}-{track.get_id()}",
+                    f"{track.clip_id}-{track.id}",
                     track.label,
                     frames,
-                    len(preprocessed),
+                    num_preds,
                     masses,
                 ]
             )
         except:
             logging.error("Could not load %s", clip.clip_id, exc_info=True)
-    if len(preprocess_data) > 0:
-        preprocess_data = np.array(preprocess_data)
+    if len(preprocess_data["input_image"]) > 0:
+        if not worker_model.multi_input:
+            preprocess_data = np.array(preprocess_data["input_image"])
+        else:
+            preprocess_data["input_image"] = np.array(preprocess_data["input_image"])
+            preprocess_data["input_mask"] = np.array(preprocess_data["input_mask"])
         output = worker_model.predict(preprocess_data)
         pred_pos = 0
         for i in range(len(data)):
             num_preds = data[i][3]
-            if num_preds == 0:
+            if num_preds is None or num_preds == 0:
+                data[i][3] = None
                 continue
             preds = output[pred_pos : pred_pos + num_preds]
             assert len(preds) == num_preds
@@ -580,7 +651,7 @@ def load_clip_data(cptv_file):
             # print(len(preds),"Setting data preds ",pred_pos,"-", num_preds+pred_pos, " total preds are ", len(output))
             pred_pos += num_preds
 
-    return data
+    return (cptv_file, data)
 
 
 def load_split_file(split_file):
@@ -599,6 +670,7 @@ def evaluate_dir(
     split_dataset="test",
     threshold=0.5,
     after_date=None,
+    source_file=None,
 ):
     # is faster to run multiple models on CPU
     os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
@@ -630,7 +702,7 @@ def evaluate_dir(
     label_mapping = get_mappings(label_paths)
     reason = {}
     y_true = []
-    y_pred = []
+    fscore_pred = []
     if split_file is not None:
         split_json = load_split_file(split_file)
         files = split_json.get(split_dataset)
@@ -641,16 +713,19 @@ def evaluate_dir(
             split_dataset,
             files[:2],
         )
+    elif source_file is not None:
+        with source_file.open("r") as f:
+            files = json.load(f)
     else:
         files = list(dir.glob(f"**/*cptv"))
     files.sort()
-    # files = files[:1]
+    logging.info("Files are %s", files[:10])
     start = time.time()
     processed = 0
     # quite faster with just one process for loading and using main process for predicting
 
     pool = Pool(
-        processes=8,
+        processes=psutil.cpu_count(logical=False),
         initializer=init_worker,
         initargs=(
             model_file,
@@ -662,16 +737,19 @@ def evaluate_dir(
     raw_preds = []
     raw_confs = []
     raw_class_confidences = []
+    source_files = []
     try:
 
         stats = {"correct": [], "incorrect": [], "low-confidence": []}
         for clip_data in pool.imap_unordered(load_clip_data, files, chunksize=20):
             if processed % 100 == 0:
-                logging.info("Procesed %s / %s", processed, len(files))
+                logging.info("Processed %s / %s", processed, len(files))
             processed += 1
-            if clip_data is None:
+            if clip_data is None or isinstance(clip_data, str):
                 continue
-            for data in clip_data:
+            source_file = clip_data[0]
+            source_files.append(source_file)
+            for data in clip_data[1]:
                 label = data[1]
                 output = data[3]
                 if output is None:
@@ -680,10 +758,17 @@ def evaluate_dir(
                     raw_confs.append(0)
                     raw_class_confidences.append(np.zeros(len(model.labels)))
                     y_true.append(label_mapping.get(label, label))
-                    y_pred.append("None")
+                    fscore_pred.append("None")
                     continue
 
-                prediction = TrackPrediction(data[0], model.labels, smooth_preds=False)
+                prediction = TrackPrediction(
+                    data[0],
+                    model.labels,
+                    multi_label=model.params.multi_label,
+                    parent_mappings=model.parent_mappings,
+                    thresholds_per_label=model.thresholds_per_label,
+                    scale_thresholds=True,
+                )
                 masses = np.array(data[4])
                 masses = masses[:, None]
                 top_score = None
@@ -694,36 +779,42 @@ def evaluate_dir(
                 # else:
                 prediction.classified_track(output, data[2], masses)
                 y_true.append(label_mapping.get(label, label))
-                predicted_labels = [prediction.predicted_tag()]
-                confidence = prediction.max_score
-                raw_preds.append(prediction.predicted_tag())
-                raw_confs.append(confidence)
-                raw_class_confidences.append(prediction.class_best_score)
-
-                predicted_tag = "None"
-                if confidence < threshold:
-                    y_pred.append("unidentified")
-                elif len(predicted_labels) == 0:
-                    y_pred.append("None")
+                tag, confidence, threshold = prediction.prediction_with_confidence()
+                if tag is None:
+                    raw_preds.append("None")
+                    raw_confs.append(0)
                 else:
-                    logging.info("Predicted  %s", predicted_labels)
-                    predicted_tag = ",".join(predicted_labels)
-                    y_pred.append(predicted_tag)
-                if y_pred[-1] != y_true[-1]:
-                    if predicted_labels[0] == y_true[-1]:
+                    raw_preds.append(tag)
+                    raw_confs.append(confidence)
+                raw_class_confidences.append(prediction.class_best_score)
+                logging.debug(
+                    "Prediction %s is %s with %s and threshold %s",
+                    np.round(100 * prediction.class_best_score),
+                    tag,
+                    confidence,
+                    threshold,
+                )
+                if confidence is not None and confidence < threshold:
+                    fscore_pred.append("None")
+                elif tag is None:
+                    # this
+                    fscore_pred.append("None")
+                else:
+                    fscore_pred.append(tag)
+                if fscore_pred[-1] != y_true[-1]:
+                    if tag == y_true[-1]:
                         stats["low-confidence"].append(data[0])
                     else:
                         stats["incorrect"].append(data[0])
                     logging.info(
                         "%s predicted %s but should be %s with confidence %s",
                         data[0],
-                        y_pred[-1],
+                        fscore_pred[-1],
                         label,
                         np.round(100 * prediction.class_best_score),
                     )
                 else:
                     stats["correct"].append(data[0])
-
     except KeyboardInterrupt:
         print("KeyboardInterrupt detected. Terminating pool...")
         pool.terminate()
@@ -733,6 +824,14 @@ def evaluate_dir(
         pool.close()  # Ensure resources are released
         pool.join()
 
+    source_files.sort()
+    filename = confusion_file
+
+    source_file = filename.parent / f"{filename.stem}-source.json"
+    logging.info("Saving source files to %s", source_file)
+    with source_file.open("w") as f:
+        json.dump([str(s) for s in source_files], f, indent=4)
+
     stats_f = confusion_file.parent / "stats.json"
     logging.info("Stats saved in %s", stats_f)
 
@@ -740,86 +839,54 @@ def evaluate_dir(
         json.dump(stats, f)
 
     model.labels.append("None")
-    filename = confusion_file
+    for pred in raw_preds:
+        if pred not in model.labels:
+            model.labels.append(pred)
+            logging.info("Adding label %s", pred)
+
     raw_preds_i = [model.labels.index(pred) for pred in raw_preds]
     y_true_i = [
         model.labels.index(y_t) if y_t in model.labels else -1 for y_t in y_true
     ]
 
-    results = np.array(raw_preds)
-    confidences = np.array(raw_confs)
+    raw_preds = np.array(raw_preds)
     raw_preds_i = np.uint8(raw_preds_i)
     raw_class_confidences = np.array(raw_class_confidences)
     y_true_i = np.array(y_true_i)
     npy_file = filename.parent / f"{filename.stem}-raw.npy"
     logging.info("Saving %s", npy_file)
     with npy_file.open("wb") as f:
+        np.save(f, np.array(model.labels))
         np.save(f, y_true_i)
         np.save(f, raw_preds_i)
         np.save(f, raw_class_confidences)
-    print("Y true ", y_true_i)
-    print(raw_preds_i)
-    # thresholds found from best_score
-    thresholds_per_label = [
-        0.46797615,
-        0.70631117,
-        0.2496017,
-        0.96398157,
-        0.33895272,
-        0.9697655,
-        0.35740834,
-        0.60906386,
-        0.88741493,
-        0.02124451,
-        0.9998618,
-        0.6102594,
-        0.5604206,
-        0.9881419,
-        0.98753905,
-        0.987157,
-    ]
-    thresholds_per_label = np.array(thresholds_per_label)
-    thresholds_per_label[thresholds_per_label < 0.5] = 0.5
-    preds = results.copy()
-    for i, threshold in enumerate(thresholds_per_label):
-        pred_mask = preds == model.labels[i]
-        conf_mask = confidences < threshold
-        preds[pred_mask & conf_mask] = "None"
 
-    print("Y true is", y_true, preds)
-    cm = confusion_matrix(y_true, preds, labels=model.labels)
+    assert set(list(fscore_pred)) <= set(model.labels)
+    cm = confusion_matrix(y_true, fscore_pred, labels=model.labels)
 
     # Log the confusion matrix as an image summary.
-    figure = plot_confusion_matrix(cm, class_names=model.labels)
+    plot_confusion_matrix(cm, class_names=model.labels)
     smoothing_file = filename.parent / f"{filename.stem}-fscore"
     plt.savefig(smoothing_file.with_suffix(".png"), format="png")
-    np.save(smoothing_file.with_suffix(".npy"), cm)
+    np.savez(smoothing_file.with_suffix(".npz"), cm=cm, labels=np.array(model.labels))
 
-    thresholds = [0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8, 0.85]
-    for threshold in thresholds:
-        preds = results.copy()
-        # set these to None
-        preds[confidences < threshold] = "None"
-        cm = confusion_matrix(y_true, preds, labels=model.labels)
-        # Log the confusion matrix as an image summary.
-        figure = plot_confusion_matrix(cm, class_names=model.labels)
-        smoothing_file = filename.parent / f"{filename.stem}-{round(100*threshold)}%"
-        plt.savefig(smoothing_file.with_suffix(".png"), format="png")
-        np.save(smoothing_file.with_suffix(".npy"), cm)
-
-    # model.labels.append("None")
-    model.labels.append("unidentified")
-    cm = confusion_matrix(y_true, y_pred, labels=model.labels)
-    npy_file = confusion_file.with_suffix(".npy")
-    logging.info("Saving %s", npy_file)
-    np.save(str(npy_file), cm)
-
-    # Log the confusion matrix as an image summary.
-    figure = plot_confusion_matrix(cm, class_names=model.labels)
-    plt.savefig(confusion_file.with_suffix(".png"), format="png")
-    logging.info("Saving %s", confusion_file.with_suffix(".png"))
-
+    logging.info("Fscore model score ")
     model_score(cm, model.labels)
+
+    assert set(list(raw_preds)) <= set(model.labels)
+    # note this is not quite the raw preds as with different thresholds per label its possible that a
+    # label with 50% is chosen over 80% but probably unlikely
+    cm = confusion_matrix(y_true, raw_preds, labels=model.labels)
+    plot_confusion_matrix(cm, class_names=model.labels)
+    npy_file = confusion_file.with_suffix(".npy")
+    plt.savefig(confusion_file.with_suffix(".png"), format="png")
+    np.savez(npy_file, cm=cm, labels=np.array(model.labels))
+    logging.info("Saving %s", npy_file)
+
+    # # Log the confusion matrix as an image summary.
+    # figure = plot_confusion_matrix(cm, class_names=model.labels)
+    # plt.savefig(confusion_file.with_suffix(".png"), format="png")
+    # logging.info("Saving %s", confusion_file.with_suffix(".png"))
 
 
 min_tag_clarity = 0.2
@@ -856,17 +923,25 @@ def main():
             args.model_score,
             args.model_metadata,
         )
-        with open(args.model_metadata, "r") as t:
-            # add in some metadata stats
-            model_meta = json.load(t)
+        labels = None
         cm = np.load(args.model_score)
-        model_score(cm, model_meta["labels"])
+        if Path(args.model_score).suffix == ".npz":
+            labels = cm["labels"]
+            cm = cm["cm"]
+        if labels is None:
+            logging.info(
+                "No labels could be found in npz file so loading model metadata"
+            )
+            with open(args.model_metadata, "r") as t:
+                # add in some metadata stats
+                model_meta = json.load(t)
+        model_score(cm, labels)
         return
-    weights = None
+    weight = None
     if args.model_file:
         model_file = Path(args.model_file)
-    if args.weights:
-        weights = model_file / args.weights
+    if args.weights and args.weights != "final":
+        weight = model_file / args.weights
     base_dir = Path(config.base_folder) / "training-data"
     # shredhold from res
     threshold_from_res = True
@@ -909,7 +984,7 @@ def main():
 
             evaluate_dir(
                 model_file,
-                weights,
+                weight,
                 Path(args.evaluate_dir),
                 config,
                 args.confusion,
@@ -917,23 +992,27 @@ def main():
                 args.dataset,
                 threshold=args.threshold,
                 after_date=args.date,
+                source_file=args.source_file,
             )
         elif args.dataset:
             model = get_interpreter_from_path(model_file)
-
-            if weights is None:
-                acc = (
-                    "val_acc.weights.h5"
-                    if model.params.multi_label
-                    else "val_acc.weights.h5"
-                )
-                weights = [
-                    "final",
-                    model_file.parent / "val_loss.weights.h5",
-                    model_file.parent / acc,
-                ]
+            tflite_model = model.TYPE == "TFLite"
+            if tflite_model:
+                weights = ["final"]
             else:
-                weights = [weights]
+                if weight is None:
+                    acc = (
+                        "val_acc.weights.h5"
+                        if model.params.multi_label
+                        else "val_acc.weights.h5"
+                    )
+                    weights = [
+                        model_file,  # that will be final
+                        model_file.parent / "val_loss.weights.h5",
+                        model_file.parent / acc,
+                    ]
+                else:
+                    weights = [weight]
             model_labels = model.labels.copy()
             model.load_training_meta(base_dir)
             # # model.labels = model_labels
@@ -946,7 +1025,9 @@ def main():
                 get_excluded,
             )
 
-            excluded, remapped = get_excluded(model.data_type)
+            from ml_tools.tfdataset import apply_label_mapping
+
+            excluded, remapped = get_excluded(model.data_type, model.params.multi_label)
 
             if model.params.excluded_labels is not None:
                 excluded = model.params.excluded_labels
@@ -954,12 +1035,65 @@ def main():
             if model.params.remapped_labels is not None:
                 remapped = model.params.remapped_labels
 
-            files = base_dir / args.dataset
-            dataset, _, new_labels, _ = get_dataset(
+            labels, tf_mappings = apply_label_mapping(
+                model.labels, excluded, remapped, model_labels
+            )
+            model.labels = labels
+            if not tflite_model and not has_activation(model.model):
+                model.model = add_sigmoid_output(model.model)
+            if args.evaluate:
+                files = base_dir / args.dataset
+                logging.info("Evaluating %s", files)
+                from ml_tools.kerasmodel import loss, metrics
+                import tensorflow as tf
+
+                model.model.load_weights(weights[0])
+                model.model.compile(
+                    optimizer=tf.keras.optimizers.Adam(learning_rate=2e-5),
+                    loss=loss(model.params),
+                    metrics={"prediction": metrics(model.params.multi_label)},
+                )
+                dataset, _ = get_dataset(
+                    files,
+                    model.data_type,
+                    labels,
+                    batch_size=64,
+                    image_size=model.params.output_dim[:2],
+                    preprocess_fn=model.preprocess_fn,
+                    augment=False,
+                    resample=False,
+                    include_features=model.params.mvm,
+                    one_hot=True,
+                    deterministic=True,
+                    shuffle=False,
+                    excluded_labels=excluded,
+                    remapped_labels=remapped,
+                    multi_label=model.params.multi_label,
+                    include_track=False,
+                    channels=model.params.channels,
+                    num_frames=model.params.square_width**2,
+                    pads=model.pads,
+                    tf_mappings=tf_mappings,
+                    enlarge=model.enlarge,
+                )
+                if tflite_model:
+                    results = lite_dataset_predict(model, dataset)
+                else:
+                    results = model.model.evaluate(dataset)
+                for name, value in zip(model.model.metrics_names, results):
+                    logging.info(f"{name}: {value:.4f}")
+
+                return
+            if not tflite_model:
+
+                model.model.summary()
+            logging.info("Loading val files to get best thresholds")
+            files = base_dir / "validation"
+
+            val_dataset, _ = get_dataset(
                 files,
                 model.data_type,
-                model.labels,
-                model_labels=model_labels,
+                labels,
                 batch_size=64,
                 image_size=model.params.output_dim[:2],
                 preprocess_fn=model.preprocess_fn,
@@ -973,42 +1107,134 @@ def main():
                 remapped_labels=remapped,
                 multi_label=model.params.multi_label,
                 include_track=True,
-                cache=True,
                 channels=model.params.channels,
                 num_frames=model.params.square_width**2,
+                pads=model.pads,
+                tf_mappings=tf_mappings,
+                enlarge=model.enlarge,
             )
-            model.labels = new_labels
+
+            base_confusion_file = Path(args.confusion)
+            base_confusion_file = base_confusion_file.parent / base_confusion_file.stem
+            confusion_final = (
+                base_confusion_file.parent / f"{base_confusion_file.stem}-thresholds"
+            )
+            if not tflite_model:
+                if weight is None:
+                    logging.info("Using loss weights for thresholds on validation set")
+
+                    loss_weights = model_file.parent / "val_loss.weights.h5"
+                    model.model.load_weights(loss_weights)
+                else:
+                    logging.info(
+                        "Using %s weights for thresholds on validation set", weights
+                    )
+
+                    model.model.load_weights(weight)
+                thresholds = best_threshold_for_ds(
+                    model.model,
+                    model.labels,
+                    val_dataset,
+                    confusion_final,
+                    tflite=tflite_model,
+                )
+            else:
+                thresholds = best_threshold_for_ds(
+                    model,
+                    model.labels,
+                    val_dataset,
+                    confusion_final,
+                    tflite=tflite_model,
+                )
+
+            threshold_out = (
+                base_confusion_file.parent
+                / f"{base_confusion_file.stem}-val-thresholds.json"
+            )
+            thresh_dict = {}
+            for label, thresh in zip(model.labels, thresholds):
+                thresh_dict[label] = float(thresh)
+            logging.info("Writing best val thresholds to %s", thresh_dict)
+            with threshold_out.open("w") as f:
+                json.dump(thresh_dict, f)
+            thresholds[thresholds < 0.5] = 0.5
+            thresholds[thresholds > 0.8] = 0.8
+
+            files = base_dir / args.dataset
+            dataset, _ = get_dataset(
+                files,
+                model.data_type,
+                labels,
+                batch_size=64,
+                image_size=model.params.output_dim[:2],
+                preprocess_fn=model.preprocess_fn,
+                augment=False,
+                resample=False,
+                include_features=model.params.mvm,
+                one_hot=True,
+                deterministic=True,
+                shuffle=False,
+                excluded_labels=excluded,
+                remapped_labels=remapped,
+                multi_label=model.params.multi_label,
+                include_track=True,
+                channels=model.params.channels,
+                num_frames=model.params.square_width**2,
+                pads=model.pads,
+                tf_mappings=tf_mappings,
+                enlarge=model.enlarge,
+            )
             logging.info(
                 "Dataset loaded %s, using labels %s",
                 args.dataset,
                 model.labels,
             )
+
             base_confusion_file = Path(args.confusion)
             base_confusion_file = base_confusion_file.parent / base_confusion_file.stem
             for weight in weights:
+                logging.info("Loading weights %s", weight)
                 if weight != "final":
-                    logging.info("Loading weights %s", weight)
                     model.model.load_weights(weight)
-                    weight_name = weight.stem
-                    suffix_start = weight_name.index(".weights")
-                    weight_name = weight_name[:suffix_start]
-                    confusion_final = (
-                        base_confusion_file.parent
-                        / f"{base_confusion_file.stem}-{weight_name}"
-                    )
+
+                    if weight.suffix == ".keras":
+                        confusion_final = (
+                            base_confusion_file.parent
+                            / f"{base_confusion_file.stem}-final"
+                        )
+                    else:
+                        weight_name = weight.stem
+                        suffix_start = weight_name.index(".weights")
+                        weight_name = weight_name[:suffix_start]
+                        confusion_final = (
+                            base_confusion_file.parent
+                            / f"{base_confusion_file.stem}-{weight_name}"
+                        )
                 else:
-                    logging.info("Using final weights")
                     confusion_final = (
                         base_confusion_file.parent / f"{base_confusion_file.stem}-final"
                     )
-                if args.best_threshold:
-                    best_threshold_for_ds(
-                        model.model, model.labels, dataset, confusion_final
-                    )
-                else:
-                    model.confusion_tracks(
-                        dataset, confusion_final, threshold=args.threshold
-                    )
+                model.confusion_tracks(
+                    dataset,
+                    confusion_final,
+                    threshold=args.threshold,
+                    thresholds_per_label=thresholds,
+                )
+
+
+def lite_dataset_predict(model, dataset):
+    import tensorflow as tf
+
+    results = []
+    for x in dataset.map(
+        lambda x, _: x,
+        num_parallel_calls=tf.data.AUTOTUNE,
+    ):
+        res = model.predict(x)
+        res = np.array(res)
+        results.extend(res)
+    results = np.array(results)
+    return np.array(results)
 
 
 class LabelGraph:
@@ -1085,11 +1311,19 @@ class LabelGraph:
         plt.savefig(out_file.with_suffix(".png"), format="png")
 
 
-def best_threshold_for_ds(model, labels, dataset, filename):
+def best_threshold_for_ds(model, labels, dataset, filename, tflite=False):
     import tensorflow as tf
 
+    if tflite:
+        y_pred = lite_dataset_predict(model, dataset)
     # sklearn.metrics.auc(
-    y_pred = model.predict(dataset)
+    else:
+        y_pred = model.predict(
+            dataset.map(
+                lambda x, _: x,
+                num_parallel_calls=tf.data.AUTOTUNE,
+            )
+        )
 
     # true_categories = [y[0] for x, y in dataset]
     # logging.info("Shape is %s", true_categories.shape)
@@ -1098,12 +1332,13 @@ def best_threshold_for_ds(model, labels, dataset, filename):
 
     true_categories = []
     track_ids = []
-    avg_mass = []
-    for x, y in dataset:
+    for y in dataset.map(
+        lambda _, y: y,
+        num_parallel_calls=tf.data.AUTOTUNE,
+    ):
         true_categories.extend(y[0].numpy())
         # dataset_y[0]
         track_ids.extend(y[1].numpy())
-        avg_mass.extend(y[2].numpy())
     true_categories = np.array(true_categories)
     true_categories = np.int64(tf.argmax(true_categories, axis=1))
 
@@ -1111,18 +1346,17 @@ def best_threshold_for_ds(model, labels, dataset, filename):
     pred_per_track = {}
 
     flat_y = []
-    for y, track_id, mass, p in zip(true_categories, track_ids, avg_mass, y_pred):
+    for y, track_id, p in zip(true_categories, track_ids, y_pred):
         y_max = y
         track_pred = pred_per_track.setdefault(
             track_id, (y_max, TrackPrediction(track_id, labels))
         )
-        track_pred[1].classified_frame(None, p, mass)
+        track_pred[1].classified_frame(None, p, 0)
 
     confidences = []
     y_pred = []
     for y, pred in pred_per_track.values():
-        pred.normalize_score()
-        y_pred.append(pred.class_best_score)
+        confidences.append(pred.get_normalized_score())
         flat_y.append(y)
         y_pred.append(pred.best_label_index)
     flat_y = np.array(flat_y)
@@ -1130,7 +1364,7 @@ def best_threshold_for_ds(model, labels, dataset, filename):
 
     confidences = np.array(confidences)
     true_categories = np.array(flat_y)
-    best_threshold(labels, true_categories, y_pred, confidences, filename)
+    return best_threshold(labels, true_categories, y_pred, confidences, filename)
 
 
 def confusion_for_thresholds(
@@ -1179,15 +1413,10 @@ def best_threshold(labels, y_true, y_pred, confidences, filename):
 
     from sklearn.preprocessing import LabelBinarizer
 
-    print("Y_true is ", y_true.shape)
-    print("Y_pred is ", y_pred.shape)
-    print("Confidences ", confidences.shape)
-
     label_binarizer = LabelBinarizer().fit(y_true)
     y_onehot_test = label_binarizer.transform(y_true)
     thresholds_best = []
     for i, class_of_interest in enumerate(labels):
-        print("Class ", class_of_interest)
         lbl_mask = y_true == i
         if len(y_true[lbl_mask]) == 0:
             thresholds_best.append(0)
@@ -1201,7 +1430,6 @@ def best_threshold(labels, y_true, y_pred, confidences, filename):
         else:
             lbl_pred = confidences[:, i]
             # print("CHooisng all of this labl", lbl_pred)
-        print("plt show for", class_of_interest)
 
         precision, recall, thresholds = precision_recall_curve(binary_true, lbl_pred)
         fscore = (2 * precision * recall) / (precision + recall)
@@ -1236,11 +1464,15 @@ def best_threshold(labels, y_true, y_pred, confidences, filename):
                 color=colour,
                 label=f"TX {point[1]}",
             )
-            print("plotted ", point, " with colour ", colour)
         label_f = filename.parent / f"{filename.stem}-{labels[i]}.png"
         plt.savefig(label_f, format="png")
         plt.clf()
-        print("Best Threshold=%f, F-Score=%.3f" % (thresholds[ix], fscore[ix]))
+        logging.info(
+            "Best for %s Threshold=%f, F-Score=%.3f",
+            class_of_interest,
+            thresholds[ix],
+            fscore[ix],
+        )
         thresholds_best.append(thresholds[ix])
 
     thresholds = np.array(thresholds_best)

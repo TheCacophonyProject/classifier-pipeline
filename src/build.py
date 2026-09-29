@@ -17,10 +17,8 @@ from config.config import Config
 from ml_tools.dataset import Dataset
 from ml_tools.datasetstructures import Camera
 from ml_tools.tfwriter import create_tf_records
-from ml_tools.irwriter import save_data as save_ir_data
-from ml_tools.thermalwriter import save_data as save_thermal_data
+from ml_tools.thermalwriter import MeanData
 from ml_tools.tools import CustomJSONEncoder
-import attrs
 import numpy as np
 
 from pathlib import Path
@@ -73,7 +71,24 @@ def parse_args():
         help="Use consecutive frames for segments",
     )
     parser.add_argument("data_dir", help="Directory of hdf5 files")
+
+    parser.add_argument(
+        "--seed",
+        type=int,
+        default=None,
+        help="Seed to use for randomness, this will make predictions the same every run on a file",
+    )
+    parser.add_argument(
+        "--cores",
+        type=int,
+        default=None,
+        help="Defaults to number of cores",
+    )
+    parser.add_argument("--save-master-only", help="Save master only")
+
     args = parser.parse_args()
+    if args.save_master_only is not None:
+        args.save_master_only = Path(args.save_master_only)
     if args.date:
         # if args.date == "None":
         #     args.date = None
@@ -94,6 +109,10 @@ def parse_args():
         # args.date = datetime.datetime.now() - datetime.timedelta(days=30)
     if args.data_dir is not None:
         args.data_dir = Path(args.data_dir)
+    if args.seed is None:
+        import time
+
+        args.seed = int(time.time())
     logging.info("Loading training set up to %s", args.date)
     return args
 
@@ -216,15 +235,15 @@ def print_counts(train, validation, test):
         "{:<20} {:<21} {:<21} {:<21}".format("Class", "Train", "Validation", "Test")
     )
     logging.info("-" * 90)
-    logging.info("Samples / Tracks/ Bins/ weight")
+    logging.info("Samples / Tracks/ Bins")
     # display the dataset summary
     for label in train.labels:
         logging.info(
-            "{:<20} {:<20} {:<20} {:<20}".format(
+            "{:<20} {:<20} {:<20}  {:<20}".format(
                 label,
-                "{}/{}/{}/{:.1f}".format(*train.get_counts(label)),
-                "{}/{}/{}/{:.1f}".format(*validation.get_counts(label)),
-                "{}/{}/{}/{:.1f}".format(*test.get_counts(label)),
+                "{}/{}/{}".format(*train.get_counts(label)),
+                "{}/{}/{}".format(*validation.get_counts(label)),
+                "{}/{}/{}".format(*test.get_counts(label)),
             )
         )
     logging.info("")
@@ -368,11 +387,13 @@ def get_test_set_camera(dataset, test_clips, after_date):
     return test_samples
 
 
-def split_by_file(dataset, config, split_file, base_dir, make_val=True):
+def split_by_file(dataset, config, split_file, base_dir, make_val=False, seed=None):
     base_dir = Path(base_dir)
     with open(split_file, "r") as f:
         split = json.load(f)
-
+    if seed is None:
+        seed = split.get("seed")
+        logging.info("Using seed %s", seed)
     samples_by_source = {}
     for s in dataset.samples_by_id.values():
         samples_by_source.setdefault(s.source_file.name, []).append(s)
@@ -399,7 +420,9 @@ def split_by_file(dataset, config, split_file, base_dir, make_val=True):
             if source_file.exists():
                 try:
                     # can filter crappy segments here, or can do at train stage to have some way of testing different thresholds
-                    split_dataset.load_clip(source_file, dont_filter_segment=True)
+                    split_dataset.load_clip(
+                        source_file, dont_filter_segment=True, seed=seed
+                    )
                 except:
                     logging.error("Could not load %s", source_file, exc_info=True)
             else:
@@ -526,7 +549,7 @@ def add_samples(
 def validate_datasets(datasets, test_bins, after_date):
     # check that clips are only in one dataset
     # that only test set has clips after date
-    # that test set is the only dataset with test_clips
+    # that test set is the only validate_datasetsdataset with test_clips
 
     # for dataset in datasets[:2]:
     #     for track in dataset.tracks:
@@ -534,6 +557,7 @@ def validate_datasets(datasets, test_bins, after_date):
 
     for i, dataset in enumerate(datasets[:2]):
         bins = set([sample.bin_id for sample in dataset.samples_by_id.values()])
+        clips = set([sample.clip_id for sample in dataset.samples_by_id.values()])
 
         if test_bins is not None and dataset.name != "test":
             assert (
@@ -545,22 +569,30 @@ def validate_datasets(datasets, test_bins, after_date):
             if dataset.name == other.name:
                 continue
             dont_check = None
-            if other.name == "test" and after_date is not None:
-                dont_check_other = set(
-                    [
-                        sample.bin_id
-                        for sample in other.samples_by_id.values()
-                        if sample.rec_time > after_date
-                    ]
-                )
-                dont_check = dont_check_other
+            # if other.name == "test" and after_date is not None:
+            #     dont_check_other = set(
+            #         [
+            #             sample.bin_id
+            #             for sample in other.samples_by_id.values()
+            #             if sample.rec_time > after_date
+            #         ]
+            #     )
+            #     dont_check = dont_check_other
             other_bins = set([sample.bin_id for sample in other.samples_by_id.values()])
+            other_clips = set(
+                [sample.clip_id for sample in other.samples_by_id.values()]
+            )
+
             if dont_check is not None:
                 other_bins = other_bins - dont_check
 
             assert (
                 len(bins.intersection(set(other_bins))) == 0
             ), "bins should only be in one set"
+
+            assert (
+                len(clips.intersection(set(other_clips))) == 0
+            ), "clips should only be in one set"
 
 
 land_birds = [
@@ -620,7 +652,8 @@ def get_mappings():
                 regroup[l] = "kiwi"
             elif parent == "other":
                 regroup[l] = l
-
+            elif l == "weka":
+                regroup[l] = l
             else:
                 if "bird." in path:
                     regroup[l] = "bird"
@@ -629,11 +662,15 @@ def get_mappings():
                     regroup[l] = split_path[-3]
                 else:
                     regroup[l] = split_path[-1]
+    regroup["sambar deer"] = "deer"
+    regroup["grey kangaroo"] = "kangaroo"
+    regroup["brushtail possum"] = "possum"
+
     return regroup
 
 
-def dump_split_ids(datasets, out_file="datasplit.json"):
-    splits = {}
+def dump_split_ids(datasets, seed=None, out_file="datasplit.json"):
+    splits = {"seed": seed}
     logging.info("Wrinting split ids to %s", out_file)
     for d in datasets:
         samples_by_source = d.get_samples_by_source()
@@ -688,7 +725,82 @@ def rough_balance(datasets):
             np.random.shuffle(by_labels)
             for i in range(samples_to_remove):
                 dataset.remove_sample(by_labels[i])
+
     print_counts(*datasets)
+
+
+def average_track_length(dataset):
+    track_lengths = []
+    length_per_labels = {}
+    for label in dataset.labels:
+        length_per_labels[label] = []
+    for sample in dataset.tracks:
+        if sample.label != "false-positive":
+            track_lengths.append(sample.length_in_seconds)
+        if sample.remapped_label not in length_per_labels:
+            length_per_labels[sample.remapped_label] = []
+        length_per_labels[sample.remapped_label].append(sample.length_in_seconds)
+
+    logging.info(
+        "Track lengths are %s %s ", np.median(track_lengths), np.mean(track_lengths)
+    )
+    for k, v in length_per_labels.items():
+        logging.info("%s lengths are %s %s ", k, np.median(v), np.mean(v))
+
+
+def average_velocity(dataset):
+    track_lengths = {"x": [], "y": []}
+    delta_per_labels = {}
+    for sample in dataset.samples:
+
+        if sample.remapped_label not in delta_per_labels:
+            delta_per_labels[sample.remapped_label] = {"x": [], "y": []}
+
+        # might be better to do of smaples since these are spaced apart
+        # regions = sample.regions_by_frame
+        # keys = list(sample.regions_by_frame.keys())
+        # keys.sort()
+        # sorted_regions = [regions[key] for key in keys]
+        centre_x = np.float32([r.centroid[0] for r in sample.track_bounds])
+        centre_y = np.float32([r.centroid[1] for r in sample.track_bounds])
+
+        x_delta = np.abs(centre_x[1:] - centre_x[:-1])
+
+        y_delta = np.abs(centre_y[1:] - centre_y[:-1])
+        delta_per_labels[sample.remapped_label]["x"].extend(x_delta)
+        delta_per_labels[sample.remapped_label]["y"].extend(y_delta)
+        if sample.label != "false-positive":
+            track_lengths["x"].extend(x_delta)
+            track_lengths["y"].extend(y_delta)
+
+    logging.info(
+        "Delta x %s %s  percentile (95th) %s",
+        np.median(track_lengths["x"]),
+        np.mean(track_lengths["x"]),
+        np.percentile(track_lengths["x"], 95),
+    )
+
+    logging.info(
+        "Delta y %s %s  percentile (95th) %s",
+        np.median(track_lengths["y"]),
+        np.mean(track_lengths["y"]),
+        np.percentile(track_lengths["y"], 95),
+    )
+    for k, v in delta_per_labels.items():
+        logging.info(
+            "%s x deltas are %s %s  percentile (95th) %s",
+            k,
+            np.median(v["x"]),
+            np.mean(v["x"]),
+            np.percentile(v["x"], 95),
+        )
+        logging.info(
+            "%s y deltas are %s %s  percentile (95th) %s",
+            k,
+            np.median(v["y"]),
+            np.mean(v["y"]),
+            np.percentile(v["y"], 95),
+        )
 
 
 def main():
@@ -712,13 +824,18 @@ def main():
         raw=False if args.ext == ".hdf5" else True,
         ext=args.ext,
     )
-    base_dir = Path(config.base_folder)
+    if args.save_master_only:
+        base_dir = Path(args.save_master_only)
+    else:
+        base_dir = Path(config.base_folder)
     record_dir = base_dir / "training-data"
     record_dir.mkdir(parents=True, exist_ok=True)
 
     if args.split_file:
         logging.info("Loading datasets from split file %s", args.split_file)
-        datasets = split_by_file(master_dataset, config, args.split_file, args.data_dir)
+        datasets = split_by_file(
+            master_dataset, config, args.split_file, args.data_dir, args.seed
+        )
         labels = set()
         for dataset in datasets:
             labels.update(dataset.labels)
@@ -728,9 +845,14 @@ def main():
         for dataset in datasets:
             dataset.labels = labels
     else:
-        master_dataset.load_clips(dont_filter_segment=True)
+        master_dataset.load_clips(
+            dont_filter_segment=True, seed=args.seed, num_processes=args.cores
+        )
 
+        # average_track_length(master_dataset)
+        # average_velocity(master_dataset)
         master_dataset.labels.sort()
+
         print("Loaded  found {:.1f}k samples".format(len(master_dataset.clips) / 1000))
         for key, value in master_dataset.filtered_stats.items():
             if value != 0:
@@ -749,14 +871,25 @@ def main():
         print()
         print("Splitting data set into train / validation")
 
-        datasets = split_randomly(master_dataset, config, args.date, test_clips)
-
-        rough_balance(datasets)
+        if args.save_master_only is not None:
+            logging.info("Saving master dataset to %s", args.save_master_only)
+            datasets = [master_dataset]
+        else:
+            datasets = split_randomly(master_dataset, config, args.date, test_clips)
+            rough_balance(datasets)
         validate_datasets(datasets, test_clips, args.date)
-        dump_split_ids(datasets, record_dir / "datasplit.json")
-
-    print_counts(*datasets)
+        dump_split_ids(
+            datasets,
+            args.seed,
+            record_dir / "datasplit.json",
+        )
+    if not args.save_master_only:
+        print_counts(*datasets)
     print("split data")
+    import psutil, os
+
+    mem_mb = psutil.Process(os.getpid()).memory_info().rss / 1024 / 1024
+    logging.info("Memory used after split: %.1f MB", mem_mb)
 
     dataset_counts = {}
     # create_tf_records = create_thermal_records
@@ -796,67 +929,71 @@ def main():
                 train_set.add_samples(new_samples)
         print("Count post augmentation")
         print_counts(*datasets)
-
     for dataset in datasets:
-        dir = os.path.join(record_dir, dataset.name)
-        extra_args = {
-            "use_segments": master_dataset.use_segments,
-            "label_mapping": dataset.label_mapping,
-        }
-        if config.train.type == "IR":
-            extra_args["back_thresh"] = threshold
-            create_tf_records(
-                dataset,
-                dir,
-                datasets[0].labels,
-                save_ir_data,
-                num_shards=100,
-                back_thresh=threshold,
-            )
-        else:
-            if args.ext != ".hdf5":
-                extra_args.update(
-                    {
-                        "segment_frame_spacing": master_dataset.segment_spacing * 9,
-                        "segment_width": master_dataset.segment_length,
-                        "segment_types": master_dataset.segment_types,
-                        "segment_min_avg_mass": master_dataset.segment_min_avg_mass,
-                        "max_segments": master_dataset.max_segments,
-                        "dont_filter_segment": True,
-                        "skip_ffc": True,
-                        "tag_precedence": config.build.tag_precedence,
-                        "min_mass": master_dataset.min_frame_mass,
-                        "thermal_diff_norm": config.build.thermal_diff_norm,
-                        "filter_by_lq": master_dataset.filter_by_lq,
-                        "max_frames": master_dataset.max_frames,
-                    }
-                )
-            # dont filter the test set,
-            extra_args["filter_by_fp"] = dataset.name != "test"
-            create_tf_records(
-                dataset,
-                dir,
-                datasets[0].labels,
-                save_thermal_data,
-                num_shards=100,
-                num_frames=dataset.segment_length,
-                **extra_args,
-            )
         counts = {}
         for label in dataset.labels:
             count = len(dataset.samples_by_label.get(label, []))
             counts[label] = count
         dataset_counts[dataset.name] = counts
-    # dont need dataset anymore just need some meta
-    meta_filename = f"{record_dir}/training-meta.json"
+    extra_args = {
+        "use_segments": master_dataset.use_segments,
+        "label_mapping": master_dataset.label_mapping,
+        "segment_frame_spacing": master_dataset.segment_spacing * 9,
+        "segment_width": master_dataset.segment_length,
+        "segment_types": master_dataset.segment_types,
+        "segment_min_avg_mass": master_dataset.segment_min_avg_mass,
+        "max_segments": master_dataset.max_segments,
+        "dont_filter_segment": True,
+        "skip_ffc": True,
+        "tag_precedence": config.build.tag_precedence,
+        "min_mass": master_dataset.min_frame_mass,
+        "thermal_diff_norm": config.build.thermal_diff_norm,
+        "filter_by_lq": master_dataset.filter_by_lq,
+        "max_frames": master_dataset.max_frames,
+        "mosaic_dim": config.train.hyper_params.get("frame_size", 32),
+    }
+
+    for dataset in datasets:
+        dataset.clear()
+    border_sum = MeanData()
     meta_data = {
         "labels": datasets[0].labels,
         "type": config.train.type,
         "counts": dataset_counts,
         "by_label": False,
-        "config": attrs.asdict(config),
+        "config": config.as_dict(),
         "segment_types": master_dataset.segment_types,
     }
+    meta_data["dataset_backgrounds"] = {}
+
+    for dataset in datasets:
+        dir = os.path.join(record_dir, dataset.name)
+        # dont filter the test set,
+        extra_args["filter_by_fp"] = dataset.name != "test"
+        dataset_border_sum = create_tf_records(
+            dataset,
+            dir,
+            datasets[0].labels,
+            "thermal",
+            master_dataset.excluded_tags,
+            num_shards=100,
+            num_frames=dataset.segment_length,
+            num_processes=args.cores,
+            **extra_args,
+        )
+        logging.info("Adding dataset sum %s ", dataset_border_sum)
+        border_sum.add_means(dataset_border_sum)
+
+        meta_data["dataset_backgrounds"][dataset.name] = dataset_border_sum.to_dict()
+        logging.info(
+            "Averages for %s is %s ",
+            dataset.name,
+            meta_data["dataset_backgrounds"][dataset.name],
+        )
+    logging.info("Averages for total dataset is %s ", border_sum)
+    meta_data["background_average"] = border_sum.to_dict()
+    # dont need dataset anymore just need some meta
+    meta_filename = f"{record_dir}/training-meta.json"
 
     with open(meta_filename, "w") as f:
         json.dump(meta_data, f, indent=4, cls=CustomJSONEncoder)

@@ -20,7 +20,8 @@ from piclassifier.monitorconfig import monitor_file
 from pathlib import Path
 from piclassifier import utils
 from .signals import STOP_SIGNAL, SKIP_SIGNAL, SNAPSHOT_SIGNAL, PARSING_FILE, PARSED
-from multiprocessing import Queue,Process
+from multiprocessing import Queue, Process
+
 SOCKET_NAME = "/var/run/lepton-frames"
 VOSPI_DATA_SIZE = 160
 TELEMETRY_PACKET_COUNT = 4
@@ -28,6 +29,7 @@ TELEMETRY_PACKET_COUNT = 4
 restart_pending = False
 connected = False
 ready_to_record = False
+
 
 def parse_args():
     parser = argparse.ArgumentParser()
@@ -66,22 +68,24 @@ def parse_args():
 
 
 # Links to socket and continuously waits for 1 connection
-def main():
+def main(thermal_config=None):
     init_logging()
     args = parse_args()
 
     config = Config.load_from_file(args.config_file)
-    thermal_config = ThermalConfig.load_from_file(args.thermal_config_file)
+    if thermal_config is None or args.thermal_config_file is not None:
+        thermal_config = ThermalConfig.load_from_file(args.thermal_config_file)
 
-    thermal_config.recorder.rec_window.set_location(
-        *thermal_config.location.get_lat_long(use_default=True),
-        thermal_config.location.altitude,
-    )
     other_services = []
     if args.file:
-        if thermal_config.motion.run_classifier:
+        if thermal_config.base_motion.run_classifier:
             other_services.append(start_service(run_classifier))
-        parse_file(
+        from config.timewindow import TimeWindow, RelAbsTime
+
+        thermal_config.recorder.rec_window = TimeWindow(
+            RelAbsTime(""), RelAbsTime(""), None, None, 0
+        )
+        parse_cptv(
             args.file, config, thermal_config, args.preview_type, args.fps, args.seed
         )
         for service in other_services:
@@ -126,9 +130,9 @@ def main():
             raise
     logging.info("running as thermal")
 
-    if thermal_config.motion.run_classifier:
+    if thermal_config.base_motion.run_classifier:
         other_services.append(start_service(run_classifier))
-    if thermal_config.motion.postprocess:
+    if thermal_config.base_motion.postprocess:
         other_services.append(start_service(run_postprocess))
 
     watchdog_stop = Event()
@@ -195,7 +199,6 @@ def main():
             except:
                 pass
 
-
     watchdog_stop.set()
     watchdog_thread.join(10)
 
@@ -204,6 +207,7 @@ def main():
             utils.kill_process_with_timeout(service["process"])
         except:
             pass
+
 
 shutdown_event = Event()
 
@@ -246,16 +250,6 @@ def file_changed(event):
     shutdown_event.set()
 
 
-def parse_file(file, config, thermal_config, preview_type, fps, seed):
-    from config.timewindow import TimeWindow, RelAbsTime
-
-    thermal_config.recorder.rec_window = rec_window = TimeWindow(
-        RelAbsTime(""), RelAbsTime(""), None, None, 0
-    )
-
-    parse_cptv(file, config, thermal_config, preview_type, fps, seed)
-
-
 def parse_cptv(file, config, thermal_config, preview_type, fps, seed):
     from .piclassifier import PiClassifier
 
@@ -277,7 +271,7 @@ def parse_cptv(file, config, thermal_config, preview_type, fps, seed):
         config,
         thermal_config,
         headers,
-        thermal_config.motion.run_classifier,
+        thermal_config.base_motion.run_classifier,
         preview_type,
     )
     pi_classifier.parse_file(file, fps, seed)
@@ -295,7 +289,7 @@ def get_processor(process_queue, response_queue, config, thermal_config, headers
             config,
             thermal_config,
             headers,
-            thermal_config.motion.run_classifier,
+            thermal_config.base_motion.run_classifier,
         ),
     )
     return p_processor
@@ -418,10 +412,10 @@ def delete_stale_thumbnails(output_dir):
 
 import fcntl, termios, struct
 
-def bytes_queued(sock):
-    buf = struct.pack('i', 0)
-    return struct.unpack('i', fcntl.ioctl(sock.fileno(), termios.FIONREAD, buf))[0]
 
+def bytes_queued(sock):
+    buf = struct.pack("i", 0)
+    return struct.unpack("i", fcntl.ioctl(sock.fileno(), termios.FIONREAD, buf))[0]
 
 
 def handle_connection(
@@ -436,7 +430,7 @@ def handle_connection(
     headers, extra_b = handle_headers(connection)
     connection.settimeout(None)
 
-    thermal_config = ThermalConfig.load_from_file(thermal_config_file, headers.model)
+    thermal_config = ThermalConfig.load_from_file(thermal_config_file)
     logging.info(
         "parsed camera headers %s running with config %s", headers, thermal_config
     )
@@ -444,7 +438,7 @@ def handle_connection(
     global ready_to_record
     ready_to_record = True
 
-    edge = config.tracking["thermal"].edge_pixels
+    edge = config.tracking.edge_pixels
     crop_rectangle = Rectangle(
         edge, edge, headers.res_x - 2 * edge, headers.res_y - 2 * edge
     )
@@ -546,6 +540,7 @@ def handle_connection(
         clear_queue(process_queue)
         clear_queue(response_queue)
 
+
 def clear_queue(q):
     """Removes all items from a multiprocessing Queue."""
     from queue import Empty
@@ -588,7 +583,8 @@ def run_postprocess():
     )
     p_processor.start()
     return p_processor
-    
+
+
 def _classifier_main():
     from .servemodel import main
 
@@ -602,4 +598,3 @@ def run_classifier():
     )
     p_processor.start()
     return p_processor
-    

@@ -50,6 +50,12 @@ class RawDatabase:
         self.frames = None
         self.model = None
         self.crop_rectangle = Rectangle(1, 1, 160 - 2, 120 - 2)
+        self.clip_id = None
+        self.timestamp = None
+
+    @property
+    def id(self):
+        return self.clip_id
 
     def frames_kept(self):
         return None
@@ -65,6 +71,32 @@ class RawDatabase:
     def get_clip_background(self):
         return self.background
 
+    def check_model(self):
+        try:
+            metadata = self.meta_data
+            self.model = self.meta_data.get("model")
+            if self.model is None or self.model not in ["lepton3", "lepton3.5"]:
+                self.load_model()
+                self._meta_data["model"] = self.model
+                # logging.info("Saving model metadata %s",self.model)
+                with self.meta_data_file.open("w") as f:
+                    json.dump(self._meta_data, f, indent=4)
+        except:
+            pass
+
+    def load_model(self):
+        reader = CptvReader(str(self.file))
+        while True:
+            frame = reader.next_frame()
+            if frame is None:
+                break
+            average = np.mean(frame.pix)
+            if average > 10000:
+                self.model = "lepton3.5"
+            else:
+                self.model = "lepton3"
+            break
+
     def load_frames(self):
         ffc_frames = []
         cptv_frames = []
@@ -73,6 +105,7 @@ class RawDatabase:
         frame_i = 0
         reader = CptvReader(str(self.file))
         header = reader.get_header()
+        self.timestamp = header.timestamp
 
         background_alg = None
         self.frames = []
@@ -136,6 +169,7 @@ class RawDatabase:
         with open(self.meta_data_file, "r") as t:
             # add in some metadata stats
             self._meta_data = json.load(t)
+        self.clip_id = self._meta_data.get("id")
         return self._meta_data
 
     def get_clip_tracks(self, tag_precedence):
@@ -190,7 +224,15 @@ class RawDatabase:
             fp_index = fp_labels.index("false-positive")
         meta = []
         for track_meta in tracks:
+
             try:
+                if "positions" not in track_meta:
+                    logging.error(
+                        "No positions for track %s in %s",
+                        track_meta.get("id"),
+                        self.file,
+                    )
+                    continue
                 tags = track_meta.get("tags", [])
                 tag = Track.get_best_human_tag(tags, tag_precedence, 0)
                 human_tag = None
@@ -273,7 +315,11 @@ class RawDatabase:
                     mega_missed_regions=track_meta.get("mega_missed_regions"),
                     station_id=clip_header.station_id,
                     fp_frames=fp_frames,
-                    start_time=clip_header.rec_time + timedelta(seconds=start / FPS),
+                    start_time=(
+                        clip_header.rec_time + timedelta(seconds=start / FPS)
+                        if start
+                        else None
+                    ),
                     # frame_temp_median=frame_temp_median,
                 )
                 clip_header.tracks.append(header)

@@ -71,12 +71,13 @@ def evaluate_dir(
     after_date=None,
 ):
     logging.info("Evaluating cptv files in %s with threshold %s", dir, threshold)
+    import os
 
     files = list(dir.glob(f"**/*cptv"))
     total_files = len(files)
     complete = 0
     with Pool(
-        processes=8,
+        processes=os.cpu_count(),
         initializer=init_worker,
         initargs=(model,),
     ) as pool:
@@ -99,8 +100,11 @@ def evaluate_dir(
                 masses = data[4]
                 output = model.predict(preprocessed)
                 prediction = TrackPrediction(data[0], model.labels)
-                prediction.classified_clip(output, 100 * output, frames, masses)
-                for track in meta_data["Tracks"]:
+                prediction.classified_frames(frames, output, masses)
+                tracks = meta_data.get("Tracks", [])
+                if len(tracks) == 0:
+                    tracks = meta_data.get("tracks", [])
+                for track in tracks:
                     if track["id"] == track_id:
                         track["fp_model_predictions"] = prediction.get_metadata()
                         break
@@ -129,7 +133,7 @@ def load_clip_data(cptv_file):
             track
             for track in clip.tracks
             if not filter_track(track, BuildConfig.EXCLUDED_TAGS, reason)
-            # and track.fp_frames is None
+            and track.fp_frames is None
         ]
         if len(clip.tracks) == 0:
             logging.info("No tracks after filtering %s", cptv_file)
@@ -142,18 +146,22 @@ def load_clip_data(cptv_file):
         data = []
         for track in clip.tracks:
             try:
-
-                samples = worker_model.frames_for_prediction(clip_db, track)
-                frames, preprocessed, masses = worker_model.preprocess(
-                    clip_db, track, samples, dont_filter=True
-                )
+                if worker_model.TYPE == ForestModel.TYPE:
+                    frames, preprocessed, masses = worker_model.preprocess(
+                        clip_db, track, dont_filter=True
+                    )
+                else:
+                    samples = worker_model.frames_for_prediction(clip_db, track)
+                    frames, preprocessed, masses = worker_model.preprocess(
+                        clip_db, track, samples, dont_filter=True
+                    )
                 if preprocessed is None or len(preprocessed) == 0:
                     logging.error("No preprocessed data for %s", track)
                     continue
 
                 data.append(
                     (
-                        track.get_id(),
+                        track.id,
                         track.label,
                         frames,
                         preprocessed,

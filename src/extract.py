@@ -80,7 +80,7 @@ def main(cmd_args=None):
         config.classify.preview = args.preview_type
 
     if args.verbose:
-        config.classify_tracking.verbose = True
+        config.verbose = True
 
     to_stdout = config.classify.meta_to_stdout
     if args.meta_to_stdout:

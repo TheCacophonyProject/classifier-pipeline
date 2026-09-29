@@ -169,7 +169,6 @@ class ClipClassifier:
 
             track_extractor = ClipTrackExtractor(
                 self.config.tracking,
-                self.config.use_opt_flow,
                 cache_to_disk,
                 do_tracking=track,
                 calculate_filtered=True,
@@ -257,21 +256,24 @@ class ClipClassifier:
 
         start = time.time()
         location = meta_data.get("location")
-        logging.info("getting classified with %s", location)
+        logging.debug("getting classifier with location %s", location)
         classifier = self.get_classifier(model, location)
+        predictions = Predictions(
+            classifier.labels,
+            model,
+            classifier.thresholds_per_label,
+            scale_thresholds=classifier.scale_thresholds,
+        )
         classifier.seed = int(
             clip.video_start_time.timestamp() * 1000000
         )  # micro seconds
-        predictions = Predictions(classifier.labels, model, classifier.thresholds)
         predictions.model_load_time = time.time() - start
 
         for i, track in enumerate(clip.tracks):
             segment_frames = None
             if reuse_frames:
                 tracks = meta_data.get("tracks")
-                meta_track = next(
-                    (x for x in tracks if x["id"] == track.get_id()), None
-                )
+                meta_track = next((x for x in tracks if x["id"] == track.id), None)
                 if meta_track is not None:
                     prediction_tag = next(
                         (
@@ -286,16 +288,15 @@ class ClipClassifier:
                             logging.info("Reusing previous prediction frames %s", model)
                             segment_frames = prediction_tag["data"]["prediction_frames"]
                             segment_frames = np.uint16(segment_frames)
-
             prediction = classifier.classify_track(
                 clip, track, segment_frames=segment_frames, min_segments=1
             )
             if prediction is not None:
-                predictions.prediction_per_track[track.get_id()] = prediction
+                predictions.prediction_per_track[track.id] = prediction
                 description = prediction.description()
                 logging.info(
                     "{} - [{}/{}] prediction: {}".format(
-                        track.get_id(), i + 1, len(clip.tracks), description
+                        track.id, i + 1, len(clip.tracks), description
                     )
                 )
         if self.config.verbose:
@@ -325,7 +326,7 @@ class ClipClassifier:
 
         tracks = meta_data.get("tracks")
         for track in clip.tracks:
-            meta_track = next((x for x in tracks if x["id"] == track.get_id()), None)
+            meta_track = next((x for x in tracks if x["id"] == track.id), None)
             if meta_track is None:
                 logging.error(
                     "Got prediction for track which doesn't exist in metadata"
@@ -333,10 +334,10 @@ class ClipClassifier:
                 continue
             prediction_info = []
             for model_id, predictions in predictions_per_model.items():
-                prediction = predictions.prediction_for(track.get_id())
+                prediction = predictions.prediction_for(track.id)
                 if prediction is None:
                     continue
-                prediction_meta = prediction.get_metadata(predictions.thresholds)
+                prediction_meta = prediction.get_metadata()
                 prediction_meta["model_id"] = model_id
                 if self.keep_original_predictions:
                     prediction_meta["reprocessed"] = True
@@ -405,7 +406,11 @@ class ClipClassifier:
         from piclassifier.motiondetector import RunningMean, SlidingWindow
         from piclassifier.cptvmotiondetector import CPTVMotionDetector
         from ml_tools.frame import Frame
-        from ml_tools.preprocess import preprocess_frame, preprocess_movement
+        from ml_tools.preprocess import (
+            preprocess_frame,
+            preprocess_movement,
+            preprocess_frame_v2,
+        )
         from datetime import datetime
 
         filename = Path(filename)
@@ -425,7 +430,6 @@ class ClipClassifier:
             # only extra data for segments
             track_extractor = ClipTrackExtractor(
                 self.config.tracking,
-                self.config.use_opt_flow,
                 calculate_filtered=True,
                 verbose=self.config.verbose,
             )
@@ -467,7 +471,12 @@ class ClipClassifier:
         model = self.config.classify.models[0]
         classifier = self.get_classifier(model)
         classifier_is_ready = not classifier.run_over_network
-        predictions = Predictions(classifier.labels, model, classifier.thresholds)
+        predictions = Predictions(
+            classifier.labels,
+            model,
+            classifier.thresholds_per_label,
+            scale_thresholds=classifier.scale_thresholds,
+        )
         predictions.model_load_time = time.time() - start
         if seed is None:
             classifier.seed = int(clip.video_start_time.timestamp() * 1000000)
@@ -481,7 +490,7 @@ class ClipClassifier:
             if len(pred_frames) == 0:
                 continue
             track_length += len(track)
-            track_data[track.get_id()] = {
+            track_data[track.id] = {
                 "pred_frames": pred_frames,
                 "limits": None,
                 "frames": {},
@@ -492,7 +501,7 @@ class ClipClassifier:
             for seg in pred_frames:
                 for r in seg.regions:
                     frame_data = track_samples.setdefault(r.frame_number, {})
-                    frame_data[track.get_id()] = r
+                    frame_data[track.id] = r
                     # frame_samples.append(r)
         reader = CptvReader(str(clip.source_file))
         current_frame_num = 0
@@ -522,20 +531,30 @@ class ClipClassifier:
             if current_frame_num in track_samples:
                 thermal_median = np.median(frame.pix)
                 for track_id, region in track_samples[current_frame_num].items():
-                    # region = track_samples[current_frame_num]
-                    thermal = region.subimage(frame.pix).astype(np.float32)
-                    background = region.subimage(
-                        track_extractor.background_alg.background
-                    )
-                    filtered = thermal - background
-                    thermal -= thermal_median
-                    f = Frame(thermal, filtered, current_frame_num, region=region)
-                    if cache:
-                        frame_cache.add_frame(f, track_id)
-                        track_data[track_id]["regions"][region.frame_number] = region
-                    else:
-                        track_data[track_id]["frames"][region.frame_number] = f
-                    if classifier.params.diff_norm:
+
+                    if classifier.preprocess_v2:
+                        background = track_extractor.background_alg.background
+
+                        filtered = np.float32(frame.pix) - background
+                        f = Frame(frame.pix, filtered, current_frame_num, region=region)
+                        f, _, _ = preprocess_frame_v2(
+                            f,
+                            classifier.params.frame_size,
+                            f.region,
+                            clip.crop_rectangle,
+                            enlarge=classifier.enlarge,
+                            new_max=255.0,
+                        )
+                        f.preprocessed = True
+                    elif classifier.params.diff_norm:
+                        # support for previous models is obselete now
+                        thermal = region.subimage(frame.pix).astype(np.float32)
+                        background = region.subimage(
+                            track_extractor.background_alg.background
+                        )
+                        filtered = thermal - background
+                        thermal -= thermal_median
+                        f = Frame(thermal, filtered, current_frame_num, region=region)
                         f_min = np.min(filtered)
                         f_max = np.max(filtered)
                         existing_limits = track_data[track_id]["limits"]
@@ -548,6 +567,12 @@ class ClipClassifier:
                             if f_max > existing_limits[1]:
                                 existing_limits[1] = f_max
                             track_data[track_id]["limits"] = existing_limits
+
+                    if cache:
+                        frame_cache.add_frame(f, track_id)
+                        track_data[track_id]["regions"][region.frame_number] = region
+                    else:
+                        track_data[track_id]["frames"][region.frame_number] = f
             # track_extractor.process_frame(clip, frame)
             is_ffc = is_affected_by_ffc(frame)
             oldest_thermal = thermal_window.oldest
@@ -600,29 +625,43 @@ class ClipClassifier:
                     else:
                         f = data["frames"][frame_i]
                     if not f.preprocessed:
-                        f = preprocess_frame(
-                            f,
-                            (
+                        if classifier.preprocess_v2:
+                            f = preprocess_frame_v2(
+                                f,
                                 classifier.params.frame_size,
-                                classifier.params.frame_size,
-                            ),
-                            clip.background,
-                            clip.crop_rectangle,
-                            calculate_filtered=False,
-                            filtered_norm_limits=data["limits"],
-                            cropped=True,
-                            sub_median=False,
-                        )
+                                f.region,
+                                clip.crop_rectangle,
+                                enlarge=classifier.enlarge,
+                                new_max=255.0,
+                            )
+                        else:
+                            f = preprocess_frame(
+                                f,
+                                (
+                                    classifier.params.frame_size,
+                                    classifier.params.frame_size,
+                                ),
+                                clip.background,
+                                clip.crop_rectangle,
+                                calculate_filtered=False,
+                                filtered_norm_limits=data["limits"],
+                                cropped=True,
+                                sub_median=False,
+                            )
                         data["frames"][frame_i] = f
                     # probably no need to copy
                     segment_frames.append(f)
                 frames = preprocess_movement(
                     segment_frames,
                     classifier.params.square_width,
-                    classifier.params.frame_size,
+                    (
+                        classifier.params.frame_size * 2
+                        if classifier.enlarge
+                        else classifier.params.frame_size
+                    ),
                     classifier.params.channels,
                     classifier.preprocess_fn,
-                    sample=f"{clip.get_id()}-{track_id}",
+                    sample=f"{clip.id}-{track_id}",
                 )
                 preprocessed.append(frames)
                 masses.append(segment.mass)
@@ -711,11 +750,16 @@ class ClipClassifier:
                 dbus_preds = np.uint8(np.round(dbus_preds * 100))
                 dbus_preds = dbus_preds.tolist()
                 try:
+
+                    # since grouped by parents this should only ever be at most one tag
+                    tags = track_prediction.predicted_tags()
+                    if tags is not None:
+                        tag = tags[0]
                     service.TrackReprocessed(
                         meta_data.get("id", 0),
                         track_id,
                         dbus_preds,
-                        track_prediction.predicted_tag(),
+                        tag,
                         int(round(100 * track_prediction.max_score)),
                         np.uint8(region.to_ltrb()).tolist(),
                         region.frame_number,

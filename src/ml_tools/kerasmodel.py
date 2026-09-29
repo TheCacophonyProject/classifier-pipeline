@@ -5,16 +5,17 @@ import os
 
 # os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 import tensorflow as tf
-from tensorboard.plugins.hparams import api as hp
+
+# from tensorboard.plugins.hparams import api as hp
 
 
 import numpy as np
 import gc
 import time
-import matplotlib.pyplot as plt
 import json
 import logging
 from pathlib import Path
+import matplotlib.pyplot as plt
 
 from sklearn.metrics import confusion_matrix
 from ml_tools.datasetstructures import SegmentType
@@ -29,6 +30,35 @@ from ml_tools import irdataset
 from ml_tools.tfdataset import get_weighting, get_dataset as get_tf
 
 classify_i = 0
+CURRENT_EPOCH = tf.Variable(0, dtype=tf.int32, trainable=False, name="current_epoch")
+
+
+@tf.keras.utils.register_keras_serializable(package="Custom")
+class ModalityDropout(tf.keras.layers.Layer):
+    """Zeroes an entire modality's features for a random subset of examples
+    each training step, so the loss on those examples can only be explained
+    by the other modality. Counters gradient starvation when a
+    higher-capacity modality (e.g. the image branch) would otherwise
+    dominate a lower-capacity one (e.g. metadata) during joint training.
+    No-op at inference time."""
+
+    def __init__(self, drop_prob, **kwargs):
+        super().__init__(**kwargs)
+        self.drop_prob = drop_prob
+
+    def call(self, inputs, training=None):
+        if not training or self.drop_prob <= 0:
+            return inputs
+        batch_size = tf.shape(inputs)[0]
+        keep = tf.cast(
+            tf.random.uniform((batch_size, 1, 1, 1)) >= self.drop_prob, inputs.dtype
+        )
+        return inputs * keep
+
+    def get_config(self):
+        config = super().get_config()
+        config.update({"drop_prob": self.drop_prob})
+        return config
 
 
 class KerasModel(Interpreter):
@@ -43,6 +73,7 @@ class KerasModel(Interpreter):
         self.model = None
         self.datasets = None
         self.remapped = None
+        self.epochs = None
         self.run_over_network = run_over_network
         # dictionary containing current hyper parameters
         self.params = HyperParams()
@@ -66,21 +97,6 @@ class KerasModel(Interpreter):
         self.excluded_labels = None
         self.remapped_labels = None
         self.orig_labels = None
-
-    def load_training_meta(self, base_dir):
-        file = f"{base_dir}/training-meta.json"
-        logging.info("loading meta %s", file)
-        with open(file, "r") as f:
-            meta = json.load(f)
-        self.labels = meta.get("labels", [])
-        self.data_type = meta.get("type", "thermal")
-        self.dataset_counts = meta.get("counts")
-        self.ds_by_label = meta.get("by_label", True)
-        self.excluded_labels = meta.get("excluded_labels")
-        self.remapped_labels = meta.get("remapped_labels")
-        self.params.set_use_segments(
-            meta.get("config", {}).get("build", {}).get("use_segments", True)
-        )
 
     def shape(self):
         if self.model is None:
@@ -255,126 +271,227 @@ class KerasModel(Interpreter):
         save_metadata(self)
         return rf
 
+    def build_model_lstm(self):
+        import tensorflow as tf
+        from tensorflow.keras import layers, models
+        from tensorflow import keras
+
+        # 1. Inputs
+        tile_size = 32
+        num_tiles = 25
+        mask_input = layers.Input(shape=(num_tiles,), name="input_mask")
+
+        input_image = layers.Input(
+            shape=(num_tiles, tile_size, tile_size, 3), name="input_image"
+        )
+        inputs = {"input_image": input_image, "input_mask": mask_input}
+        expanded_mask = tf.keras.layers.Lambda(lambda x: tf.expand_dims(x, axis=-1))(
+            mask_input
+        )
+        masked_timeline = layers.Masking(mask_value=-1.0, name="sequence_masking")(
+            expanded_mask
+        )
+
+        time_features = layers.Dense(64, activation="swish", name="time_projection")(
+            masked_timeline
+        )
+        time_features = layers.Dense(128, activation="swish", name="time_expansion")(
+            time_features
+        )
+
+        # 4. Lightweight Backbone Configuration
+        # We include pooling to squeeze the 32x32 spatial dimensions down into a flat vector
+        base_cnn = tf.keras.applications.EfficientNetB0(
+            include_top=False,
+            weights="imagenet",
+            pooling="avg",
+            input_shape=(tile_size, tile_size, 3),
+        )
+        base_cnn.trainable = True
+
+        x = layers.TimeDistributed(
+            layers.BatchNormalization(axis=-1), name="channel_standardizer"
+        )(input_image)
+        # 5. Extract features from each frame independently using TimeDistributed
+        # Output shape transforms from (None, 25, 32, 32, 3) to (None, 25, 1280)
+        visual_embeddings = layers.TimeDistributed(
+            base_cnn, name="cnn_feature_extractor"
+        )(x)
+
+        # 6. Merge the visual features and the masked timestamps
+        # Output shape: (None, 25, 1281)
+        combined_sequence = layers.Concatenate(axis=-1, name="merge_features")(
+            [visual_embeddings, time_features]
+        )
+
+        # 1. Grab the boolean mask already generated by your Masking layer and squeeze it
+        # (None, 25, 1) -> (None, 25)
+        explicit_mask = layers.Lambda(
+            lambda x: x._keras_mask, output_shape=(25,), name="clean_mask"
+        )(masked_timeline)
+
+        # 7. Recurrent Sequence Processing
+        # The LSTM automatically reads the mask and skips computing the padded slots!
+        # lstm_out = layers.LSTM(128, return_sequences=False, name="temporal_lstm")(combined_sequence)
+        gru_out = layers.Bidirectional(
+            layers.GRU(128, return_sequences=False, dropout=0.2), name="sequence_logic"
+        )(combined_sequence, mask=explicit_mask)
+        x = layers.BatchNormalization(name="batch_norm")(gru_out)
+
+        # 8. Classification Head
+        x = layers.Dropout(0.5)(x)
+
+        # Dense reasoning block right before the final bottleneck
+        x = layers.Dense(
+            128,
+            activation="swish",
+            kernel_regularizer=tf.keras.regularizers.l2(1e-4),
+            name="dense_header",
+        )(x)
+        x = layers.Dropout(0.4, name="head_dropout")(x)
+
+        output = tf.keras.layers.Dense(
+            len(self.labels),
+            activation=None,
+            name="prediction",
+            kernel_regularizer=tf.keras.regularizers.l2(1e-4),
+        )(x)
+        model = models.Model(inputs=inputs, outputs=output)
+        return model
+
     def build_model(
-        self, dense_sizes=None, retrain_from=None, dropout=None, run_name=None
+        self,
+        dropout=None,
+        multi_input=False,
+        qat=False,
+        enlarge=True,
     ):
+        RNN_MODEL = False
+        if RNN_MODEL:
+            # this isn't performing well and is slow to train
+            # the dataset also needs to be adjusted to handle this
+            return self.build_model_lstm()
+        from tensorflow.keras import layers
+
         # width = self.params.frame_size
         width = self.params.output_dim[0]
-        inputs = tf.keras.Input(
-            shape=(width, width, len(self.params.channels)), name="input"
+        if enlarge:
+            width *= 2
+        input_image = tf.keras.Input(
+            shape=(width, width, len(self.params.channels)), name="input_image"
         )
-        weights = None if self.params.base_training else "imagenet"
-        base_model, preprocess = self.get_base_model(inputs, weights=weights)
+        weights = "imagenet"
+        base_model, preprocess = self.get_base_model(input_image, weights=weights)
         self.preprocess_fn = preprocess
         # inputs = base_model.input
-        x = base_model(inputs)
-        # x = base_model(inputs, training=self.params.base_training)
-        if self.params.get("model_merge"):
-            logging.info(
-                "Loading cnn rf model %s %s",
-                self.params.get("model_cnn"),
-                self.params.get("model_rf"),
-            )
-            cnn = tf.keras.models.load_model(self.params.get("model_cnn"))
-            cnn.load_weights(
-                Path(self.params.get("model_cnn")) / "val_acc"
-            ).expect_partial()
-            feature_input = tf.keras.Input(shape=(188), name="feature_input")
-            model_rf = tf.keras.models.load_model(self.params.get("model_rf"))
-            rf = model_rf(feature_input)
-            inputs = [cnn.input, feature_input]
-            cnn.summary()
-            model_rf.summary()
-            print("Outputs", cnn.outputs, rf)
-            x = tf.keras.layers.Concatenate()([cnn.outputs[0], rf])
-            activation = "softmax"
-            if self.params.multi_label:
-                activation = "sigmoid"
-            logging.info("Using %s activation", activation)
-            preds = tf.keras.layers.Dense(
-                len(self.labels), activation=activation, name="merged-prediction"
-            )(x)
-            self.model = tf.keras.models.Model(inputs, outputs=preds)
-        elif self.params.lstm:
-            x = tf.keras.layers.GlobalAveragePooling2D()(x)
-            for i in dense_sizes:
-                x = tf.keras.layers.Dense(i, activation="relu")(x)
-            # gp not sure how many should be pre lstm, and how many post
-            cnn = tf.keras.models.Model(inputs, outputs=x)
 
-            self.model = self.add_lstm(cnn)
-        else:
-            x = tf.keras.layers.GlobalAveragePooling2D()(x)
-            if self.params.mvm:
-                mvm_inputs = tf.keras.layers.Input((188))
-                inputs = [inputs, mvm_inputs]
-                # mvm_features = tf.keras.layers.Flatten()(mvm_inputs)
-                #
-                # if self.params["hq_mvm"]:
-                # print("HQ")
-                if self.params.mvm_forest:
-                    rf = self.get_forest_model(run_name)
-
-                    rf = rf(mvm_inputs)
-                    x = tf.keras.layers.Concatenate()([x, rf])
-
-                else:
-                    mvm_features = tf.keras.layers.Dense(128, activation="relu")(
-                        mvm_inputs
-                    )
-                    mvm_features = tf.keras.layers.Dense(128, activation="relu")(
-                        mvm_features
-                    )
-                    mvm_features = tf.keras.layers.Dropout(0.1)(mvm_features)
-
-                    # else:
-                    #     mvm_features = tf.keras.layers.Dense(32, activation="relu")(
-                    #         mvm_inputs
-                    #     )
-                    x = tf.keras.layers.Concatenate()([x, mvm_features])
-                # x = tf.keras.layers.Dense(1028, activation="relu")(x)
-            if dense_sizes is not None:
-                for i in dense_sizes:
-                    x = tf.keras.layers.Dense(i, activation="relu")(x)
-            if dropout:
-                x = tf.keras.layers.Dropout(dropout)(x)
-
-            activation = "softmax"
-            if self.params.multi_label:
-                activation = "sigmoid"
-            logging.info("Using %s activation", activation)
-            preds = tf.keras.layers.Dense(
-                len(self.labels), activation=activation, name="prediction"
-            )(x)
-            self.model = tf.keras.models.Model(inputs, outputs=preds)
-        if retrain_from is None:
-            retrain_from = self.params.retrain_layer
-        if retrain_from:
-            for i, layer in enumerate(base_model.layers):
-                if isinstance(layer, tf.keras.layers.BatchNormalization):
-                    # apparently this shouldn't matter as we set base_training = False
-                    layer.trainable = False
-                    logging.info("dont train %s %s", i, layer.name)
-                else:
-                    layer.trainable = i >= retrain_from
-        else:
-            base_model.trainable = self.params.base_training
-
-        if self.params.multi_label:
-            acc = tf.metrics.binary_accuracy
-        else:
-            acc = tf.metrics.categorical_accuracy
-
-        self.model.compile(
-            optimizer=optimizer(self.params),
-            loss=loss(self.params),
-            metrics=[
-                acc,
-                tf.keras.metrics.AUC(),
-                tf.keras.metrics.Recall(),
-                tf.keras.metrics.Precision(),
-            ],
+        # Step A: Standardise channel means (92.96, 47.33, 30.62) & variances automatically
+        # x = layers.BatchNormalization(axis=-1, name="channel_standardizer")(input_image)
+        x = input_image
+        # 2. Trainable 1x1 conv with 3 filters to re-weight and re-bias the RGB channels
+        # This lets the network automatically discover the optimal math to align your normalisations
+        x = tf.keras.layers.Conv2D(3, (1, 1), activation=None, name="channel_aligner")(
+            x
         )
+
+        x = base_model(x)
+
+        # Multi input adding information about the frame number used
+        if multi_input:
+            # --- Input 2: The Timeline Mask Layer (5x5x7) ---
+            # Channels 0-3: absolute time, presence, width, height
+            # Channels 4-6: Vx velocity, Vy velocity, forward-aligned delta-T
+            # Both the absolute-time cumsum and the forward alignment of
+            # delta-T against velocity are done upstream in the tf.data
+            # pipeline (thermaldataset.reconstruct_absolute_time and
+            # get_frame_mask_v2), so the branches below are plain slices.
+            mask_input = layers.Input(shape=(5, 5, 2), name="input_mask")
+            input_image = {"input_image": input_image, "input_mask": mask_input}
+
+            # =====================================================================
+            # FULLY SYNCHRONIZED SYMMETRIC METADATA ENGINE
+            # =====================================================================
+            # mask_input Shape: (None, 5, 5, 7) - Perfectly matching the visual 5x5 footprint
+
+            # Layer 1: Local Dimensional Projection (1x1 Kernel)
+            # Prepares the 7 channels by mixing them locally within each individual tile cell
+            m_embed = layers.Conv2D(
+                64,
+                (1, 1),
+                activation="swish",
+                padding="same",
+                name="metadata_local_projection",
+            )(mask_input)
+            t_embed = layers.Dense(32, activation="swish", name="temporal_embedding")(
+                t_project
+            )
+
+            # Layer 2: Symmetric Receptive Field Matcher (3x3 Kernel)
+            # Uses a symmetric (3,3) kernel to mirror the exact spatial blending
+            # patterns occurring inside your EfficientNet visual backbone!
+            time_embedding = layers.Conv2D(
+                128,
+                (3, 3),  # Locked back to symmetric to align with image feature maps
+                activation="swish",
+                padding="same",
+                name="metadata_symmetric_receptive_engine",
+            )(
+                m_embed
+            )  # Output Footprint: (None, 5, 5, 128) - Flawless structural
+
+            # --- Feature Fusion (Maintains your exact native dimensions) ---
+            image_features = layers.MaxPooling2D(
+                pool_size=(2, 2), name="preserve_tiny_anomalies"
+            )(x)
+            # BOTTLENECK
+            image_features = layers.Conv2D(
+                512, (1, 1), activation="swish", name="visual_bottleneck"
+            )(image_features)
+
+            image_features = tf.keras.layers.SpatialDropout2D(0.3)(image_features)
+
+            # 512 (Vision, post-bottleneck) + 128 (Metadata) = 640
+            combined = layers.Concatenate(name="input_concat")(
+                [image_features, time_embedding]
+            )  # Shape: (None, 5, 5, 640)
+
+            # 1. Compress channel depth from 640 to 256 using 1x1 convolution
+            x = layers.Conv2D(
+                256, (1, 1), activation="swish", padding="same", name="fusion_conv1"
+            )(combined)
+
+            # Mix the combined space-time features together
+            x = layers.Conv2D(
+                256, (3, 3), activation="swish", padding="same", name="fusion_conv2"
+            )(x)
+
+        gap = tf.keras.layers.GlobalAveragePooling2D()
+        x = gap(x)
+
+        drop_layer = None
+        if dropout:
+            logging.info("Using dropout of %s", dropout)
+            drop_layer = tf.keras.layers.Dropout(dropout)
+            x = drop_layer(x)
+
+        activation = "softmax"
+        if self.params.multi_label:
+            # will need to add this in after training
+            activation = "sigmoid" if qat else None
+        logging.info("Using %s activation", activation)
+        final_dense = tf.keras.layers.Dense(
+            len(self.labels), activation=None, name="prediction"
+        )
+        preds = final_dense(x)
+        if activation is not None:
+            preds = tf.keras.layers.Activation(
+                activation, name="prediction_activation"
+            )(preds)
+
+        self.model = tf.keras.models.Model(input_image, outputs=preds)
+
+        base_model.trainable = self.params.base_training
+        return self.model
 
     def adjust_final_layer(self):
         # Adjust final layer to a new set of labels, by removing it and re adding
@@ -412,22 +529,7 @@ class KerasModel(Interpreter):
         )(self.model.output)
 
         self.model = tf.keras.models.Model(self.model.inputs, outputs=preds)
-        if self.params.multi_label:
-            acc = tf.metrics.binary_accuracy
-        else:
-            acc = tf.metrics.categorical_accuracy
-        logging.info("Using acc %s", acc)
         self.model.summary()
-        self.model.compile(
-            optimizer=optimizer(self.params),
-            loss=loss(self.params),
-            metrics=[
-                acc,
-                tf.keras.metrics.AUC(),
-                tf.keras.metrics.Recall(),
-                tf.keras.metrics.Precision(),
-            ],
-        )
 
     def init_model(self, model_file, weights=None, load_model=True):
         super().__init__(model_file, self.run_over_network)
@@ -440,33 +542,109 @@ class KerasModel(Interpreter):
     def load_model(self):
         if self.run_over_network:
             return
-        logging.info("Loading %s with model weights %s", self.model_file, self.weights)
+        logging.info(
+            "Loading %s with model weights %s without compiling",
+            self.model_file,
+            self.weights,
+        )
         if self.model_file.suffix == ".pb":
-            self.model = tf.keras.models.load_model(self.model_file.parent)
+            self.model = tf.keras.models.load_model(
+                self.model_file.parent, compile=False
+            )
         else:
-            self.model = tf.keras.models.load_model(self.model_file)
-
+            self.model = tf.keras.models.load_model(self.model_file, compile=False)
         self.model.trainable = False
 
         if self.weights is not None:
             self.model.load_weights(self.weights)
             logging.info("Loaded weight %s", self.weights)
 
-    def save(self, run_name=None, history=None, test_results=None):
+    # 2. Wrap your TFRecord processing inside a python generator function
+    def tfrecord_representative_dataset_gen(self):
+
+        # Parse the dataset, cast to float32, and grab a tiny batch (10-20 images is plenty)
+        # We use .batch(1) because TFLite expects the array to include the batch dimension when yielded.
+        parsed_dataset = self.validate.take(1)
+        for batch, _ in parsed_dataset:
+            for raw_tensor in batch:
+                # TFLite expects standard NumPy arrays inside a Python list [tensor]
+                # Cast your uint16 data cleanly to float32 here
+                img_array = raw_tensor.numpy().astype(np.float32)
+
+                # If your model expects normalized inputs (0.0 to 1.0), do it here:
+                # img_array = img_array / 65535.0
+                yield [np.expand_dims(img_array, axis=0)]
+
+    def save(
+        self,
+        run_name=None,
+        history=None,
+        test_results=None,
+        rebalance=False,
+        fine_tune=None,
+        multi_input=False,
+        qat=False,
+        enlarge=True,
+    ):
         # create a save point
         if run_name is None:
             run_name = self.params.model_name
 
-        self.model.save(str(self.checkpoint_folder / run_name / f"{run_name}.keras"))
-        self.save_metadata(run_name, history, test_results)
+        run_dir = self.checkpoint_folder / run_name
+        run_dir.mkdir(parents=True, exist_ok=True)
+        if qat:
+            val_loss = self.checkpoint_folder / run_name / "val_loss.weights.h5"
+            logging.info("Saving with weights %s", val_loss)
+            self.model.load_weights(val_loss)
+            import tensorflow_model_optimization as tfmot
 
-    def save_metadata(self, run_name=None, history=None, test_results=None):
+            # 4. Export the actual full integer TFLite binary
+            converter = tf.lite.TFLiteConverter.from_keras_model(self.model)
+            converter.optimizations = [tf.lite.Optimize.DEFAULT]
+            converter.representative_dataset = self.tfrecord_representative_dataset_gen
+
+            # Target internal int8 execution structures
+            converter.target_spec.supported_ops = [tf.lite.OpsSet.TFLITE_BUILTINS_INT8]
+
+            tflite_qat_model = converter.convert()
+            with open(
+                str(self.checkpoint_folder / run_name / f"{run_name}.tflite"), "wb"
+            ) as f:
+                f.write(tflite_qat_model)
+        else:
+            self.model.save(
+                str(self.checkpoint_folder / run_name / f"{run_name}.keras")
+            )
+        self.save_metadata(
+            run_name,
+            history,
+            test_results,
+            rebalance,
+            fine_tune,
+            multi_input=multi_input,
+            enlarge=enlarge,
+        )
+
+    def save_metadata(
+        self,
+        run_name=None,
+        history=None,
+        test_results=None,
+        rebalance=False,
+        fine_tune=None,
+        multi_input=False,
+        enlarge=True,
+    ):
         #  save metadata
         if run_name is None:
             run_name = self.params.model_name
         model_stats = {}
         model_stats["name"] = self.params.model_name
         model_stats["labels"] = self.labels
+        model_stats["enlarge"] = True
+
+        model_stats["multi_input"] = multi_input
+
         model_stats["hyperparams"] = self.params
         model_stats["training_date"] = str(time.time())
         model_stats["version"] = self.VERSION
@@ -475,11 +653,16 @@ class KerasModel(Interpreter):
         model_stats["type"] = self.data_type
         model_stats["remapped_labels"] = self.remapped_labels
         model_stats["excluded_labels"] = self.excluded_labels
+        model_stats["v2_preprocess"] = True
         if self.remapped is not None:
             model_stats["remapped"] = self.remapped
         if self.class_weights is not None:
             model_stats["class_weights"] = self.class_weights
-
+        if fine_tune is not None:
+            model_stats["fine_tune"] = str(fine_tune)
+        if rebalance:
+            model_stats["rebalance"] = rebalance
+        model_stats["pads"] = self.pads.to_dict()
         if history:
             json_history = {}
             for key, item in history.items():
@@ -491,10 +674,9 @@ class KerasModel(Interpreter):
         if test_results:
             model_stats["test_loss"] = test_results[0]
             model_stats["test_acc"] = test_results[1]
+
         run_dir = self.checkpoint_folder / run_name
         run_dir.mkdir(parents=True, exist_ok=True)
-        if not run_dir.exists:
-            run_dir.mkdir()
 
         json.dump(
             model_stats,
@@ -523,6 +705,69 @@ class KerasModel(Interpreter):
         del self.test
         gc.collect()
 
+    def init_train(self, epochs):
+        from ml_tools.tfdataset import apply_label_mapping
+
+        self.epochs = epochs
+        if self.params.excluded_labels is not None:
+            self.excluded_labels = self.params.excluded_labels
+        else:
+            self.excluded_labels, self.remapped_labels = get_excluded(
+                self.data_type, self.params.multi_label
+            )
+
+        if self.params.remapped_labels is not None:
+            self.remapped_labels = self.params.remapped_labels
+        else:
+            self.remapped_labels, self.remapped_labels = get_excluded(
+                self.data_type, self.params.multi_label
+            )
+        acceptable_types = get_acceptable_labels(self.data_type, self.remapped_labels)
+        if acceptable_types is not None:
+            for lbl in self.labels:
+                if lbl not in acceptable_types and lbl not in self.excluded_labels:
+                    logging.info(
+                        "Adding %s to excluded list as it is not in our acceptable label list",
+                        lbl,
+                    )
+                    self.excluded_labels.append(lbl)
+
+        logging.info(
+            "Excluding %s remapping %s accepted labels %s",
+            self.excluded_labels,
+            self.remapped_labels,
+            acceptable_types,
+        )
+        if self.params.multi_label:
+            if "weka" not in self.labels:
+                self.labels.append("weka")
+            if "chicken" not in self.labels:
+                self.labels.append("chicken")
+        self.labels.sort()
+        self.orig_labels = self.labels.copy()
+        self.preprocess_fn = self.get_preprocess_fn()
+
+        self.labels, tf_mappings = apply_label_mapping(
+            self.labels, self.excluded_labels, self.remapped_labels
+        )
+        logging.info(
+            "Applied label remapping from %s have model labels of %s",
+            self.orig_labels,
+            self.labels,
+        )
+        self.remapped = {}
+        for k, v in tf_mappings.items():
+            self.remapped[self.orig_labels[k]] = (
+                self.labels[v] if v != -1 else "Nothing"
+            )
+            logging.info(
+                "Original %s is mapped to %s",
+                self.orig_labels[k],
+                "Nothing" if v == -1 else self.labels[v],
+            )
+        logging.info("Remapped is %s", self.remapped)
+        return tf_mappings
+
     def train_model(
         self,
         epochs,
@@ -531,91 +776,119 @@ class KerasModel(Interpreter):
         rebalance=False,
         resample=False,
         fine_tune=None,
+        warm_down=False,
+        multi_input=False,
+        test=False,
+        phase2=False,
+        use_jitter=False,
+        qat=False,
+        dont_enlarge=False,
     ):
         logging.info(
-            "%s Training model for %s epochs with weights %s", run_name, epochs, weights
+            "%s Training model for %s epochs with weights %s with multi input as: %s phase2 %s use_jitter %s qat %s",
+            run_name,
+            epochs,
+            weights,
+            multi_input,
+            phase2,
+            use_jitter,
+            qat,
         )
-        if self.params.excluded_labels is not None:
-            self.excluded_labels = self.params.excluded_labels
-        else:
-            self.excluded_labels, self.remapped_labels = get_excluded(
-                self.data_type, self.params.multi_label
-            )
-            acceptable_types = get_acceptable_labels(self.data_type)
-            if acceptable_types is not None:
-                for lbl in self.labels:
-                    if lbl not in acceptable_types and lbl not in self.excluded_labels:
-                        logging.info(
-                            "Adding %s to excluded list as it is not in our acceptable label list",
-                            lbl,
-                        )
-                        self.excluded_labels.append(lbl)
+        if test:
+            logging.info("Running in test, small datasets of 100")
+        tf_mappings = self.init_train(epochs)
 
-        if self.params.remapped_labels is not None:
-            self.remapped_labels = self.params.remapped_labels
+        self.log_dir = self.log_base / run_name
+        self.log_dir.mkdir(parents=True, exist_ok=True)
+        if fine_tune is not None:
+            self.init_model(fine_tune, weights=weights)
+            # dont know if this is needed
+            self.model.trainable = self.params.base_training
+
+            # for multi input model this needs to be adjusted
+            # self.adjust_final_layer()
+            if rebalance:
+                logging.info(
+                    "Fine tuning on a balanced dataset, setting all layers before the concatenate to not be trainable"
+                )
+                found_concat = False
+                for layer in self.model.layers:
+
+                    if isinstance(layer, tf.keras.layers.Concatenate):
+                        found_concat = True
+                        layer.trainable = False
+                        continue
+
+                    # Everything up to and including concat stays False; everything after becomes True
+                    layer.trainable = found_concat
+                    if layer.trainable and isinstance(layer, tf.keras.layers.Dropout):
+                        layer.rate = 0.5  # Update the rate directly
+                        logging.info(
+                            f"Successfully updated {layer.name} rate to {layer.rate}"
+                        )
+            self.model.summary()
         else:
-            self.remapped_labels, self.remapped_labels = get_excluded(
-                self.data_type, self.params.multi_label
+            self.model = self.build_model(
+                dropout=self.params.dropout,
+                multi_input=multi_input,
+                qat=qat,
+                enlarge=not dont_enlarge,
             )
+
+            if weights is not None:
+                logging.info("Loading %s", weights)
+                if phase2:
+
+                    self.phase1_weights(weights)
+                    logging.info(
+                        "Freezing channel_aligner and efficientnetv2-b3 for %s epochs so the new head can stabilise",
+                        self.params.phase2_freeze_epochs,
+                    )
+                    self.model.get_layer("channel_aligner").trainable = False
+                    self.model.get_layer("efficientnetv2-b3").trainable = False
+                else:
+                    self.model.load_weights(weights)
+
+        self.model.summary()
+
         train_files = self.data_dir / "train"
         validate_files = self.data_dir / "validation"
-        logging.info(
-            "Excluding %s remapping %s", self.excluded_labels, self.remapped_labels
-        )
-
-        if self.params.multi_label and "land-bird" not in self.labels:
-            self.labels.append("land-bird")
-        self.orig_labels = self.labels.copy()
-
-        self.preprocess_fn = self.get_preprocess_fn()
-        self.train, remapped, new_labels, epoch_size = get_dataset(
+        augment = fine_tune is None
+        self.train, epoch_size = get_dataset(
             train_files,
             self.data_type,
-            self.orig_labels,
+            self.labels,
             batch_size=self.params.batch_size,
             image_size=self.params.output_dim[:2],
             preprocess_fn=self.preprocess_fn,
             resample=resample,
             stop_on_empty_dataset=False,
             include_features=self.params.mvm,
-            augment=True,
+            augment=not qat and augment,
             excluded_labels=self.excluded_labels,
             remapped_labels=self.remapped_labels,
             # dist=self.dataset_counts["train"],
             multi_label=self.params.multi_label,
             num_frames=self.params.square_width**2,
             channels=self.params.channels,
+            pads=self.pads,
+            tf_mappings=tf_mappings,
+            downsize_fp=True,
+            rebalance=rebalance,
+            multi_input=multi_input,
+            use_jitter=use_jitter or None,
+            epoch_size=100 if test else None,
+            current_epoch=CURRENT_EPOCH,
+            enlarge=not dont_enlarge,
         )
-        self.labels = new_labels
 
-        self.log_dir = self.log_base / run_name
-        self.log_dir.mkdir(parents=True, exist_ok=True)
-        if fine_tune is not None:
-            self.init_model(fine_tune, weights=weights, training=True)
-            # load model loads old labels
-            self.labels = new_labels
+        steps = epoch_size // self.params.batch_size
 
-            self.adjust_final_layer()
-        else:
-
-            if not self.model:
-                self.build_model(
-                    dense_sizes=self.params.dense_sizes,
-                    retrain_from=self.params.retrain_layer,
-                    dropout=self.params.dropout,
-                    run_name=run_name,
-                )
-
-            if weights is not None:
-                self.model.load_weights(weights)
-
-        self.model.summary()
-
-        self.remapped = remapped
-        self.validate, remapped, _, _ = get_dataset(
+        # self.remapped = remapped
+        self.validate, _ = get_dataset(
             validate_files,
             self.data_type,
-            self.orig_labels,
+            self.labels,
             batch_size=self.params.batch_size,
             image_size=self.params.output_dim[:2],
             preprocess_fn=self.preprocess_fn,
@@ -627,41 +900,118 @@ class KerasModel(Interpreter):
             multi_label=self.params.multi_label,
             num_frames=self.params.square_width**2,
             channels=self.params.channels,
+            pads=self.pads,
+            tf_mappings=tf_mappings,
+            multi_input=multi_input,
+            epoch_size=100 if test else None,
+            enlarge=not dont_enlarge,
         )
-        if rebalance:
-            self.class_weights = get_weighting(self.train, self.labels)
         logging.info(
             "Training on %s  with class weights %s",
             self.labels,
             self.class_weights,
         )
 
-        self.save_metadata(run_name)
-        self.save(run_name)
-        checkpoints = self.checkpoints(run_name)
-
-        history = self.model.fit(
-            self.train,
-            validation_data=self.validate,
-            epochs=epochs,
-            shuffle=False,
-            class_weight=self.class_weights,
-            callbacks=[
-                tf.keras.callbacks.TensorBoard(
-                    self.log_dir, write_graph=True, write_images=True
-                ),
-                *checkpoints,
-            ],  # log metricslast_stats
+        self.save(
+            run_name, fine_tune=fine_tune, rebalance=rebalance, enlarge=not dont_enlarge
         )
+
+        checkpoints = self.checkpoints(
+            run_name,
+            warmup_epochs=2,
+            fine_tuning=warm_down,
+        )
+
+        if warm_down:
+            optimizer_fn = tf.keras.optimizers.Adam(
+                learning_rate=self.params.fine_tune_learning_rate
+            )
+            logging.info(
+                "Warming down with adam and augment %s and learning rate %s",
+                augment,
+                self.params.fine_tune_learning_rate,
+            )
+        else:
+
+            logging.info("Adding layer stepwarmup callback")
+            from ml_tools.thermaldataset import (
+                JITTER_HEAVY_STAGE_EPOCH,
+                JITTER_MEDIUM_STAGE_EPOCH,
+            )
+
+            optimizer_fn = optimizer(
+                self.params, steps, self.epochs, fine_tune=fine_tune is not None
+            )
+            warmup_callback = StepWarmupCallback(
+                target_lr=(
+                    self.params.fine_tune_learning_rate
+                    if use_jitter or qat
+                    else self.params.learning_rate
+                ),
+                warmup_epochs=2,
+                steps_per_epoch=steps,
+                medium_epoch=JITTER_MEDIUM_STAGE_EPOCH,
+                heavy_epoch=JITTER_HEAVY_STAGE_EPOCH,
+            )
+            checkpoints.append(warmup_callback)
+
+        if phase2:
+            # not used but kept incase revisited
+            self.phase2(epochs)
+        else:
+            if qat:
+                epochs = 5
+                logging.info("Using 5 epochs in QAT mode")
+                import tensorflow_model_optimization as tfmot
+                from ml_tools.flattenmodel import flatten_model
+
+                flattened = flatten_model(self.model)
+
+                # TFMOT's default 8-bit scheme doesn't have a QuantizeConfig
+                # for every layer type the backbone pulls in (preprocessing
+                # `Rescaling`/`Normalization`, the `Multiply` in EfficientNet's
+                # squeeze-excite blocks, etc). Rather than hardcoding each one
+                # as it's discovered, ask the registry directly and leave
+                # anything it doesn't support unannotated -- quantize_apply()
+                # passes unannotated layers through untouched (still float)
+                # instead of erroring.
+                quantize_registry = (
+                    tfmot.quantization.keras.default_8bit.Default8BitQuantizeRegistry()
+                )
+
+                def annotate_layer(layer):
+                    if layer.name == "prediction_activation":
+                        logging.info("Skipping final activation %s", layer)
+                        return layer
+                    if not quantize_registry.supports(layer):
+                        return layer
+                    return tfmot.quantization.keras.quantize_annotate_layer(layer)
+
+                annotated = tf.keras.models.clone_model(
+                    flattened, clone_function=annotate_layer
+                )
+                self.model = tfmot.quantization.keras.quantize_apply(annotated)
+                # self.save(run_name, fine_tune=fine_tune, rebalance=rebalance,qat=qat)
+
+            self.compile_training_model(optimizer_fn, qat)
+            history = self.model.fit(
+                self.train,
+                validation_data=self.validate,
+                epochs=epochs,
+                shuffle=False,
+                class_weight=self.class_weights,
+                callbacks=checkpoints,
+            )
+
         history = history.history
         test_accuracy = None
         test_files = self.data_dir / "test"
 
         if len(list(test_files.glob("*.tfrecord"))) > 0:
-            self.test, _, _, _ = get_dataset(
+            self.test, _ = get_dataset(
                 test_files,
                 self.data_type,
-                self.orig_labels,
+                self.labels,
                 batch_size=self.params.batch_size,
                 image_size=self.params.output_dim[:2],
                 preprocess_fn=self.preprocess_fn,
@@ -674,18 +1024,221 @@ class KerasModel(Interpreter):
                 multi_label=self.params.multi_label,
                 num_frames=self.params.square_width**2,
                 channels=self.params.channels,
+                pads=self.pads,
+                tf_mappings=tf_mappings,
+                multi_input=multi_input,
+                epoch_size=100 if test else None,
+                enlarge=not dont_enlarge,
             )
             if self.test:
                 test_accuracy = self.model.evaluate(self.test)
 
+        self.save(
+            run_name,
+            history=history,
+            test_results=test_accuracy,
+            rebalance=rebalance,
+            fine_tune=fine_tune,
+            multi_input=multi_input,
+            qat=qat,
+            enlarge=not dont_enlarge,
+        )
+
+    def compile_training_model(self, opt, qat=False):
+        self.model.compile(
+            optimizer=opt,
+            loss=loss(self.params, from_logits=not qat),
+            metrics={
+                "prediction_activation" if qat else "prediction": metrics(
+                    self.params.multi_label, from_logits=not qat
+                )
+            },
+        )
+
+    def phase2(self, epochs):
+        logging.info(
+            "Phase2 stage 1: training new head only for %s epochs with "
+            "channel_aligner and efficientnetv2-b3 frozen",
+            phase2_freeze_epochs,
+        )
+
+        # Phase2 loads a good pretrained backbone (channel_aligner +
+        # efficientnetv2-b3) from phase1 and, when single_input is False,
+        # also attaches a large freshly initialised metadata-fusion head.
+        # Training everything at once from epoch 0 lets the random head's
+        # large early gradients drag the backbone away from its phase1
+        # optimum, so validation peaks at epoch 1 and degrades from there.
+        # Freeze the backbone for a few epochs so the new head stabilises
+        # first, then unfreeze and fine tune the whole model at a low LR.
+        phase2_freeze_epochs = 0
+        phase2_freeze_epochs = min(epochs, self.params.phase2_freeze_epochs)
+
+        history = self.model.fit(
+            self.train,
+            validation_data=self.validate,
+            epochs=phase2_freeze_epochs,
+            shuffle=False,
+            class_weight=self.class_weights,
+            callbacks=self.checkpoints(),
+        )
+
+        # drop the warmup callback, it already ramped to target_lr and
+        # would otherwise override the low fine-tuning LR below
+        checkpoints = [c for c in checkpoints if not isinstance(c, StepWarmupCallback)]
+        checkpoints.append(
+            tf.keras.callbacks.LearningRateScheduler(stage_3_lr_scheduler)
+        )
+
+        # Carry stage 1's EarlyStopping state into stage 2 - otherwise
+        # its on_train_begin() reset (fired when stage 2's fit() call
+        # below starts) forgets any plateau found while the backbone
+        # was still frozen, and stage 2 can run for a long time only
+        # ever comparing against its own epochs.
+        early_stopping = next(
+            (c for c in checkpoints if isinstance(c, tf.keras.callbacks.EarlyStopping)),
+            None,
+        )
+        if early_stopping is not None:
+            checkpoints.append(
+                CarryOverEarlyStopping(
+                    early_stopping,
+                    best=early_stopping.best,
+                    wait=early_stopping.wait,
+                    best_weights=early_stopping.best_weights,
+                )
+            )
+
+        logging.info(
+            "Phase2 stage 2: unfreezing channel_aligner and "
+            "efficientnetv2-b3, fine tuning at %s for remaining %s epochs",
+            2e-6,
+            epochs - phase2_freeze_epochs,
+        )
+        self.model.get_layer("channel_aligner").trainable = True
+        self.model.get_layer("efficientnetv2-b3").trainable = True
+        self.compile_training_model(tf.keras.optimizers.Adam(learning_rate=2e-5))
+        history = self.model.fit(
+            self.train,
+            validation_data=self.validate,
+            epochs=epochs,
+            initial_epoch=phase2_freeze_epochs,
+            shuffle=False,
+            class_weight=self.class_weights,
+            callbacks=self.checkpoints(),
+        )
+
+    def phase1_weights(self, weights):
+        weights = Path(weights)
+        # 1. Build your small Phase 1 architecture layout
+        model = weights.parent / f"{weights.parent.name}.keras"
+        logging.info("Transferring weight from model %s %s", model, weights)
+
+        phase1_model = tf.keras.models.load_model(str(model))
+        logging.info(phase1_model.summary())
+
+        # 2. Load the native Keras 3 weights file sequentially (No by_name needed)
+        phase1_model.load_weights(weights)
+
+        # 4. Inject the weights directly by matching string layer labels in memory
+
+        target_layers = [
+            "channel_aligner",
+            "efficientnetv2-b3",
+        ]
+        for layer_name in target_layers:
+            source_layer = phase1_model.get_layer(layer_name)
+            destination_layer = self.model.get_layer(layer_name)
+
+            print(f"Injecting weights for: {layer_name}")
+            destination_layer.set_weights(source_layer.get_weights())
+
+    def warm_down(self, run_name, weights, tf_mappings, epochs=5, multi_input=False):
+        logging.info(
+            "Warming down for 5 epochs with weights %s without augmentation", weights
+        )
+
+        self.model.load_weights(weights)
+        log_dir = self.log_base / run_name
+        log_dir.mkdir(parents=True, exist_ok=True)
+        train_files = self.data_dir / "train"
+        # reload train dataset with augment false
+        self.train, epoch_size = get_dataset(
+            train_files,
+            self.data_type,
+            self.labels,
+            batch_size=self.params.batch_size,
+            image_size=self.params.output_dim[:2],
+            preprocess_fn=self.preprocess_fn,
+            stop_on_empty_dataset=False,
+            include_features=self.params.mvm,
+            augment=False,
+            excluded_labels=self.excluded_labels,
+            remapped_labels=self.remapped_labels,
+            # dist=self.dataset_counts["train"],
+            multi_label=self.params.multi_label,
+            num_frames=self.params.square_width**2,
+            channels=self.params.channels,
+            pads=self.pads,
+            downsize_fp=True,
+            tf_mappings=tf_mappings,
+            multi_input=multi_input,
+            current_epoch=CURRENT_EPOCH,
+        )
+
+        self.save_metadata(run_name)
+        self.save(run_name)
+        checkpoints = self.checkpoints(run_name, True)
+        logging.info(
+            "Fine tuning with adam and a learning rate of %s",
+            self.params.fine_tune_learning_rate,
+        )
+        self.model.compile(
+            optimizer=tf.keras.optimizers.Adam(
+                learning_rate=self.params.fine_tune_learning_rate
+            ),
+            loss=loss(self.params),
+            metrics={"prediction": metrics(self.params.multi_label)},
+        )
+
+        history = self.model.fit(
+            self.train,
+            validation_data=self.validate,
+            epochs=epochs,
+            shuffle=False,
+            callbacks=[
+                *checkpoints,
+            ],
+        )
+        history = history.history
+
+        if self.test:
+            test_accuracy = self.model.evaluate(self.test)
+
         self.save(run_name, history=history, test_results=test_accuracy)
 
-    def checkpoints(self, run_name):
+    def checkpoints(
+        self,
+        run_name,
+        fine_tuning=False,
+        stop_on=("val_loss", "min"),
+        warmup_epochs=2,
+    ):
         checkpoint_file = self.checkpoint_folder / run_name / "cp.weights.h5"
 
         cp_callback = tf.keras.callbacks.ModelCheckpoint(
             filepath=checkpoint_file, save_weights_only=True, verbose=1
         )
+        # val_f1 = self.checkpoint_folder / run_name / "val_macro_f1.weights.h5"
+
+        # f1_loss = tf.keras.callbacks.ModelCheckpoint(
+        #     val_f1,
+        #     monitor="val_macro_f1",
+        #     verbose=1,
+        #     save_best_only=True,
+        #     save_weights_only=True,
+        #     mode="max",
+        # )
+
         val_loss = self.checkpoint_folder / run_name / "val_loss.weights.h5"
 
         checkpoint_loss = tf.keras.callbacks.ModelCheckpoint(
@@ -701,7 +1254,7 @@ class KerasModel(Interpreter):
         checkpoint_acc = tf.keras.callbacks.ModelCheckpoint(
             val_acc,
             monitor=(
-                "val_binary_accuracy"
+                "val_acc_thresh"
                 if self.params.multi_label
                 else "val_categorical_accuracy"
             ),
@@ -721,15 +1274,45 @@ class KerasModel(Interpreter):
             save_weights_only=True,
             mode="max",
         )
-        earlyStopping = tf.keras.callbacks.EarlyStopping(
-            patience=22,
-            monitor=(
-                "val_binary_accuracy"
-                if self.params.multi_label
-                else "val_categorical_accuracy"
+        checkpoints = [
+            tf.keras.callbacks.TensorBoard(
+                self.log_dir, write_graph=True, write_images=True
             ),
-            mode="max",
-        )
+            checkpoint_acc,
+            checkpoint_loss,
+            cp_callback,
+        ]
+        if not fine_tuning:
+            earlyStopping = tf.keras.callbacks.EarlyStopping(
+                start_from_epoch=5,
+                patience=11,
+                monitor=stop_on[0],
+                # monitor=(
+                #     "val_binary_accuracy"
+                #     if self.params.multi_label
+                #     else "val_categorical_accuracy"
+                # ),
+                mode=stop_on[1],
+                restore_best_weights=True,
+                verbose=1,
+            )
+            checkpoints.append(earlyStopping)
+
+            # reduce_lr_callback = tf.keras.callbacks.ReduceLROnPlateau(
+            #     monitor=stop_on[0],
+            #     verbose=1,
+            #     mode=stop_on[1],
+            #     factor=0.5,
+            #     patience=8,
+            #     min_delta=0.0001,
+            #     cooldown=max(warmup_epochs, 3),
+            #     min_lr=0.000001,  # Safety floor: Never drops lower than 10% of standard fine-tuning speed
+            # )
+            # checkpoints.append(reduce_lr_callback)
+            checkpoints.append(EpochTrackerCallback())
+
+        return checkpoints
+
         # havent found much use in this just takes training time
         # file_writer_cm = tf.summary.create_file_writer(
         #     self.log_base + "/{}/cm".format(run_name)
@@ -747,22 +1330,15 @@ class KerasModel(Interpreter):
         #   "min_lr": 0.00002,
         #   "verbose": 1
         # },
-        reduce_lr_callback = tf.keras.callbacks.ReduceLROnPlateau(
-            monitor=(
-                "val_binary_accuracy"
-                if self.params.multi_label
-                else "val_categorical_accuracy"
-            ),
-            mode="max",
-            verbose=1,
-        )
-        return [
-            earlyStopping,
-            checkpoint_acc,
-            checkpoint_loss,
-            reduce_lr_callback,
-            cp_callback,
-        ]
+        # reduce_lr_callback = tf.keras.callbacks.ReduceLROnPlateau(
+        #     monitor=(
+        #         "val_binary_accuracy"
+        #         if self.params.multi_label
+        #         else "val_categorical_accuracy"
+        #     ),
+        #     mode="max",
+        #     verbose=1,
+        # )
 
     @property
     def hyperparams_string(self):
@@ -807,13 +1383,13 @@ class KerasModel(Interpreter):
             if frame is None:
                 logging.error(
                     "Clasifying clip %s track %s can't get frame %s",
-                    clip.get_id(),
-                    track.get_id(),
+                    clip.id,
+                    track.id,
                     region.frame_number,
                 )
                 raise Exception(
                     "Clasifying clip {} track {} can't get frame {}".format(
-                        clip.get_id(), track.get_id(), region.frame_number
+                        clip.id, track.id, region.frame_number
                     )
                 )
             logging.debug(
@@ -845,141 +1421,16 @@ class KerasModel(Interpreter):
         if len(data) == 0:
             return None
         data = np.float32(data)
-        track_prediction = TrackPrediction(track.get_id(), self.labels)
+        track_prediction = TrackPrediction(track.id, self.labels)
 
         output = self.model.predict(data)
         track_prediction.classified_track(output, np.array(frames_used))
-        track_prediction.normalize_score()
         return track_prediction
 
     def predict(self, frames):
         if self.run_over_network:
             return self.predict_over_network(frames)
         return self.model.predict(frames)
-
-    def confusion_tracks(self, dataset, filename, threshold=0.8):
-        logging.info(
-            "Calculating confusion with threshold %s saving to %s", threshold, filename
-        )
-        true_categories = []
-        track_ids = []
-        avg_mass = []
-        for x, y in dataset:
-            true_categories.extend(y[0].numpy())
-            # dataset_y[0]
-            track_ids.extend(y[1].numpy())
-            avg_mass.extend(y[2].numpy())
-        if len(true_categories) > 1:
-            if self.params.multi_label:
-                # multi = []
-                # for y in true_categories:
-                # multi.append(tf.where(y).numpy().ravel())
-                # print(y, tf.where(y))
-                # true_categories = np.int64(true_categories)
-                pass
-            else:
-                true_categories = np.int64(tf.argmax(true_categories, axis=1))
-        y_pred = self.model.predict(dataset)
-        pred_per_track = {}
-
-        # if self.params.multi_label:
-        # predicted_categori/es = []
-        # for p in y_pred:
-        # predicted_categories.append(tf.where(p >= 0.8).numpy().ravel())
-        # predicted_categories = np.int64(predicted_categories)
-
-        flat_y = []
-        for y, track_id, mass, p in zip(true_categories, track_ids, avg_mass, y_pred):
-            if self.params.multi_label:
-                y_max = np.argmax(y)
-            else:
-                y_max = y
-            track_pred = pred_per_track.setdefault(
-                track_id, (y_max, TrackPrediction(track_id, self.labels))
-            )
-            track_pred[1].classified_frame(None, p, mass)
-
-        results = []
-        confidences = []
-        raw_class_confidences = []
-        for y, pred in pred_per_track.values():
-            pred.normalize_score()
-            preds = np.array([p.prediction for p in pred.predictions])
-
-            no_smoothing = np.mean(preds, axis=0)
-            best_pred = np.argmax(no_smoothing)
-            results.append(best_pred)
-            confidences.append(no_smoothing[best_pred])
-            flat_y.append(y)
-            raw_class_confidences.append(no_smoothing)
-
-        true_categories = np.int64(flat_y)
-        # else:
-        #     predicted_categories = np.int64(tf.argmax(y_pred, axis=1))
-        labels = self.labels.copy()
-        labels.append("Nothing")
-        results = np.int64(results)
-        confidences = np.array(confidences)
-
-        # raw_preds_i = np.uint8(raw_preds_i)
-        raw_class_confidences = np.array(raw_class_confidences)
-        npy_file = filename.parent / f"{filename.stem}-raw.npy"
-        logging.info("Saving %s", npy_file)
-        with npy_file.open("wb") as f:
-            np.save(f, true_categories)
-            np.save(f, results)
-            np.save(f, raw_class_confidences)
-
-        # thresholds found from best_score for the year of 2025
-        # new models may require different thresholds
-        thresholds_per_label = [
-            0.46797615,
-            0.70631117,
-            0.2496017,
-            0.96398157,
-            0.33895272,
-            0.9697655,
-            0.35740834,
-            0.60906386,
-            0.88741493,
-            0.02124451,
-            0.9998618,
-            0.6102594,
-            0.5604206,
-            0.9881419,
-            0.98753905,
-            0.987157,
-        ]
-        thresholds_per_label = np.array(thresholds_per_label)
-        thresholds_per_label[thresholds_per_label < 0.5] = 0.5
-
-        preds = results.copy()
-        for i, threshold in enumerate(thresholds_per_label):
-            pred_mask = preds == i
-            # set these to None
-            conf_mask = confidences < threshold
-            preds[pred_mask & conf_mask] = len(labels) - 1
-        cm = confusion_matrix(true_categories, preds, labels=np.arange(len(labels)))
-        # Log the confusion matrix as an image summary.
-        figure = plot_confusion_matrix(cm, class_names=labels)
-        smoothing_file = filename.parent / f"{filename.stem}-fscore"
-        plt.savefig(smoothing_file.with_suffix(".png"), format="png")
-        np.save(smoothing_file.with_suffix(".npy"), cm)
-
-        thresholds = [0.8]
-        for threshold in thresholds:
-            preds = results.copy()
-
-            # set these to None
-            preds[confidences < threshold] = len(labels) - 1
-            cm = confusion_matrix(true_categories, preds, labels=np.arange(len(labels)))
-            # Log the confusion matrix as an image summary.
-            figure = plot_confusion_matrix(cm, class_names=labels)
-            smoothing_file = (
-                filename.parent / f"{filename.stem}-{round(100*threshold)}%"
-            )
-            plt.savefig(smoothing_file.with_suffix(".png"), format="png")
-            np.save(smoothing_file.with_suffix(".npy"), cm)
 
     def confusion_tfrecords(self, dataset, filename):
         true_categories = tf.concat([y for x, y in dataset], axis=0)
@@ -1140,7 +1591,7 @@ class KerasModel(Interpreter):
 
 
 # from tensorflow examples
-def plot_confusion_matrix(cm, class_names, title="Confusion Matrix"):
+def plot_confusion_matrix(cm, class_names, title="Confusion Matrix", totals_row=None):
     """
     Returns a matplotlib figure containing the plotted confusion matrix.
 
@@ -1150,15 +1601,26 @@ def plot_confusion_matrix(cm, class_names, title="Confusion Matrix"):
     """
     plt.clf()
     figure = plt.figure(figsize=(16, 16))
-    plt.imshow(cm, interpolation="nearest", cmap=plt.cm.Blues)
+    tick_marks = np.arange(len(class_names))
+
+    if totals_row is not None:
+        plt.imshow(
+            np.vstack((cm, totals_row)), interpolation="nearest", cmap=plt.cm.Blues
+        )
+    else:
+        plt.imshow(cm, interpolation="nearest", cmap=plt.cm.Blues)
+
     plt.title(title)
     plt.colorbar()
-    tick_marks = np.arange(len(class_names))
+
     plt.xticks(tick_marks, class_names, rotation=90)
     ylabels = []
     for i, label in enumerate(class_names):
         ylabel = f"{label} ({np.sum(cm[i])})"
         ylabels.append(ylabel)
+    if totals_row is not None:
+        tick_marks = np.arange(len(class_names) + 1)
+        ylabels.append("totals")
     plt.yticks(tick_marks, ylabels)
 
     # Use white text if squares are dark; otherwise black.
@@ -1174,7 +1636,11 @@ def plot_confusion_matrix(cm, class_names, title="Confusion Matrix"):
     for i, j in itertools.product(range(cm.shape[0]), range(cm.shape[1])):
         color = "white" if counts[i, j] > threshold else "black"
         plt.text(j, i, cm[i, j], horizontalalignment="center", color=color)
-
+    if totals_row is not None:
+        i = len(cm)
+        for j, count in enumerate(totals_row):
+            color = "white" if count > threshold else "black"
+            plt.text(j, i, count, horizontalalignment="center", color=color)
     plt.tight_layout()
     plt.ylabel("True label")
     plt.xlabel("Predicted label")
@@ -1219,9 +1685,11 @@ def plot_to_image(figure):
     return image
 
 
-def loss(params):
+def loss(params, from_logits=True):
     if params.multi_label:
+        # return tf.keras.losses.BinaryFocalCrossentropy(gamma=2.0, alpha=0.25),
         return tf.keras.losses.BinaryCrossentropy(
+            from_logits=from_logits,
             label_smoothing=params.label_smoothing,
         )
     return tf.keras.losses.CategoricalCrossentropy(
@@ -1229,20 +1697,36 @@ def loss(params):
     )
 
 
-def optimizer(params):
-    if params.learning_rate_decay is not None:
-        learning_rate = tf.keras.optimizers.schedules.ExponentialDecay(
-            params.learning_rate,
-            decay_steps=100000,
-            decay_rate=params.learning_rate_decay,
-            staircase=True,
+def optimizer(params, steps_per_epoch, epochs, fine_tune=False):
+    if fine_tune:
+        logging.info(
+            "Using fine tune cosine optimizer with warm of 2 epochs and final rate %s",
+            params.fine_tune_learning_rate,
+        )
+        # 3 epochs
+        warmup_steps = steps_per_epoch * 2
+        # 2. Configure the built-in schedule
+        lr_schedule = tf.keras.optimizers.schedules.CosineDecay(
+            initial_learning_rate=0.0,  # Step 0 start rate
+            decay_steps=epochs * int(steps_per_epoch),  # Point where decay finishes
+            warmup_target=params.fine_tune_learning_rate,  # Peak fine-tuning learning rate
+            warmup_steps=warmup_steps,  # Steps to transition from initial to target
         )
     else:
-        learning_rate = params.learning_rate  # setup optimizer
-    if learning_rate:
-        optimizer = tf.keras.optimizers.Adam(learning_rate=learning_rate)
-    else:
-        optimizer = tf.keras.optimizers.Adam(learning_rate=learning_rate)
+
+        # lr_schedule = tf.keras.optimizers.schedules.ExponentialDecay(
+        #     params.learning_rate,
+        #     decay_steps=int(steps_per_epoch* epochs),
+        #     decay_rate=params.learning_rate_decay,
+        # )
+        # using ReduceLROnPlateau instead
+        lr_schedule = 0.0
+        # using warmup to set lr
+        # params.learning_rate
+
+    optimizer = tf.keras.optimizers.Adam(learning_rate=lr_schedule)
+    # optimizer = tf.keras.optimizers.AdamW(learning_rate=lr_schedule, weight_decay=1e-4)
+
     return optimizer
 
 
@@ -1250,25 +1734,25 @@ def validate_model(model_file):
     return Path(model_file).exists()
 
 
-# HYPER PARAM TRAINING OF A MODEL
-#
-HP_DENSE_SIZES = hp.HParam("dense_sizes", hp.Discrete([""]))
-HP_MVM = hp.HParam("mvm", hp.Discrete([3.0]))
-
-HP_BATCH_SIZE = hp.HParam("batch_size", hp.Discrete([64]))
-HP_OPTIMIZER = hp.HParam("optimizer", hp.Discrete(["adam"]))
-HP_LEARNING_RATE = hp.HParam("learning_rate", hp.Discrete([0.001]))
-HP_EPSILON = hp.HParam("epislon", hp.Discrete([1e-7]))  # 1.0 and 0.1 for inception
-HP_DROPOUT = hp.HParam("dropout", hp.Discrete([0.0]))
-HP_RETRAIN = hp.HParam("retrain_layer", hp.Discrete([-1]))
-HP_LEARNING_RATE_DECAY = hp.HParam("learning_rate_decay", hp.Discrete([1.0]))
-
 METRIC_ACCURACY = "accuracy"
 METRIC_LOSS = "loss"
 
 
 # GRID SEARCH
 def train_test_model(model, hparams, log_dir, writer, epochs):
+
+    # HYPER PARAM TRAINING OF A MODEL
+    #
+    HP_DENSE_SIZES = hp.HParam("dense_sizes", hp.Discrete([""]))
+    HP_MVM = hp.HParam("mvm", hp.Discrete([3.0]))
+
+    HP_BATCH_SIZE = hp.HParam("batch_size", hp.Discrete([64]))
+    HP_OPTIMIZER = hp.HParam("optimizer", hp.Discrete(["adam"]))
+    HP_LEARNING_RATE = hp.HParam("learning_rate", hp.Discrete([0.001]))
+    HP_EPSILON = hp.HParam("epislon", hp.Discrete([1e-7]))  # 1.0 and 0.1 for inception
+    HP_DROPOUT = hp.HParam("dropout", hp.Discrete([0.0]))
+    HP_RETRAIN = hp.HParam("retrain_layer", hp.Discrete([-1]))
+    HP_LEARNING_RATE_DECAY = hp.HParam("learning_rate_decay", hp.Discrete([1.0]))
     # if not self.model:
     train_files = model.data_dir + "/train"
     validate_files = model.data_dir + "/validation"
@@ -1459,10 +1943,10 @@ class ClearMemory(Callback):
         tf.keras.backend.clear_session()
 
 
-def get_acceptable_labels(type):
+def get_acceptable_labels(type, remapped_labels):
     if type == "thermal":
-        return thermaldataset.get_acceptable_labels()
-    return irdataset.get_acceptable_labels()
+        return thermaldataset.get_acceptable_labels(remapped_labels)
+    return irdataset.get_acceptable_labels(remapped_labels)
 
 
 def get_excluded(type, multi_label=False):
@@ -1491,3 +1975,244 @@ class MetaJSONEncoder(json.JSONEncoder):
         if isinstance(obj, SegmentType) or isinstance(obj, FrameTypes):
             return obj.name
         return json.JSONEncoder.default(self, obj)
+
+
+# Registered at module level (rather than nested in metrics()) so Keras can
+# resolve them by name when loading a saved model.
+@tf.keras.utils.register_keras_serializable(package="Custom")
+class LogitPrecision(tf.keras.metrics.Precision):
+    def update_state(self, y_true, y_pred, sample_weight=None):
+        return super().update_state(y_true, tf.sigmoid(y_pred), sample_weight)
+
+
+@tf.keras.utils.register_keras_serializable(package="Custom")
+class LogitRecall(tf.keras.metrics.Recall):
+    def update_state(self, y_true, y_pred, sample_weight=None):
+        return super().update_state(y_true, tf.sigmoid(y_pred), sample_weight)
+
+
+@tf.keras.utils.register_keras_serializable(package="Custom")
+class LogitMacroF1(tf.keras.metrics.F1Score):
+    def update_state(self, y_true, y_pred, sample_weight=None):
+        return super().update_state(y_true, tf.sigmoid(y_pred), sample_weight)
+
+
+def metrics(multi_label=True, from_logits=True):
+    # 1. Base Accuracy Definition
+    if multi_label:
+        # If inputs are logits, the threshold is 0.0 (positive vs negative numbers)
+        # If inputs are probabilities, the threshold is 0.5
+        thresh = 0.0 if from_logits else 0.5
+        acc = tf.keras.metrics.BinaryAccuracy(threshold=thresh, name="acc_thresh")
+    else:
+        acc = tf.metrics.categorical_accuracy
+
+    # 2. Build the output list
+    metrics_list = [acc]
+
+    # 3. Handle AUC (It has native logit support)
+    metrics_list.append(
+        tf.keras.metrics.AUC(
+            multi_label=multi_label, from_logits=from_logits, name="auc"
+        )
+    )
+
+    # 4. Handle Precision, Recall, and F1Score
+    if from_logits:
+        # Use the module-level Logit* wrappers (apply sigmoid before calculation)
+        # so they remain resolvable when the model is saved/loaded.
+        metrics_list.extend(
+            [
+                LogitRecall(name="recall"),
+                LogitPrecision(name="precision"),
+            ]
+        )
+    else:
+        # Fallback to your original code if from_logits=False
+        metrics_list.extend(
+            [
+                tf.keras.metrics.Recall(name="recall"),
+                tf.keras.metrics.Precision(name="precision"),
+            ]
+        )
+
+    return metrics_list
+
+
+# def metrics(multi_label):
+#     if multi_label:
+#         acc = tf.metrics.binary_accuracy
+#     else:
+#         acc = tf.metrics.categorical_accuracy
+
+#     return [
+#                     acc,
+#                     tf.keras.metrics.AUC(multi_label= multi_label),
+#                     tf.keras.metrics.Recall(),
+#                     tf.keras.metrics.Precision(),
+#                     tf.keras.metrics.F1Score(average="macro", name="macro_f1")
+#                 ]
+
+
+from tensorflow.keras.callbacks import Callback
+
+
+class StepWarmupCallback(Callback):
+    def __init__(
+        self, target_lr, warmup_epochs, steps_per_epoch, medium_epoch, heavy_epoch
+    ):
+        super(StepWarmupCallback, self).__init__()
+        self.target_lr = target_lr
+        self.warmup_epochs = warmup_epochs
+        self.steps_per_epoch = steps_per_epoch
+        # Calculate the total linear steps for the warmup phase
+        self.total_warmup_steps = warmup_epochs * steps_per_epoch
+        self.global_step = 0
+        self.last_lr = None
+        self.medium_epoch = medium_epoch
+        self.heavy_epoch = heavy_epoch
+
+    def on_train_batch_begin(self, batch, logs=None):
+
+        # Only run adjustments during the warmup phase
+        if self.global_step < self.total_warmup_steps:
+            # Linear scaling formula2
+            lr = (self.global_step / self.total_warmup_steps) * self.target_lr
+        elif self.global_step <= (self.medium_epoch + 1) * self.steps_per_epoch:
+            lr = self.target_lr
+        elif self.global_step <= (self.heavy_epoch + 1) * self.steps_per_epoch:
+            lr = self.target_lr * 0.1
+        else:
+            lr = self.target_lr * 0.01
+
+        if lr != self.last_lr:
+            print(
+                f"StepWarmupCallback: setting learning rate to {lr} at step {self.global_step}"
+            )
+            self.last_lr = lr
+
+        # Dynamically update the backend float value (safe for ReduceLROnPlateau)
+        self.model.optimizer.learning_rate = lr
+        self.global_step += 1
+
+    def on_epoch_begin(self, epoch, logs=None):
+        if epoch < self.warmup_epochs:
+            current_epoch_start_lr = (
+                self.global_step / self.total_warmup_steps
+            ) * self.target_lr
+            msg = f"[Warmup Phase] Epoch {epoch + 1}/{self.warmup_epochs}: Starting learning rate set to {current_epoch_start_lr:.4e}"
+
+            # 1. Use PRINT with a newline to break past the Keras progress bar cleanly
+            print(f"\n🔥 {msg}")
+
+            # 2. Use LOGGING to write a clean, timestamped record into your log file backup
+            logging.info(msg)
+
+        # self.global_step += 1
+
+
+class EpochTrackerCallback(tf.keras.callbacks.Callback):
+    def on_epoch_end(self, epoch, logs=None):
+        # Assign the next epoch index to the TensorFlow variable
+        # Note: 'epoch' passed by Keras starts at 0, so epoch 0 finished means we move to 1
+        CURRENT_EPOCH.assign(epoch + 1)
+        logging.info("CURRENT_EPOCH assigned to %s", epoch + 1)
+
+
+class CarryOverEarlyStopping(tf.keras.callbacks.Callback):
+    """Re-seeds an EarlyStopping callback's best/wait/best_weights right
+    after Keras resets them in its own on_train_begin, so a plateau
+    detected in an earlier fit() call (e.g. phase2's frozen-backbone stage)
+    isn't forgotten when a later fit() call (e.g. the unfrozen fine-tuning
+    stage) begins. Without this, EarlyStopping starts a fresh "best" from
+    whatever the new stage's first epoch scores, and can run for a long
+    time comparing only against that, never recognising that an earlier
+    stage already found a better optimum.
+
+    Must be placed after the target EarlyStopping instance in the
+    callbacks list passed to fit() - Keras calls on_train_begin in list
+    order, so this needs to run second to override the reset."""
+
+    def __init__(self, early_stopping, best, wait, best_weights):
+        super().__init__()
+        self.early_stopping = early_stopping
+        self.best = best
+        self.wait = wait
+        self.best_weights = best_weights
+
+    def on_train_begin(self, logs=None):
+        self.early_stopping.best = self.best
+        self.early_stopping.wait = self.wait
+        self.early_stopping.best_weights = self.best_weights
+        logging.info(
+            "Carried over EarlyStopping state into new fit() stage: " "best=%s wait=%s",
+            self.best,
+            self.wait,
+        )
+
+
+import tensorflow as tf
+
+
+class LayerUnfreezeCallback(tf.keras.callbacks.Callback):
+    def __init__(
+        self,
+        unfreeze_epoch=4,
+        max_jitter_epoch=14,
+        initial_lr=2e-4,
+        fine_tune_lr=2e-5,
+        finer_lr=2e-6,
+    ):
+        super().__init__()
+        self.unfreeze_epoch = unfreeze_epoch  # Index 4 (Start of Epoch 5)
+        self.max_jitter_epoch = max_jitter_epoch  # Index 14 (Start of Epoch 15)
+        self.initial_lr = initial_lr
+        self.fine_tune_lr = fine_tune_lr
+        self.finer_lr = finer_lr
+
+    def on_epoch_begin(self, epoch, logs=None):
+        # ----------------------------------------------------
+        # STAGE 1 BOUNDARY (Loop 1 / Epoch 1)
+        # ----------------------------------------------------
+        if epoch == 0:
+            print(
+                f"\n[Epoch {epoch+1}] Phase 2A Initiation: Freezing Vision Backbone. LR: {self.initial_lr}"
+            )
+            # self._set_backbone_trainable(False)
+            self.model.optimizer.learning_rate.assign(self.initial_lr)
+            # self._recompile_graph()
+
+        # ----------------------------------------------------
+        # STAGE 2 BOUNDARY (Loop 5 / Epoch 5)
+        # --------------------------------────────────────----
+        elif epoch == self.unfreeze_epoch:
+            print(
+                f"\n[Epoch {epoch+1}] Phase 2B Transition: Unfreezing Backbone & Stepping Down LR to {self.fine_tune_lr}"
+            )
+            # self._set_backbone_trainable(True)
+            self.model.optimizer.learning_rate.assign(self.fine_tune_lr)
+
+        # ----------------------------------------------------
+        # STAGE 3 BOUNDARY (Loop 15 / Epoch 15)
+        # ----------------------------------------------------
+        elif epoch == self.max_jitter_epoch:
+            print(
+                f"\n[Epoch {epoch+1}] Phase 2C Transition: Entering Max Jitter. Final Deep LR Drop to {self.finer_lr}"
+            )
+            self.model.optimizer.learning_rate.assign(self.finer_lr)
+
+
+def stage_3_lr_scheduler(epoch, lr):
+    from ml_tools.thermaldataset import (
+        JITTER_MEDIUM_STAGE_EPOCH,
+        JITTER_HEAVY_STAGE_EPOCH,
+    )
+
+    if epoch < JITTER_HEAVY_STAGE_EPOCH:
+        return 2e-6
+    else:
+        if epoch == JITTER_HEAVY_STAGE_EPOCH:
+            print(
+                f"\n[Epoch {epoch+1}] Phase 2C Transition: Entering Max Jitter. Final Deep LR Drop to 2e-6"
+            )
+        return 2e-6  # Drop to final safety floor during hard regularisation

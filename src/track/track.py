@@ -146,11 +146,12 @@ class RegionTracker(Tracker):
 
             if max_mass_change and abs(avg_mass - region.mass) > max_mass_change:
                 logging.debug(
-                    "track %s region mass %s deviates too much from %s for region %s",
-                    track.get_id(),
+                    "track %s region mass %s deviates too much from %s for region %s max change is %s",
+                    track.id,
                     region.mass,
                     avg_mass,
                     region,
+                    max_mass_change,
                 )
                 continue
             skip = False
@@ -160,7 +161,7 @@ class RegionTracker(Tracker):
                 if distance > max_distance:
                     logging.debug(
                         "track %s distance score %s bigger than max distance %s for region %s",
-                        track.get_id(),
+                        track.id,
                         distance,
                         max_distance,
                         region,
@@ -174,7 +175,7 @@ class RegionTracker(Tracker):
             if size_change > max_size_change:
                 logging.debug(
                     "track % size_change %s bigger than max size_change %s for region %s",
-                    track.get_id(),
+                    track.id,
                     size_change,
                     max_size_change,
                     region,
@@ -332,9 +333,10 @@ class ThumbInfo:
         self.thumb = None
         self.thumb_frame = None
         self.last_frame_check = None
-        self.predicted_tag = None
+        self.predicted_tags = None
         self.predicted_confidence = None
         self.track_id = track_id
+        self.is_fp = False
 
     # score thumbs based on not being false positive having priority
     # then if sure of the prediction (above 80%) choose the most confidence
@@ -345,8 +347,8 @@ class ThumbInfo:
         score = self.points
         score_offset = 100000
 
-        if self.predicted_tag is not None:
-            if self.predicted_tag != "false-positive":
+        if self.predicted_tags is not None:
+            if not self.is_fp:
                 score = score + 1000 * score_offset
                 if self.predicted_confidence > confidence_threshold:
                     confidence = self.predicted_confidence
@@ -361,7 +363,7 @@ class ThumbInfo:
 
     def to_metadata(self):
         thumbnail_info = {
-            "region": self.region.meta_dictionary(),
+            "region": self.region.meta_dictionary() if self.region else {},
             "contours": self.points,
             "score": round(self.score()),
         }
@@ -447,7 +449,7 @@ class Track:
         if tracking_config is not None:
             self.tracker = self.get_tracker(tracking_config)
         # self.tracker = RegionTracker(
-        #     self.get_id(), tracking_config, self.crop_rectangle
+        #     self.id, tracking_config, self.crop_rectangle
         #
         self.thumb_info = None
         self.score = None
@@ -455,7 +457,7 @@ class Track:
     def get_tracker(self, tracking_config):
         tracker = tracking_config.tracker
         if tracker == "RegionTracker":
-            return RegionTracker(self.get_id(), tracking_config, self.crop_rectangle)
+            return RegionTracker(self.id, tracking_config, self.crop_rectangle)
         else:
             raise Exception(f"Cant find for tracker {tracker}")
 
@@ -476,79 +478,10 @@ class Track:
     def match(self, regions):
         return self.tracker.match(regions, self)
 
-    def get_segments(
-        self,
-        # frame_temp_median,
-        segment_width,
-        segment_frame_spacing=9,
-        repeats=1,
-        min_frames=0,
-        segment_frames=None,
-        segment_types=None,
-        from_last=None,
-        max_segments=None,
-        ffc_frames=None,
-        dont_filter=False,
-        filter_by_fp=False,
-        min_segments=1,
-        seed=None,
-    ):
-        from ml_tools.datasetstructures import get_segments, SegmentHeader
-
-        if from_last is not None:
-            if from_last == 0:
-                return []
-            regions = np.array(self.bounds_history[-from_last:])
-            start_frame = regions[0].frame_number
-        else:
-            start_frame = self.start_frame
-            regions = np.array(self.bounds_history)
-
-        # frame_temp_median = np.uint16(frame_temp_median)
-        segments = []
-        if segment_frames is not None:
-            mass_history = np.uint16([region.mass for region in regions])
-            for frames in segment_frames:
-                relative_frames = frames - self.start_frame
-                mass_slice = mass_history[relative_frames]
-                segment_mass = np.sum(mass_slice)
-                segment = SegmentHeader(
-                    self.clip_id,
-                    self._id,
-                    start_frame=start_frame,
-                    frames=len(frames),
-                    weight=1,
-                    mass=segment_mass,
-                    label=None,
-                    regions=regions[relative_frames],
-                    # frame_temp_median=frame_temp_median[relative_frames],
-                    frame_indices=frames,
-                )
-                segments.append(segment)
-        else:
-            segments, _ = get_segments(
-                self.clip_id,
-                self._id,
-                start_frame,
-                segment_frame_spacing=segment_frame_spacing,
-                segment_width=segment_width,
-                regions=regions,
-                ffc_frames=ffc_frames,
-                repeats=repeats,
-                min_frames=min_frames,
-                segment_types=segment_types,
-                max_segments=max_segments,
-                dont_filter=dont_filter,
-                min_segments=min_segments,
-                seed=seed,
-            )
-
-        return segments
-
     @classmethod
     def from_region(cls, clip, region, tracker_version=None, tracking_config=None):
         track = cls(
-            clip.get_id(),
+            clip.id,
             fps=clip.frames_per_second,
             tracker_version=tracker_version,
             crop_rectangle=clip.crop_rectangle,
@@ -559,7 +492,8 @@ class Track:
         track.add_region(region)
         return track
 
-    def get_id(self):
+    @property
+    def id(self):
         return self._id
 
     def add_prediction_info(self, track_prediction):
@@ -986,7 +920,7 @@ class Track:
         return self.bounds_history[-1]
 
     def __repr__(self):
-        return "Track: {} frames# {}".format(self.get_id(), len(self))
+        return "Track: {} frames# {}".format(self.id, len(self))
 
     def __len__(self):
         return len(self.bounds_history)
@@ -1004,7 +938,7 @@ class Track:
         track_info = {}
         start_s, end_s = self.start_and_end_in_secs()
 
-        track_info["id"] = self.get_id()
+        track_info["id"] = self.id
         if self.in_trap:
             track_info["trap_triggered"] = self.in_trap
             track_info["trigger_frame"] = self.trigger_frame
@@ -1023,12 +957,12 @@ class Track:
         prediction_info = []
         if predictions_per_model:
             for model_id, predictions in predictions_per_model.items():
-                prediction = predictions.prediction_for(self.get_id())
+                prediction = predictions.prediction_for(self.id)
                 if prediction is None:
                     continue
-                prediciont_meta = prediction.get_metadata(predictions.thresholds)
-                prediciont_meta["model_id"] = model_id
-                prediction_info.append(prediciont_meta)
+                prediction_meta = prediction.get_metadata()
+                prediction_meta["model_id"] = model_id
+                prediction_info.append(prediction_meta)
         track_info["predictions"] = prediction_info
         return track_info
 
@@ -1041,7 +975,8 @@ class Track:
             tag
             for tag in track_tags
             if not tag.get("automatic", False)
-            and tag.get("confidence") >= min_confidence
+            and tag.get("confidence", 0) is not None
+            and tag.get("confidence", 0) >= min_confidence
         ]
 
         if not track_tags:
@@ -1063,10 +998,15 @@ class Track:
                     tag = None
                 else:
                     # choose most specific
-                    path_one = tag.get("path")
-                    path_two = track_tag.get("path")
+                    path_one = tag.get("path", "")
+                    path_two = track_tag.get("path", "")
                     # longer path is more specific..
-                    if len(path_two) > len(path_one):
+                    if path_one is None:
+                        path_one = ""
+                    if path_two is None:
+                        path_two = ""
+
+                    elif len(path_two) > len(path_one):
                         tag = track_tag
             elif best is None or ranking < best:
                 best = ranking
@@ -1086,6 +1026,8 @@ class Track:
 def is_conflicting_tag(tag_one, tag_two):
     path_one = tag_one.get("path")
     path_two = tag_two.get("path")
+    if path_one is None or path_two is None:
+        return tag_one["what"] != tag_two["what"]
     # this should cover similar tags i.e. all.mammal.leporidae.rabbit and all.mammal.leporidae
     same_parents = path_one in path_two or path_two in path_one
     same_parents and path_one != "all.mammal" and path_two != "all.mammal"

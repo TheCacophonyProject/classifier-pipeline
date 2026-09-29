@@ -91,8 +91,11 @@ def get_track_thumb_stats(clip, track):
             contour_image = np.uint8(region.subimage(image))
         else:
             contour_image = frame.mask
+            contour_image = region.subimage(frame.mask)
             if region.mask_id is not None:
-                contour_image = np.uint8(region.subimage(frame.mask)==region.mask_id)*255
+                contour_image = np.uint8(contour_image == region.mask_id) * 255
+            else:
+                contour_image = np.uint8(contour_image != 0) * 255
         contours, _ = cv2.findContours(
             contour_image,
             cv2.RETR_EXTERNAL,
@@ -307,5 +310,5 @@ def thumbnail_debug(clip):
         h_info = [mass_frames, contour_frames, median_diff, scored_frames]
         display_track(
             h_info,
-            f"{clip.get_id()}-{track.start_frame}-{track.end_frame}",
+            f"{clip.id}-{track.start_frame}-{track.end_frame}",
         )

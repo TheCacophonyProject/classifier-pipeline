@@ -23,6 +23,7 @@ class FrameCache:
         if delete_if_exists:
             self.delete()
         import h5py
+
         f = h5py.File(self.filename, "w")
         f.create_group("tracks")
         f.close()

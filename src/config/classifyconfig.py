@@ -20,7 +20,8 @@ along with this program. If not, see <http://www.gnu.org/licenses/>.
 import os.path as path
 from enum import Enum
 
-import attr
+from dataclasses import dataclass, asdict
+from typing import Any
 import logging
 
 from config import config
@@ -39,12 +40,12 @@ class PreviewType(Enum):
         return [None] + [preview_type.value for preview_type in cls]
 
 
-@attr.s
+@dataclass(slots=True)
 class ClassifyConfig(DefaultConfig):
-    models = attr.ib()
-    meta_to_stdout = attr.ib()
-    preview = attr.ib()
-    cache_to_disk = attr.ib()
+    models: Any
+    meta_to_stdout: Any
+    preview: Any
+    cache_to_disk: Any
 
     @classmethod
     def load(cls, classify):
@@ -83,24 +84,24 @@ class ClassifyConfig(DefaultConfig):
             model.validate()
 
 
-@attr.s
+@dataclass(slots=True)
 class ModelConfig:
     DEFAULT_SCORE = 0
-    id = attr.ib()
-    name = attr.ib()
-    type = attr.ib()
+    id: Any
+    name: Any
+    type: Any
 
-    model_file = attr.ib()
-    model_weights = attr.ib()
+    model_file: Any
+    model_weights: Any
 
-    wallaby = attr.ib()
-    tag_scores = attr.ib()
-    ignored_tags = attr.ib()
-    thumbnail_model = attr.ib()
-    reclassify = attr.ib()
-    submodel = attr.ib()
-    run_over_network = attr.ib()
-    port = attr.ib(default=8123)
+    wallaby: Any
+    tag_scores: Any
+    ignored_tags: Any
+    thumbnail_model: Any
+    reclassify: Any
+    submodel: Any
+    run_over_network: Any
+    port: Any = 8123
 
     @classmethod
     def load(cls, raw):
@@ -127,7 +128,7 @@ class ModelConfig:
             # raise ValueError(f"{self.model_file} does not exist")
 
     def as_dict(self):
-        return attr.asdict(self)
+        return asdict(self)
 
 
 def load_scores(scores):

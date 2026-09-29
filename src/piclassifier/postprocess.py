@@ -1,11 +1,10 @@
-
-
 def process_mem():
     import os
 
     # return the memory usage in MB
     process = psutil.Process(os.getpid())
     return process.memory_info().rss / (1024 * 1024)
+
 
 import psutil
 import queue
@@ -29,7 +28,6 @@ import threading
 import dbus
 from gi.repository import GLib
 
-
 TIMESTAMP_FORMATS = [
     (re.compile(r"^\d{4}-\d{2}-\d{2}--\d{2}-\d{2}-\d{2}"), "%Y-%m-%d--%H-%M-%S"),
     (re.compile(r"^\d{8}-\d{6}\.\d+"), "%Y%m%d-%H%M%S.%f"),
@@ -44,6 +42,7 @@ def filename_timestamp(cptv_file):
             return datetime.strptime(match.group(), fmt)
 
     return datetime.fromtimestamp(0)
+
 
 logging.info("Process usage %s", process_mem())
 
@@ -136,7 +135,7 @@ def main():
     reprocess_files = sorted(reprocess_dir.glob("*.cptv"), key=filename_timestamp)
     logging.info("Adding existing %s", reprocess_files)
 
-    postprocess = thermal_config.motion.postprocess
+    postprocess = thermal_config.base_motion.postprocess
     pending_exit = False
     if not postprocess:
         if len(reprocess_files) == 0:
@@ -158,13 +157,13 @@ def main():
         config,
         network_model,
         keep_original_predictions=True,
-        tracking_events=thermal_config.motion.postprocess_events,
+        tracking_events=thermal_config.base_motion.postprocess_events,
     )
 
     callback_fn = partial(rec_callback, set_function=clip_classifier.set_is_recording)
     bus = None
     dbus_object = None
-    need_dbus = thermal_config.motion.postprocess_events
+    need_dbus = thermal_config.base_motion.postprocess_events
     loop = None
 
     try:
@@ -194,6 +193,8 @@ def main():
                     try:
                         dbus_object, bus, _, loop = connect_to_dbus(callback_fn)
                     except Exception as ex:
+                        # this may not be running due to tc2-agent stopping it
+                        # start_thermal_recorder()
                         logging.info(
                             "Couldn't connect to dbus (%s) waiting 20 seconds and trying again",
                             service.DBUS_NAME,
@@ -203,7 +204,6 @@ def main():
                             raise ex
                         time.sleep(20)
                     attempt += 1
-
 
             try:
                 if clip_classifier._is_recording:

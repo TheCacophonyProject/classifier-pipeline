@@ -132,6 +132,9 @@ def main(cmd_args=None):
         track=args.track,
         calculate_thumbnails=args.calculate_thumbnails,
     )
+    # clip_classifier.post_process_file(
+    #     args.source,None
+    # )
     logging.info("Took %s", time.time() - start)
 
 

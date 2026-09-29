@@ -24,39 +24,22 @@ Example usage:
       --num_shards=100
 """
 
-import cv2
-from PIL import Image
-from pathlib import Path
-import time
-import collections
 import hashlib
-import io
-import json
-import os
-from multiprocessing import Process, Queue
+from dataclasses import dataclass, field
 
-from absl import app
-from absl import flags
 from absl import logging
 import numpy as np
-from PIL import Image, ImageOps
 
-import tensorflow as tf
 from . import tfrecord_util
-from ml_tools import tools
 from ml_tools.imageprocessing import normalize
-from ml_tools.forestmodel import forest_features
-from ml_tools import imageprocessing
-from ml_tools.frame import TrackChannels
-from ml_tools.trackdatabase import TrackDatabase
 from ml_tools.rawdb import RawDatabase
 from ml_tools.rectangle import Rectangle
-from ml_tools.datasetstructures import SegmentType
+from ml_tools.datasetstructures import MeanData
 
 crop_rectangle = Rectangle(0, 0, 640, 480)
 
 
-def create_tf_example(sample, data, features, labels, num_frames, country_code):
+def create_tf_example(sample, data, features, labels, country_code):
     """Converts image and annotations to a tf.Example proto.
 
     Args:
@@ -87,27 +70,65 @@ def create_tf_example(sample, data, features, labels, num_frames, country_code):
     Raises:
       ValueError: if the image pointed to by data['filename'] is not a valid JPEG
     """
-    average_dim = [r.area for r in sample.track_bounds]
+    # if we wanted can save writing memory by using alternative tf record writer
+    import tensorflow as tf
+
+    thermal_raw, filtered, thermal_norm, frame_indices, roi, means = data
+    if len(thermal_raw) == 0:
+        return None
+
+    # frames can be dropped while preprocessing (e.g. max and min the same value), so
+    # track_bounds must be filtered down to the frames that were actually
+    # kept to stay aligned with image/num_frames (len(filtered))
+    kept_frames = set(frame_indices)
+    track_bounds = [r for r in sample.track_bounds if r.frame_number in kept_frames]
+
+    for r, f in zip(track_bounds, frame_indices):
+        assert r.frame_number == f, f"{r.frame_number} does equal {f}"
+
+    original_roi = np.uint8([r.to_ltwh() for r in track_bounds])
+
+    centre_x = np.float32([r.centroid[0] for r in track_bounds])
+    centre_y = np.float32([r.centroid[1] for r in track_bounds])
+
+    average_dim = [r.area for r in track_bounds]
     average_dim = int(round(np.mean(average_dim) ** 0.5))
-    thermals = list(data[0])
-    filtereds = list(data[1])
     image_id = sample.unique_id
-    image_height, image_width = thermals[0].shape
-    while len(thermals) < num_frames:
-        # ensure 25 frames even if 0s
-        thermals.append(np.zeros((thermals[0].shape)))
-        filtereds.append(np.zeros((filtereds[0].shape)))
-    thermals = np.array(thermals)
-    filtereds = np.array(filtereds)
-    thermal_key = hashlib.sha256(thermals).hexdigest()
-    filtered_key = hashlib.sha256(filtereds).hexdigest()
+    image_height, image_width = thermal_raw[0].shape
+    # while len(thermal_raw) < num_frames:
+    #     # ensure 25 frames even if 0s
+    #     thermal_raw.append(np.zeros((thermal_raw[0].shape)))
+    #     filtereds.append(np.zeros((filtereds[0].shape),dtype = np.uint8))
+    #     thermal_norm.append(np.zeros((thermal_norm[0].shape),dtype=np.uint8))
+
+    thermal_raw = np.array(thermal_raw)
+    filtered = np.array(filtered)
+    thermal_norm = np.array(thermal_norm)
+    frame_indices = np.array(frame_indices)
+    means = np.float32(means)
+
+    roi = np.uint8(roi)
+    thermal_key = hashlib.sha256(thermal_raw).hexdigest()
+    filtered_key = hashlib.sha256(filtered).hexdigest()
+    mask_key = hashlib.sha256(thermal_norm).hexdigest()
+
     avg_mass = int(round(sample.mass / len(sample.frame_numbers)))
     feature_dict = {
+        "image/centre_x": tfrecord_util.float_list_feature(centre_x),
+        "image/centre_y": tfrecord_util.float_list_feature(centre_y),
+        "image/upsampled": tfrecord_util.int64_feature(sample.upsampled),
+        "image/original_roi": tfrecord_util.bytes_feature(
+            original_roi.ravel().tobytes()
+        ),
+        "image/roi": tfrecord_util.bytes_feature(roi.ravel().tobytes()),
+        "image/means": tfrecord_util.float_list_feature(means.ravel()),
+        "image/frame_numbers": tfrecord_util.int64_list_feature(frame_indices),
         "image/filtered": tfrecord_util.int64_feature(1 if sample.filtered else 0),
         "image/avg_mass": tfrecord_util.int64_feature(avg_mass),
         "image/track_median_mass": tfrecord_util.int64_feature(
             int(sample.track_median_mass)
         ),
+        "image/num_frames": tfrecord_util.int64_feature(len(filtered)),
         "image/avg_dim": tfrecord_util.int64_feature(average_dim),
         "image/height": tfrecord_util.int64_feature(image_height),
         "image/width": tfrecord_util.int64_feature(image_width),
@@ -117,15 +138,20 @@ def create_tf_example(sample, data, features, labels, num_frames, country_code):
             str(sample.source_file).encode("utf8")
         ),
         "image/source_id": tfrecord_util.bytes_feature(str(image_id).encode("utf8")),
-        "image/thermalencoded": tfrecord_util.float_list_feature(thermals.ravel()),
-        "image/filteredencoded": tfrecord_util.float_list_feature(filtereds.ravel()),
-        "image/features": tfrecord_util.float_list_feature(features.ravel()),
+        "image/thermal_raw_encoded": tfrecord_util.float_list_feature(
+            thermal_raw.ravel()
+        ),
+        "image/filtered_encoded": tfrecord_util.float_list_feature(filtered.ravel()),
+        "image/thermal_norm_encoded": tfrecord_util.float_list_feature(
+            thermal_norm.ravel()
+        ),
         "image/filteredkey/sha256": tfrecord_util.bytes_feature(
             filtered_key.encode("utf8")
         ),
         "image/thermalkey/sha256": tfrecord_util.bytes_feature(
             thermal_key.encode("utf8")
         ),
+        "image/maskkey/sha256": tfrecord_util.bytes_feature(mask_key.encode("utf8")),
         "image/format": tfrecord_util.bytes_feature("jpeg".encode("utf8")),
         "image/class/text": tfrecord_util.bytes_feature(sample.label.encode("utf8")),
         "image/class/label": tfrecord_util.int64_feature(labels.index(sample.label)),
@@ -133,67 +159,83 @@ def create_tf_example(sample, data, features, labels, num_frames, country_code):
             str(country_code).encode("utf8")
         ),
     }
+    if features is not None:
+        feature_dict["image/features"] = tfrecord_util.float_list_feature(
+            features.ravel()
+        )
 
     example = tf.train.Example(features=tf.train.Features(feature=feature_dict))
     return example
 
 
-def save_data(samples, writer, labels, extra_args):
-    sample_data = get_data(samples, extra_args)
+def save_data(source_file, excluded_tags, writer, labels, extra_args):
+    sample_data = get_data(source_file, excluded_tags, extra_args)
     if sample_data is None:
-        return 0
+        return None
     saved = 0
     try:
-        country_code = sample_data[1]
-        sample_data = sample_data[0]
+        sample_data, country_code, border_data = sample_data
+
         for sample, images, features in sample_data:
             tf_example = create_tf_example(
-                sample, images, features, labels, extra_args["num_frames"], country_code
+                sample, images, features, labels, country_code
             )
-            writer.write(tf_example.SerializeToString())
-            saved += 1
+            if tf_example is not None:
+                writer.write(tf_example.SerializeToString())
+                saved += 1
     except:
-        logging.error(
-            "Could not save data for %s", samples[0].source_file, exc_info=True
-        )
-    return saved
+        logging.error("Could not save data for %s", source_file, exc_info=True)
+
+    return (saved, border_data)
 
 
-def get_data(clip_samples, extra_args):
+def get_data(source_file, excluded_tags, extra_args):
+    from skimage import exposure
+    import cv2
+    import math
+    from ml_tools.dataset import filter_track
+    from ml_tools.preprocess import preprocess_frame_v2
+
     # prepare the sample data for saving
     ENLARGE_FOR_AUGMENT = True
-    if len(clip_samples) == 0:
-        return None
+    ADD_FEATURES = False
+
+    BACKGROUND_THRESH = 150  # lepton3.5
+    mosaic_dim = extra_args.get("mosaic_dim")
+    border_pixels = MeanData()
     data = []
-    crop_rectangle = tools.Rectangle(1, 1, 160 - 2, 120 - 2)
-    resize_dim = 32
+    crop_rectangle = Rectangle(1, 1, 160 - 2, 120 - 2)
+    resize_dim = mosaic_dim
     if ENLARGE_FOR_AUGMENT:
         # allow extra pixels for augmentation
-        resize_dim = 45
-    if clip_samples[0].source_file.suffix == ".hdf5":
+        resize_dim = int(math.floor(mosaic_dim * 1.41))
+    if source_file.suffix == ".hdf5":
+        from ml_tools.trackdatabase import TrackDatabase
+
+        raise Exception("Need to implement min max filtered values for hdf5 track")
+
         db = TrackDatabase(clip_samples[0].source_file)
     else:
-        db = RawDatabase(clip_samples[0].source_file)
+        db = RawDatabase(source_file)
         db.load_frames()
-
     # going to redo segments to get rid of ffc segments
-    clip_id = clip_samples[0].clip_id
+    rng = np.random.default_rng(seed=db.timestamp)
+
     try:
-        background = db.get_clip_background()
-        if background is None:
-            frame_data = db.get_frames()
-            background = np.median(frame_data, axis=0)
-            del frame_data
         clip_meta = db.get_clip_meta(extra_args.get("tag_precedence"))
         frame_temp_median = clip_meta.frame_temp_median
 
         # group samples by track_id
-        samples_by_track = {}
-        for s in clip_samples:
-            samples_by_track.setdefault(s.track_id, []).append(s)
+        # samples_by_track = {}
+        # for s in clip_samples:
+        # samples_by_track.setdefault(s.track_id, []).append(s)
 
-        for track_id in samples_by_track.keys():
-            samples = samples_by_track[track_id]
+        clip_meta.tracks = [
+            track
+            for track in clip_meta.tracks
+            if not filter_track(track, excluded_tags)
+        ]
+        for track in clip_meta.tracks:
             thermal_min = 0
             by_frame_number = {}
             thermal_max_diff = None
@@ -201,191 +243,241 @@ def get_data(clip_samples, extra_args):
             max_diff = None
             min_diff = None
             thermal_diff_norm = extra_args.get("thermal_diff_norm", False)
-            if clip_samples[0].source_file.suffix != ".hdf5":
-                track = next(
-                    (track for track in clip_meta.tracks if track.track_id == track_id),
-                    None,
+
+            if extra_args.get("label_mapping") is not None:
+                track.remapped_label = extra_args["label_mapping"].get(
+                    track.original_label, track.original_label
                 )
-                if extra_args.get("label_mapping") is not None:
-                    track.remapped_label = extra_args["label_mapping"].get(
-                        track.original_label, track.original_label
-                    )
-                if track is None:
-                    logging.error(
-                        "Cannot find track %s in clip %s", track_id, clip_meta.clip_id
-                    )
-                    continue
-                # GP All assumes we dont have a track over multiple bins (Whcih we probably never want)
-                if extra_args.get("use_segments", True):
-                    segment_types = extra_args.get("segment_types")
-                    track.get_segments(
-                        segment_width=extra_args.get("segment_width", 25),
-                        segment_frame_spacing=extra_args.get(
-                            "segment_frame_spacing", 9
-                        ),
-                        segment_types=segment_types,
-                        segment_min_mass=extra_args.get("segment_min_avg_mass"),
-                        dont_filter=extra_args.get("dont_filter_segment", False),
-                        skip_ffc=extra_args.get("skip_ffc", True),
-                        ffc_frames=clip_meta.ffc_frames,
-                        max_segments=len(samples),
-                        frame_min_mass=extra_args.get("min_mass"),
-                        filter_by_fp=extra_args.get("filter_by_fp"),
-                    )
-                else:
-                    filter_by_lq = extra_args.get("filter_by_lq", False)
-                    track.calculate_sample_frames(
-                        min_mass=(
-                            extra_args.get("min_mass")
-                            if not filter_by_lq
-                            else track.lower_mass
-                        ),
-                        max_mass=(
-                            extra_args.get("max_mass")
-                            if not filter_by_lq
-                            else track.upper_mass
-                        ),
-                        ffc_frames=clip_meta.ffc_frames,
-                        max_frames=extra_args.get("max_frames"),
-                    )
-                samples = track.samples
-                frame_temp_median = {}
-                track_frames = []
 
-                for frame_i in range(
-                    track.start_frame, track.start_frame + track.num_frames
-                ):
-                    f = db.frames[frame_i]
-                    region = track.regions_by_frame[frame_i]
-
-                    if region.blank or region.width <= 0 or region.height <= 0:
-                        continue
-                    median_temp = np.median(f.thermal)
-                    frame_temp_median[frame_i] = median_temp
-
-                    diff_frame = region.subimage(f.filtered)
-                    new_max = np.amax(diff_frame)
-                    new_min = np.amin(diff_frame)
-                    if min_diff is None or new_min < min_diff:
-                        min_diff = new_min
-                        # min_diff = max(0, new_min)
-                    if max_diff is None or new_max > max_diff:
-                        max_diff = new_max
-                    if thermal_diff_norm:
-                        # no benefit in doing for thermal is better
-                        diff_frame = region.subimage(f.thermal) - median_temp
-                        new_max = np.amax(diff_frame)
-                        new_min = np.amin(diff_frame)
-                        if thermal_min_diff is None or new_min < thermal_min_diff:
-                            thermal_min_diff = new_min
-                        if thermal_max_diff is None or new_max > thermal_max_diff:
-                            thermal_max_diff = new_max
-
-                    if thermal_min == 0:
-                        # check that we have nice values other wise allow negatives when normalizing
-                        sub_thermal = region.subimage(f.thermal)
-                        sub_thermal = np.float32(sub_thermal) - median_temp
-                        if np.median(sub_thermal) <= 0:
-                            thermal_min = None
-
-                    enlarged_region = region.copy()
-                    if ENLARGE_FOR_AUGMENT:
-                        enlarged_region.enlarge_for_rotation(crop_rectangle)
-                    cropped = f.crop_by_region(enlarged_region)
-                    cropped.float_arrays()
-                    track_frames.append(cropped)
-                    by_frame_number[f.frame_number] = (cropped, median_temp)
-
+            # GP All assumes we dont have a track over multiple bins (Whcih we probably never want)
+            if extra_args.get("use_segments", True):
+                segment_types = extra_args.get("segment_types")
+                # loading segments here again as this has access to ffc frames
+                track.get_segments(
+                    segment_width=extra_args.get("segment_width", 25),
+                    segment_frame_spacing=extra_args.get("segment_frame_spacing", 9),
+                    segment_types=segment_types,
+                    segment_min_mass=extra_args.get("segment_min_avg_mass"),
+                    dont_filter=extra_args.get("dont_filter_segment", False),
+                    skip_ffc=extra_args.get("skip_ffc", True),
+                    ffc_frames=clip_meta.ffc_frames,
+                    max_segments=extra_args.get("max_segments"),
+                    frame_min_mass=extra_args.get("min_mass"),
+                    filter_by_fp=extra_args.get("filter_by_fp"),
+                    rng=rng,
+                    ceil_num_windows=False,
+                )
             else:
-                raise Exception(
-                    "Need to implement min max filtered values for hdf5 track"
+                filter_by_lq = extra_args.get("filter_by_lq", False)
+                track.calculate_sample_frames(
+                    min_mass=(
+                        extra_args.get("min_mass")
+                        if not filter_by_lq
+                        else track.lower_mass
+                    ),
+                    max_mass=(
+                        extra_args.get("max_mass")
+                        if not filter_by_lq
+                        else track.upper_mass
+                    ),
+                    ffc_frames=clip_meta.ffc_frames,
+                    max_frames=extra_args.get("max_frames"),
                 )
-                track_frames = db.get_track(
-                    clip_id, track_id, channels=[TrackChannels.thermal], crop=True
-                )
-
-            logging.debug("Saving %s samples %s", track_id, len(samples))
-            used_frames = []
-
-            features, _, _ = forest_features(
-                track_frames,
-                background,
-                frame_temp_median,
-                [f.region for f in track_frames],
-                normalize=True,
-                cropped=True,
-            )
+            samples = track.samples
 
             # normalize by maximum difference between background and tracked region
             # probably only need to use difference on the frames used for this record
             # also min_diff maybe could just be set to 0 and clip values below 0,
             # these represent pixels whcih are cooler than the background
+
+            by_frame_number = {}
+            used_frames = []
+            features = None
             for sample in samples:
-                thermals = []  # np.empty(len(frames), dtype=object)
+                assert len(set(sample.frame_indices)) == len(
+                    sample.frame_indices
+                ), "Frame indices must be unique"
+                thermalNorm = []
+                thermalRaw = []  # np.empty(len(frames), dtype=object)
                 filtered = []  # np.empty(len(frames), dtype=object)
+                frame_indices = []
+                roi = []
+                means = []
                 for frame_number in sample.frame_indices:
-                    frame, temp_median = by_frame_number[frame_number]
                     # no need to do work twice
                     if frame_number not in used_frames:
+                        frame = db.frames[frame_number]
                         used_frames.append(frame_number)
-                        # frame.filtered = frame.thermal - frame.region.subimage(
-                        #     background
-                        # )
-                        # print("Reiszie fram e",frame_number,track_id)
                         region = track.regions_by_frame[frame_number]
 
-                        frame.resize_with_aspect(
-                            (resize_dim, resize_dim),
+                        result = preprocess_frame_v2(
+                            frame,
+                            resize_dim,
+                            region,
                             crop_rectangle,
-                            keep_edge=True,
-                            edge_offset=(7, 7, 6, 6),
-                            original_region=region,
+                            original_dim=mosaic_dim,
+                            enlarge=False,
                         )
-                        if (
-                            np.amax(frame.thermal) > 50000
-                            or np.amin(frame.thermal) < 1000
-                        ):
+                        if result is None:
+                            by_frame_number[frame_number] = None
+                            continue
+
+                        cropped_frame, mean_value, data_region = result
+
+                        if mean_value.frames_used == 0:
+                            # probably doesn't matter to just ignore these clips
                             logging.error(
-                                "Strange values for %s max %s min %s",
-                                clip_id,
-                                np.amax(frame.thermal),
-                                np.amin(frame.thermal),
+                                "%s Empty border for clip: %s track: %s frame %s  original %s",
+                                mean_value,
+                                clip_meta.clip_id,
+                                track.track_id,
+                                frame_number,
+                                region,
                             )
-                            raise Exception(
-                                f"Strange values for {clip_id} - {track_id} #{frame_number}"
-                            )
-                        frame.thermal -= temp_median
-                        if not thermal_diff_norm and thermal_min == 0:
-                            np.clip(
-                                frame.thermal, a_min=0, a_max=None, out=frame.thermal
-                            )
+                        else:
+                            border_pixels.add_means(mean_value)
 
-                        frame.thermal, stats = imageprocessing.normalize(
-                            frame.thermal,
-                            min=thermal_min_diff,
-                            max=thermal_max_diff,
-                            new_max=255,
+                        by_frame_number[frame_number] = cropped_frame
+                    else:
+                        cropped_frame, _ = by_frame_number[frame_number]
+
+                    assert cropped_frame.thermal.shape == (
+                        resize_dim,
+                        resize_dim,
+                    ), f"Shape is wrong {cropped_frame.region}"
+                    # GP could handle each type separately, may be instances where one is valid
+                    if (
+                        cropped_frame is not None
+                        and cropped_frame.filtered is not None
+                        and cropped_frame.thermal is not None
+                        and cropped_frame.thermal_norm is not None
+                    ):
+                        filtered.append(cropped_frame.filtered)
+                        thermalRaw.append(cropped_frame.thermal)
+                        thermalNorm.append(cropped_frame.thermal_norm)
+                        roi.append(data_region)
+                        means.append(
+                            [
+                                mean_value.thermal,
+                                mean_value.filtered,
+                                mean_value.thermal_norm,
+                            ]
                         )
-                        if not stats[0]:
-                            frame.thermal = np.zeros((frame.thermal.shape))
-
-                        frame.filtered, stats = imageprocessing.normalize(
-                            frame.filtered, min=min_diff, max=max_diff, new_max=255
-                        )
-
-                        np.clip(frame.filtered, a_min=0, a_max=255, out=frame.filtered)
-
-                        if not stats[0]:
-                            frame.filtered = np.zeros((frame.filtered.shape))
-                    filtered.append(frame.filtered)
-                    thermals.append(frame.thermal)
-
-                thermals = np.array(thermals)
+                        frame_indices.append(frame_number)
+                thermalRaw = np.array(thermalRaw)
                 filtered = np.array(filtered)
-                data.append((sample, (thermals, filtered), features))
+                thermalNorm = np.array(thermalNorm)
+                roi = np.array(roi)
+
+                data.append(
+                    (
+                        sample,
+                        (thermalRaw, filtered, thermalNorm, frame_indices, roi, means),
+                        features,
+                    )
+                )
     except:
-        logging.error(
-            "Cant get Samples for %s", clip_samples[0].source_file, exc_info=True
-        )
+        logging.error("Cant get Samples for %s", source_file, exc_info=True)
         return None
-    return (data, clip_meta.country_code)
+    return (data, clip_meta.country_code, border_pixels)
+
+
+def pad_frame(frame, new_height, new_width, top, left, pad_values):
+    """Pad channels to (new_height, new_width), placing existing content at (top, left)."""
+    padded = np.full((new_height, new_width), pad_values[0], dtype=frame.thermal.dtype)
+    h, w = frame.thermal.shape[:2]
+    padded[top : top + h, left : left + w] = frame.thermal
+    frame.thermal = padded
+
+    padded = np.full(
+        (new_height, new_width), pad_values[1], dtype=frame.thermal_norm.dtype
+    )
+    h, w = frame.thermal_norm.shape[:2]
+    padded[top : top + h, left : left + w] = frame.thermal_norm
+    frame.thermal_norm = padded
+
+    padded = np.full((new_height, new_width), pad_values[2], dtype=frame.filtered.dtype)
+    h, w = frame.filtered.shape[:2]
+    padded[top : top + h, left : left + w] = frame.filtered
+    frame.filtered = padded
+
+
+def feature_stuff():
+    # TODO if we ever want  random forest features needs to be sorted
+    frame_temp_median = {}
+
+
+# track_frames = []
+
+# for frame_i in range(
+#     track.start_frame, track.start_frame + track.num_frames
+# ):
+#     f = db.frames[frame_i]
+#     region = track.regions_by_frame[frame_i]
+
+#     if region.blank or region.width <= 0 or region.height <= 0:
+#         continue
+#     median_temp = np.median(f.thermal)
+#     frame_temp_median[frame_i] = median_temp
+
+# old way if we need to calculate min and max diff
+# diff_frame = region.subimage(f.filtered)
+# new_max = np.amax(diff_frame)
+# new_min = np.amin(diff_frame)
+# if min_diff is None or new_min < min_diff:
+#     min_diff = new_min
+#     # min_diff = max(0, new_min)
+# if max_diff is None or new_max > max_diff:
+#     max_diff = new_max
+# if thermal_diff_norm:
+#     # no benefit in doing for thermal
+#     diff_frame = region.subimage(f.thermal) - median_temp
+#     new_max = np.amax(diff_frame)
+#     new_min = np.amin(diff_frame)
+#     if thermal_min_diff is None or new_min < thermal_min_diff:
+#         thermal_min_diff = new_min
+#     if thermal_max_diff is None or new_max > thermal_max_diff:
+#         thermal_max_diff = new_max
+
+# if thermal_min == 0:
+#     # check that we have nice values other wise allow negatives when normalizing
+#     sub_thermal = region.subimage(f.thermal)
+#     sub_thermal = np.float32(sub_thermal) - median_temp
+#     if np.median(sub_thermal) <= 0:
+#         thermal_min = None
+
+
+#     enlarged_region = region.copy()
+#     if ENLARGE_FOR_AUGMENT:
+#         if region.width > resize_dim or region.height >resize_dim:
+#             enlarged_region.enlarge_for_rotation(mosaic_dim, resize_dim - mosaic_dim)
+#             logging.info("%s %s Region %s becomes %s",source_file,clip_meta.clip_id,region,enlarged_region)
+
+#         else:
+#             enlarged_region.enlarge_to(resize_dim)
+#         # logging.info("Enlarging for augment %s %s",region, enlarged_region)
+
+
+#     if not crop_rectangle.contains_rec(enlarged_region):
+#         cropped = f.crop_by_region_with_padding(enlarged_region,crop_rectangle,resize_dim)
+#     else:
+
+#         cropped = f.crop_by_region(enlarged_region)
+#     cropped.float_arrays()
+#     track_frames.append(cropped)
+#     by_frame_number[f.frame_number] = (cropped, median_temp)
+
+# logging.debug("Saving %s samples %s", track.track_id, len(samples))
+# used_frames = []
+# features = None
+# if ADD_FEATURES:
+#     from ml_tools.forestmodel import forest_features
+
+#     features, _, _ = forest_features(
+#         track_frames,
+#         db.get_clip_background(),
+#         frame_temp_median,
+#         [f.region for f in track_frames],
+#         normalize=True,
+#         cropped=True,
+#     )

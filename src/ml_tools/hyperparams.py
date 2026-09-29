@@ -1,5 +1,3 @@
-
-
 class HyperParams(dict):
     """Helper wrapper for dictionary to make accessing hyper parameters easier"""
 
@@ -22,19 +20,24 @@ class HyperParams(dict):
         self["frame_size"] = self.frame_size
         self["segment_width"] = self.segment_width
         self["segment_types"] = self.segment_types
-        self["multi_label"] = True
+        self["multi_label"] = False
         self["diff_norm"] = self.diff_norm
         self["thermal_diff_norm"] = self.thermal_diff_norm
 
-        self["smooth_predictions"] = self.smooth_predictions
         self["channels"] = self.channels
+        self["image_modality_dropout"] = self.image_modality_dropout
 
     @property
     def channels(self):
         from ml_tools.frame import TrackChannels
 
         return self.get(
-            "channels", [TrackChannels.thermal.name, TrackChannels.filtered.name]
+            "channels",
+            [
+                TrackChannels.thermal.name,
+                TrackChannels.thermal_norm.name,
+                TrackChannels.filtered.name,
+            ],
         )
 
     @property
@@ -46,10 +49,6 @@ class HyperParams(dict):
                 len(self.channels),
             )
         return (self.frame_size, self.frame_size, len(self.channels))
-
-    @property
-    def smooth_predictions(self):
-        return self.get("smooth_predictions", False)
 
     @property
     def excluded_labels(self):
@@ -65,7 +64,7 @@ class HyperParams(dict):
 
     @property
     def diff_norm(self):
-        return self.get("diff_norm", True)
+        return self.get("diff_norm", False)
 
     @property
     def multi_label(self):
@@ -91,7 +90,7 @@ class HyperParams(dict):
     def segment_types(self):
         from ml_tools.datasetstructures import SegmentType
 
-        segment_types = self.get("segment_types", [SegmentType.ALL_RANDOM_MASKED])
+        segment_types = self.get("segment_types", [SegmentType.RANDOM_SECTIONS])
         # convert string to enum type
         if isinstance(segment_types, str):
             # old metadata
@@ -111,7 +110,7 @@ class HyperParams(dict):
 
     @property
     def model_name(self):
-        return self.get("model_name", "wr-resnet")
+        return self.get("model_name", "efficientnetv2b3")
 
     @property
     def dense_sizes(self):
@@ -119,7 +118,7 @@ class HyperParams(dict):
 
     @property
     def label_smoothing(self):
-        return self.get("label_smoothing", 0)
+        return self.get("label_smoothing", 0.1)
 
     @property
     def base_training(self):
@@ -134,12 +133,49 @@ class HyperParams(dict):
         return self.get("dropout", 0.3)
 
     @property
+    def mean_padding(self):
+        from thermalwriter import MeanData
+
+        mean_padding = self.get("mean_padding")
+        if mean_padding is not None:
+            pads = MeanData(
+                thermal=pads["thermal"],
+                filtered=pads["filtered"],
+                thermal_norm=pads["thermal_norm"],
+                frames_used=1,
+            )
+        else:
+            pads = MeanData()
+        return self.pads * 255
+
+    @property
+    def fine_tune_learning_rate(self):
+        return self.learning_rate * 0.1
+
+    @property
+    def image_modality_dropout(self):
+        # Probability of zeroing the image branch's features for a given
+        # example during training, forcing that example's loss to be
+        # explained by the metadata branch alone. Counters gradient
+        # starvation of the lower-capacity metadata branch by the dominant
+        # image branch. 0 disables it.
+        return self.get("image_modality_dropout", 0.15)
+
+    @property
+    def phase2_freeze_epochs(self):
+        # Number of epochs to keep the phase1 backbone (channel_aligner +
+        # base model) frozen at the start of phase2 training, so the freshly
+        # initialised head can stabilise before it starts pushing gradients
+        # back through the already-trained backbone.
+        return self.get("phase2_freeze_epochs", 5)
+
+    @property
     def learning_rate(self):
-        return self.get("learning_rate", 0.001)
+        return self.get("learning_rate", 0.0002)
 
     @property
     def learning_rate_decay(self):
-        return self.get("learning_rate_decay", None)
+        return self.get("learning_rate_decay", 0.1)
 
     # Datageneration parameters
     @property

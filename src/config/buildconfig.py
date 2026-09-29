@@ -17,7 +17,8 @@ You should have received a copy of the GNU General Public License
 along with this program. If not, see <http://www.gnu.org/licenses/>.
 """
 
-import attr
+from dataclasses import dataclass
+from typing import Any
 import os
 import logging
 from os import path
@@ -25,22 +26,24 @@ from .defaultconfig import DefaultConfig
 from ml_tools.rectangle import Rectangle
 
 
-@attr.s
+@dataclass(slots=True)
 class BuildConfig(DefaultConfig):
-    test_clips_folder = attr.ib()
-    banned_clips = attr.ib()
-    segment_length = attr.ib()
-    segment_spacing = attr.ib()
-    segment_min_avg_mass = attr.ib()
-    min_frame_mass = attr.ib()
-    filter_by_lq = attr.ib()
-    max_segments = attr.ib()
-    thermal_diff_norm = attr.ib()
-    tag_precedence = attr.ib()
-    excluded_tags = attr.ib()
-    country = attr.ib()
-    use_segments = attr.ib()
-    max_frames = attr.ib()
+    test_clips_folder: Any
+    banned_clips: Any
+    segment_length: Any
+    segment_spacing: Any
+    segment_min_frames: Any
+
+    segment_min_avg_mass: Any
+    min_frame_mass: Any
+    filter_by_lq: Any
+    max_segments: Any
+    thermal_diff_norm: Any
+    tag_precedence: Any
+    excluded_tags: Any
+    country: Any
+    use_segments: Any
+    max_frames: Any
 
     EXCLUDED_TAGS = ["poor tracking", "part", "untagged", "unidentified"]
     # country bounding boxs
@@ -91,6 +94,7 @@ class BuildConfig(DefaultConfig):
             country=build["country"],
             use_segments=build["use_segments"],
             max_frames=build["max_frames"],
+            segment_min_frames=build["segment_min_frames"],
         )
 
     @classmethod
@@ -100,8 +104,9 @@ class BuildConfig(DefaultConfig):
             banned_clips=None,
             segment_length=25,
             segment_spacing=1,
-            segment_min_avg_mass=10,
-            min_frame_mass=10,
+            segment_min_avg_mass=4,
+            segment_min_frames=25 // 4,
+            min_frame_mass=4,
             filter_by_lq=False,
             max_segments=3,
             thermal_diff_norm=False,

@@ -4,11 +4,11 @@ When a thermal camera first connects to the socket it will send some header
 information describing it's specs e.g. Resolution, Frame rate
 """
 
-import yaml
-import attr
+from dataclasses import dataclass, asdict
+from typing import Any
 
 
-@attr.s
+@dataclass(slots=True)
 class HeaderInfo:
     X_RESOLUTION = "ResX"
     Y_RESOLUTION = "ResY"
@@ -21,20 +21,23 @@ class HeaderInfo:
     FIRMWARE = "Firmware"
     SOURCE = "Source"
 
-    res_x = attr.ib()
-    res_y = attr.ib()
-    fps = attr.ib()
-    brand = attr.ib()
-    model = attr.ib()
-    frame_size = attr.ib()
-    pixel_bits = attr.ib()
-    serial = attr.ib()
-    firmware = attr.ib()
-    source = attr.ib(default=None)
+    medium_power: Any = False
+    res_x: Any = 160
+    res_y: Any = 120
+    fps: Any = 9
+    brand: Any = "lepton"
+    model: Any = "lepton3.5"
+    frame_size: Any = 39040
+    pixel_bits: Any = 16
+    serial: Any = "12"
+    firmware: Any = "12"
+    source: Any = None
 
     @classmethod
     def parse_header(cls, raw_string):
-        raw = yaml.safe_load(raw_string)
+        import yaml
+
+        raw = yaml.load(raw_string, Loader=yaml.CSafeLoader)
         headers = cls(
             res_x=raw.get(HeaderInfo.X_RESOLUTION),
             res_y=raw.get(HeaderInfo.Y_RESOLUTION),
@@ -74,4 +77,4 @@ class HeaderInfo:
         return True
 
     def as_dict(self):
-        return attr.asdict(self)
+        return asdict(self)

@@ -6,7 +6,10 @@ from track.region import Region
 from abc import ABC, abstractmethod
 from ml_tools.rectangle import Rectangle
 from enum import Enum
-import attr
+from dataclasses import dataclass
+from typing import Any
+import math
+import time
 
 FRAMES_PER_SECOND = 9
 
@@ -30,6 +33,7 @@ class SegmentType(Enum):
     ALL_RANDOM_NOMIN = 7
     ALL_RANDOM_MASKED = 8
     ELONGATION = 9
+    RANDOM_SECTIONS = 10
 
 
 class BaseSample(ABC):
@@ -108,21 +112,21 @@ res_x = 120
 res_y = 160
 
 
-@attr.s
+@dataclass(slots=True)
 class ClipHeader:
-    clip_id = attr.ib()
-    location = attr.ib()
-    station_id = attr.ib()
-    rec_time = attr.ib()
-    source_file = attr.ib()
-    frames_per_second = attr.ib()
-    camera = attr.ib()
-    events = attr.ib()
-    trap = attr.ib()
-    tracks = attr.ib()
-    ffc_frames = attr.ib()
-    country_code = attr.ib()
-    frame_temp_median = attr.ib(default=None)
+    clip_id: Any
+    location: Any
+    station_id: Any
+    rec_time: Any
+    source_file: Any
+    frames_per_second: Any
+    camera: Any
+    events: Any
+    trap: Any
+    tracks: Any
+    ffc_frames: Any
+    country_code: Any
+    frame_temp_median: Any = None
 
     def get_samples(self):
         samples = []
@@ -211,6 +215,14 @@ class TrackHeader:
             self.median_mass = np.uint16(np.median(mass_history))
             self.mean_mass = np.uint16(np.mean(mass_history))
         self.samples = []
+
+    @property
+    def length_in_seconds(self):
+        return self.num_frames / 9.0
+
+    @property
+    def id(self):
+        return self.track_id
 
     @property
     def label(self):
@@ -379,19 +391,19 @@ class TrackHeader:
         dont_filter=False,
         skip_ffc=True,
         ffc_frames=None,
-        location=None,
         segment_frames=None,
-        from_last=None,
         frame_min_mass=None,
         filter_by_fp=True,
         min_segments=None,
-        seed=None,
+        rng=None,
+        min_frames=0,
+        ceil_num_windows=True,
     ):
         NO_MIN_FRAMES = ["stoat", "mustelid", "weasel", "ferret"]
-
+        if rng is None:
+            rng = np.random.default_rng()
         if segment_frames is not None:
             raise Exception("Have not implement this path")
-        min_frames = segment_width / 4.0
         if self.label in NO_MIN_FRAMES:
             # try and always get one for these
             min_frames = 0
@@ -423,7 +435,8 @@ class TrackHeader:
             fp_frames=self.fp_frames if filter_by_fp else None,
             rec_time=self.start_time,
             min_segments=min_segments,
-            seed=seed,
+            rng=rng,
+            ceil_num_windows=ceil_num_windows,
         )
         self.filtered_stats.update(filtered_stats)
         # GP could get this from the tracks when writing
@@ -776,11 +789,10 @@ class SegmentHeader(Sample):
         clip_id,
         track_id,
         start_frame,
-        frames,
-        weight,
         mass,
         label,
         regions,
+        weight=None,
         frame_indices=None,
         movement_data=None,
         best_mass=False,
@@ -811,15 +823,16 @@ class SegmentHeader(Sample):
 
         self.start_frame = start_frame
         # length of segment in frames
-        self.frames = np.uint16(frames)
+        # self.frames = np.uint16(frames)
         # relative weight of the segment (higher is sampled more often)
-        self.weight = np.float16(weight)
+        self.weight = np.float16(weight) if weight is not None else None
 
         self._mass = np.uint16(mass)
         self.camera = camera
         self._source_file = source_file
         self._track_median_mass = track_median_mass
         self._bin_id = self.station_id
+        self.upsampled = False
 
     @property
     def track_median_mass(self):
@@ -970,7 +983,369 @@ def get_movement_data(regions):
     return np.hstack((bounds, np.vstack((mass, xv, yv, axv, ayv)).T))
 
 
-# should use trackheader / track in creationg interface out common properties
+# Tier 1: Critically rare labels (< 2,000 counts)
+# Force maximum sampling and phase-shifting on these classes
+CRITICALLY_RARE_LABELS = [
+    "weka",  # 126
+    "deer",  # 408
+    "sheep",  # 663
+    "wallaby",  # 1,375
+    "penguin",  # 1,902
+    "dog",  # 1,982
+    "kangaroo",
+    "fox",
+]
+
+# Tier 2: Moderate risk labels (2,000 - 10,000 counts)
+# Take 2-3 samples where possible to boost their overall presence
+MODERATE_RARE_LABELS = [
+    "chicken",  # 3,534
+    "kiwi",  # 4,717
+    "cat",  # 5,386
+    "vehicle",  # 6,960
+    "hedgehog",  # 7,731
+]
+
+# Tier 3: Dominant classes (Do NOT over-sample)
+# Stick to a strict 1-sample rule for short clips to prevent bloating
+DOMINANT_LABELS = [
+    "bird",
+    "cat",
+    "false-positive",
+    "human",
+    "leporidae",
+    "mustelid",
+    "possum",
+    "rodent",
+]
+
+
+# 12 seconds is chosen by looking at the average track length of our dataset
+def get_samples_by_label_urgency(
+    label, total_frames, window_frames=100, max_samples=5, ceil_num_windows=True
+):
+
+    # Define your rare labels that desperately need more representation
+    # rare_labels = ["fox", "wolf", "badger"]
+    num_windows = 1
+    stride_offset = 0
+    if ceil_num_windows == False and total_frames < window_frames + window_frames // 2:
+        samples_to_take = 1  # Don't waste time on duplicate common data
+        num_windows = 1
+        stride_offset = total_frames % (window_frames / 2)
+
+    else:
+        windows_float = (total_frames - window_frames) / (window_frames // 2) + 1
+        if ceil_num_windows:
+            num_windows = math.ceil(windows_float)
+        else:
+            num_windows = int(windows_float)
+        if max_samples is not None:
+            num_windows = min(num_windows, max_samples)
+        samples_to_take = num_windows
+        # the left over frames
+        stride_offset = int(total_frames % (window_frames / 2))
+        samples_to_take = max(1, samples_to_take)
+        num_windows = max(num_windows, 1)
+    if total_frames < window_frames:
+        stride_offset = 0
+    if label in MODERATE_RARE_LABELS or label in CRITICALLY_RARE_LABELS:
+        # no point repeating the same image even if we want more samples
+        # taking 25 samples per frame want maybe 1/3 (3 frames) second difference between images
+        if label in MODERATE_RARE_LABELS:
+            max_resample = 3
+        else:
+            max_resample = 5
+
+        max_samples = max(1, math.ceil(total_frames / (3 * 25)))
+        # For rare animals, aggressively pull 3 samples even if the clip is short
+        samples_to_take = min(max_resample, max_samples)
+
+    return samples_to_take, num_windows, stride_offset
+
+
+def get_segment_indices(
+    window_start,
+    chunks,
+    chunk_size,
+    frame_indices,
+    rng,
+    start_frame,
+    regions,
+    mass_history,
+    last_index,
+    frame_to_closest_valid,
+    short_track,
+    vel_x,
+    vel_y,
+):
+    segment_frames = []
+    seg_regions = []
+    mass = np.uint32(0)
+    skipped_chunks = 0
+    max_chunk_gap = 2
+    stopped_early = False
+    MOVEMENT_THRESH = 2
+    frame_num = 0
+    region_index = None
+    start = window_start
+    # pass in velocities and for short clips can dynamically set chink size such that velocity meets the threshold or is chunk_size apart
+    for chunk in range(chunks):
+        if short_track and chunk > 0 and region_index is not None:
+            # start can be next index that velocity is > thresh
+            skip = 0
+            movement_x = 0
+            movement_y = 0
+            while (
+                frame_num <= end
+                and (movement_x + movement_y) < MOVEMENT_THRESH
+                and (region_index < len(regions) - 1)
+            ):
+                # vel_x index 0 is actually the second frame , as 0 is 0
+                if region_index > 0:
+                    movement_x += abs(vel_x[region_index])
+                    movement_y += abs(vel_y[region_index])
+                region_index += 1
+                skip += 1
+                frame_num = regions[region_index].frame_number
+
+            if region_index >= len(regions) - 1:
+                break
+            start = frame_num
+        else:
+            if chunk > 0:
+                start = end + 1
+
+                # ensure offset is atleast 2 frames away
+                # logging.info("previous end was %s Diff from %s to %s ",end, start, frame_num)
+                # start = max(start, frame_num + 2)
+        end = start + int(chunk_size) - 1
+        valid_frames = []
+        prev_f = None
+        if start in frame_to_closest_valid:
+            start_index = frame_to_closest_valid[start]
+        elif last_index is not None:
+            start_index = last_index
+        else:
+            start_index = 0
+        if start_index >= len(frame_indices):
+            break
+        skipped = 0
+        for i, f in enumerate(frame_indices[start_index:]):
+            last_index = i + start_index
+            while prev_f is not None and f - prev_f > 1:
+                prev_f += 1
+                frame_to_closest_valid[prev_f] = last_index
+            frame_to_closest_valid[f] = last_index
+
+            if f == -1:
+                skipped += 1
+            elif f >= start and f <= end:
+                valid_frames.append(f)
+                prev_f = f
+            if f >= end:
+                break
+        if start not in frame_to_closest_valid:
+            last_chunk = True
+        else:
+            reamining_frames = len(frame_indices) - frame_to_closest_valid[start]
+            last_chunk = (
+                reamining_frames <= chunk_size
+                and len(valid_frames) + skipped == reamining_frames
+            )
+
+        if len(valid_frames) == 0:
+            if last_chunk:
+                break
+
+            continue
+
+        if short_track and chunk > 0 and not last_chunk:
+            # chunk 0 can be the phase
+            offset = 0
+
+        else:
+            offset = rng.integers(low=0, high=len(valid_frames))
+            if last_chunk:
+                offset = len(valid_frames) - 1
+        frame_num = valid_frames[offset]
+        frame_indices[frame_to_closest_valid[frame_num]] = -1
+        assert frame_num not in frame_indices
+        segment_frames.append(frame_num)
+        region_index = frame_num - start_frame
+        seg_regions.append(regions[region_index])
+        assert seg_regions[-1].frame_number == frame_num
+        mass += mass_history[frame_num - start_frame]
+        if last_chunk:
+            break
+    return segment_frames, seg_regions, mass, last_index, stopped_early
+
+
+def random_sections(
+    label,
+    frame_indices,
+    regions,
+    mass_history,
+    start_frame,
+    source_file,
+    clip_id,
+    track_id,
+    camera,
+    location,
+    station_id,
+    rec_time,
+    rng=None,
+    max_samples=5,
+    min_frames=1,
+    min_segments=None,
+    ceil_num_windows=True,
+):
+    min_frames = max(min_frames, 1)
+    if rng is None:
+        rng = np.random.default_rng()
+
+    chunks = 25
+    max_window_frames = 100
+
+    # number that rouunds chunk size to 4, roughly 11 seconds
+    chunk_size = int(max_window_frames / 25)
+
+    num_frames = frame_indices[-1] - frame_indices[0] + 1
+    frame_indices = list(frame_indices.copy())
+    samples, num_windows, stride_offset = get_samples_by_label_urgency(
+        label,
+        num_frames,
+        window_frames=max_window_frames,
+        max_samples=max_samples,
+        ceil_num_windows=ceil_num_windows,
+    )
+    window_frames = min(max_window_frames, num_frames)
+    upsampled = False
+    step = window_frames // 2
+    if ceil_num_windows:
+        offset = num_frames % window_frames
+        if offset != 0:
+            step = offset
+    if step == 0:
+        windows = [0]
+    else:
+        windows = np.arange(0, num_windows * step, step=step)
+    # chunks = min(window_frames, chunks)
+    # chunk_size = window_frames / chunks
+    # try to get an extra sample if its short
+    num_frames_sampled = max(1, window_frames / chunk_size)
+
+    # ceil num windows is only set at inference time, so really checking if we are doing inference
+    doing_inference = ceil_num_windows
+    if (
+        doing_inference
+        and num_frames_sampled < 2
+        and round(num_frames_sampled) > num_frames_sampled
+    ):
+        chunk_size = int(window_frames / round(num_frames_sampled))
+        logging.info("set chunk size %s", chunk_size)
+
+    # over sampling logic more samples than windows, used for low data labels
+    if samples > num_windows:
+        # this is our labels that we have low samples for
+        extra_samples = samples - num_windows
+        num_repeats = math.ceil(extra_samples / num_windows)
+        phase_offset = chunk_size // (num_repeats + 1)
+
+        # extra samples is 3 and  num windows 2
+        # we should repeat twice
+        extra_windows = np.repeat(windows, num_repeats)
+        extra_windows = extra_windows + phase_offset
+        upsampled = True
+
+        if stride_offset > 0:
+            choices = np.arange(stride_offset + 1)
+            exclude = int(phase_offset)
+            choices = np.concatenate([choices[:exclude], choices[exclude + 1 :]])
+            random_offset = rng.choice(choices)
+
+            windows = windows + random_offset
+        windows = np.concatenate([windows, extra_windows])
+    else:
+        if stride_offset > 0:
+            random_offset = rng.integers(low=0, high=stride_offset + 1)
+            windows += random_offset
+            # could do separate offset per window but i think this is fine removes need to handle windows being closer than expected
+
+    # shuffle windows
+    rng.shuffle(windows)
+
+    segments = []
+    frame_to_closest_valid = {}
+    last_index = None
+    # # might need to try more than once if there are large gaps at some window starts which causes no segments to be added
+    # while len(segments)!= samples and len(windows)>0:
+    chosen_windows = windows[:samples]
+    windows = windows[samples:]
+    np.sort(windows)
+    chosen_windows = np.sort(chosen_windows)
+    chosen_windows = np.concatenate([chosen_windows, windows])
+    centre_x = np.float32([r.centroid[0] for r in regions])
+    centre_y = np.float32([r.centroid[1] for r in regions])
+
+    vel_x = centre_x[1:] - centre_x[:-1]
+
+    vel_y = centre_y[1:] - centre_y[:-1]
+
+    chosen_windows = chosen_windows + frame_indices[0]
+    # probably having the extra windows in here is redundant now as we dont care if we skip a bunch of frames
+    # and accept segmetns with a small number of frames
+    for window_start in chosen_windows:
+        segment_frames, seg_regions, mass, last_index, stopped_early = (
+            get_segment_indices(
+                window_start,
+                chunks,
+                chunk_size,
+                frame_indices,
+                rng,
+                start_frame,
+                regions,
+                mass_history,
+                last_index,
+                frame_to_closest_valid,
+                num_frames < max_window_frames,
+                vel_x,
+                vel_y,
+            )
+        )
+        if (
+            min_segments is not None
+            and len(segments) >= min_segments
+            and len(segment_frames) < min_frames
+            and num_frames > min_frames
+            or len(segment_frames) == 0
+        ):
+            continue
+        segment = SegmentHeader(
+            clip_id,
+            track_id,
+            start_frame=start_frame,
+            mass=mass / len(segment_frames),
+            label=label,
+            regions=seg_regions,
+            frame_indices=segment_frames,
+            camera=camera,
+            location=location,
+            station_id=station_id,
+            rec_time=rec_time,
+            source_file=source_file,
+        )
+        if upsampled and len(segments) > 1:
+            segment.upsampled = True
+            # these are all segments that would normally not be sampled but have been chosen
+            # due to being a rare label, will mark so can write into tf records and filter if needed
+        segments.append(segment)
+        if len(segments) == samples:
+            break
+    return segments
+
+
+# should use trackheader / track in creating interface out common properties
 def get_segments(
     clip_id,
     track_id,
@@ -995,10 +1370,17 @@ def get_segments(
     skip_ffc=True,
     frame_min_mass=None,
     fp_frames=None,
-    repeat_frame_indices=True,
+    repeat_frame_indices=False,
     min_segments=None,
-    seed=None,
+    rng=None,
+    ceil_num_windows=True,
+    from_last=None,
 ):
+
+    if rng is None:
+        rng = np.random.default_rng()
+
+    start = time.time()
     if segment_types is None:
         segment_types = [SegmentType.ALL_RANDOM_MASKED]
     if min_frames is None:
@@ -1007,34 +1389,44 @@ def get_segments(
     mass_history = np.uint16([region.mass for region in regions])
     filtered_stats = {"segment_mass": 0, "too short": 0}
     has_no_mass = np.sum(mass_history) == 0
+    # Filter out frames bused of ffc, blank and mass
+    frame_indices = [
+        region.frame_number
+        for region in regions
+        if (has_no_mass or region.mass > 0)
+        and (
+            ffc_frames is None
+            or skip_ffc is False
+            or region.frame_number not in ffc_frames
+        )
+        and not region.blank
+        and region.width > 0
+        and region.height > 0
+        and ((has_no_mass or frame_min_mass is None) or region.mass >= frame_min_mass)
+        and (region.width < 158 or region.height < 118)  # dont want full size regions
+    ]
+
+    # this is checking that frames for an animal haven't been predicted as FP by the random forest model
+    if fp_frames is not None and label not in FP_LABELS:
+        frame_indices = [f for f in frame_indices if f not in fp_frames]
+
+    # regions may include extra frames beyond from_last (see Track.get_segments'
+    # available_frames) purely so blank/invalid frames can be filtered out above
+    # while still returning from_last valid ones
+    if from_last is not None:
+        frame_indices = frame_indices[-from_last:]
+
+    if len(frame_indices) == 0:
+        logging.warn("Nothing to load for %s - %s", clip_id, track_id)
+        return [], filtered_stats
+
+    frame_indices = np.array(frame_indices)
 
     for segment_type in segment_types:
         s_min_mass = segment_min_mass
         if segment_type == SegmentType.ALL_RANDOM_NOMIN:
             s_min_mass = None
 
-        frame_indices = [
-            region.frame_number
-            for region in regions
-            if (has_no_mass or region.mass > 0)
-            and (
-                ffc_frames is None
-                or skip_ffc is False
-                or region.frame_number not in ffc_frames
-            )
-            and not region.blank
-            and region.width > 0
-            and region.height > 0
-            and (
-                (has_no_mass or frame_min_mass is None) or region.mass >= frame_min_mass
-            )
-        ]
-        if fp_frames is not None and label not in FP_LABELS:
-            frame_indices = [f for f in frame_indices if f not in fp_frames]
-
-        if len(frame_indices) == 0:
-            logging.warn("Nothing to load for %s - %s", clip_id, track_id)
-            return [], filtered_stats
         if s_min_mass is not None:
             s_min_mass = min(
                 s_min_mass,
@@ -1043,88 +1435,29 @@ def get_segments(
         else:
             s_min_mass = 1
             # remove blank frames
-        frame_indices = np.array(frame_indices)
+        # TODO Move this out of loop and maybe elsewhere tneirely it is a bit slow on PI
 
-        rng = np.random.default_rng(seed=seed)
         if segment_type == SegmentType.ELONGATION:
-            crop_rectangle = Rectangle(1, 1, 160 - 2, 120 - 2)
-            border_regions = []
-            non_border_regions = []
-
-            relative_frames = frame_indices - start_frame
-            e_regions = regions[relative_frames]
-            for r in e_regions:
-                r.set_is_along_border(crop_rectangle)
-
-                if r.is_along_border:
-                    border_regions.append(r)
-                else:
-                    non_border_regions.append(r)
-
-            for r, f in zip(e_regions, frame_indices):
-                assert r.frame_number == f
-
-            elong_sorted = sorted(
-                non_border_regions, key=lambda r: r.elongation, reverse=True
-            )
-            elong_regions = elong_sorted[:25]
-
-            if len(non_border_regions) < 4:
-                # want to sort these by area
-                border_sorted = sorted(
-                    border_regions, key=lambda r: r.area, reverse=True
-                )
-                remaining = segment_width // 2 - len(elong_regions)
-                if remaining > 0:
-                    # print("ADding ",remaining, " from border regions as only have ", len(non_border_regions), " non border vs ", len(border_regions),clip_id,track_id)
-                    elong_regions.extend(border_sorted[:remaining])
-
-            frames = [r.frame_number for r in elong_regions]
-            remaining = segment_width - len(frames)
-            # sample another same frames again if need be
-            if remaining > 0:
-                extra_frames = rng.choice(
-                    frames,
-                    min(remaining, len(frames)),
-                    replace=False,
-                )
-                frames = np.concatenate([frames, extra_frames])
-            frames.sort()
-            frames = np.array(frames)
-            relative_frames = frames - start_frame
-            mass_slice = mass_history[relative_frames]
-            segment_mass = np.sum(mass_slice)
-            segment_avg_mass = segment_mass / len(mass_slice)
-            segment = SegmentHeader(
+            # an idea for separating mustelid and rodents
+            segment = get_elongation_segment(
                 clip_id,
                 track_id,
-                start_frame=start_frame,
-                frames=segment_width,
-                weight=1,
-                mass=segment_mass,
+                start_frame,
+                regions,
+                frame_indices,
+                mass_history,
+                segment_width,
+                rng,
                 label=label,
-                regions=elong_regions,
-                frame_indices=frames,
-                movement_data=None,
                 camera=camera,
                 location=location,
                 station_id=station_id,
                 rec_time=rec_time,
                 source_file=source_file,
-                filtered=False,
             )
             segments.append(segment)
             continue
-        if segment_type == SegmentType.TOP_RANDOM:
-            # take top 50 mass frames
-            frame_indices = sorted(
-                frame_indices,
-                key=lambda f_i: mass_history[f_i - start_frame],
-                reverse=True,
-            )
-            frame_indices = frame_indices[:50]
-            frame_indices.sort()
-        if segment_type in [SegmentType.TOP_SEQUENTIAL]:
+        elif segment_type in [SegmentType.TOP_SEQUENTIAL]:
             new_segments, filtered = get_top_mass_segments(
                 clip_id,
                 track_id,
@@ -1143,6 +1476,16 @@ def get_segments(
             segments.extend(new_segments)
             filtered_stats.merge(filtered)
             continue
+        if segment_type == SegmentType.TOP_RANDOM:
+            # take top 50 mass frames
+            frame_indices = sorted(
+                frame_indices,
+                key=lambda f_i: mass_history[f_i - start_frame],
+                reverse=True,
+            )
+            frame_indices = frame_indices[:50]
+            frame_indices.sort()
+
         if len(frame_indices) < min_frames and (
             min_segments == 0 or min_segments is None
         ):
@@ -1166,10 +1509,32 @@ def get_segments(
             SegmentType.ALL_RANDOM_NOMIN,
             SegmentType.TOP_RANDOM,
             SegmentType.ALL_RANDOM_MASKED,
-            None,
+            SegmentType.RANDOM_SECTIONS,
         ]
 
         for _ in range(repeats):
+            if segment_type == SegmentType.RANDOM_SECTIONS:
+                new_segments = random_sections(
+                    label,
+                    frame_indices,
+                    regions,
+                    mass_history,
+                    start_frame,
+                    source_file,
+                    clip_id,
+                    track_id,
+                    camera,
+                    location,
+                    station_id,
+                    rec_time,
+                    rng,
+                    max_samples=max_segments,
+                    min_frames=min_frames,
+                    min_segments=min_segments,
+                    ceil_num_windows=ceil_num_windows,
+                )
+                segments.extend(new_segments)
+                continue
             if segment_type == SegmentType.ALL_RANDOM_MASKED:
                 segment_indices = np.arange(len(regions))
                 all_frames = np.arange(len(regions)) + start_frame
@@ -1184,7 +1549,9 @@ def get_segments(
                 if random_frames:
                     # random_frames and not random_sections:
                     rng.shuffle(frame_indices)
+
             for i in range(segment_count):
+
                 if segment_type == SegmentType.ALL_RANDOM_MASKED:
                     if len(whole_indices) < 40:
                         frame_indices = segment_indices[available_indices]
@@ -1235,17 +1602,17 @@ def get_segments(
                     segment_end = min(len(frame_indices), segment_end)
                     frames = frame_indices[segment_start:segment_end]
 
-                remaining = segment_width - len(frames)
-                # sample another same frames again if need be
-                if remaining > 0:
-                    extra_frames = rng.choice(
-                        frames,
-                        min(remaining, len(frames)),
-                        replace=False,
-                    )
-                    frames = np.concatenate([frames, extra_frames])
+                if repeat_frame_indices:
+                    logging.info("Repeating frame indices")
+                    # dont think we ever want this it can be handled elsewhere
+                    if len(frames) < segment_width:
+                        extra_samples = rng.choice(frames, segment_width - len(frames))
+
+                        frames = list(frames)
+                        frames.extend(extra_samples)
                 frames.sort()
                 relative_frames = frames - start_frame
+
                 mass_slice = mass_history[relative_frames]
                 segment_mass = np.sum(mass_slice)
                 segment_avg_mass = segment_mass / len(mass_slice)
@@ -1256,41 +1623,17 @@ def get_segments(
                     else:
                         filtered_stats["segment_mass"] += 1
                         continue
-
-                # temp_slice = frame_temp_median[relative_frames]
                 region_slice = regions[relative_frames]
-                movement_data = None
-                if segment_avg_mass < 50:
-                    segment_weight_factor = 0.75
-                elif segment_avg_mass < 100:
-                    segment_weight_factor = 1
-                else:
-                    segment_weight_factor = 1.2
-
                 for z, f in enumerate(frames):
                     assert region_slice[z].frame_number == f
-
-                if repeat_frame_indices:
-                    # i think this can be default, means we dont need to handle
-                    # short segments elsewhere
-                    if len(frames) < segment_width:
-                        extra_samples = rng.choice(frames, segment_width - len(frames))
-
-                        frames = list(frames)
-                        frames.extend(extra_samples)
-                        frames.sort()
-
                 segment = SegmentHeader(
                     clip_id,
                     track_id,
                     start_frame=start_frame,
-                    frames=segment_width,
-                    weight=segment_weight_factor,
                     mass=segment_mass,
                     label=label,
                     regions=region_slice,
                     frame_indices=frames,
-                    movement_data=movement_data,
                     camera=camera,
                     location=location,
                     station_id=station_id,
@@ -1300,6 +1643,85 @@ def get_segments(
                 )
                 segments.append(segment)
     return segments, filtered_stats
+
+
+def get_elongation_segment(
+    clip_id,
+    track_id,
+    start_frame,
+    regions,
+    frame_indices,
+    mass_history,
+    segment_width,
+    rng,
+    label=None,
+    camera=None,
+    location=None,
+    station_id=None,
+    rec_time=None,
+    source_file=None,
+):
+    crop_rectangle = tools.Rectangle(1, 1, 160 - 2, 120 - 2)
+    border_regions = []
+    non_border_regions = []
+
+    relative_frames = frame_indices - start_frame
+    e_regions = regions[relative_frames]
+    for r in e_regions:
+        r.set_is_along_border(crop_rectangle)
+
+        if r.is_along_border:
+            border_regions.append(r)
+        else:
+            non_border_regions.append(r)
+
+    for r, f in zip(e_regions, frame_indices):
+        assert r.frame_number == f
+
+    elong_sorted = sorted(non_border_regions, key=lambda r: r.elongation, reverse=True)
+    elong_regions = elong_sorted[:25]
+
+    if len(non_border_regions) < 4:
+        # want to sort these by area
+        border_sorted = sorted(border_regions, key=lambda r: r.area, reverse=True)
+        remaining = segment_width // 2 - len(elong_regions)
+        if remaining > 0:
+            elong_regions.extend(border_sorted[:remaining])
+
+    frames = [r.frame_number for r in elong_regions]
+    remaining = segment_width - len(frames)
+    # sample another same frames again if need be
+    if remaining > 0:
+        extra_frames = rng.choice(
+            frames,
+            min(remaining, len(frames)),
+            replace=False,
+        )
+        frames = np.concatenate([frames, extra_frames])
+    frames.sort()
+    frames = np.array(frames)
+    relative_frames = frames - start_frame
+    mass_slice = mass_history[relative_frames]
+    segment_mass = np.sum(mass_slice)
+
+    return SegmentHeader(
+        clip_id,
+        track_id,
+        start_frame=start_frame,
+        frames=segment_width,
+        weight=1,
+        mass=segment_mass,
+        label=label,
+        regions=elong_regions,
+        frame_indices=frames,
+        movement_data=None,
+        camera=camera,
+        location=location,
+        station_id=station_id,
+        rec_time=rec_time,
+        source_file=source_file,
+        filtered=False,
+    )
 
 
 def get_top_mass_segments(
@@ -1465,3 +1887,52 @@ class TrackingSample(Sample):
         return f"{self.clip_id}-{self.track_id}-{frames_numbers}"
         # this should be used but dont have much data
         # return f"{self.clip_id}-{self.track_id}"
+
+
+@dataclass
+class MeanData:
+    """Holds per-channel border pixel lists (during collection) or mean values (after aggregation)."""
+
+    thermal: float = 0
+    filtered: float = 0
+    thermal_norm: float = 0
+    frames_used: int = 0
+
+    def add_means(self, other):
+        self.thermal = (
+            other.thermal * other.frames_used + self.thermal * self.frames_used
+        )
+        self.filtered = (
+            other.filtered * other.frames_used + self.filtered * self.frames_used
+        )
+        self.thermal_norm = (
+            other.thermal_norm * other.frames_used
+            + self.thermal_norm * self.frames_used
+        )
+        self.frames_used += other.frames_used
+        if self.frames_used > 0:
+            self.thermal /= self.frames_used
+            self.filtered /= self.frames_used
+            self.thermal_norm /= self.frames_used
+
+    def __mul__(self, scalar):
+        return MeanData(
+            self.thermal * scalar, self.filtered * scalar, self.thermal_norm * scalar
+        )
+
+    def __truediv__(self, scalar):
+        return MeanData(
+            self.thermal / scalar, self.filtered / scalar, self.thermal_norm / scalar
+        )
+
+    def to_dict(self):
+        from ml_tools.frame import TrackChannels
+
+        return {
+            TrackChannels.thermal.name: self.thermal,
+            TrackChannels.filtered.name: self.filtered,
+            TrackChannels.thermal_norm.name: self.thermal_norm,
+        }
+
+    def __len__(self):
+        return self.frames_used

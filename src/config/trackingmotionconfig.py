@@ -1,13 +1,14 @@
-import attr
+from dataclasses import dataclass, asdict
+from typing import Any
 import inspect
 
 from .defaultconfig import DefaultConfig, deep_copy_map_if_key_not_exist
 
 
-@attr.s
+@dataclass(slots=True)
 class TrackingMotionConfig(DefaultConfig):
-    camera_thresholds = attr.ib()
-    dynamic_thresh = attr.ib()
+    camera_thresholds: Any
+    dynamic_thresh: Any
 
     @classmethod
     def load(cls, threshold):
@@ -71,7 +72,7 @@ class TrackingMotionConfig(DefaultConfig):
         return True
 
     def as_dict(self):
-        return attr.asdict(self)
+        return asdict(self)
 
     def threshold_for_model(self, camera_model):
         if self.camera_thresholds is None:
@@ -86,16 +87,16 @@ class TrackingMotionConfig(DefaultConfig):
         return threshold
 
 
-@attr.s
+@dataclass(slots=True)
 class ThresholdConfig(DefaultConfig):
-    camera_model = attr.ib()
-    temp_thresh = attr.ib()
-    background_thresh = attr.ib()
-    default = attr.ib()
-    min_temp_thresh = attr.ib()
-    max_temp_thresh = attr.ib()
-    track_min_delta = attr.ib()
-    track_max_delta = attr.ib()
+    camera_model: Any
+    temp_thresh: Any
+    background_thresh: Any
+    default: Any
+    min_temp_thresh: Any
+    max_temp_thresh: Any
+    track_min_delta: Any
+    track_max_delta: Any
 
     @classmethod
     def load(cls, threshold):
@@ -114,7 +115,7 @@ class ThresholdConfig(DefaultConfig):
         )
 
     def as_dict(self):
-        return attr.asdict(self)
+        return asdict(self)
 
     @classmethod
     def get_defaults(cls):

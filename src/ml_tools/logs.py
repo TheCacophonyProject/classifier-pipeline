@@ -2,7 +2,7 @@ import sys
 import logging
 
 
-def init_logging(name = None, timestamps=False):
+def init_logging(name=None, timestamps=False):
     """Set up logging for use by various classifier pipeline scripts.
 
     Logs will go to stderr.

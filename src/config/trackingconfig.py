@@ -17,7 +17,8 @@ You should have received a copy of the GNU General Public License
 along with this program. If not, see <http://www.gnu.org/licenses/>.
 """
 
-import attr
+from dataclasses import dataclass, asdict
+from typing import Any
 
 from .defaultconfig import (
     DefaultConfig,
@@ -27,63 +28,63 @@ from .trackingmotionconfig import TrackingMotionConfig
 from track.track import RegionTracker
 
 
-@attr.s
+@dataclass(slots=True)
 class TrackingConfig(DefaultConfig):
-    tracker = attr.ib()
-    params = attr.ib()
-    type = attr.ib()
-    motion = attr.ib()
-    edge_pixels = attr.ib()
+    tracker: Any
+    params: Any
+    type: Any
+    motion: Any
+    edge_pixels: Any
     # dilation_pixels = attr.ib()
-    min_dimension = attr.ib()
-    frame_padding = attr.ib()
-    track_smoothing = attr.ib()
-    denoise = attr.ib()
+    min_dimension: Any
+    frame_padding: Any
+    track_smoothing: Any
+    denoise: Any
 
-    high_quality_optical_flow = attr.ib()
-    max_tracks = attr.ib()
-    track_overlap_ratio = attr.ib()
-    min_duration_secs = attr.ib()
-    track_min_offset = attr.ib()
-    track_min_mass = attr.ib()
-    aoi_min_mass = attr.ib()
-    aoi_pixel_variance = attr.ib()
-    cropped_regions_strategy = attr.ib()
-    enable_track_output = attr.ib()
-    min_tag_confidence = attr.ib()
-    moving_vel_thresh = attr.ib()
-    min_moving_frames = attr.ib()
-    max_blank_percent = attr.ib()
-    max_mass_std_percent = attr.ib()
+    max_tracks: Any
+    track_overlap_ratio: Any
+    min_duration_secs: Any
+    track_min_offset: Any
+    track_min_mass: Any
+    aoi_min_mass: Any
+    aoi_pixel_variance: Any
+    cropped_regions_strategy: Any
+    enable_track_output: Any
+    min_tag_confidence: Any
+    moving_vel_thresh: Any
+    min_moving_frames: Any
+    max_blank_percent: Any
+    max_mass_std_percent: Any
 
-    max_jitter = attr.ib()
+    max_jitter: Any
     # used to provide defaults
-    filters = attr.ib()
-    areas_of_interest = attr.ib()
+    filters: Any
+    areas_of_interest: Any
     # filter regions out by mass and variance before matching to a track
-    filter_regions_pre_match = attr.ib()
-    min_hist_diff = attr.ib()
+    filter_regions_pre_match: Any
+    min_hist_diff: Any
 
     @classmethod
     def load(cls, tracking):
         if tracking is None:
-            return None
-        trackers = {}
-        for type, raw_tracker in tracking.items():
-            if raw_tracker is None:
-                raw_tracker = {}
-            tracker = TrackingConfig.load_type(raw_tracker, type)
-            trackers[tracker.type] = tracker
-        return trackers
+            return cls.get_type_defaults("thermal")
+        thermal = tracking.get("thermal", None)
+        if thermal is not None:
+            # old configs will have tracking -> thermal -> params
+            tracker = TrackingConfig.load_type(thermal)
+            return tracker
+        else:
+            tracker = TrackingConfig.load_type(tracking)
+            return tracker
 
     @classmethod
-    def load_type(cls, tracking, type):
-        defaults = cls.get_type_defaults(type)
+    def load_type(cls, tracking):
+        defaults = cls.get_defaults()
         deep_copy_map_if_key_not_exist(defaults.as_dict(), tracking)
         return cls(
             tracker=tracking["tracker"],
             params=tracking["params"],
-            type=type,
+            type="thermal",
             motion=TrackingMotionConfig.load(tracking.get("motion")),
             min_dimension=tracking["min_dimension"],
             edge_pixels=tracking["edge_pixels"],
@@ -91,7 +92,6 @@ class TrackingConfig(DefaultConfig):
             frame_padding=tracking["frame_padding"],
             track_smoothing=tracking["track_smoothing"],
             denoise=tracking["denoise"],
-            high_quality_optical_flow=tracking["high_quality_optical_flow"],
             max_tracks=tracking["max_tracks"],
             moving_vel_thresh=tracking["filters"]["moving_vel_thresh"],
             track_overlap_ratio=tracking["filters"]["track_overlap_ratio"],
@@ -117,13 +117,6 @@ class TrackingConfig(DefaultConfig):
 
     @classmethod
     def get_defaults(cls):
-        default_tracking = {}
-        default_tracking["thermal"] = cls.get_type_defaults("thermal")
-        default_tracking["IR"] = cls.get_type_defaults("IR")
-        return default_tracking
-
-    @classmethod
-    def get_type_defaults(cls, type):
         default_tracking = cls(
             motion=TrackingMotionConfig.get_defaults(),
             edge_pixels=1,
@@ -132,7 +125,6 @@ class TrackingConfig(DefaultConfig):
             # dilation_pixels=2,
             track_smoothing=False,
             denoise=True,
-            high_quality_optical_flow=False,
             max_tracks=None,
             filters={
                 "track_overlap_ratio": 0.5,
@@ -165,7 +157,7 @@ class TrackingConfig(DefaultConfig):
             type="thermal",
             params={
                 "base_distance_change": 450,
-                "min_mass_change": 20,
+                "min_mass_change": 25,
                 "restrict_mass_after": 1.5,
                 "mass_change_percent": 0.55,
                 "max_distance": 2000,
@@ -176,48 +168,13 @@ class TrackingConfig(DefaultConfig):
             filter_regions_pre_match=True,
             min_hist_diff=None,
         )
-        if type == "IR":
-            # default_tracking.min_hist_diff = 0.95
-            default_tracking.filters["min_duration_secs"] = 0
-            default_tracking.min_duration_secs = 0
-            default_tracking.filter_regions_pre_match = False
-            default_tracking.areas_of_interest["pixel_variance"] = 0
-            default_tracking.areas_of_interest["min_mass"] = 0
-            default_tracking.filters["track_min_offset"] = 7
-            default_tracking.track_min_offset = 20
-            default_tracking.min_dimension = 10
-            default_tracking.min_tracks = None
-            default_tracking.frame_padding = 10
-            default_tracking.edge_pixels = 0
-            default_tracking.tracker = "RegionTracker"
-            default_tracking.type = "IR"
-            default_tracking.params = {
-                "base_distance_change": 12000,
-                "min_mass_change": None,
-                "restrict_mass_after": 1.5,
-                "mass_change_percent": None,
-                "max_distance": 30752,
-                "max_blanks": 18,
-                "velocity_multiplier": 8,
-                "base_velocity": 10,
-            }
         return default_tracking
-
-    #
-    # def load_trackers(raw):
-    #     if raw is None:
-    #         return None
-    #     trackers = {}
-    #     for raw_tracker in raw.values():
-    #         tracker = TrackingConfig.load(raw_tracker)
-    #         trackers[tracker.type] = tracker
-    #     return trackers
 
     def validate(self):
         return True
 
     def as_dict(self):
-        return attr.asdict(self)
+        return asdict(self)
 
     def rescale(self, scale):
         # adjust numbers if we rescale frame sizes
@@ -234,44 +191,3 @@ class TrackingConfig(DefaultConfig):
         self.track_min_offset *= scale
         self.track_min_mass *= scale
         self.aoi_min_mass *= scale
-
-
-#
-#
-# @attr.s
-# class TrackerConfig(DefaultConfig):
-#
-#     tracker = attr.ib()
-#     params = attr.ib()
-#     type = attr.ib()
-#
-#     @classmethod
-#     def load(cls, raw):
-#         defaults = cls.get_defaults()
-#         deep_copy_map_if_key_not_exist(defaults.as_dict(), raw)
-#
-#         return cls(
-#             tracker=raw["tracker"],
-#             params=raw["params"],
-#             type=raw["type"],
-#         )
-#
-#     def as_dict(self):
-#         return attr.asdict(self)
-#
-#     @classmethod
-#     def get_defaults(cls):
-#         return cls(
-#             tracker="RegionTracker",
-#             type="IR",
-#             params={
-#                 "base_distance_change": 11250,
-#                 "min_mass_change": 20 * 4,
-#                 "restrict_mass_after": 1.5,
-#                 "mass_change_percent": 0.55,
-#                 "max_distance": 30752,
-#             },
-#         )
-#
-#     def validate(self):
-#         return True

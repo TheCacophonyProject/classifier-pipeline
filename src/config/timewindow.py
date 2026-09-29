@@ -3,7 +3,8 @@
 from datetime import datetime, timedelta, time
 import logging
 import enum
-from astral import Location
+
+from .suntimes import sun_times
 
 
 class WindowStatus(enum.Enum):
@@ -22,7 +23,9 @@ class TimeWindow:
 
         if self.start.any_time or self.end.any_time:
             assert self.start.any_time and self.end.any_time
-        self.location = None
+        self.lat = None
+        self.lng = None
+        self.altitude = None
         self.last_sunrise_check = None
         self.non_stop = not self.use_sunrise_sunset() and self.start.dt == self.end.dt
         if lat is not None and lng is not None:
@@ -53,15 +56,17 @@ class TimeWindow:
 
         assert self.start.dt <= self.end.dt
 
+    def __str__(self):
+        return f"TimeWindow start: {self.start.dt} end: {self.end.dt}"
+
     def clone(self):
         new_window = TimeWindow(
             self.start.clone(),
             self.end.clone(),
-            self.location.latitude,
-            self.location.longitude,
-            self.location.altitude,
+            self.lat,
+            self.lng,
+            self.altitude,
         )
-        new_window.location = self.location
         new_window.last_sunrise_check = self.last_sunrise_check
         new_window.non_stop = self.non_stop
         return new_window
@@ -110,7 +115,7 @@ class TimeWindow:
         if not self.use_sunrise_sunset():
             return
 
-        if self.location is None:
+        if self.lat is None or self.lng is None:
             raise ValueError(
                 "Location must be set for relative times, by calling set_location"
             )
@@ -130,7 +135,7 @@ class TimeWindow:
                 date = self.last_sunrise_check + timedelta(days=1)
             elif next_window:
                 date = date + timedelta(days=1)
-            sun_times = self.location.sun(date=date)
+            sun_times = self.sun_times(date)
             self.last_sunrise_check = date
             if self.start.is_relative:
                 self.start.dt = sun_times["sunset"] + timedelta(
@@ -145,7 +150,7 @@ class TimeWindow:
                 self.end.dt = self.end.dt.replace(tzinfo=None)
                 if datetime.now() > self.end.dt:
                     date = date + timedelta(days=1)
-                    sun_times = self.location.sun(date=date)
+                    sun_times = self.sun_times(date)
                     self.end.dt = sun_times["sunrise"] + timedelta(
                         seconds=self.end.offset_s
                     )
@@ -157,7 +162,7 @@ class TimeWindow:
                 and self.end.is_before()
             ):
                 date = date + timedelta(days=-1)
-                sun_times = self.location.sun(date=date)
+                sun_times = self.sun_times(date)
                 self.start.dt = sun_times["sunset"] + timedelta(
                     seconds=self.start.offset_s
                 )
@@ -170,15 +175,17 @@ class TimeWindow:
             )
 
     def set_location(self, lat, lng, altitude=0):
-        from ml_tools.tools import get_timezone_str
-
-        self.location = Location()
-        self.location.latitude = lat
-        self.location.longitude = lng
-        self.location.altitude = altitude
-        self.location.timezone = get_timezone_str(lat, lng)
+        self.lat = lat
+        self.lng = lng
+        self.altitude = altitude
 
         self.update_sun_times()
+
+    def sun_times(self, date):
+        # convert utc times to system local time, since these are compared
+        # against datetime.now()
+        times = sun_times(date, self.lat, self.lng, self.altitude)
+        return {k: v.astimezone() for k, v in times.items()}
 
 
 class RelAbsTime:

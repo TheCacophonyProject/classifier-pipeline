@@ -1,6 +1,7 @@
 from pathlib import Path
 
-import attr
+from dataclasses import dataclass, asdict
+from typing import Any
 import logging
 import yaml
 
@@ -14,7 +15,7 @@ CONFIG_FILENAME = "classifier.yaml"
 CONFIG_DIRS = [Path("/etc/cacophony"), Path(__file__).parent.parent]
 
 
-@attr.s
+@dataclass(slots=True)
 class Config(DefaultConfig):
     DEFAULT_LABELS = [
         "bird",
@@ -28,18 +29,17 @@ class Config(DefaultConfig):
         "rodent",
         "wallaby",
     ]
-    base_folder = attr.ib()
-    labels = attr.ib()
-    build = attr.ib()
-    tracking = attr.ib()
-    train = attr.ib()
-    classify = attr.ib()
-    reprocess = attr.ib()
-    previews_colour_map = attr.ib()
-    worker_threads = attr.ib()
-    debug = attr.ib()
-    use_opt_flow = attr.ib()
-    verbose = attr.ib()
+    base_folder: Any
+    labels: Any
+    build: Any
+    tracking: Any
+    train: Any
+    classify: Any
+    reprocess: Any
+    previews_colour_map: Any
+    worker_threads: Any
+    debug: Any
+    verbose: Any
 
     @classmethod
     def load_from_file(cls, filename=None):
@@ -72,7 +72,6 @@ class Config(DefaultConfig):
             labels=raw["labels"],
             build=BuildConfig.load(raw["build"]),
             debug=raw["debug"],
-            use_opt_flow=raw["use_opt_flow"],
             verbose=raw["verbose"],
         )
 
@@ -89,20 +88,18 @@ class Config(DefaultConfig):
             train=TrainConfig.get_defaults(),
             classify=ClassifyConfig.get_defaults(),
             debug=False,
-            use_opt_flow=False,
             verbose=False,
         )
 
     def validate(self):
         self.build.validate()
-        for tracker in self.tracking.values():
-            tracker.validate()
+        self.tracking.validate()
         self.train.validate()
         self.classify.validate()
         return True
 
     def as_dict(self):
-        return attr.asdict(self)
+        return asdict(self)
 
 
 def find_config():

@@ -1,6 +1,5 @@
 from abc import ABC, abstractmethod
 import logging
-import time
 import math
 import numpy as np
 
@@ -22,7 +21,7 @@ class ClipTracker(ABC):
         max_frames=None,
     ):
         self.max_frames = max_frames
-        config = config.get(self.type)
+        # config = config.get(self.type, "thermal")
         self.scale = scale
         self.calculate_thumbnail_info = calculate_thumbnail_info
         # if scale:
@@ -105,8 +104,8 @@ class ClipTracker(ABC):
             )
         else:
             avg_change = 0
-
         filtered = np.clip(filtered - avg_change, 0, None)
+
         filtered, stats = normalize(filtered, new_max=255)
         if denoise:
             import cv2
@@ -128,8 +127,8 @@ class ClipTracker(ABC):
 
         unactive_tracks = clip.active_tracks - matched_tracks - new_tracks
         clip.active_tracks = matched_tracks | new_tracks
-        self._filter_inactive_tracks(clip, unactive_tracks)
-        return new_tracks
+        stale_tracks = self._filter_inactive_tracks(clip, unactive_tracks)
+        return new_tracks, stale_tracks
 
     def _match_existing_tracks(self, clip, regions):
         from ml_tools.imageprocessing import hist_diff
@@ -138,7 +137,7 @@ class ClipTracker(ABC):
         used_regions = set()
         unmatched_regions = set(regions)
         active = list(clip.active_tracks)
-        active.sort(key=lambda x: x.get_id())
+        active.sort(key=lambda x: x.id)
         for track in active:
             scores.extend(track.match(regions))
 
@@ -226,7 +225,7 @@ class ClipTracker(ABC):
             clip._add_active_track(track)
             self.print_if_verbose(
                 "Creating a new track {} with region {} mass{} area {} frame {}".format(
-                    track.get_id(),
+                    track.id,
                     region,
                     track.last_bound.mass,
                     track.last_bound.area,
@@ -237,28 +236,33 @@ class ClipTracker(ABC):
 
     def _filter_inactive_tracks(self, clip, unactive_tracks):
         """Filters tracks which are or have become inactive"""
+        stale_tracks = []
         for track in unactive_tracks:
             track.add_blank_frame()
             if track.tracking:
                 clip.active_tracks.add(track)
                 logging.debug(
                     "frame {} adding a blank frame to {} ".format(
-                        clip.current_frame, track.get_id()
+                        clip.current_frame, track.id
                     )
                 )
+            else:
+                stale_tracks.append(track)
+        return stale_tracks
 
     def get_delta_filtered(self, clip):
         from ml_tools.imageprocessing import normalize
 
         frame = clip.frame_buffer.current_frame
         prev_frame = clip.frame_buffer.prev_frame
-        if prev_frame is None or  prev_frame.filtered is None or frame.filtered is None:
+        if prev_frame is None or prev_frame.filtered is None or frame.filtered is None:
             return None
         delta_filtered = None
         filtered, _ = normalize(frame.filtered, new_max=255)
         prev_filtered, _ = normalize(prev_frame.filtered, new_max=255)
         delta_filtered = np.abs(np.float32(filtered) - prev_filtered)
-        return  delta_filtered
+        return delta_filtered
+
     def get_delta_frame(self, clip):
         from ml_tools.imageprocessing import normalize
 
@@ -308,7 +312,7 @@ class ClipTracker(ABC):
                 mass=component[4],
                 frame_number=clip.current_frame,
                 centroid=centroid,
-                mask_id = i+1,
+                mask_id=i + 1,
             )
             if self.scale:
                 region.rescale(1 / self.scale)
@@ -319,7 +323,7 @@ class ClipTracker(ABC):
             # GP this needs to be checked for themals 29/06/2022
             if delta_filtered is not None:
                 region_difference = region.subimage(delta_filtered)
-                region.pixel_variance = np.var(region_difference,dtype=np.float32)
+                region.pixel_variance = np.var(region_difference, dtype=np.float32)
             old_region = region.copy()
             region.crop(clip.crop_rectangle)
             region.was_cropped = str(old_region) != str(region)
@@ -380,7 +384,7 @@ class ClipTracker(ABC):
                 start_s, end_s = clip.start_and_end_in_secs(track)
                 logging.info(
                     " - track %s duration: %.1fsec, number of frames:%s, stats %s",
-                    track.get_id(),
+                    track.id,
                     end_s - start_s,
                     len(track),
                     track.stats,
@@ -419,7 +423,7 @@ class ClipTracker(ABC):
 
         for key in clip.filtered_tracks:
             self.print_if_verbose(
-                "filtered track {} because {}".format(key[1].get_id(), key[0])
+                "filtered track {} because {}".format(key[1].id, key[0])
             )
         return filtered_tracks
 

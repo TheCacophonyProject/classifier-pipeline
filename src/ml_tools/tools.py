@@ -9,10 +9,8 @@ import json
 import datetime
 import glob
 import enum
-import timezonefinder
 from pathlib import Path
 from ml_tools.rectangle import Rectangle
-from dateutil import parser
 from enum import Enum
 
 EPISON = 1e-5
@@ -97,6 +95,8 @@ def load_clip_metadata(filename):
         # add in some metadata stats
         meta = json.load(t)
     if meta.get("recordingDateTime"):
+        from dateutil import parser
+
         meta["recordingDateTime"] = parser.parse(meta["recordingDateTime"])
     if meta.get("tracks") is None and meta.get("Tracks"):
         meta["tracks"] = meta["Tracks"]
@@ -117,20 +117,6 @@ def calculate_variance(filtered, prev_filtered):
         return
     delta_frame = np.abs(filtered - prev_filtered)
     return np.var(delta_frame)
-
-
-def get_optical_flow_function(high_quality=False):
-    import cv2
-
-    opt_flow = cv2.optflow.createOptFlow_DualTVL1()
-    opt_flow.setUseInitialFlow(True)
-    if not high_quality:
-        # see https://stackoverflow.com/questions/19309567/speeding-up-optical-flow-createoptflow-dualtvl1
-        opt_flow.setTau(1 / 4)
-        opt_flow.setScalesNumber(3)
-        opt_flow.setWarpingsNumber(3)
-        opt_flow.setScaleStep(0.5)
-    return opt_flow
 
 
 def frame_to_jpg(
@@ -215,15 +201,6 @@ def saveclassify_image(data, filename):
     concat = np.concatenate((r, g, b), axis=1)  # horizontally
     img = Image.fromarray(np.uint8(concat))
     img.save(filename.with_suffix(".png"))
-
-
-def get_timezone_str(lat, lng):
-    tf = timezonefinder.TimezoneFinder()
-    timezone_str = tf.certain_timezone_at(lat=lat, lng=lng)
-
-    if timezone_str is None:
-        timezone_str = "Pacific/Auckland"
-    return timezone_str
 
 
 def saveclassify_rgb(data, filename):

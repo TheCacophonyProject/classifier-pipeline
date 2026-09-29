@@ -27,6 +27,7 @@ training run tensorboard from the log directory.
 
 """
 
+# only use in QAT training
 import argparse
 import os
 
@@ -35,7 +36,6 @@ import matplotlib
 matplotlib.use("Agg")  # enable canvas drawing
 
 from config.config import Config
-from train.train import train_model
 
 
 def load_config():
@@ -45,19 +45,59 @@ def load_config():
     parser.add_argument("-w", "--weights", help="Fine tune using these weights")
     parser.add_argument("-i", "--ignore", help="Ignore clips in this file")
     parser.add_argument("-e", "--epochs", type=int, help="Epochs to train")
-    parser.add_argument("-f", "--fine_tune", help="Model to fine tune")
-
+    parser.add_argument("-f", "--fine-tune", help="Model to fine tune")
+    parser.add_argument(
+        "-m",
+        "--multi-input",
+        action="store_true",
+        help="Run on image and timeline mask multi-input (default: image input only)",
+    )
+    parser.add_argument(
+        "--phase2",
+        action="store_true",
+        help="Run when loading weights from phase1 (single input) into phase2 ( image, input_mask)",
+    )
+    parser.add_argument("--test", action="store_true", help="Test mode")
+    parser.add_argument(
+        "-r", "--rebalance", action="store_true", help="Rebalance training set"
+    )
+    parser.add_argument(
+        "--warm-down",
+        action="store_true",
+        help="Warming down, running without training augment on a low learning rate",
+    )
+    parser.add_argument(
+        "--jitter",
+        action="store_true",
+        help="Force jitter augmentation even without --multi-input (cutmix is the "
+        "single-input default), e.g. for a baseline matching a multi-input run's "
+        "augmentation",
+    )
+    parser.add_argument(
+        "--qat",
+        action="store_true",
+        help="Quantization aware training",
+    )
+    parser.add_argument(
+        "--dont-enlarge",
+        action="store_true",
+        help="Don't enlarge regions",
+    )
     parser.add_argument(
         "name",
         default="unnammed",
         help="Name of training job",
     )
     args = parser.parse_args()
+    if args.qat:
+        import ml_tools.bootstrap_keras
+
     return Config.load_from_file(args.config_file), args
 
 
 def main():
     conf, args = load_config()
+    from train.train import train_model
 
     os.makedirs(conf.train.train_dir, exist_ok=True)
     train_model(
@@ -69,6 +109,14 @@ def main():
         ignore=args.ignore,
         epochs=args.epochs,
         fine_tune=args.fine_tune,
+        rebalance=args.rebalance,
+        warm_down=args.warm_down,
+        multi_input=args.multi_input,
+        test=args.test,
+        phase2=args.phase2,
+        use_jitter=args.jitter,
+        qat=args.qat,
+        dont_enlarge=args.dont_enlarge,
     )
 
 

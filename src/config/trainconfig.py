@@ -17,21 +17,22 @@ You should have received a copy of the GNU General Public License
 along with this program. If not, see <http://www.gnu.org/licenses/>.
 """
 
-import attr
+from dataclasses import dataclass
+from typing import Any
 
 from .defaultconfig import DefaultConfig
 from pathlib import Path
 
 
-@attr.s
+@dataclass(slots=True)
 class TrainConfig(DefaultConfig):
-    hyper_params = attr.ib()
-    train_dir = attr.ib()
-    epochs = attr.ib()
-    resnet_params = attr.ib()
-    use_gru = attr.ib()
-    label_probabilities = attr.ib()
-    type = attr.ib()
+    hyper_params: Any
+    train_dir: Any
+    epochs: Any
+    resnet_params: Any
+    use_gru: Any
+    label_probabilities: Any
+    type: Any
     LABEL_PROBABILITIES = {
         "bird": 20,
         "possum": 20,
@@ -78,18 +79,18 @@ class TrainConfig(DefaultConfig):
         return True
 
 
-@attr.s
+@dataclass(slots=True)
 class ResnetConfig:
     #  resnet
-    num_filters = attr.ib()
-    kernel_size = attr.ib()
-    conv_stride = attr.ib()
-    block_sizes = attr.ib()
-    block_strides = attr.ib()
-    bottleneck = attr.ib()
-    resnet_size = attr.ib()
-    first_pool_size = attr.ib()
-    first_pool_stride = attr.ib()
+    num_filters: Any
+    kernel_size: Any
+    conv_stride: Any
+    block_sizes: Any
+    block_strides: Any
+    bottleneck: Any
+    resnet_size: Any
+    first_pool_size: Any
+    first_pool_stride: Any
 
     @classmethod
     def load(cls, raw):

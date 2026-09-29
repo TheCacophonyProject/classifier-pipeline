@@ -145,18 +145,19 @@ def str2bool(v):
         raise argparse.ArgumentTypeError("Boolean value expected.")
 
 
-import attr
+from dataclasses import dataclass, asdict
+from typing import Any
 
 
-@attr.s
+@dataclass(slots=True)
 class ClassifyJob:
-    file = attr.ib()
-    cache = attr.ib()
-    track = attr.ib()
-    calculate_thumbnails = attr.ib()
+    file: Any
+    cache: Any
+    track: Any
+    calculate_thumbnails: Any
 
     def as_dict(self):
-        return attr.asdict(self)
+        return asdict(self)
 
     @classmethod
     def from_dict(cls, file, cache, track, calculate_thumbnails):

@@ -1,16 +1,17 @@
-import attr
+from dataclasses import dataclass, asdict
+from typing import Any
 import numpy as np
 import math
 
 
-@attr.s(eq=False)
+@dataclass(eq=False, slots=True)
 class Rectangle:
     """Defines a rectangle by the topleft point and width / height."""
 
-    x = attr.ib()
-    y = attr.ib()
-    width = attr.ib()
-    height = attr.ib()
+    x: Any
+    y: Any
+    width: Any
+    height: Any
 
     @staticmethod
     def from_ltrb(left, top, right, bottom):
@@ -100,40 +101,66 @@ class Rectangle:
         :param image mumpy array of dims [height, width]
         """
         return image[
-            self.top : self.top + self.height, self.left : self.left + self.width
+            max(0, self.top) : self.top + self.height,
+            max(0, self.left) : self.left + self.width,
         ]
 
+    def get_border(self, input_img, border, crop_rectangle):
+        """Returns pixels forming a border-wide frame around the image,
+        excluding any side where the rectangle extends outside the image bounds."""
+        h, w = input_img.shape[:2]
+
+        strips = []
+        if self.top > crop_rectangle.top:
+            strips.append(input_img[:border, :].ravel())
+
+        if self.bottom < crop_rectangle.bottom:
+            strips.append(input_img[h - border :, :].ravel())
+
+        if self.left > crop_rectangle.left:
+            strips.append(input_img[border : h - border, :border].ravel())
+
+        if self.right < crop_rectangle.right:
+            strips.append(input_img[border : h - border, w - border :].ravel())
+        # if len(strips)<4:
+        #     import logging
+        #     concatted = np.concatenate(strips) if strips else np.array([])
+        #     logging.info("Ignored some %s region %s orig %s %s in img %s - %s, %s",len(strips),self,original_region,sub_img.shape, input_img.shape,concatted,strips)
+        return np.concatenate(strips) if strips else np.array([])
+
     # enlarge rectangle such equal pixels are added to width and height  with respect to the crop rectangle
-    def enlarge_even(self, width_enlarge, height_enlarge, crop):
+    def enlarge_even(self, width_enlarge, height_enlarge, crop, even_enlarge=False):
 
         self.left -= width_enlarge
         self.right += width_enlarge
         self.top -= height_enlarge
         self.bottom += height_enlarge
         left_adjust = crop.left - self.left
-        left_adjust = max(0, left_adjust)
-        left_adjust = min(left_adjust, crop.width)
+        # left_adjust = max(0, left_adjust)
+        # left_adjust = min(left_adjust, crop.width)
 
         right_adjust = 0
         right_adjust = self.right - crop.right
-        right_adjust = max(0, right_adjust)
-        right_adjust = min(right_adjust, crop.width)
-        width_adjust = max(left_adjust, right_adjust)
+        # right_adjust = max(0, right_adjust)
+        # right_adjust = min(right_adjust, crop.width)
 
-        self.left += width_adjust
-        self.right -= width_adjust
+        if even_enlarge:
+            width_adjust = max(left_adjust, right_adjust)
+
+            self.left += width_adjust
+            self.right -= width_adjust
 
         bottom_adjust = self.bottom - crop.bottom
-        bottom_adjust = max(0, bottom_adjust)
-        bottom_adjust = min(bottom_adjust, crop.height)
+        # bottom_adjust = max(0, bottom_adjust)
+        # bottom_adjust = min(bottom_adjust, crop.height)
 
         top_adjust = crop.top - self.top
-        top_adjust = max(0, top_adjust)
-        top_adjust = min(top_adjust, crop.height)
-
-        height_adjust = max(bottom_adjust, top_adjust)
-        self.top += height_adjust
-        self.bottom -= height_adjust
+        # top_adjust = max(0, top_adjust)
+        # top_adjust = min(top_adjust, crop.height)
+        if even_enlarge:
+            height_adjust = max(bottom_adjust, top_adjust)
+            self.top += height_adjust
+            self.bottom -= height_adjust
 
     def enlarge(self, border, max=None):
         """Enlarges this by border amount in each dimension such that it fits
@@ -144,6 +171,15 @@ class Rectangle:
         self.bottom += border
         if max:
             self.crop(max)
+
+    def contains_rec(self, other):
+        """Is this point contained in the rectangle"""
+        return (
+            self.left <= other.left
+            and self.right >= other.right
+            and self.top >= other.top
+            and self.bottom <= other.bottom
+        )
 
     def contains(self, x, y):
         """Is this point contained in the rectangle"""
@@ -163,11 +199,9 @@ class Rectangle:
 
     def meta_dictionary(self):
         # Return object as dictionary without is_along_border,was_cropped and id for saving to json
-        region_info = attr.asdict(
-            self,
-            filter=lambda attr, value: attr.name
-            not in ["is_along_border", "was_cropped", "id", "centroid"],
-        )
+        region_info = asdict(self)
+        for excluded in ("is_along_border", "was_cropped", "id", "centroid", "mask_id"):
+            region_info.pop(excluded, None)
         # region_info["centroid"][0] = round(region_info["centroid"][0], 1)
         # region_info["centroid"][1] = round(region_info["centroid"][1], 1)
         if region_info["pixel_variance"] is not None:
@@ -176,24 +210,65 @@ class Rectangle:
             region_info["pixel_variance"] = 0
         return region_info
 
-    # enlarge a region such that the aspect ration of final_dim will be maintained
-    # when it is resized to (final_dim,final_dim) and add extra pixels so that rotation augments
-    # dont get empty pixels
-    def enlarge_for_rotation(self, crop_rectangle, final_dim=32, extra_needed=13):
+    # # enlarge a region such that the aspect ratio of final_dim will be maintained
+    # # when it is resized to (final_dim,final_dim) and add extra pixels so that rotation augments
+    # # dont get empty pixels
+    # def enlarge_for_rotation(self, final_dim=32, extra_needed=13):
+    #     scale_percent = (final_dim / np.array([self.width, self.height])).min()
+
+    #     extra_pixels = extra_needed / scale_percent
+    #     height_enlarge = math.ceil(extra_pixels / 2)
+
+    #     width_enlarge = math.ceil(extra_pixels / 2)
+    #     import logging
+    #     logging.info("Enlarging %s scale %s extra %s",self, scale_percent, extra_pixels)
+    #     adjusted_height = self.height + extra_pixels
+    #     adjusted_width = self.width + extra_pixels
+    #     if self.width > self.height:
+    #         diff = adjusted_width - adjusted_height
+    #         height_enlarge = math.ceil((extra_pixels + diff) / 2)
+    #     else:
+    #         diff = adjusted_height - adjusted_width
+    #         width_enlarge = math.ceil((extra_pixels + diff) / 2)
+    #         logging.info("Setting width enlarge to %s",width_enlarge)
+
+    #     self.left -= width_enlarge
+    #     self.right += width_enlarge
+    #     self.top -= height_enlarge
+    #     self.bottom += height_enlarge
+    #     # self.enlarge_even(width_enlarge, height_enlarge, crop=crop_rectangle)
+
+    # enlarge so that when the image is downsized we have the extra pixels we need
+    def enlarge_for_rotation(self, final_dim=32, extra_needed=13):
         scale_percent = (final_dim / np.array([self.width, self.height])).min()
+        extra_pixels = math.ceil(extra_needed / scale_percent)
 
-        extra_pixels = extra_needed / scale_percent
-        height_enlarge = math.ceil(extra_pixels / 2)
+        # extra_pixels = extra_needed * self.width / final_dim
+        # (final_dim / self.width)
+        dim = max(self.width, self.height)
+        return self.enlarge_to(dim + extra_pixels)
 
-        width_enlarge = math.ceil(extra_pixels / 2)
+    def enlarge_to(self, max_dim):
+        delta_w = max_dim - self.width
+        delta_h = max_dim - self.height
+        if delta_w > 0:
+            self.x -= math.ceil(delta_w / 2)
+            self.width = max_dim
+        if delta_h > 0:
+            self.y -= math.ceil(delta_h / 2)
+            self.height = max_dim
+        return (delta_w, delta_h)
 
-        adjusted_height = self.height + extra_pixels
-        adjusted_width = self.width + extra_pixels
-        if self.width > self.height:
-            diff = adjusted_width - adjusted_height
-            height_enlarge = math.ceil((extra_pixels + diff) / 2)
-        else:
-            diff = adjusted_height - adjusted_width
-            width_enlarge = math.ceil((extra_pixels + diff) / 2)
+    def enlarge_with_aspect(self, max_dim):
+        scale = max_dim / max(self.width, self.height)
+        new_width = math.floor(self.width * scale)
+        new_height = math.floor(self.height * scale)
+        # logging.info("Scale is %s w %s h %s",scale,new_width,new_height)
 
-        self.enlarge_even(width_enlarge, height_enlarge, crop=crop_rectangle)
+        delta_w = new_width - self.width
+        delta_h = new_height - self.height
+        self.x -= delta_w // 2
+        self.width = new_width
+        # logging.info("Adjusted w with %s",delta_w//2)
+        self.y -= delta_h // 2
+        self.height = new_height

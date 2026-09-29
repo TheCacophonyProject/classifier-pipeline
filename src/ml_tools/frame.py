@@ -1,6 +1,8 @@
-import attr
+from dataclasses import dataclass
+from typing import Any
 import numpy as np
 import enum
+from ml_tools import opencvconstants
 
 
 class TrackChannels(enum.Enum):
@@ -8,35 +10,36 @@ class TrackChannels(enum.Enum):
 
     thermal = 0
     filtered = 1
-    flow_h = 2
-    flow_v = 3
     mask = 4
-    flow = 5
+    raw = 6
+    thermal_norm = 7
 
 
-@attr.s(slots=True, eq=False)
+@dataclass(slots=True, eq=False)
 class Frame:
-    thermal = attr.ib()
-    filtered = attr.ib()
-    frame_number = attr.ib()
-    mask = attr.ib(default=None)
-    flow = attr.ib(default=None)
-    flow_clipped = attr.ib(default=False)
-    scaled_thermal = attr.ib(default=None)
-    ffc_affected = attr.ib(default=False)
-    region = attr.ib(default=None)
-    frame_temp_median = attr.ib(default=None)
-    preprocessed = attr.ib(default=False)
+    thermal: Any
+    filtered: Any
+    frame_number: Any
+    mask: Any = None
+    thermal_norm: Any = None
+    ffc_affected: Any = False
+    region: Any = None
+    frame_temp_median: Any = None
+    preprocessed: Any = False
 
     def get_channel(self, channel):
+        # just leave this top one for old style
+        # will remove soon obselete 08/06/2026
         if channel == TrackChannels.thermal:
+            return self.thermal
+        elif channel == TrackChannels.raw:
             return self.thermal
         elif channel == TrackChannels.filtered:
             return self.filtered
-        elif channel == TrackChannels.flow:
-            return self.flow
         elif channel == TrackChannels.mask:
             return self.mask
+        elif channel == TrackChannels.thermal_norm:
+            return self.thermal_norm
         return None
 
     @classmethod
@@ -45,7 +48,6 @@ class Frame:
         frame,
         channels,
         frame_number,
-        flow_clipped=True,
         ffc_affected=False,
         region=None,
     ):
@@ -53,29 +55,16 @@ class Frame:
             None,
             None,
             frame_number,
-            flow_clipped=flow_clipped,
             ffc_affected=ffc_affected,
             region=region,
         )
-        flow_h = None
-        flow_v = None
         for channel, data in zip(channels, frame):
             if TrackChannels.thermal.value == channel:
                 f.thermal = data
             elif TrackChannels.filtered.value == channel:
                 f.filtered = data
-            elif TrackChannels.mask.value == channel:
+            if TrackChannels.mask == channel:
                 f.mask = data
-            elif TrackChannels.flow_h.value == channel:
-                flow_h = data
-            elif TrackChannels.flow_v.value == channel:
-                flow_v = data
-            elif TrackChannels.flow.value == channel:
-                f.flow = data
-        if flow_h is not None and flow_v is not None:
-            flow = np.stack((flow_h, flow_v), axis=2)
-            f.flow = flow
-
         return f
 
     @classmethod
@@ -83,108 +72,33 @@ class Frame:
         cls,
         frame_arr,
         frame_number,
-        flow_clipped=False,
         ffc_affected=False,
         region=None,
     ):
-        flow = None
-        if len(frame_arr) == 5:
-            flow = np.stack(
-                (frame_arr[TrackChannels.flow_h], frame_arr[TrackChannels.flow_v]),
-                axis=2,
-            )
-            t = frame_arr[TrackChannels.thermal]
-            f = frame_arr[TrackChannels.filtered]
-            m = frame_arr[TrackChannels.mask]
-        elif len(frame_arr) == 3:
-            # no flow so mask is at position 2
-            t = frame_arr[TrackChannels.thermal]
-            f = frame_arr[TrackChannels.filtered]
+        t = frame_arr[TrackChannels.thermal]
+        f = frame_arr[TrackChannels.filtered]
+        if len(frame_arr) >= 3:
             m = frame_arr[2]
+        else:
+            m = None
         return cls(
             t,
             f,
-            m,
             frame_number,
-            flow=flow,
-            flow_clipped=flow_clipped,
+            mask=m,
             region=region,
             ffc_affected=ffc_affected,
         )
 
-    def as_array(self, split_flow=True):
+    def as_array(self):
         data = [self.thermal]
         if self.filtered is not None:
             data.append(self.filtered)
         else:
-            # if no filtered return now as second array must be filtered
             return np.array(data)
-        if self.flow is None:
-            if self.mask is not None:
-                data.append(self.mask)
-            return np.asarray(data)
-        if split_flow:
-            return np.asarray(
-                [
-                    self.thermal,
-                    self.filtered,
-                    self.flow[:, :, 0] if self.flow is not None else None,
-                    self.flow[:, :, 1] if self.flow is not None else None,
-                    self.mask,
-                ]
-            )
-        return np.asarray([self.thermal, self.filtered, self.flow, self.mask])
-
-    def generate_optical_flow(self, opt_flow, prev_frame, flow_threshold=40):
-        """
-        Generate optical flow from thermal frames
-        :param opt_flow: An optical flow algorithm
-        """
-        import cv2
-        from ml_tools.imageprocessing import normalize
-
-        height, width = self.thermal.shape
-        flow = np.zeros([height, width, 2], dtype=np.float32)
-        scaled_thermal = self.thermal.copy()
-        scaled_thermal[self.mask == 0] = 0
-        scaled_thermal, _ = normalize(scaled_thermal, new_max=255)
-        scaled_thermal = np.float32(scaled_thermal)
-
-        # threshold = np.median(self.thermal) + flow_threshold
-        # scaled_thermal = np.uint8(np.clip(self.thermal - threshold, 0, 255))
-        if prev_frame is not None:
-            # for some reason openCV spins up lots of threads for this which really slows things down, so we
-            # cap the threads to 2
-            cv2.setNumThreads(2)
-            flow = opt_flow.calc(prev_frame.scaled_thermal, scaled_thermal, flow)
-        self.scaled_thermal = scaled_thermal
-        self.flow = flow
-        if prev_frame:
-            prev_frame.scaled_thermal = None
-
-    def unclip_flow(self):
-        if self.flow_clipped:
-            self.flow *= 1.0 / 256.0
-            self.flow_clipped = False
-
-    def clip_flow(self):
-        if self.flow is not None:
-            from ml_tools.tools import get_clipped_flow
-
-            self.flow = get_clipped_flow(self.flow)
-            self.flow_clipped = True
-
-    def get_flow_split(self, clip_flow=False):
-        if self.flow is not None:
-            from ml_tools.tools import get_clipped_flow
-
-            if self.clip_flow and not self.flow_clipped:
-                flow_c = get_clipped_flow(self.flow)
-                return flow_c[:, :, 0], flow_c[:, :, 1]
-
-            else:
-                return self.flow_h, self.flow_v
-        return None, None
+        if self.mask is not None:
+            data.append(self.mask)
+        return np.asarray(data)
 
     def normalize(self):
         from ml_tools.imageprocessing import normalize
@@ -204,26 +118,84 @@ class Frame:
         if self.filtered is not None:
             self.filtered *= adjust
 
-    def crop_by_region(self, region, only_thermal=False, out=None):
-        # make a new frame cropped by region
+    def crop_by_region_with_padding(self, region, crop_rectangle, resize_dim):
+        top = 0
+        left = 0
+        # if our region has becomes out of bounds i.e. negative x or y we need to calculated the top offset
+        if region.width < crop_rectangle.width and crop_rectangle.left > region.left:
+            left = crop_rectangle.left - region.left
+
+        #
+        if region.height < crop_rectangle.height and crop_rectangle.top > region.top:
+            top = crop_rectangle.top - region.top
+
+        new_width = min(crop_rectangle.width, region.width)
+        new_height = min(crop_rectangle.height, region.height)
+        new_width = max(resize_dim, new_width)
+        new_height = max(resize_dim, new_height)
+        cropped_region = region.copy()
+        cropped_region.crop(crop_rectangle)
+
         thermal = None
         filtered = None
         mask = None
-        flow = None
         if self.thermal is not None:
-            thermal = region.subimage(self.thermal)
+            sub_thermal = cropped_region.subimage(self.thermal)
+            thermal = np.full(
+                (new_height, new_width), np.amin(sub_thermal), dtype=np.float32
+            )
+            thermal[
+                top : cropped_region.height + top, left : cropped_region.width + left
+            ] = sub_thermal
+
+        if self.filtered is not None:
+            sub_filtered = cropped_region.subimage(self.filtered)
+            filtered = np.full(
+                (new_height, new_width), np.amin(sub_filtered), dtype=np.float32
+            )
+            filtered[
+                top : cropped_region.height + top, left : cropped_region.width + left
+            ] = sub_filtered
+
+        if self.mask is not None:
+            sub_mask = cropped_region.subimage(self.mask)
+            mask = np.zeros((new_height, new_width), dtype=sub_mask.dtype)
+            mask[
+                top : cropped_region.height + top, left : cropped_region.width + left
+            ] = sub_mask
+
+        return Frame(
+            thermal,
+            filtered,
+            self.frame_number,
+            mask=mask,
+            ffc_affected=self.ffc_affected,
+            region=cropped_region,
+        )
+
+    def crop_and_copy_as_float(
+        self, region, only_thermal=False, out=None, make_copy=False
+    ):
+        thermal = None
+        filtered = None
+        mask = None
+        if self.thermal is not None:
+            thermal = np.float32(region.subimage(self.thermal))
+            if make_copy and thermal.base is None:
+                thermal = thermal.copy()
         if not only_thermal:
             if self.filtered is not None:
-                filtered = region.subimage(self.filtered)
+                filtered = np.float32(region.subimage(self.filtered))
+                if make_copy and filtered.base is None:
+                    filtered = filtered.copy()
             if self.mask is not None:
-                mask = region.subimage(self.mask)
-            if self.flow is not None:
-                flow = region.subimage(self.flow)
+                mask = np.float32(region.subimage(self.mask))
+                if make_copy and mask.base is None:
+                    mask = mask.copy()
         if out:
             out.thermal = thermal
             out.filtered = filtered
             out.mask = mask
-            out.flow = flow
             out.region = region
             frame = out
         else:
@@ -232,11 +204,50 @@ class Frame:
                 filtered,
                 self.frame_number,
                 mask=mask,
-                flow_clipped=self.flow_clipped,
                 ffc_affected=self.ffc_affected,
                 region=region,
             )
-            frame.flow = flow
+        return frame
+
+    def crop_by_region(self, region, only_thermal=False, out=None, make_copy=False):
+        thermal = None
+        filtered = None
+        mask = None
+        thermal_norm = None
+        if self.thermal is not None:
+            thermal = region.subimage(self.thermal)
+            if make_copy:
+                thermal = thermal.copy()
+        if not only_thermal:
+            if self.filtered is not None:
+                filtered = region.subimage(self.filtered)
+                if make_copy:
+                    filtered = filtered.copy()
+            if self.mask is not None:
+                mask = region.subimage(self.mask)
+                if make_copy:
+                    mask = mask.copy()
+            if self.thermal_norm is not None:
+                thermal_norm = region.subimage(self.thermal_norm)
+                if make_copy:
+                    thermal_norm = thermal_norm.copy()
+        if out:
+            out.thermal = thermal
+            out.filtered = filtered
+            out.mask = mask
+            out.thermal_norm = thermal_norm
+            out.region = region
+            frame = out
+        else:
+            frame = Frame(
+                thermal,
+                filtered,
+                self.frame_number,
+                mask=mask,
+                thermal_norm=thermal_norm,
+                ffc_affected=self.ffc_affected,
+                region=region,
+            )
         return frame
 
     def resize_with_aspect(
@@ -246,8 +257,9 @@ class Frame:
         keep_edge=False,
         edge_offset=(0, 0, 0, 0),
         original_region=None,
+        interpolation=opencvconstants.INTER_NEAREST,
+        no_padding=False,
     ):
-        import cv2
         from ml_tools.imageprocessing import resize_and_pad
 
         if self.thermal is not None:
@@ -259,6 +271,18 @@ class Frame:
                 keep_edge=keep_edge,
                 edge_offset=edge_offset,
                 original_region=original_region,
+                interpolation=interpolation,
+            )
+        if self.thermal_norm is not None:
+            self.thermal_norm = resize_and_pad(
+                self.thermal_norm,
+                dim,
+                self.region,
+                crop_rectangle,
+                keep_edge=keep_edge,
+                edge_offset=edge_offset,
+                original_region=original_region,
+                interpolation=interpolation,
             )
         if self.mask is not None:
             self.mask = resize_and_pad(
@@ -267,8 +291,8 @@ class Frame:
                 self.region,
                 crop_rectangle,
                 keep_edge=keep_edge,
-                pad=0,
-                interpolation=cv2.INTER_NEAREST,
+                original_region=original_region,
+                interpolation=interpolation,
                 edge_offset=edge_offset,
             )
         if self.filtered is not None:
@@ -278,45 +302,34 @@ class Frame:
                 self.region,
                 crop_rectangle,
                 keep_edge=keep_edge,
-                pad=0,
                 edge_offset=edge_offset,
                 original_region=original_region,
+                interpolation=interpolation,
             )
-        if self.flow is not None:
-            flow_h = resize_and_pad(
-                self.flow[:, :, 0],
-                dim,
-                self.region,
-                crop_rectangle,
-                keep_edge=keep_edge,
-                pad=0,
-                edge_offset=edge_offset,
-            )
-            flow_v = resize_and_pad(
-                self.flow[:, :, 1],
-                dim,
-                self.region,
-                crop_rectangle,
-                keep_edge=keep_edge,
-                pad=0,
-                edge_offset=edge_offset,
-            )
-            self.flow = np.stack((flow_h, flow_v), axis=2)
 
-    def resize(self, dim):
-        self.thermal = resize_cv(self.thermal, dim)
-        self.mask = resize_cv(self.mask, dim, interpolation=cv2.INTER_NEAREST)
-        if self.flow is not None:
-            self.flow = resize_cv(self.flow, dim)
-        self.filtered = resize_cv(self.filtered, dim)
+    def resize(self, dim, interpolation=opencvconstants.INTER_NEAREST):
+        from ml_tools.imageprocessing import resize_cv
+
+        self.thermal = resize_cv(self.thermal, dim, interpolation=interpolation)
+        self.filtered = resize_cv(self.filtered, dim, interpolation=interpolation)
+        self.thermal_norm = resize_cv(
+            self.thermal_norm, dim, interpolation=interpolation
+        )
+        if self.mask is not None:
+            self.mask = resize_cv(self.mask, dim, interpolation=interpolation)
+
+    def clip(self, min=0, max=255):
+        np.clip(self.thermal, min, max, out=self.thermal)
+        np.clip(self.filtered, min, max, out=self.filtered)
+        np.clip(self.thermal_norm, min, max, out=self.thermal_norm)
 
     def rotate(self, degrees):
+        from ml_tools.imageprocessing import rotate
+
         if self.thermal is not None:
             self.thermal = rotate(self.thermal, degrees)
         if self.mask is not None:
             self.mask = rotate(self.mask, degrees)
-        if self.flow is not None:
-            self.flow = rotate(self.flow, degrees)
         if self.filtered is not None:
             self.filtered = rotate(self.filtered, degrees)
 
@@ -325,8 +338,6 @@ class Frame:
             self.thermal = np.float32(self.thermal)
         if self.mask is not None:
             self.mask = np.float32(self.mask)
-        if self.flow is not None:
-            self.flow = np.float32(self.flow)
         if self.filtered is not None:
             self.filtered = np.float32(self.filtered)
 
@@ -335,9 +346,10 @@ class Frame:
             None if self.thermal is None else self.thermal.copy(),
             None if self.filtered is None else self.filtered.copy(),
             self.frame_number,
+            thermal_norm=(
+                None if self.thermal_norm is None else self.thermal_norm.copy()
+            ),
             mask=None if self.mask is None else self.mask.copy(),
-            flow=None if self.flow is None else self.flow.copy(),
-            flow_clipped=self.flow_clipped,
             ffc_affected=self.ffc_affected,
             region=None if self.region is None else self.region.copy(),
         )
@@ -347,23 +359,114 @@ class Frame:
             self.thermal = np.flip(self.thermal, axis=1)
         if self.mask is not None:
             self.mask = np.flip(self.mask, axis=1)
-        if self.flow is not None:
-            self.flow = np.flip(self.flow, axis=1)
         if self.filtered is not None:
             self.filtered = np.flip(self.filtered, axis=1)
 
     @property
-    def flow_h(self):
-        if self.flow is None:
-            return None
-        return self.flow[:, :, 0]
-
-    @property
-    def flow_v(self):
-        if self.flow is None:
-            return None
-        return self.flow[:, :, 1]
-
-    @property
     def shape(self):
         return self.thermal.shape
+
+
+def repeat_with_thresh(border, filtered_thresh):
+    """For each position in border, find the index of the pixel that should be
+    repeated into it, skipping over runs where the value is over filtered_thresh
+    (possible animal on border). -1 means no valid pixel was found to use."""
+    indices = np.full(len(border), -1, dtype=int)
+    prev_idx = None
+    fill_from = None
+    # logging.info("Repeat with thresh %s border %s",filtered_thresh, border)
+    for i, val in enumerate(border):
+        if val > filtered_thresh or val == -1:
+            if prev_idx is not None:
+                indices[i] = prev_idx
+            elif fill_from is None:
+                fill_from = i
+        else:
+            if fill_from is not None:
+                indices[fill_from:i] = i
+                # logging.info("Filling border %s with values %s",fill_from,val)
+
+                fill_from = None
+            indices[i] = i
+            prev_idx = i
+            # logging.info("Filling border %s with %s",i,val)
+    return indices
+
+
+def gather_border(values, indices, default_val):
+    """Builds a border using indices (as returned by repeat_with_thresh),
+    falling back to default_val wherever indices is -1."""
+    border_fill = np.full_like(values, default_val)
+    valid = indices >= 0
+    border_fill[valid] = values[indices[valid]]
+    return border_fill
+
+
+def repeat_border(frame, new_height, new_width, top, left, filtered_thresh, pad_values):
+    """Pad channels to (new_height, new_width), placing existing content at (top, left)."""
+    h, w = frame.thermal.shape[:2]
+
+    padded_thermal = np.full((new_height, new_width), -1, dtype=frame.thermal.dtype)
+    padded_thermal[top : top + h, left : left + w] = frame.thermal
+
+    padded_thermal_norm = np.full(
+        (new_height, new_width), -1, dtype=frame.thermal_norm.dtype
+    )
+    padded_thermal_norm[top : top + h, left : left + w] = frame.thermal_norm
+
+    padded_filtered = np.full((new_height, new_width), -1, dtype=frame.filtered.dtype)
+    padded_filtered[top : top + h, left : left + w] = frame.filtered
+
+    channels = (
+        (padded_thermal, pad_values.thermal),
+        (padded_thermal_norm, pad_values.thermal_norm),
+        (padded_filtered, pad_values.filtered),
+    )
+    # pad each side with its repeated border instead of the flat pad value, unless
+    # the border itself contains an animal there. Which pixel index to repeat is
+    # always decided from the filtered channel; thermal and thermal_norm reuse
+    # those same indices against their own values. Processed left, top, right,
+    # bottom in that order so each side's full-length fill picks up the previous
+    # sides' fills already sitting in its corners.
+    pad_left = left > 0
+    if pad_left:
+        indices = repeat_with_thresh(padded_filtered[:, left], filtered_thresh)
+        for padded, default_val in channels:
+            border_fill = gather_border(padded[:, left], indices, default_val)
+            padded[:, :left] = border_fill[:, np.newaxis]
+
+    pad_top = top > 0
+    if pad_top:
+        indices = repeat_with_thresh(padded_filtered[top, :], filtered_thresh)
+        for padded, default_val in channels:
+            border_fill = gather_border(padded[top, :], indices, default_val)
+            padded[:top, :] = border_fill[np.newaxis, :]
+
+    pad_right = left + w < new_width
+    if pad_right:
+        indices = repeat_with_thresh(padded_filtered[:, left + w - 1], filtered_thresh)
+        for padded, default_val in channels:
+            border_fill = gather_border(padded[:, left + w - 1], indices, default_val)
+            padded[:, left + w :] = border_fill[:, np.newaxis]
+
+    pad_bottom = top + h < new_height
+    if pad_bottom:
+        indices = repeat_with_thresh(padded_filtered[top + h - 1, :], filtered_thresh)
+        for padded, default_val in channels:
+            border_fill = gather_border(padded[top + h - 1, :], indices, default_val)
+            padded[top + h :, :] = border_fill[np.newaxis, :]
+
+    frame.thermal = padded_thermal
+    frame.thermal_norm = padded_thermal_norm
+    frame.filtered = padded_filtered
+
+    # if np.any(frame.filtered==0):
+    #     import cv2
+    #     image = np.uint8(frame.filtered *255)
+    #     cv2.imshow("f",image)
+    #     cv2.waitKey()
+    assert np.all(frame.thermal > -1)
+    assert np.all(frame.filtered > -1)
+    assert np.all(frame.thermal_norm > -1)
+    assert np.amax(frame.filtered) < 1.1, "filtered is normalized 0-1"
+    assert filtered_thresh < 1, " thresh should be less than 1 too"

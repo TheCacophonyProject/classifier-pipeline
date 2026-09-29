@@ -58,7 +58,9 @@ class Dataset:
         self.samples_by_bin = {}
         # self.samples = []
         self.samples_by_id = {}
+        self.samples_by_clip_id = {}
         self.clips = []
+        self.tracks = []
 
         # list of label names
         self.labels = labels
@@ -66,6 +68,8 @@ class Dataset:
         self.enable_augmentation = False
         self.label_caps = {}
         self.use_segments = True
+        self.segment_types = [SegmentType.RANDOM_SECTIONS]
+
         if config:
             self.tag_precedence = config.build.tag_precedence
             self.type = config.train.type
@@ -86,10 +90,10 @@ class Dataset:
             self.excluded_tags = config.build.excluded_tags
             self.min_frame_mass = config.build.min_frame_mass
             self.filter_by_lq = config.build.filter_by_lq
-            self.segment_types = [SegmentType.ALL_RANDOM_MASKED]
             self.max_segments = config.build.max_segments
             self.country = config.build.country
             self.max_frames = config.build.max_frames
+            self.segment_min_frames = config.build.segment_min_frames
         else:
             self.country = "NZ"
             self.tag_precedence = BuildConfig.DEFAULT_GROUPS
@@ -102,8 +106,8 @@ class Dataset:
             # number of seconds segments are spaced apart
             self.segment_spacing = 1
             self.segment_min_avg_mass = 10
+            self.segment_min_frames = 25 // 4
             self.min_frame_mass = 16
-            self.segment_types = [SegmentType.ALL_RANDOM_MASKED]
             self.max_frames = 75
         self.country_rectangle = BuildConfig.COUNTRY_LOCATIONS.get(self.country)
         logging.info(
@@ -126,8 +130,7 @@ class Dataset:
             "bad_track_json": 0,
         }
         self.lbl_p = None
-        self.numpy_data = None
-
+        self.source_files = set()
         self.skip_ffc = True
 
     @property
@@ -178,10 +181,9 @@ class Dataset:
         samples_count = 0
         samples = self.samples_by_label.get(label, [])
         tracks = len(set([sample.track_id for sample in samples]))
-        weight = self.get_label_weight(label)
         bins = len(set([sample.bin_id for sample in samples]))
         samples_count = len(samples)
-        return samples_count, tracks, bins, weight
+        return samples_count, tracks, bins
 
     def load_clips(
         self,
@@ -190,6 +192,8 @@ class Dataset:
         after_date=None,
         label=None,
         dont_filter_segment=False,
+        num_processes=None,
+        seed=None,
     ):
         """
         Loads track headers from track database with optional filter
@@ -199,7 +203,7 @@ class Dataset:
         counter = 0
         logging.info("Loading clips")
         clips = list(self.dataset_dir.glob(f"**/*{self.ext}"))
-
+        clips.sort()
         load_func = partial(
             load_clip_multi,
             tag_precedence=self.tag_precedence,
@@ -219,15 +223,30 @@ class Dataset:
             max_frame_mass=self.max_frame_mass,
             filter_by_lq=self.filter_by_lq,
             is_ir=self.type == "IR",
+            seed=seed,
+            min_frames=self.segment_min_frames,
         )
         sample_id = 1
-        with Pool(processes=8) as pool:
+        import psutil
+
+        if num_processes is None:
+            num_processes = psutil.cpu_count(logical=False)
+
+        with Pool(processes=num_processes) as pool:
             for clip_header, filtered_stats in pool.imap_unordered(
                 load_func, clips, chunksize=8
             ):
                 self.merge_filtered(filtered_stats)
 
                 if clip_header is None:
+                    continue
+                if clip_header.clip_id in self.samples_by_clip_id:
+                    logging.warning(
+                        "Duplicate clip_id %s from %s, already loaded from %s - skipping",
+                        clip_header.clip_id,
+                        clip_header.source_file,
+                        self.samples_by_clip_id[clip_header.clip_id][0].source_file,
+                    )
                     continue
                 self.clips.append(clip_header)
 
@@ -238,6 +257,10 @@ class Dataset:
                         self.add_clip_sample_mappings(sample)
                         if track_header.label not in self.labels:
                             self.labels.append(track_header.label)
+                    self.tracks.append(track_header)
+                clip_samples = clip_header.get_samples()
+                if len(clip_samples) > 0:
+                    self.samples_by_clip_id[clip_header.clip_id] = clip_samples
 
     def merge_filtered(self, filtered_stats):
         for reason, count in filtered_stats.items():
@@ -248,7 +271,7 @@ class Dataset:
                 self.filtered_stats.setdefault(reason, 0)
                 self.filtered_stats[reason] += count
 
-    def load_clip(self, db_clip, dont_filter_segment=False):
+    def load_clip(self, db_clip, dont_filter_segment=False, seed=None):
         if self.raw:
             db = RawDatabase(db_clip)
         else:
@@ -283,6 +306,12 @@ class Dataset:
                 segment_frame_spacing = int(
                     round(self.segment_spacing * clip_header.frames_per_second)
                 )
+                rng = np.random.default_rng(
+                    None
+                    if seed is None
+                    else seed + track_header.clip_id + track_header.track_id
+                )
+
                 segment_width = self.segment_length
                 track_header.get_segments(
                     segment_width,
@@ -293,6 +322,8 @@ class Dataset:
                     dont_filter=dont_filter_segment,
                     skip_ffc=self.skip_ffc,
                     ffc_frames=clip_header.ffc_frames,
+                    rng=rng,
+                    ceil_num_windows=False,
                 )
                 self.filtered_stats["segment_mass"] += track_header.filtered_stats[
                     "segment_mass"
@@ -344,6 +375,7 @@ class Dataset:
         return samples_by_label
 
     def add_clip_sample_mappings(self, sample):
+        self.source_files.add(sample.source_file)
         self.samples_by_id[sample.id] = sample
         # self.samples[sample.id] = sample
 
@@ -359,16 +391,20 @@ class Dataset:
         # (sample)
         return True
 
-    # move this sample to have a bin_id based of clip_id rather than station_id (default)
+    # move this sample, and every other sample from the same clip (regardless
+    # of label), to have a bin_id based of clip_id rather than station_id
+    # (default). Otherwise samples from the same clip can end up in different
+    # bins and get split across train/validation/test.
     def split_by_clip(self, sample):
-        try:
-            del self.samples_by_bin[sample.bin_id][sample.id]
-        except:
-            pass
+        for s in self.samples_by_clip_id.get(sample.clip_id, []):
+            try:
+                del self.samples_by_bin[s.bin_id][s.id]
+            except:
+                pass
 
-        sample._bin_id = sample.clip_id
-        bins = self.samples_by_bin.setdefault(sample.bin_id, {})
-        bins[sample.id] = sample
+            s._bin_id = s.clip_id
+            bins = self.samples_by_bin.setdefault(s.bin_id, {})
+            bins[s.id] = s
 
     def epoch_samples(
         self, cap_samples=None, replace=True, random=True, cap_at=None, label_cap=None
@@ -520,11 +556,6 @@ class Dataset:
     #             mapped_cdf[key] = [x / total for x in cdf]
     #         self.sample_label_cdf = mapped_cdf
 
-    def get_label_weight(self, label):
-        """Returns the total weight for all segments of given label."""
-        samples = self.samples_by_label.get(label)
-        return sum(sample.weight for sample in samples) if samples else 0
-
     def regroup(
         self,
         groups,
@@ -557,6 +588,12 @@ class Dataset:
 
     def has_data(self):
         return len(self.samples_by_id) > 0
+
+    def clear(self):
+        self.tracks.clear()
+        self.samples_by_id.clear()
+        self.samples_by_bin.clear()
+        self.clips.clear()
 
     def remove_sample_by_id(self, id, bin_id):
         del self.samples_by_id[id]
@@ -701,12 +738,20 @@ def load_clip_multi(
     max_frame_mass=None,
     filter_by_lq=False,
     is_ir=False,
+    seed=None,
+    min_frames=0,
 ):
     filtered_stats = {}
     if raw:
         db = RawDatabase(str(db_clip))
     else:
         db = TrackDatabase(str(db_clip))
+
+    db.check_model()
+    if db.model != "lepton3.5":
+        # logging.warn("Ignoring lepton3 data")
+        filtered_stats["model"] = 1
+        return None, filtered_stats
     try:
         clip_header = db.get_clip_tracks(tag_precedence)
     except:
@@ -738,6 +783,12 @@ def load_clip_multi(
                 round(segment_spacing * clip_header.frames_per_second)
             )
             segment_width = segment_length
+            rng = np.random.default_rng(
+                None
+                if seed is None
+                else seed + track_header.clip_id + track_header.track_id
+            )
+
             track_header.get_segments(
                 segment_width,
                 segment_frame_spacing,
@@ -747,6 +798,9 @@ def load_clip_multi(
                 dont_filter=dont_filter_segment,
                 skip_ffc=skip_ffc,
                 ffc_frames=clip_header.ffc_frames,
+                rng=rng,
+                min_frames=min_frames,
+                ceil_num_windows=False,
             )
             filtered_stats.setdefault("segment_mass", 0)
             filtered_stats["segment_mass"] += track_header.filtered_stats[

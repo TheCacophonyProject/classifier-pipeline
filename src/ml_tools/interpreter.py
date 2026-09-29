@@ -5,7 +5,6 @@ import logging
 import numpy as np
 from ml_tools.hyperparams import HyperParams
 from pathlib import Path
-import requests
 
 
 class Interpreter(ABC):
@@ -16,7 +15,17 @@ class Interpreter(ABC):
         self.run_over_network = run_over_network
         self.port = 8123
         self.id = None
-        self.seed = None
+        self._seed = None
+        self.rng = np.random.default_rng(seed=self.seed)
+
+    @property
+    def seed(self):
+        return self._seed
+
+    @seed.setter
+    def seed(self, value):
+        self._seed = value
+        self.rng = np.random.default_rng(seed=value)
 
     def load_json(self, filename):
         """Loads model and parameters from file."""
@@ -35,8 +44,257 @@ class Interpreter(ABC):
 
         self.mapped_labels = metadata.get("mapped_labels")
         self.label_probabilities = metadata.get("label_probabilities")
-        self.thresholds = metadata.get("thresholds")
+        self.thresholds_per_label = metadata.get("thresholds")
         self.preprocess_fn = self.get_preprocess_fn()
+        self.preprocess_v2 = metadata.get("v2_preprocess", False)
+        self.multi_input = metadata.get("multi_input", False)
+        self.scale_thresholds = metadata.get("scale_thresholds", False)
+        self.enlarge = metadata.get("enlarge", True)
+        from ml_tools.interpreter import get_mappings
+
+        parent_mappings = {}
+        mappings = get_mappings()
+        for l in self.labels:
+            path = mappings.get(l)
+            if path is None:
+                parent_mappings[l] = ("all", 0)
+            else:
+                parents = path.split(".")
+                if len(parents) == 1:
+                    parent_mappings[l] = l
+                    continue
+                # all.mammal.bird  makes mappings for parents up to alld
+                depth = 0
+                prev_parent = parents[0]
+
+                for parent in parents[1:]:
+                    # print("Depth ",depth,len(parents))
+                    if depth == len(parents) - 2:
+                        # print("Final depth ", parent,l)
+                        # choose label as it can change
+                        parent_mappings[l] = (prev_parent, depth)
+                    else:
+                        parent_mappings[parent] = (prev_parent, depth)
+                    prev_parent = parent
+                    depth += 1
+
+        self.parent_mappings = parent_mappings
+
+    def load_training_meta(self, base_dir):
+        from ml_tools.thermalwriter import MeanData
+
+        file = f"{base_dir}/training-meta.json"
+        logging.info("loading meta %s", file)
+        with open(file, "r") as f:
+            meta = json.load(f)
+        self.labels = meta.get("labels", [])
+        self.data_type = meta.get("type", "thermal")
+        self.dataset_counts = meta.get("counts")
+        self.ds_by_label = meta.get("by_label", True)
+        self.excluded_labels = meta.get("excluded_labels")
+        self.remapped_labels = meta.get("remapped_labels")
+        self.params.set_use_segments(
+            meta.get("config", {}).get("build", {}).get("use_segments", True)
+        )
+        pads = meta.get("background_average")
+        if pads is None:
+            self.pads = MeanData()
+        else:
+            self.pads = MeanData(
+                thermal=pads["thermal"],
+                filtered=pads["filtered"],
+                thermal_norm=pads["thermal_norm"],
+                frames_used=1,
+            )
+            self.pads = self.pads * 255
+        logging.info("Pads are %s", self.pads)
+
+    def confusion_tracks(
+        self, dataset, filename, threshold=0.8, thresholds_per_label=None
+    ):
+        from sklearn.metrics import confusion_matrix
+        import matplotlib.pyplot as plt
+
+        import tensorflow as tf
+        from classify.trackprediction import TrackPrediction
+
+        logging.info(
+            "Calculating confusion with threshold %s saving to %s", threshold, filename
+        )
+        true_categories = []
+        track_ids = []
+        for y in dataset.map(
+            lambda _, y: y,
+            num_parallel_calls=tf.data.AUTOTUNE,
+        ):
+            true_categories.extend(y[0].numpy())
+            # dataset_y[0]
+            track_ids.extend(y[1].numpy())
+        if len(true_categories) > 1:
+            if self.params.multi_label:
+                # multi = []
+                # for y in true_categories:
+                # multi.append(tf.where(y).numpy().ravel())
+                # print(y, tf.where(y))
+                # true_categories = np.int64(true_categories)
+                pass
+            else:
+                true_categories = np.int64(tf.argmax(true_categories, axis=1))
+        if LiteInterpreter.TYPE == "TFLite":
+            y_pred = []
+            for x in dataset.map(
+                lambda x, _: x,
+                num_parallel_calls=tf.data.AUTOTUNE,
+            ):
+                res = self.predict(x)
+                y_pred.extend(res)
+            y_pred = np.array(y_pred)
+        else:
+            y_pred = self.model.predict(
+                dataset.map(
+                    lambda x, _: x,
+                    num_parallel_calls=tf.data.AUTOTUNE,
+                )
+            )
+        pred_per_track = {}
+        # if self.params.multi_label:
+        # predicted_categori/es = []
+        # for p in y_pred:
+        # predicted_categories.append(tf.where(p >= 0.8).numpy().ravel())
+        # predicted_categories = np.int64(predicted_categories)
+
+        for y, track_id, p in zip(true_categories, track_ids, y_pred):
+            # if self.params.multi_label:
+            #     y_max = np.argmax(y)
+            # else:
+            #     y_max = y
+            track_pred = pred_per_track.setdefault(
+                track_id, (np.nonzero(y)[0], TrackPrediction(track_id, self.labels))
+            )
+            track_pred[1].classified_frame(None, p, 0)
+        flat_y = []
+        results = []
+        confidences = []
+        raw_class_confidences = []
+        labels = self.labels.copy()
+        labels.append("None")
+        totals_row = np.zeros(len(labels))
+
+        for y_true, pred in pred_per_track.values():
+            preds = np.array([p.prediction for p in pred.predictions])
+            # if we do multi label we may of multiple y_true and preds
+            # otherwise this will calculate the same as before
+            no_smoothing = np.mean(preds, axis=0)
+            preds = np.where(no_smoothing >= 0.5)[0]
+            if len(preds) == 0:
+                preds = [np.argmax(no_smoothing)]
+            if len(y_true) > 1:
+                ll = []
+                for y in y_true:
+                    ll.append(labels[y])
+                logging.info("Have multiple labels %s", ll)
+            covered_preds = set()
+            for y in y_true:
+                totals_row[y] += 1
+                if y in preds:
+                    idx = y
+                    covered_preds.add(idx)
+                    results.append(y)
+                    confidences.append(no_smoothing[y])
+                    raw_class_confidences.append(no_smoothing)
+                    flat_y.append(y)
+
+                    if len(y_true) > 1:
+                        logging.info(
+                            "Pred %s for %s confs %s",
+                            labels[idx],
+                            labels[y],
+                            np.round(100 * no_smoothing),
+                        )
+
+                else:
+                    for idx in preds:
+                        covered_preds.add(idx)
+                        results.append(idx)
+                        confidences.append(no_smoothing[idx])
+                        flat_y.append(y)
+                        raw_class_confidences.append(no_smoothing)
+                        if len(y_true) > 1:
+                            logging.info(
+                                "Wrong Pred %s for %s confs %s",
+                                labels[idx],
+                                labels[y],
+                                np.round(100 * no_smoothing),
+                            )
+
+            # predicted labels with no matching true label (false positives
+            # that the loop above never touched, e.g. y_true=[0], preds=[0,3])
+            nothing_idx = len(labels) - 1
+            for idx in preds:
+                if idx not in covered_preds:
+                    results.append(idx)
+                    confidences.append(no_smoothing[idx])
+                    flat_y.append(nothing_idx)
+                    raw_class_confidences.append(no_smoothing)
+                    logging.info(
+                        "Extra Pred %s with no true label confs %s",
+                        labels[idx],
+                        np.round(100 * no_smoothing),
+                    )
+
+            assert len(results) == len(flat_y)
+        true_categories = np.int64(flat_y)
+        # else:
+        #     predicted_categories = np.int64(tf.argmax(y_pred, axis=1))
+
+        results = np.int64(results)
+        confidences = np.array(confidences)
+
+        # raw_preds_i = np.uint8(raw_preds_i)
+        raw_class_confidences = np.array(raw_class_confidences)
+        npy_file = filename.parent / f"{filename.stem}-raw.npy"
+        logging.info("Saving %s", npy_file)
+        with npy_file.open("wb") as f:
+            np.save(f, true_categories)
+            np.save(f, results)
+            np.save(f, raw_class_confidences)
+            np.save(f, len(pred_per_track))
+        if thresholds_per_label is not None:
+            thresholds_per_label = np.array(thresholds_per_label)
+            thresholds_per_label[thresholds_per_label < 0.5] = 0.5
+
+            preds = results.copy()
+            for i, lbl_thresh in enumerate(thresholds_per_label):
+                pred_mask = preds == i
+                # set these to None
+                conf_mask = confidences < lbl_thresh
+                preds[pred_mask & conf_mask] = len(labels) - 1
+            cm = confusion_matrix(true_categories, preds, labels=np.arange(len(labels)))
+            # Log the confusion matrix as an image summary.
+            figure = plot_confusion_matrix(
+                cm, class_names=labels, totals_row=totals_row
+            )
+            fscore_file = filename.parent / f"{filename.stem}-fscore"
+            plt.savefig(fscore_file.with_suffix(".png"), format="png")
+            np.savez(
+                fscore_file.with_suffix(".npz"),
+                cm=np.vstack((cm, totals_row)),
+                labels=labels,
+            )
+
+        preds = results.copy()
+
+        # set these to None
+        preds[confidences < threshold] = len(labels) - 1
+        cm = confusion_matrix(true_categories, preds, labels=np.arange(len(labels)))
+
+        # Log the confusion matrix as an image summary.
+        figure = plot_confusion_matrix(cm, class_names=labels, totals_row=totals_row)
+        out_file = filename.parent / f"{filename.stem}-{round(100*threshold)}%"
+        plt.savefig(out_file.with_suffix(".png"), format="png")
+        np.savez(
+            out_file.with_suffix(".npz"), cm=np.vstack((cm, totals_row)), labels=labels
+        )
 
     @abstractmethod
     def shape(self):
@@ -49,6 +307,8 @@ class Interpreter(ABC):
         ...
 
     def predict_over_network(self, data):
+        import requests
+
         headers = {"content-type": "application/octet-stream"}
         response = requests.post(
             f"http://127.0.0.1:{self.port}/predict",
@@ -98,11 +358,33 @@ class Interpreter(ABC):
         return None
 
     # use when predictin as tracks are being tracked i.e not finished yet
-    def predict_recent_frames(self, clip, track, **args):
+    def preprocess_track(self, clip, track, **args):
         samples = self.frames_for_prediction(clip, track, **args)
+        min_frames_for_prediction = args.get("min_frames_for_prediction", None)
+        if (
+            min_frames_for_prediction is not None
+            and len(samples) == 1
+            and len(samples[0].frame_indices) < min_frames_for_prediction
+        ):
+            logging.info(
+                "Not enough frames for a prediction have %s required %s",
+                len(samples[0].frame_indices),
+                min_frames_for_prediction,
+            )
+
+            return None
+
         frames, preprocessed, mass = self.preprocess(clip, track, samples, **args)
         if preprocessed is None or len(preprocessed) == 0:
             return None
+        return frames, preprocessed, mass
+
+    # use when predictin as tracks are being tracked i.e not finished yet
+    def predict_recent_frames(self, clip, track, **args):
+        preprocessed_result = self.preprocess_track(clip, track, **args)
+        if preprocessed_result is None:
+            return None
+        frames, preprocessed, mass = preprocessed_result
         try:
             prediction = self.predict(preprocessed)
         except:
@@ -116,14 +398,24 @@ class Interpreter(ABC):
         # this might be a little slower as it checks some massess etc
         # but keeps it the same for all ways of classifying
         if frames_per_classify > 1:
-            frames, preprocessed, masses = self.preprocess_segments(
-                clip,
-                track,
-                samples,
-                predict_from_last=args.get(
-                    "predict_from_last"
-                ),  # only used fo mvm model, needs to be changed to use samples
-            )
+            if self.preprocess_v2:
+                frames, preprocessed, masses = self.preprocess_segments_v2(
+                    clip,
+                    track,
+                    samples,
+                    predict_from_last=args.get(
+                        "predict_from_last"
+                    ),  # only used fo mvm model, needs to be changed to use samples
+                )
+            else:
+                frames, preprocessed, masses = self.preprocess_segments(
+                    clip,
+                    track,
+                    samples,
+                    predict_from_last=args.get(
+                        "predict_from_last"
+                    ),  # only used fo mvm model, needs to be changed to use samples
+                )
         else:
             frames, preprocessed, masses = self.preprocess_frames(
                 clip,
@@ -141,10 +433,10 @@ class Interpreter(ABC):
             min_segments=min_segments,
         )
         if output is None:
-            logging.info("Skipping track %s", track.get_id())
+            logging.info("Skipping track %s", track.id)
             return None
         track_pred = self.track_prediction_from_raw(
-            track.get_id(), prediction_frames, output, masses
+            track.id, prediction_frames, output, masses
         )
         track_pred.classify_time = time.time() - start
 
@@ -154,21 +446,25 @@ class Interpreter(ABC):
         from classify.trackprediction import TrackPrediction
 
         track_prediction = TrackPrediction(
-            track_id, self.labels, smooth_preds=self.params.smooth_predictions
+            track_id,
+            self.labels,
+            multi_label=self.params.multi_label,
+            parent_mappings=self.parent_mappings,
+            scale_thresholds=self.scale_thresholds,
+            thresholds_per_label=self.thresholds_per_label,
         )
-
         track_prediction.classified_track(
             output,
             prediction_frames,
             masses,
         )
-        if (
-            len(prediction_frames) == 1
-            and len(set(prediction_frames[0])) < self.params.square_width**2 / 4
-        ):
-            # if we don't have many frames to get a good prediction, lets assume only false-positive is a good prediction and filter the rest to a maximum of 0.5
-            if track_prediction.predicted_tag() != "false-positive":
-                track_prediction.cap_confidences(0.5)
+        # if (
+        #     len(prediction_frames) == 1
+        #     and len(set(prediction_frames[0])) < self.params.square_width**2 / 4
+        # ):
+        # if we don't have many frames to get a good prediction, lets assume only false-positive is a good prediction and filter the rest to a maximum of 0.5
+        # if track_prediction.predicted_tags() != "false-positive":
+        #     track_prediction.cap_confidences(0.5)
         return track_prediction
 
     def predict_track(self, clip, track, **args):
@@ -184,12 +480,12 @@ class Interpreter(ABC):
         max_predictions = args.get("num_predictions")
         if frames_per_classify > 1:
             predict_from_last = args.get("predict_from_last", None)
-            segment_frames = args.get("segment_frames", None)
             dont_filter = args.get("dont_filter", False)
 
             # this might be a little slower as it checks some massess etc
             # but keeps it the same for all ways of classifying
-            if predict_from_last is not None and segment_frames is None:
+            available_frames = None
+            if predict_from_last is not None:
                 available_frames = (
                     min(len(track.bounds_history), clip.frames_kept())
                     if clip.frames_kept() is not None
@@ -202,47 +498,34 @@ class Interpreter(ABC):
                     available_frames,
                     len(track.bounds_history),
                 )
-                valid_regions = 0
-                if available_frames > predict_from_last:
-                    # want to get rid of any blank frames
+            from ml_tools.datasetstructures import get_segments
 
-                    target_frames = predict_from_last
-                    predict_from_last = 0
-                    for i, r in enumerate(
-                        reversed(track.bounds_history[-available_frames:])
-                    ):
-                        logging.info(
-                            "Checking regoins in reverse %s", predict_from_last
-                        )
-                        if r.blank:
-                            continue
-                        valid_regions += 1
-                        predict_from_last = i + 1
-                        if valid_regions >= target_frames:
-                            logging.info(
-                                "Valid regions %s bigger than predict from last %s",
-                                valid_regions,
-                                predict_from_last,
-                            )
-                            break
-                logging.debug(
-                    "After checking blanks have predict from last %s from last available frames %s track is of length %s",
-                    predict_from_last,
-                    available_frames,
-                    len(track.bounds_history),
-                )
-            segments = track.get_segments(
-                self.params.square_width**2,
+            if predict_from_last == 0:
+                return []
+            if predict_from_last is not None:
+                regions = np.array(track.bounds_history[-available_frames:])
+                start_frame = regions[0].frame_number
+            else:
+                start_frame = track.start_frame
+                regions = np.array(track.bounds_history)
+
+            segments, _ = get_segments(
+                track.clip_id,
+                track.id,
+                start_frame,
+                segment_frame_spacing=9,
+                segment_width=self.params.square_width**2,
+                regions=regions,
                 ffc_frames=[] if dont_filter else clip.ffc_frames,
                 repeats=1,
-                segment_frames=segment_frames,
+                min_frames=1,
                 segment_types=self.params.segment_types,
                 from_last=predict_from_last,
                 max_segments=max_predictions,
                 dont_filter=dont_filter,
-                filter_by_fp=False,
                 min_segments=args.get("min_segments"),
-                seed=self.seed,
+                rng=self.rng,
+                # min_frames = args.get("min_frames")
             )
             return segments
         else:
@@ -277,13 +560,13 @@ class Interpreter(ABC):
             if frame is None:
                 logging.error(
                     "Clasifying clip %s track %s can't get frame %s",
-                    clip.get_id(),
-                    track.get_id(),
+                    clip.id,
+                    track.id,
                     region.frame_number,
                 )
                 raise Exception(
                     "Clasifying clip {} track {} can't get frame {}".format(
-                        clip.get_id(), track.get_id(), region.frame_number
+                        clip.id, track.id, region.frame_number
                     )
                 )
             logging.debug(
@@ -366,6 +649,64 @@ class Interpreter(ABC):
             filtered_norm_limits = (min_diff, max_diff)
         return thermal_norm_limits, filtered_norm_limits
 
+    def preprocess_segments_v2(self, clip, track, segments, predict_from_last=None):
+        from ml_tools.preprocess import preprocess_frame_v2, preprocess_movement
+
+        track_data = {}
+        masses = []
+        preprocessed = {}
+        for segment in segments:
+            segment_data = []
+            for region in segment.regions:
+
+                if region.frame_number in track_data:
+                    cropped_frame = track_data[region.frame_number]
+                    if cropped_frame is None:
+                        continue
+                else:
+                    frame = clip.get_frame(region.frame_number)
+                    result = preprocess_frame_v2(
+                        frame,
+                        self.params.frame_size,
+                        region,
+                        clip.crop_rectangle,
+                        enlarge=self.enlarge,
+                        new_max=255.0,
+                    )
+                    if result is None:
+                        track_data[region.frame_number] = None
+                        continue
+                    cropped_frame, _, _ = result
+                    track_data[region.frame_number] = cropped_frame
+                segment_data.append(cropped_frame)
+            input_image = preprocess_movement(
+                segment_data,
+                self.params.square_width,
+                self.params.frame_size * 2 if self.enlarge else self.params.frame_size,
+                self.params.channels,
+                self.preprocess_fn,
+                sample=f"Clip-{clip.id}-track-{track.id}",
+                pad_with=0,  # dont repeat frames
+            )
+            if input_image is None:
+                logging.warn("No frames to predict on")
+                continue
+            preprocessed.setdefault("input_image", []).append(input_image)
+
+            if self.multi_input:
+                input_mask = get_frame_mask(segment.frame_indices)
+                preprocessed.setdefault("input_mask", []).append(input_mask)
+            masses.append(segment.mass)
+
+        if len(preprocessed) > 0:
+            if not self.multi_input:
+                preprocessed = np.array(preprocessed["input_image"])
+            else:
+                preprocessed["input_image"] = np.array(preprocessed["input_image"])
+                preprocessed["input_mask"] = np.array(preprocessed["input_mask"])
+
+        return [s.frame_indices for s in segments], preprocessed, masses
+
     def preprocess_segments(self, clip, track, segments, predict_from_last=None):
         from ml_tools.preprocess import preprocess_frame, preprocess_movement
 
@@ -381,13 +722,13 @@ class Interpreter(ABC):
                     if frame is None:
                         logging.error(
                             "Clasifying clip %s track %s can't get frame %s",
-                            clip.get_id(),
-                            track.get_id(),
+                            clip.id,
+                            track.id,
                             region.frame_number,
                         )
                         raise Exception(
                             "Clasifying clip {} track {} can't get frame {}".format(
-                                clip.get_id(), track.get_id(), region.frame_number
+                                clip.id, track.id, region.frame_number
                             )
                         )
                     frame_temp_medians[region.frame_number] = np.median(frame.thermal)
@@ -418,20 +759,20 @@ class Interpreter(ABC):
             if frame is None:
                 logging.error(
                     "Clasifying clip %s track %s can't get frame %s",
-                    clip.get_id(),
-                    track.get_id(),
+                    clip.id,
+                    track.id,
                     region.frame_number,
                 )
                 raise Exception(
                     "Clasifying clip {} track {} can't get frame {}".format(
-                        clip.get_id(), track.get_id(), region.frame_number
+                        clip.id, track.id, region.frame_number
                     )
                 )
             cropped_frame = preprocess_frame(
                 frame,
                 (self.params.frame_size, self.params.frame_size),
                 region,
-                clip.background,
+                None,
                 clip.crop_rectangle,
                 calculate_filtered=False,
                 filtered_norm_limits=filtered_norm_limits,
@@ -462,7 +803,7 @@ class Interpreter(ABC):
                 self.params.frame_size,
                 self.params.channels,
                 self.preprocess_fn,
-                sample=f"{clip.get_id()}-{track.get_id()}",
+                sample=f"Clip-{clip.id}-track-{track.id}",
             )
             if frames is None:
                 logging.warn("No frames to predict on")
@@ -545,7 +886,8 @@ class LiteInterpreter(Interpreter):
 
         self.input = self.interpreter.get_input_details()[0]  # Model has single input.
         self.preprocess_fn = self.get_preprocess_fn()
-        # inc3_preprocess
+        self.in_idx = self.input["index"]
+        self.out_idx = self.output["index"]
 
     def predict(self, input_x):
         if self.run_over_network:
@@ -554,9 +896,9 @@ class LiteInterpreter(Interpreter):
         preds = []
         # only works on input of 1
         for data in input_x:
-            self.interpreter.set_tensor(self.input["index"], data[np.newaxis, :])
+            self.interpreter.set_tensor(self.in_idx, data[np.newaxis, :])
             self.interpreter.invoke()
-            pred = self.interpreter.get_tensor(self.output["index"])
+            pred = self.interpreter.get_tensor(self.out_idx)
             preds.append(pred[0])
         return preds
 
@@ -577,9 +919,7 @@ def get_interpreter_from_path(model_file, run_over_network=False, load_model=Tru
         from ml_tools.kerasmodel import KerasModel
 
         classifier = KerasModel(run_over_network=run_over_network)
-        classifier.init_model(
-            model_file, run_over_network=run_over_network, load_model=load_model
-        )
+        classifier.init_model(model_file, load_model=load_model)
     elif model_file.suffix == ".tflite":
         classifier = LiteInterpreter(
             model_file, run_over_network=run_over_network, load_model=load_model
@@ -627,7 +967,6 @@ def get_interpreter(model, run_over_network=False, load_model=True, seed=None):
     else:
         from ml_tools.kerasmodel import KerasModel
 
-        print("Run over netowrk", run_over_network)
         classifier = KerasModel(run_over_network=run_over_network)
         classifier.init_model(
             model.model_file, weights=model.model_weights, load_model=load_model
@@ -676,3 +1015,107 @@ class ModelMeta(Interpreter):
 
     def shape(self):
         raise "No shape for model meta"
+
+
+def get_frame_mask(indices):
+    """
+    Normalises frame intervals uniformly against a maximum inter-frame distance of 9 frames.
+    """
+    # this comes from the random section logic where frames are selected at intervals of 4.32 frames apart
+    #  allowing for a possible missed chunk  double this
+    MAX_FRAME_DIST = 9
+    indices = np.float32(indices)
+    num_valid = len(indices)
+    frame_delta = indices[1:] - indices[:-1]
+    normalised_delta = np.minimum(frame_delta / MAX_FRAME_DIST, 1.0)
+    # Use -1.0 as a strict geometric flag for empty padding slots
+    mask_flat = np.concatenate([[0.0], normalised_delta, np.full(25 - num_valid, -1.0)])
+
+    mask = mask_flat.reshape(5, 5, 1)
+    return mask
+
+
+label_paths_dl = "https://raw.githubusercontent.com/TheCacophonyProject/cacophony-web/main/api/classifications/label_paths.json"
+
+
+def dl_mappings():
+    import requests
+
+    logging.info("Downloading mappings file from %s ", label_paths_dl)
+    response = requests.get(label_paths_dl)
+    response.raise_for_status()
+
+    mapping_content = response.content.decode()
+    with open("label_paths.json", "w") as f:
+        f.write(mapping_content)
+    return mapping_content
+
+
+def get_mappings():
+    labels_path = Path("label_paths.json")
+    if not labels_path.exists():
+        print("Doesnt exist so dling")
+        label_paths = json.loads(dl_mappings())
+    with open("label_paths.json", "r") as f:
+        label_paths = json.load(f)
+    return label_paths
+
+
+# from tensorflow examples
+def plot_confusion_matrix(cm, class_names, title="Confusion Matrix", totals_row=None):
+    """
+    Returns a matplotlib figure containing the plotted confusion matrix.
+
+    Args:
+      cm (array, shape = [n, n]): a confusion matrix of integer classes
+      class_names (array, shape = [n]): String names of the integer classes
+    """
+    import matplotlib.pyplot as plt
+    import itertools
+
+    plt.clf()
+    figure = plt.figure(figsize=(16, 16))
+    tick_marks = np.arange(len(class_names))
+
+    if totals_row is not None:
+        plt.imshow(
+            np.vstack((cm, totals_row)), interpolation="nearest", cmap=plt.cm.Blues
+        )
+    else:
+        plt.imshow(cm, interpolation="nearest", cmap=plt.cm.Blues)
+
+    plt.title(title)
+    plt.colorbar()
+
+    plt.xticks(tick_marks, class_names, rotation=90)
+    ylabels = []
+    for i, label in enumerate(class_names):
+        ylabel = f"{label} ({np.sum(cm[i])})"
+        ylabels.append(ylabel)
+    if totals_row is not None:
+        tick_marks = np.arange(len(class_names) + 1)
+        ylabels.append("totals")
+    plt.yticks(tick_marks, ylabels)
+
+    # Use white text if squares are dark; otherwise black.
+    counts = cm.copy()
+    threshold = counts.max() / 2.0
+
+    # Normalize the confusion matrix.
+
+    cm = np.around(cm.astype("float") / cm.sum(axis=1)[:, np.newaxis], decimals=2)
+    cm = np.nan_to_num(cm)
+    cm = np.uint8(np.round(cm * 100))
+
+    for i, j in itertools.product(range(cm.shape[0]), range(cm.shape[1])):
+        color = "white" if counts[i, j] > threshold else "black"
+        plt.text(j, i, cm[i, j], horizontalalignment="center", color=color)
+    if totals_row is not None:
+        i = len(cm)
+        for j, count in enumerate(totals_row):
+            color = "white" if count > threshold else "black"
+            plt.text(j, i, count, horizontalalignment="center", color=color)
+    plt.tight_layout()
+    plt.ylabel("True label")
+    plt.xlabel("Predicted label")
+    return figure

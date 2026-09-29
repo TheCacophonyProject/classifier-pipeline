@@ -38,6 +38,10 @@ def float_list_feature(value):
     return tf.train.Feature(float_list=tf.train.FloatList(value=value))
 
 
+def uint8_list_feature(value):
+    return tf.train.Feature(bytes_list=tf.train.BytesList(value=[bytes(value)]))
+
+
 def read_examples_list(path):
     """Read list of training or validation examples.
 
