@@ -794,7 +794,7 @@ def evaluate_dir(
                     confidence,
                     threshold,
                 )
-                if  confidence is not None and confidence < threshold:
+                if confidence is not None and confidence < threshold:
                     fscore_pred.append("None")
                 elif tag is None:
                     # this
@@ -861,8 +861,7 @@ def evaluate_dir(
         np.save(f, raw_preds_i)
         np.save(f, raw_class_confidences)
 
-
-    assert set(list(fscore_pred)) <=set(model.labels)
+    assert set(list(fscore_pred)) <= set(model.labels)
     cm = confusion_matrix(y_true, fscore_pred, labels=model.labels)
 
     # Log the confusion matrix as an image summary.
@@ -874,10 +873,8 @@ def evaluate_dir(
     logging.info("Fscore model score ")
     model_score(cm, model.labels)
 
-
-
-    assert set(list(raw_preds)) <=set(model.labels)
-    # note this is not quite the raw preds as with different thresholds per label its possible that a 
+    assert set(list(raw_preds)) <= set(model.labels)
+    # note this is not quite the raw preds as with different thresholds per label its possible that a
     # label with 50% is chosen over 80% but probably unlikely
     cm = confusion_matrix(y_true, raw_preds, labels=model.labels)
     plot_confusion_matrix(cm, class_names=model.labels)
