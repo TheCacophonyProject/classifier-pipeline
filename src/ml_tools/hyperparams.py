@@ -118,7 +118,7 @@ class HyperParams(dict):
 
     @property
     def label_smoothing(self):
-        return self.get("label_smoothing", 0)
+        return self.get("label_smoothing", 0.1)
 
     @property
     def base_training(self):
