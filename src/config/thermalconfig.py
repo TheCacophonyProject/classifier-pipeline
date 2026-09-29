@@ -101,7 +101,6 @@ class CameraMotionConfig:
                 warmer_only=True,
                 dynamic_thresh=True,
             )
-            
 
     @classmethod
     def load(cls, motion):
@@ -123,7 +122,7 @@ class CameraMotionConfig:
             postprocess_events=motion.get("postprocess-events", False),
         )
         return motion
-    
+
     def as_dict(self):
         return asdict(self)
 
@@ -183,7 +182,7 @@ class RecorderConfig:
             min_disk_space_mb=recorder.get("min-disk-space-mb", 200),
             output_dir=recorder.get("output-dir", "/var/spool/cptv"),
             use_low_power_mode=recorder.get("use-low-power-mode", False),
-            instant_classify = recorder.get("instant-classify",False),
+            instant_classify=recorder.get("instant-classify", False),
         )
 
 

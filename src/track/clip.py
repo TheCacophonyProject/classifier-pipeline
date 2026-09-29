@@ -72,7 +72,7 @@ class Clip:
         self.station_id = None
         self.calc_stats = calc_stats
         self.source_file = sourcefile
-        self.stats =None
+        self.stats = None
         if self.calc_stats:
             self.stats = ClipStats()
         self.camera_model = None
@@ -182,7 +182,6 @@ class Clip:
         self.update_background(frame.pix)
         self._background_calculated()
         return
-    
 
     def _add_active_track(self, track):
         self.active_tracks.add(track)
@@ -211,6 +210,7 @@ class Clip:
         Extracts useful statics from video clip.
         """
         import pytz
+
         self.video_start_time = video_start_time
         local_tz = pytz.timezone("Pacific/Auckland")
         self.stats.date_time = video_start_time.astimezone(local_tz)
@@ -259,7 +259,7 @@ class Clip:
 
         return (track.start_s, track.end_s)
 
-    def set_frame_buffer(self, cache_to_disk, keep_frames, max_frames=None,lock=True):
+    def set_frame_buffer(self, cache_to_disk, keep_frames, max_frames=None, lock=True):
         from track.framebuffer import FrameBuffer
 
         self.frame_buffer = FrameBuffer(
@@ -267,7 +267,7 @@ class Clip:
             cache_to_disk,
             keep_frames,
             max_frames,
-            lock = lock,
+            lock=lock,
         )
 
     def set_res(self, res_x, res_y):

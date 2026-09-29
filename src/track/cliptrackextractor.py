@@ -178,17 +178,15 @@ class ClipTrackExtractor(ClipTracker):
     def tracking_time(self):
         return self._tracking_time
 
-    def start_tracking(
-        self, clip, frames,track_frames,  background_alg=None, **args
-    ):
+    def start_tracking(self, clip, frames, track_frames, background_alg=None, **args):
         # no need to retrack all of preview
         do_tracking = self.do_tracking
         self.do_tracking = False
         self.background_alg = background_alg
         new_tracks = []
-        tracking_start = len(frames)  - track_frames
-        for i,frame in enumerate(frames):
-            if not self.do_tracking and i>= tracking_start :
+        tracking_start = len(frames) - track_frames
+        for i, frame in enumerate(frames):
+            if not self.do_tracking and i >= tracking_start:
                 self.do_tracking = do_tracking
             new_t, _ = self.process_frame(clip, frame)
             new_tracks.extend(new_t)
@@ -214,6 +212,7 @@ class ClipTrackExtractor(ClipTracker):
             filtered = np.float32(frame.pix) - self.background_alg.background
         if self.do_tracking or self.calculate_thumbnail_info:
             from ml_tools.imageprocessing import detect_objects
+
             obj_filtered, threshold = self._get_normalized_filtered_frame(
                 clip, thermal, filtered, denoise=self.config.denoise
             )
@@ -222,7 +221,7 @@ class ClipTrackExtractor(ClipTracker):
             )
         _ = clip.add_frame(thermal, filtered, mask, ffc_affected)
         if not self.do_tracking:
-            return [],[]
+            return [], []
 
         new_tracks = []
         stale_tracks = []
@@ -234,24 +233,26 @@ class ClipTrackExtractor(ClipTracker):
                 regions = self._get_regions_of_interest(
                     clip, component_details[1:], centroids[1:]
                 )
-                new_tracks,stale_tracks = self._apply_region_matchings(clip, regions)
+                new_tracks, stale_tracks = self._apply_region_matchings(clip, regions)
             if not self.from_pi:
                 # region_history is only consumed by offline thumbnail
                 # selection (classify.thumbnail.best_trackless_thumb); on the
                 # Pi it would just grow unbounded for the life of the clip
                 clip.region_history.append(regions)
-        return new_tracks,stale_tracks
+        return new_tracks, stale_tracks
 
 
 def debug_frame(frame):
     if frame.filtered is None or frame.thermal is None:
         return
     from ml_tools.imageprocessing import normalize
-    thermal,_ = normalize(frame.thermal,new_max = 255)
-    filtered,_ = normalize(frame.filtered,new_max = 255)
-    import cv2
-    cv2.imshow("t",np.uint8(thermal))
 
-    cv2.imshow("f",np.uint8(filtered))
-    cv2.moveWindow("f",300,300)
+    thermal, _ = normalize(frame.thermal, new_max=255)
+    filtered, _ = normalize(frame.filtered, new_max=255)
+    import cv2
+
+    cv2.imshow("t", np.uint8(thermal))
+
+    cv2.imshow("f", np.uint8(filtered))
+    cv2.moveWindow("f", 300, 300)
     cv2.waitKey()

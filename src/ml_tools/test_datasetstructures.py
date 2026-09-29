@@ -65,7 +65,13 @@ def call_random_sections(label, num_frames, start_frame=100, seed=42, gap_every=
         num_frames, start_frame=start_frame, gap_every=gap_every
     )
     return random_sections(
-        label, fi, regions, mass, start_frame,         rng = np.random.default_rng(seed), **COMMON_KWARGS
+        label,
+        fi,
+        regions,
+        mass,
+        start_frame,
+        rng=np.random.default_rng(seed),
+        **COMMON_KWARGS,
     )
 
 
@@ -99,9 +105,7 @@ class TestGetSamplesByLabelUrgency:
         assert samples <= 5
 
     def test_rare_label_short_clip_still_gets_samples(self):
-        samples, _, _ = get_samples_by_label_urgency(
-            "fox", 90, window_frames=108
-        )
+        samples, _, _ = get_samples_by_label_urgency("fox", 90, window_frames=108)
         assert samples >= 1
 
     def test_rare_label_long_clip_bounded_by_frame_count(self):
@@ -186,7 +190,13 @@ class TestRandomSectionsOutputShape:
         num_frames = 200
         fi, regions, mass = make_track(num_frames, start_frame=start_frame)
         segs = random_sections(
-            "possum", fi, regions, mass, start_frame, rng = np.random.default_rng(42), **COMMON_KWARGS
+            "possum",
+            fi,
+            regions,
+            mass,
+            start_frame,
+            rng=np.random.default_rng(42),
+            **COMMON_KWARGS,
         )
         fi_set = set(fi)
         for s in segs:
@@ -215,7 +225,13 @@ class TestRandomSectionsWithGaps:
         num_frames = 200
         fi, regions, mass = make_track(num_frames, start_frame=start_frame, gap_every=5)
         segs = random_sections(
-            "possum", fi, regions, mass, start_frame, rng = np.random.default_rng(42), **COMMON_KWARGS
+            "possum",
+            fi,
+            regions,
+            mass,
+            start_frame,
+            rng=np.random.default_rng(42),
+            **COMMON_KWARGS,
         )
         fi_set = set(fi)
         for s in segs:

@@ -337,6 +337,7 @@ class ThumbInfo:
         self.predicted_confidence = None
         self.track_id = track_id
         self.is_fp = False
+
     # score thumbs based on not being false positive having priority
     # then if sure of the prediction (above 80%) choose the most confidence
     # and then choose the one with more points
@@ -476,7 +477,6 @@ class Track:
 
     def match(self, regions):
         return self.tracker.match(regions, self)
-
 
     @classmethod
     def from_region(cls, clip, region, tracker_version=None, tracking_config=None):
@@ -975,7 +975,8 @@ class Track:
             tag
             for tag in track_tags
             if not tag.get("automatic", False)
-            and tag.get("confidence", 0) is not None and tag.get("confidence", 0) >= min_confidence
+            and tag.get("confidence", 0) is not None
+            and tag.get("confidence", 0) >= min_confidence
         ]
 
         if not track_tags:
@@ -997,14 +998,14 @@ class Track:
                     tag = None
                 else:
                     # choose most specific
-                    path_one = tag.get("path","")
-                    path_two = track_tag.get("path","")
+                    path_one = tag.get("path", "")
+                    path_two = track_tag.get("path", "")
                     # longer path is more specific..
                     if path_one is None:
                         path_one = ""
                     if path_two is None:
                         path_two = ""
-                    
+
                     elif len(path_two) > len(path_one):
                         tag = track_tag
             elif best is None or ranking < best:

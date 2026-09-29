@@ -68,7 +68,7 @@ class TrackingConfig(DefaultConfig):
     def load(cls, tracking):
         if tracking is None:
             return cls.get_type_defaults("thermal")
-        thermal = tracking.get("thermal",None)
+        thermal = tracking.get("thermal", None)
         if thermal is not None:
             # old configs will have tracking -> thermal -> params
             tracker = TrackingConfig.load_type(thermal)
@@ -191,4 +191,3 @@ class TrackingConfig(DefaultConfig):
         self.track_min_offset *= scale
         self.track_min_mass *= scale
         self.aoi_min_mass *= scale
-

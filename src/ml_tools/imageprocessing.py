@@ -4,6 +4,7 @@ import numpy as np
 from pathlib import Path
 import logging
 
+
 def adapt_hist(image):
     from skimage import exposure
 
@@ -177,6 +178,7 @@ def normalize(data, min=None, max=None, new_max=1):
 
 def save_image_channels(data, filename):
     from PIL import Image
+
     Path(filename).parent.mkdir(parents=True, exist_ok=True)
     r = Image.fromarray(np.uint8(data[:, :, 0] * 255))
     g = Image.fromarray(np.uint8(data[:, :, 1] * 255))

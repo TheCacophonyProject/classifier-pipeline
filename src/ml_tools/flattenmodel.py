@@ -1,7 +1,3 @@
-
-
-
-
 # ==========================================
 # STEP 1: READ THE WEIGHT ARRAYS NATIVELY IN KERAS 2 (tf_keras)
 # ==========================================
@@ -12,8 +8,6 @@ os.environ.setdefault("TF_USE_LEGACY_KERAS", "1")
 import tf_keras
 import tensorflow as tf
 import numpy as np
-
-
 
 # The saved model was written with a newer/older Keras than the one
 # installed here, so some layer configs carry kwargs this Keras's layer
@@ -28,7 +22,12 @@ import numpy as np
 from tf_keras.src.engine.base_layer import Layer
 
 _orig_from_config = Layer.from_config.__func__
-_DROP_CONFIG_KEYS = {"renorm", "renorm_clipping", "renorm_momentum", "quantization_config"}
+_DROP_CONFIG_KEYS = {
+    "renorm",
+    "renorm_clipping",
+    "renorm_momentum",
+    "quantization_config",
+}
 
 
 @classmethod
@@ -41,11 +40,12 @@ def _patched_from_config(cls, config):
 Layer.from_config = _patched_from_config
 
 
-
 def flatten_model(k2_model):
     print("Flatting model")
     k2_model.get_layer("channel_aligner").trainable = False
-    flat_input = tf_keras.layers.Input(shape=k2_model.input_shape[1:], name="flat_input_image")
+    flat_input = tf_keras.layers.Input(
+        shape=k2_model.input_shape[1:], name="flat_input_image"
+    )
 
     # Keras 2's KerasTensor isn't hashable (unlike Keras 3's), so every tensor
     # used as a dict key here must go through `.ref()` -- the values stored
@@ -55,12 +55,12 @@ def flatten_model(k2_model):
     for original_inp in k2_model.inputs:
         tensor_map[original_inp.ref()] = flat_input
 
-    # Recursive function to unpack inner layers safely 
+    # Recursive function to unpack inner layers safely
     def unroll_layers(layers_list):
         for layer in layers_list:
             if isinstance(layer, tf_keras.layers.InputLayer):
                 continue
-                
+
             # If it's a sub-model container, dive deep and unroll its children
             if isinstance(layer, tf_keras.Model) and hasattr(layer, "layers"):
                 print(f"-> Unnesting container: '{layer.name}'")
@@ -114,11 +114,15 @@ def flatten_model(k2_model):
 
     # 3. Create the final flattened architecture
     # The terminal value of 'x' tracks perfectly back to 'flat_input'
-    flat_model = tf_keras.Model(inputs=flat_input, outputs=tensor_map[k2_model.output.ref()])
+    flat_model = tf_keras.Model(
+        inputs=flat_input, outputs=tensor_map[k2_model.output.ref()]
+    )
     return flat_model
 
 
 import sys
+
+
 def main():
     model_file = sys.argv[1]
     k2_model = tf_keras.models.load_model(model_file, compile=False)
@@ -128,7 +132,6 @@ def main():
     print("\nSuccess! Fully unnested and flattened model summary:")
     flat_model.summary()
     flat_model.save("flattened_model.keras")
-
 
 
 if __name__ == "__main__":

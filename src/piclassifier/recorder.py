@@ -156,7 +156,13 @@ class Recorder(ABC):
             free_percent = stat[2] / stat[0]
 
     def start_recording(
-        self, background_frame, preview_frames, temp_thresh, frame_time,motion_config, test=False
+        self,
+        background_frame,
+        preview_frames,
+        temp_thresh,
+        frame_time,
+        motion_config,
+        test=False,
     ):
         if self.constant_recorder:
             self.delete_excess()
@@ -170,7 +176,7 @@ class Recorder(ABC):
 
         self.filename = self.new_temp_name(frame_time, test=test)
         started = self.new_recording(
-            background_frame, preview_frames, temp_thresh, frame_time,motion_config
+            background_frame, preview_frames, temp_thresh, frame_time, motion_config
         )
         if not started:
             return False
@@ -200,7 +206,7 @@ class Recorder(ABC):
 
     @abstractmethod
     def new_recording(
-        self, background_frame, preview_frames, temp_thresh, frame_time,motion_config
+        self, background_frame, preview_frames, temp_thresh, frame_time, motion_config
     ): ...
 
     @abstractmethod

@@ -20,7 +20,8 @@ from piclassifier.monitorconfig import monitor_file
 from pathlib import Path
 from piclassifier import utils
 from .signals import STOP_SIGNAL, SKIP_SIGNAL, SNAPSHOT_SIGNAL, PARSING_FILE, PARSED
-from multiprocessing import Queue,Process
+from multiprocessing import Queue, Process
+
 SOCKET_NAME = "/var/run/lepton-frames"
 VOSPI_DATA_SIZE = 160
 TELEMETRY_PACKET_COUNT = 4
@@ -28,6 +29,7 @@ TELEMETRY_PACKET_COUNT = 4
 restart_pending = False
 connected = False
 ready_to_record = False
+
 
 def parse_args():
     parser = argparse.ArgumentParser()
@@ -197,7 +199,6 @@ def main(thermal_config=None):
             except:
                 pass
 
-
     watchdog_stop.set()
     watchdog_thread.join(10)
 
@@ -206,6 +207,7 @@ def main(thermal_config=None):
             utils.kill_process_with_timeout(service["process"])
         except:
             pass
+
 
 shutdown_event = Event()
 
@@ -410,10 +412,10 @@ def delete_stale_thumbnails(output_dir):
 
 import fcntl, termios, struct
 
-def bytes_queued(sock):
-    buf = struct.pack('i', 0)
-    return struct.unpack('i', fcntl.ioctl(sock.fileno(), termios.FIONREAD, buf))[0]
 
+def bytes_queued(sock):
+    buf = struct.pack("i", 0)
+    return struct.unpack("i", fcntl.ioctl(sock.fileno(), termios.FIONREAD, buf))[0]
 
 
 def handle_connection(
@@ -538,6 +540,7 @@ def handle_connection(
         clear_queue(process_queue)
         clear_queue(response_queue)
 
+
 def clear_queue(q):
     """Removes all items from a multiprocessing Queue."""
     from queue import Empty
@@ -580,7 +583,8 @@ def run_postprocess():
     )
     p_processor.start()
     return p_processor
-    
+
+
 def _classifier_main():
     from .servemodel import main
 
@@ -594,4 +598,3 @@ def run_classifier():
     )
     p_processor.start()
     return p_processor
-    

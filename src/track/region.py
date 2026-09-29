@@ -40,6 +40,7 @@ class Region(Rectangle):
     is_along_border: Any = False
     in_trap: Any = False
     mask_id: Any = None
+
     def rescale(self, factor):
         self.x = int(self.x * factor)
         self.y = int(self.y * factor)

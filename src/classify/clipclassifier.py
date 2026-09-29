@@ -259,7 +259,10 @@ class ClipClassifier:
         logging.debug("getting classifier with location %s", location)
         classifier = self.get_classifier(model, location)
         predictions = Predictions(
-            classifier.labels, model, classifier.thresholds_per_label,scale_thresholds = classifier.scale_thresholds,
+            classifier.labels,
+            model,
+            classifier.thresholds_per_label,
+            scale_thresholds=classifier.scale_thresholds,
         )
         classifier.seed = int(
             clip.video_start_time.timestamp() * 1000000
@@ -270,9 +273,7 @@ class ClipClassifier:
             segment_frames = None
             if reuse_frames:
                 tracks = meta_data.get("tracks")
-                meta_track = next(
-                    (x for x in tracks if x["id"] == track.id), None
-                )
+                meta_track = next((x for x in tracks if x["id"] == track.id), None)
                 if meta_track is not None:
                     prediction_tag = next(
                         (
@@ -336,8 +337,7 @@ class ClipClassifier:
                 prediction = predictions.prediction_for(track.id)
                 if prediction is None:
                     continue
-                prediction_meta = prediction.get_metadata(
-                )
+                prediction_meta = prediction.get_metadata()
                 prediction_meta["model_id"] = model_id
                 if self.keep_original_predictions:
                     prediction_meta["reprocessed"] = True
@@ -406,7 +406,11 @@ class ClipClassifier:
         from piclassifier.motiondetector import RunningMean, SlidingWindow
         from piclassifier.cptvmotiondetector import CPTVMotionDetector
         from ml_tools.frame import Frame
-        from ml_tools.preprocess import preprocess_frame, preprocess_movement,preprocess_frame_v2
+        from ml_tools.preprocess import (
+            preprocess_frame,
+            preprocess_movement,
+            preprocess_frame_v2,
+        )
         from datetime import datetime
 
         filename = Path(filename)
@@ -468,7 +472,10 @@ class ClipClassifier:
         classifier = self.get_classifier(model)
         classifier_is_ready = not classifier.run_over_network
         predictions = Predictions(
-            classifier.labels, model, classifier.thresholds_per_label,scale_thresholds = classifier.scale_thresholds,
+            classifier.labels,
+            model,
+            classifier.thresholds_per_label,
+            scale_thresholds=classifier.scale_thresholds,
         )
         predictions.model_load_time = time.time() - start
         if seed is None:
@@ -527,10 +534,10 @@ class ClipClassifier:
 
                     if classifier.preprocess_v2:
                         background = track_extractor.background_alg.background
-                            
+
                         filtered = np.float32(frame.pix) - background
                         f = Frame(frame.pix, filtered, current_frame_num, region=region)
-                        f,_,_ = preprocess_frame_v2(
+                        f, _, _ = preprocess_frame_v2(
                             f,
                             classifier.params.frame_size,
                             f.region,
@@ -560,7 +567,7 @@ class ClipClassifier:
                             if f_max > existing_limits[1]:
                                 existing_limits[1] = f_max
                             track_data[track_id]["limits"] = existing_limits
-                    
+
                     if cache:
                         frame_cache.add_frame(f, track_id)
                         track_data[track_id]["regions"][region.frame_number] = region
@@ -647,7 +654,11 @@ class ClipClassifier:
                 frames = preprocess_movement(
                     segment_frames,
                     classifier.params.square_width,
-                    classifier.params.frame_size * 2 if classifier.enlarge else classifier.params.frame_size,
+                    (
+                        classifier.params.frame_size * 2
+                        if classifier.enlarge
+                        else classifier.params.frame_size
+                    ),
                     classifier.params.channels,
                     classifier.preprocess_fn,
                     sample=f"{clip.id}-{track_id}",
@@ -718,7 +729,7 @@ class ClipClassifier:
                 "Finished predicting track %s memory %s", track_id, process_mem()
             )
             track_prediction = classifier.track_prediction_from_raw(
-                track_id, pred_frame_numbers, preds,masses
+                track_id, pred_frame_numbers, preds, masses
             )
             predictions.prediction_per_track[track_id] = track_prediction
 

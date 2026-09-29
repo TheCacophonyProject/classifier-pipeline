@@ -106,7 +106,6 @@ class ClipTracker(ABC):
             avg_change = 0
         filtered = np.clip(filtered - avg_change, 0, None)
 
-
         filtered, stats = normalize(filtered, new_max=255)
         if denoise:
             import cv2
@@ -129,7 +128,7 @@ class ClipTracker(ABC):
         unactive_tracks = clip.active_tracks - matched_tracks - new_tracks
         clip.active_tracks = matched_tracks | new_tracks
         stale_tracks = self._filter_inactive_tracks(clip, unactive_tracks)
-        return new_tracks,stale_tracks
+        return new_tracks, stale_tracks
 
     def _match_existing_tracks(self, clip, regions):
         from ml_tools.imageprocessing import hist_diff
@@ -250,18 +249,20 @@ class ClipTracker(ABC):
             else:
                 stale_tracks.append(track)
         return stale_tracks
+
     def get_delta_filtered(self, clip):
         from ml_tools.imageprocessing import normalize
 
         frame = clip.frame_buffer.current_frame
         prev_frame = clip.frame_buffer.prev_frame
-        if prev_frame is None or  prev_frame.filtered is None or frame.filtered is None:
+        if prev_frame is None or prev_frame.filtered is None or frame.filtered is None:
             return None
         delta_filtered = None
         filtered, _ = normalize(frame.filtered, new_max=255)
         prev_filtered, _ = normalize(prev_frame.filtered, new_max=255)
         delta_filtered = np.abs(np.float32(filtered) - prev_filtered)
-        return  delta_filtered
+        return delta_filtered
+
     def get_delta_frame(self, clip):
         from ml_tools.imageprocessing import normalize
 
@@ -311,7 +312,7 @@ class ClipTracker(ABC):
                 mass=component[4],
                 frame_number=clip.current_frame,
                 centroid=centroid,
-                mask_id = i+1,
+                mask_id=i + 1,
             )
             if self.scale:
                 region.rescale(1 / self.scale)
@@ -322,7 +323,7 @@ class ClipTracker(ABC):
             # GP this needs to be checked for themals 29/06/2022
             if delta_filtered is not None:
                 region_difference = region.subimage(delta_filtered)
-                region.pixel_variance = np.var(region_difference,dtype=np.float32)
+                region.pixel_variance = np.var(region_difference, dtype=np.float32)
             old_region = region.copy()
             region.crop(clip.crop_rectangle)
             region.was_cropped = str(old_region) != str(region)

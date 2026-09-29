@@ -383,13 +383,17 @@ def data_augmentation(image, y, fp_index, training=True):
 
     # 3. Apply the true thermal-scaled adjustments to Channel 0
     # A max minval/maxval of 9.1 represents a realistic environmental fluctuation of +/- 1.5°C
-    thermal_offset = tf.random.uniform(shape=[], minval=-9.1, maxval=9.1, dtype=tf.float32)
+    thermal_offset = tf.random.uniform(
+        shape=[], minval=-9.1, maxval=9.1, dtype=tf.float32
+    )
     raw = raw + thermal_offset
-    
+
     # Apply a gentle contrast/gain shift (scaling the thermal variance by +/- 6%)
-    thermal_gain = tf.random.uniform(shape=[], minval=0.94, maxval=1.06, dtype=tf.float32)
+    thermal_gain = tf.random.uniform(
+        shape=[], minval=0.94, maxval=1.06, dtype=tf.float32
+    )
     raw = raw * thermal_gain
-    
+
     # Ensure values stay bounded inside your standard 0-255 frame container
     raw = tf.clip_by_value(raw, 0.0, 255.0)
     return tf.concat([raw, augmented], axis=-1)

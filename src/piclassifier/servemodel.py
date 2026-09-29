@@ -5,6 +5,7 @@ import logging
 from ml_tools.logs import init_logging
 from waitress import serve
 import time
+
 app = Flask(__name__)
 # app.config["MAX_CONTENT_LENGTH"] = 407200
 interpreter = None
@@ -31,7 +32,7 @@ def main():
     else:
         predictions = interpreter.predict(input_data)
     response = Response(predictions.tobytes(), mimetype="application/octet-stream")
-    logging.info("Time to predict is %s",time.time()-start)
+    logging.info("Time to predict is %s", time.time() - start)
     return response
 
 
@@ -72,7 +73,7 @@ def get_model():
     return network_model[0]
 
 
-def main(warmup=True,model_file = None):
+def main(warmup=True, model_file=None):
     start = time.time()
     init_logging(name="servemodel")
     global interpreter
@@ -97,7 +98,7 @@ def main(warmup=True,model_file = None):
     if warmup:
         startup_classifier()
     # make sure only 1 thread at a time as classifier is not thread safe
-    logging.info("Serve model ready in %s",time.time()-start)
+    logging.info("Serve model ready in %s", time.time() - start)
     serve(app, port=interpreter.port, threads=1)
 
 

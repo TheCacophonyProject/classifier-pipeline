@@ -50,7 +50,7 @@ class Service(dbus.service.Object):
 
     @dbus.service.method(
         DBUS_NAME,
-    in_signature="",
+        in_signature="",
         out_signature="a{si}",
     )
     def CameraInfo(self):
@@ -73,14 +73,13 @@ class Service(dbus.service.Object):
         logging.debug("Sending headers %s", headers)
         return headers
 
-
     @dbus.service.method(
         DBUS_NAME,
         out_signature="b",
     )
     def IsReady(self):
         return self.is_ready()
-    
+
     @dbus.service.method(
         DBUS_NAME,
         out_signature="s",
@@ -97,9 +96,7 @@ class Service(dbus.service.Object):
         parsing_file = self.is_parsing_file()
         if parsing_file is not None:
             raise ParseFileError(f"Already parsing {parsing_file}")
-        Thread(
-            target=self.parse_file, args=(file, fps, seed), daemon=True
-        ).start()
+        Thread(target=self.parse_file, args=(file, fps, seed), daemon=True).start()
         return "Parsing file"
 
     @dbus.service.method(
@@ -125,11 +122,8 @@ class Service(dbus.service.Object):
         parsing_file = self.is_parsing_file()
         if parsing_file is not None:
             raise ParseFileError(f"Already parsing {parsing_file}")
-        Thread(
-            target=self.parse_file, args=(file, fps, seed), daemon=True
-        ).start()
+        Thread(target=self.parse_file, args=(file, fps, seed), daemon=True).start()
         return "Parsing file"
-
 
     @dbus.service.method(
         DBUS_NAME,
@@ -308,7 +302,6 @@ class DbusService:
         self.started = False
         self.t.daemon = True
         self.t.start()
-      
 
     def update_service(
         self,
@@ -341,11 +334,11 @@ class DbusService:
             session_bus = dbus.SystemBus(mainloop=DBusGMainLoop())
             name = dbus.service.BusName(DBUS_NAME, session_bus)
             self.service.start_service(session_bus)
-            self.started= True
+            self.started = True
             self.loop.run()
         except:
             logging.error("Couldn't run loop", exc_info=True)
-            self.started= True
+            self.started = True
             self.quit()
 
     def tracking(

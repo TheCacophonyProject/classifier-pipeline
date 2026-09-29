@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from typing import Any
 import math
 import time
+
 FRAMES_PER_SECOND = 9
 
 CPTV_FILE_WIDTH = 160
@@ -396,7 +397,7 @@ class TrackHeader:
         min_segments=None,
         rng=None,
         min_frames=0,
-        ceil_num_windows = True,
+        ceil_num_windows=True,
     ):
         NO_MIN_FRAMES = ["stoat", "mustelid", "weasel", "ferret"]
         if rng is None:
@@ -435,7 +436,7 @@ class TrackHeader:
             rec_time=self.start_time,
             min_segments=min_segments,
             rng=rng,
-            ceil_num_windows= ceil_num_windows,
+            ceil_num_windows=ceil_num_windows,
         )
         self.filtered_stats.update(filtered_stats)
         # GP could get this from the tracks when writing
@@ -1021,34 +1022,32 @@ DOMINANT_LABELS = [
 
 # 12 seconds is chosen by looking at the average track length of our dataset
 def get_samples_by_label_urgency(
-    label, total_frames,  window_frames=100, max_samples=5,ceil_num_windows= True
+    label, total_frames, window_frames=100, max_samples=5, ceil_num_windows=True
 ):
 
     # Define your rare labels that desperately need more representation
     # rare_labels = ["fox", "wolf", "badger"]
     num_windows = 1
     stride_offset = 0
-    if  ceil_num_windows == False and total_frames < window_frames + window_frames // 2:
+    if ceil_num_windows == False and total_frames < window_frames + window_frames // 2:
         samples_to_take = 1  # Don't waste time on duplicate common data
         num_windows = 1
         stride_offset = total_frames % (window_frames / 2)
 
     else:
-        windows_float = (total_frames - window_frames) / (
-            window_frames // 2
-        ) + 1
+        windows_float = (total_frames - window_frames) / (window_frames // 2) + 1
         if ceil_num_windows:
             num_windows = math.ceil(windows_float)
         else:
             num_windows = int(windows_float)
-        if max_samples is not  None:
+        if max_samples is not None:
             num_windows = min(num_windows, max_samples)
         samples_to_take = num_windows
         # the left over frames
-        stride_offset = int(total_frames % (window_frames/ 2))
-        samples_to_take = max(1,samples_to_take)
-        num_windows = max(num_windows,1)
-    if  total_frames< window_frames :
+        stride_offset = int(total_frames % (window_frames / 2))
+        samples_to_take = max(1, samples_to_take)
+        num_windows = max(num_windows, 1)
+    if total_frames < window_frames:
         stride_offset = 0
     if label in MODERATE_RARE_LABELS or label in CRITICALLY_RARE_LABELS:
         # no point repeating the same image even if we want more samples
@@ -1089,7 +1088,7 @@ def get_segment_indices(
     MOVEMENT_THRESH = 2
     frame_num = 0
     region_index = None
-    start = window_start 
+    start = window_start
     # pass in velocities and for short clips can dynamically set chink size such that velocity meets the threshold or is chunk_size apart
     for chunk in range(chunks):
         if short_track and chunk > 0 and region_index is not None:
@@ -1112,7 +1111,7 @@ def get_segment_indices(
 
             if region_index >= len(regions) - 1:
                 break
-            start =frame_num
+            start = frame_num
         else:
             if chunk > 0:
                 start = end + 1
@@ -1120,7 +1119,7 @@ def get_segment_indices(
                 # ensure offset is atleast 2 frames away
                 # logging.info("previous end was %s Diff from %s to %s ",end, start, frame_num)
                 # start = max(start, frame_num + 2)
-        end = start + int(chunk_size) -1
+        end = start + int(chunk_size) - 1
         valid_frames = []
         prev_f = None
         if start in frame_to_closest_valid:
@@ -1139,9 +1138,9 @@ def get_segment_indices(
                 frame_to_closest_valid[prev_f] = last_index
             frame_to_closest_valid[f] = last_index
 
-            if f ==-1:
-                skipped +=1
-            elif f >= start and f <= end :
+            if f == -1:
+                skipped += 1
+            elif f >= start and f <= end:
                 valid_frames.append(f)
                 prev_f = f
             if f >= end:
@@ -1149,23 +1148,26 @@ def get_segment_indices(
         if start not in frame_to_closest_valid:
             last_chunk = True
         else:
-            reamining_frames = len(frame_indices) -frame_to_closest_valid[start]
-            last_chunk =reamining_frames <= chunk_size and len(valid_frames) + skipped == reamining_frames
+            reamining_frames = len(frame_indices) - frame_to_closest_valid[start]
+            last_chunk = (
+                reamining_frames <= chunk_size
+                and len(valid_frames) + skipped == reamining_frames
+            )
 
         if len(valid_frames) == 0:
             if last_chunk:
                 break
-        
+
             continue
 
         if short_track and chunk > 0 and not last_chunk:
             # chunk 0 can be the phase
             offset = 0
-            
+
         else:
             offset = rng.integers(low=0, high=len(valid_frames))
             if last_chunk:
-                offset = len(valid_frames) -1
+                offset = len(valid_frames) - 1
         frame_num = valid_frames[offset]
         frame_indices[frame_to_closest_valid[frame_num]] = -1
         assert frame_num not in frame_indices
@@ -1196,44 +1198,52 @@ def random_sections(
     max_samples=5,
     min_frames=1,
     min_segments=None,
-    ceil_num_windows= True,
-):   
-    min_frames = max(min_frames,1)
+    ceil_num_windows=True,
+):
+    min_frames = max(min_frames, 1)
     if rng is None:
         rng = np.random.default_rng()
 
-    chunks = 25    
+    chunks = 25
     max_window_frames = 100
-    
+
     # number that rouunds chunk size to 4, roughly 11 seconds
     chunk_size = int(max_window_frames / 25)
-    
-    num_frames = frame_indices[-1] - frame_indices[0]  + 1
+
+    num_frames = frame_indices[-1] - frame_indices[0] + 1
     frame_indices = list(frame_indices.copy())
     samples, num_windows, stride_offset = get_samples_by_label_urgency(
-        label, num_frames, window_frames=max_window_frames, max_samples=max_samples,ceil_num_windows=ceil_num_windows,
+        label,
+        num_frames,
+        window_frames=max_window_frames,
+        max_samples=max_samples,
+        ceil_num_windows=ceil_num_windows,
     )
-    window_frames = min(max_window_frames ,num_frames)
+    window_frames = min(max_window_frames, num_frames)
     upsampled = False
-    step = window_frames// 2
+    step = window_frames // 2
     if ceil_num_windows:
-        offset = num_frames %window_frames
-        if offset!=0:
-            step  = offset
-    if step == 0 :
+        offset = num_frames % window_frames
+        if offset != 0:
+            step = offset
+    if step == 0:
         windows = [0]
     else:
         windows = np.arange(0, num_windows * step, step=step)
     # chunks = min(window_frames, chunks)
     # chunk_size = window_frames / chunks
     # try to get an extra sample if its short
-    num_frames_sampled =  max(1,window_frames / chunk_size )
+    num_frames_sampled = max(1, window_frames / chunk_size)
 
     # ceil num windows is only set at inference time, so really checking if we are doing inference
     doing_inference = ceil_num_windows
-    if doing_inference and num_frames_sampled < 2 and round(num_frames_sampled) >num_frames_sampled:
-        chunk_size =int(window_frames  / round(num_frames_sampled))
-        logging.info("set chunk size %s",chunk_size)
+    if (
+        doing_inference
+        and num_frames_sampled < 2
+        and round(num_frames_sampled) > num_frames_sampled
+    ):
+        chunk_size = int(window_frames / round(num_frames_sampled))
+        logging.info("set chunk size %s", chunk_size)
 
     # over sampling logic more samples than windows, used for low data labels
     if samples > num_windows:
@@ -1363,10 +1373,10 @@ def get_segments(
     repeat_frame_indices=False,
     min_segments=None,
     rng=None,
-    ceil_num_windows = True,
+    ceil_num_windows=True,
     from_last=None,
 ):
-    
+
     if rng is None:
         rng = np.random.default_rng()
 
@@ -1521,7 +1531,7 @@ def get_segments(
                     max_samples=max_segments,
                     min_frames=min_frames,
                     min_segments=min_segments,
-                    ceil_num_windows=ceil_num_windows
+                    ceil_num_windows=ceil_num_windows,
                 )
                 segments.extend(new_segments)
                 continue
@@ -1592,7 +1602,6 @@ def get_segments(
                     segment_end = min(len(frame_indices), segment_end)
                     frames = frame_indices[segment_start:segment_end]
 
-                
                 if repeat_frame_indices:
                     logging.info("Repeating frame indices")
                     # dont think we ever want this it can be handled elsewhere
@@ -1880,7 +1889,6 @@ class TrackingSample(Sample):
         # return f"{self.clip_id}-{self.track_id}"
 
 
-
 @dataclass
 class MeanData:
     """Holds per-channel border pixel lists (during collection) or mean values (after aggregation)."""
@@ -1919,6 +1927,7 @@ class MeanData:
 
     def to_dict(self):
         from ml_tools.frame import TrackChannels
+
         return {
             TrackChannels.thermal.name: self.thermal,
             TrackChannels.filtered.name: self.filtered,

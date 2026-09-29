@@ -62,7 +62,7 @@ def preprocess_frame_v2(
     new_max=1,
 ):
     import math
-    from ml_tools.imageprocessing import normalize,apply_fair_clahe_cv2
+    from ml_tools.imageprocessing import normalize, apply_fair_clahe_cv2
     from ml_tools.frame import repeat_border
     from ml_tools.datasetstructures import MeanData
 
@@ -84,7 +84,7 @@ def preprocess_frame_v2(
         if resize_times < 1:
             enlarged_region.enlarge_to(out_dim)
             # logging.info("Resizing %s enlarging to %s region %s  enlarged %s",resize_times,resize_dim ,region,enlarged_region)
-            
+
             resize_times = None
         else:
 
@@ -130,7 +130,7 @@ def preprocess_frame_v2(
         cropped_frame.thermal_norm,
     )
     if not stats[0]:
-        cropped_frame.thermal_norm= None
+        cropped_frame.thermal_norm = None
         return None
 
     if np.mean(cropped_frame.filtered) >= 0:
@@ -145,7 +145,7 @@ def preprocess_frame_v2(
     )
 
     if not stats[0]:
-        cropped_frame.filtered= None
+        cropped_frame.filtered = None
         return None
 
     np.clip(

@@ -12,7 +12,15 @@ DEFAULT_THRESHOLD = 0.8
 
 
 class Predictions:
-    def __init__(self, labels, model, thresholds_per_label, parent_mappings=None,scale_thresholds = False,multi_label = True):
+    def __init__(
+        self,
+        labels,
+        model,
+        thresholds_per_label,
+        parent_mappings=None,
+        scale_thresholds=False,
+        multi_label=True,
+    ):
         self.labels = labels
         self.prediction_per_track = {}
         self.model = model
@@ -32,8 +40,8 @@ class Predictions:
                 start_frame=track.start_frame,
                 parent_mappings=self.parent_mappings,
                 scale_thresholds=self.scale_thresholds,
-                thresholds_per_label = self.thresholds_per_label,
-                multi_label=self.multi_label
+                thresholds_per_label=self.thresholds_per_label,
+                multi_label=self.multi_label,
             ),
         )
         return prediction
@@ -105,8 +113,8 @@ class TrackPrediction:
         start_frame=None,
         multi_label=False,
         parent_mappings=None,
-        scale_thresholds = False,
-        thresholds_per_label = None
+        scale_thresholds=False,
+        thresholds_per_label=None,
     ):
         self.thresholds_per_label = thresholds_per_label
         try:
@@ -139,7 +147,7 @@ class TrackPrediction:
     ):
         self.num_predictions = len(predictions)
         for prediction, frames, mass in zip(predictions, prediction_frames, masses):
-            if isinstance(frames,int):
+            if isinstance(frames, int):
                 self.num_frames_classified += frames
             else:
                 self.num_frames_classified += len(frames)
@@ -155,7 +163,6 @@ class TrackPrediction:
             self.class_best_score = np.sum(predictions, axis=0)
             # normalize so it sums to 1
             self.class_best_score = self.class_best_score / len(predictions)
-
 
     def normalized_best_score(self):
         # class_best_score is always kept normalized, see classified_frames/classified_frame
@@ -174,7 +181,7 @@ class TrackPrediction:
         self.num_predictions += len(predictions)
         last_frame_classified = 0
         for frames, pred, mass in zip(frame_numbers, predictions, masses):
-            if isinstance(frames,  (list, np.ndarray)):
+            if isinstance(frames, (list, np.ndarray)):
                 self.num_frames_classified += len(frames)
             else:
                 self.num_frames_classified += 1
@@ -197,20 +204,26 @@ class TrackPrediction:
         self.last_frame_classified = last_frame_classified
 
     def previous_prediction_was_short(self):
-        if self.num_predictions ==0:
+        if self.num_predictions == 0:
             return False
         previous = self.predictions[-1]
         # logging.info("Previous prediction is %s num frames %s",previous,len(previous.frames))
         return len(previous.frames) < self.frames_per_prediction
-    def scale_by_overlap(self,frames):
+
+    def scale_by_overlap(self, frames):
         previous = self.predictions[-1]
-        first_frame =frames[0]
+        first_frame = frames[0]
         for index, f in enumerate(previous.frames):
-            if  first_frame  >(int(f)-5) :
+            if first_frame > (int(f) - 5):
 
                 break
 
-        logging.info("New preds over lap previous at %s %s previous frames %s ",first_frame, index, previous.frames)
+        logging.info(
+            "New preds over lap previous at %s %s previous frames %s ",
+            first_frame,
+            index,
+            previous.frames,
+        )
         # # scale prior prediction
         # self.class_best_score -= previous.prediction
         # previous.prediction
@@ -266,7 +279,6 @@ class TrackPrediction:
         )
         return priority
 
-
     def get_classified_footer(self, frame_number=None):
         if len(self.predictions) == 0 or not self.keep_all:
             return "no classification"
@@ -298,18 +310,18 @@ class TrackPrediction:
 
         tag, confidence, threshold = self.prediction_with_confidence()
         return f"{tag} {confidence:.0%} threshold: {threshold:.0%}"
-       
 
     @property
     def num_frames(self):
         return self.num_frames_classified
 
-
-
-
-    def predicted_tags(self,group_by_parents = True,fallback_to_most_confident = True):
+    def predicted_tags(self, group_by_parents=True, fallback_to_most_confident=True):
         tag = None
-        if self.multi_label and self.class_best_score is not None and self.parent_mappings is not None:
+        if (
+            self.multi_label
+            and self.class_best_score is not None
+            and self.parent_mappings is not None
+        ):
             best_score = self.get_normalized_score()
             if self.thresholds_per_label is not None:
                 if isinstance(self.thresholds_per_label, list):
@@ -324,7 +336,7 @@ class TrackPrediction:
                 indices = np.where(best_score >= DEFAULT_THRESHOLD)[0]
             if group_by_parents:
                 tag = most_specific_tag(self.labels, indices, self.parent_mappings)
-            elif len(indices)>0:
+            elif len(indices) > 0:
                 return np.array(self.labels)[indices]
         if tag is None and fallback_to_most_confident:
             tag = self.most_confident_tag()
@@ -332,7 +344,6 @@ class TrackPrediction:
             return []
         return [tag]
 
-    
     def most_confident_tag(self):
         index = self.best_label_index
         if index is None:
@@ -341,7 +352,7 @@ class TrackPrediction:
             return None
         tag = self.labels[index]
         return tag
-    
+
     def class_confidences(self):
         confidences = {}
         if self.class_best_score is None:
@@ -446,50 +457,50 @@ class TrackPrediction:
         score = self.get_normalized_score()
 
         tag = self.predicted_tags(group_by_parents=True)
-        tag = tag[0] if len(tag)!=0 else None
+        tag = tag[0] if len(tag) != 0 else None
         threshold = DEFAULT_THRESHOLD
-    
+
         if self.thresholds_per_label is not None and tag is not None:
             # if old style list
             if isinstance(self.thresholds_per_label, list):
                 threshold = self.thresholds_per_label[self.best_label_index]
             else:
-                threshold = self.thresholds_per_label.get(tag,DEFAULT_THRESHOLD)
+                threshold = self.thresholds_per_label.get(tag, DEFAULT_THRESHOLD)
 
         if self.scale_thresholds:
-            threshold = get_scaled_thresh(threshold,self.num_frames_classified)
+            threshold = get_scaled_thresh(threshold, self.num_frames_classified)
 
         confidence = None
         # not always the most confident label as thresholds differ per label
         if tag in self.labels:
             index = self.labels.index(tag)
             confidence = float(score[index])
-        return tag,confidence,threshold
-    
+        return tag, confidence, threshold
+
     def get_metadata(self):
         prediction_meta = {}
         if self.classify_time is not None:
             prediction_meta["classify_time"] = round(self.classify_time, 1)
         tag = self.predicted_tags(group_by_parents=True)
-        tag = tag[0] if len(tag)!=0 else None
+        tag = tag[0] if len(tag) != 0 else None
         threshold = DEFAULT_THRESHOLD
- 
+
         if self.thresholds_per_label is not None and tag is not None:
             # if old style list
             if isinstance(self.thresholds_per_label, list):
                 threshold = self.thresholds_per_label[self.best_label_index]
             else:
-                threshold = self.thresholds_per_label.get(tag,DEFAULT_THRESHOLD)
+                threshold = self.thresholds_per_label.get(tag, DEFAULT_THRESHOLD)
 
         if self.scale_thresholds:
-            threshold = get_scaled_thresh(threshold,self.num_frames_classified)
+            threshold = get_scaled_thresh(threshold, self.num_frames_classified)
 
         confidence = None
         # not always the most confident label as thresholds differ per label
         if tag in self.labels:
             index = self.labels.index(tag)
             confidence = float(self.class_best_score[index])
-     
+
         prediction_meta["tag"] = tag
 
         prediction_meta["threshold_used"] = threshold
@@ -591,10 +602,9 @@ def most_specific_tag(labels, indices, parent_mappings):
     return final_tag
 
 
-
-def get_scaled_thresh(threshold, num_frames, max_frames = 25, k = 4, max_threshold = 0.96):
+def get_scaled_thresh(threshold, num_frames, max_frames=25, k=4, max_threshold=0.96):
     if num_frames < max_frames:
-        missing_fraction = (max_frames - num_frames) / (max_frames-1)
+        missing_fraction = (max_frames - num_frames) / (max_frames - 1)
         scaling_factor = missing_fraction**2
         range = max(0, max_threshold - threshold)
         extra_thresh = scaling_factor * range

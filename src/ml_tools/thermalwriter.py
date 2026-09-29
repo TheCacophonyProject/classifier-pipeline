@@ -36,9 +36,6 @@ from ml_tools.rawdb import RawDatabase
 from ml_tools.rectangle import Rectangle
 from ml_tools.datasetstructures import MeanData
 
-
-
-
 crop_rectangle = Rectangle(0, 0, 640, 480)
 
 
@@ -222,8 +219,8 @@ def get_data(source_file, excluded_tags, extra_args):
         db = RawDatabase(source_file)
         db.load_frames()
     # going to redo segments to get rid of ffc segments
-    rng = np.random.default_rng(seed = db.timestamp)
-    
+    rng = np.random.default_rng(seed=db.timestamp)
+
     try:
         clip_meta = db.get_clip_meta(extra_args.get("tag_precedence"))
         frame_temp_median = clip_meta.frame_temp_median
@@ -268,7 +265,7 @@ def get_data(source_file, excluded_tags, extra_args):
                     frame_min_mass=extra_args.get("min_mass"),
                     filter_by_fp=extra_args.get("filter_by_fp"),
                     rng=rng,
-                    ceil_num_windows = False,
+                    ceil_num_windows=False,
                 )
             else:
                 filter_by_lq = extra_args.get("filter_by_lq", False)

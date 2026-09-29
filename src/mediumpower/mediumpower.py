@@ -15,6 +15,7 @@ import zlib
 import io
 import struct
 import gzip
+
 fmt = "%(asctime)s %(process)d %(thread)s:%(levelname)7s %(message)s"
 
 logging.basicConfig(
@@ -28,6 +29,7 @@ WRITE_CPTV = True
 PROCESS_LOAD = True
 TEST = len(sys.argv) > 1
 MODEL_PATH = "/home/pi/tflite/converted_model.tflite"
+
 
 # MODEL_PATH = "/home/gp/cacophony/classifier-data/thermal-training/2026Aug/v11/160/qat/singleExclude160QAT.tflite"
 def parse_cptv(cptv_file, frame_queue):
@@ -73,7 +75,6 @@ def run_cmd(cmd):
         return False
 
 
-
 # def run_medium():
 #     from config.thermalconfig import ThermalConfig
 
@@ -84,6 +85,7 @@ def run_cmd(cmd):
 #         thermal_config.location.altitude,
 #     )
 #     main(thermal_config)
+
 
 def main(config=None):
     logging.info("Medium Power started")
@@ -97,7 +99,6 @@ def main(config=None):
         parse_cptv("test.cptv", frame_queue)
         processor.join()
         return
-
 
     logging.info("Making sock")
     try:
@@ -194,6 +195,7 @@ def medium_power(connection, frame_queue, processor, config):
     from cptv_rs_python_bindings import CptvStreamReader
     import zlib
     from cptv import Frame
+
     connection.settimeout(20)
     headers, extra_b = handle_headers(connection)
     stream_i = 0
@@ -201,7 +203,9 @@ def medium_power(connection, frame_queue, processor, config):
     logging.info("Medium Power =======")
     asked_to_stay_on = False
 
-    inital_header_length = 8+4 +4 #Timestamp, lepton serial and firmware in the first message
+    inital_header_length = (
+        8 + 4 + 4
+    )  # Timestamp, lepton serial and firmware in the first message
     while True:
         if config is not None and not config.recorder.rec_window.inside_window():
             logging.info("No longer inside recorder window, leaving medium power")
@@ -232,7 +236,6 @@ def medium_power(connection, frame_queue, processor, config):
             extra_b = None
             continue
 
-      
         reader = CptvStreamReader()
         decompressor = zlib.decompressobj(wbits=-zlib.MAX_WBITS)
         recording = False
@@ -244,7 +247,7 @@ def medium_power(connection, frame_queue, processor, config):
         min_value = None
         max_value = None
 
-        while len(extra_b)< inital_header_length:
+        while len(extra_b) < inital_header_length:
             logging.info("Missing timestamp info waiting for more data")
             try:
                 byte_data = connection.recv(headers.frame_size)
@@ -255,17 +258,24 @@ def medium_power(connection, frame_queue, processor, config):
                 extra_b += byte_data
             except:
                 time.sleep(1)
-                continue  
+                continue
         timestamp = struct.unpack("<q", extra_b[:8])[0]
         lepton_serial = struct.unpack("<I", extra_b[8:12])[0]
         firmware = struct.unpack("<I", extra_b[12:16])[0]
-        headers.firmware =f"DOC-AI-v0.{firmware}"
+        headers.firmware = f"DOC-AI-v0.{firmware}"
         headers.serial = str(lepton_serial)
-        logging.info("Timestamp received is %s serial %s firmware %s",timestamp,lepton_serial,firmware)
-        formatted_time = datetime.fromtimestamp(timestamp/1e+6).strftime("%Y%m%d-%H%M%S.%f")
-        frame_queue.put(timestamp/1e+6)
+        logging.info(
+            "Timestamp received is %s serial %s firmware %s",
+            timestamp,
+            lepton_serial,
+            firmware,
+        )
+        formatted_time = datetime.fromtimestamp(timestamp / 1e6).strftime(
+            "%Y%m%d-%H%M%S.%f"
+        )
+        frame_queue.put(timestamp / 1e6)
 
-        extra_b = extra_b[8+4+4:]
+        extra_b = extra_b[8 + 4 + 4 :]
         if WRITE_CPTV:
             from mediumpower.cptvwriter import CPTVWriter
 
@@ -288,7 +298,9 @@ def medium_power(connection, frame_queue, processor, config):
                         logging.error("Mid recording failed to receive more data")
                         # Do we want to keep these files or delete them
                         # i think for until tested thoroughly keep them as it will highlight any possible issues
-                        writer.combine_headers(headers,config,timestamp, min_value,max_value,frame_i)
+                        writer.combine_headers(
+                            headers, config, timestamp, min_value, max_value, frame_i
+                        )
 
                     return True
             except:
@@ -296,12 +308,12 @@ def medium_power(connection, frame_queue, processor, config):
                     logging.error("Mid recording failed to receive more data")
                     frame_queue.put(CLEAR_SIGNAL)
                     # once tested this file could be deleted instead
-                    writer.combine_headers(headers,config,timestamp, min_value,max_value,frame_i)
+                    writer.combine_headers(
+                        headers, config, timestamp, min_value, max_value, frame_i
+                    )
                     break
                 time.sleep(1)
                 continue
-
-
 
             clear_index = byte_data.find(b"clear")
             if clear_index > -1:
@@ -312,9 +324,9 @@ def medium_power(connection, frame_queue, processor, config):
                 frame_queue.put(CLEAR_SIGNAL)
                 if WRITE_CPTV:
                     writer.write(byte_data)
-                    writer.combine_headers(headers,config,timestamp, min_value,max_value,frame_i)
-
-
+                    writer.combine_headers(
+                        headers, config, timestamp, min_value, max_value, frame_i
+                    )
 
                 # might have another start
                 extra_b = byte_data[clear_index + len("clear") :]
@@ -379,7 +391,6 @@ def medium_power(connection, frame_queue, processor, config):
                         min_value = frame_min
                     if max_value is None or max_value > frame_max:
                         max_value = frame_max
-                    
 
                     frame_queue.put((py_frame, time.time()))
                     frame_i += 1
@@ -401,27 +412,32 @@ def medium_power(connection, frame_queue, processor, config):
         asked_to_stay_on = ask_to_stay_on()
     return True
 
-def combine_file(header_file, frame_file,output_file):
+
+def combine_file(header_file, frame_file, output_file):
     import subprocess
     import os
+
     try:
-    # Simple cat command to display a file's content
+        # Simple cat command to display a file's content
         command = f"cat {header_file} {frame_file} >> {str(output_file)}"
-        result = subprocess.run(    ["sudo", "bash", "-c", command],capture_output=True,check=True)
+        result = subprocess.run(
+            ["sudo", "bash", "-c", command], capture_output=True, check=True
+        )
         # logging.info("Combine output %s",result)
     except:
-        logging.error("Failed to combine %s %s",header_file,frame_file,exc_info=True)
-   
+        logging.error("Failed to combine %s %s", header_file, frame_file, exc_info=True)
+
     remove_file(header_file)
     remove_file(frame_file)
 
+
 def remove_file(file_name):
     import os
+
     try:
         os.remove(file_name)
     except:
-        logging.error("Failed to remove %s",file_name,exc_info=True)
-
+        logging.error("Failed to remove %s", file_name, exc_info=True)
 
 
 def decompress(decompressor, data, read_header=False):
@@ -461,8 +477,6 @@ def decompress(decompressor, data, read_header=False):
     if length != (len(decompressed) & 0xFFFFFFFF):
         raise Exception("Incorrect length of data produced")
     return unused_data, decompressed, read_header
-
-
 
 
 CLEAR_SIGNAL = "clear"
@@ -572,11 +586,20 @@ def submit_prediction(clip, monitored_tracks, tracking_events):
     predicting_track_id = track._id
     start = time.time()
     classify_executor.submit(
-        _predict_and_apply, track, track_pred, preprocessed, frames, mass, start, tracking_events
+        _predict_and_apply,
+        track,
+        track_pred,
+        preprocessed,
+        frames,
+        mass,
+        start,
+        tracking_events,
     )
 
 
-def _predict_and_apply(track, track_pred, preprocessed, frames, mass, start, tracking_events):
+def _predict_and_apply(
+    track, track_pred, preprocessed, frames, mass, start, tracking_events
+):
     """Runs entirely on the single worker thread: infers then writes the
     result straight into monitored_tracks. Sets predicting_track_id itself,
     at the moment it actually starts running rather than when it was queued,
@@ -613,7 +636,10 @@ def _predict_and_apply(track, track_pred, preprocessed, frames, mass, start, tra
             )
         )
         if timestamp is not None:
-            logging.info("Prediction behind by %s",time.time() - timestamp  -last_region.frame_number/9 )
+            logging.info(
+                "Prediction behind by %s",
+                time.time() - timestamp - last_region.frame_number / 9,
+            )
     except Exception:
         logging.error("Could not predict", exc_info=True)
     finally:
@@ -639,8 +665,8 @@ def load_model(over_network=False):
     except:
         logging.error("Could not load model", exc_info=True)
 
-def run_classifier(frame_queue):
 
+def run_classifier(frame_queue):
 
     global predicting_track_id
     run_classifier_start = time.time()
@@ -658,6 +684,7 @@ def run_classifier(frame_queue):
 
     from piclassifier.motiondetector import RunningMean
     from concurrent.futures import ThreadPoolExecutor
+
     global classify_executor
     classify_executor = ThreadPoolExecutor(max_workers=1)
 
@@ -669,7 +696,7 @@ def run_classifier(frame_queue):
     # only need for over network
     imported_requests = not PROCESS_LOAD
     global timestamp
-    timestamp= time.time()
+    timestamp = time.time()
     try:
         while True:
             running_mean = None
@@ -725,12 +752,13 @@ def run_classifier(frame_queue):
                 except:
                     # means when first predictions comes through this wont need to be imported which takes a second
                     import requests
+
                     imported_requests = True
                     continue
 
                 if isinstance(frame, str):
                     if frame == CLEAR_SIGNAL:
-                        rec_sent= False
+                        rec_sent = False
                         logging.info(
                             "PiClassifier received clear signal will start a new clip"
                         )
@@ -745,7 +773,7 @@ def run_classifier(frame_queue):
                                     for track in clip.tracks
                                     if track._id == track_id
                                 ]
-                                if len(track)==0:
+                                if len(track) == 0:
                                     # guessing its finished now probably can be deleted need to check
                                     continue
                                 track = track[0]
@@ -759,7 +787,7 @@ def run_classifier(frame_queue):
                                     classifier.labels,
                                     classifier.id,
                                 )
-                            dbus_service.recording(False,time.time())
+                            dbus_service.recording(False, time.time())
                         else:
                             logging.error(
                                 "Dbus service never got started and recording is now finished"
@@ -770,9 +798,10 @@ def run_classifier(frame_queue):
                         logging.info("PiClassifier received stop signal")
                         if PROCESS_LOAD:
                             from piclassifier.utils import kill_process_with_timeout
+
                             kill_process_with_timeout(classifier_process)
                         return
-                elif isinstance(frame,float):
+                elif isinstance(frame, float):
                     timestamp = frame
                 else:
                     frame, time_sent = frame
@@ -782,7 +811,9 @@ def run_classifier(frame_queue):
                         oldest_thermal = clip.current_frame
 
                         # first frame is at 0
-                        oldest = clip.frame_buffer.get_frame(oldest_thermal - (running_mean.window_size-1))
+                        oldest = clip.frame_buffer.get_frame(
+                            oldest_thermal - (running_mean.window_size - 1)
+                        )
                         if oldest is not None:
                             oldest = oldest.thermal
 
@@ -790,19 +821,28 @@ def run_classifier(frame_queue):
                     mean_frame = running_mean.mean()
                     # if this is the first frame background needs to be initialized
                     track_extractor.background_alg.process_frame(mean_frame)
-                    
 
-                    
-                    new_tracks,stale_tracks = track_extractor.process_frame(clip, frame)
+                    new_tracks, stale_tracks = track_extractor.process_frame(
+                        clip, frame
+                    )
                     for t in new_tracks:
-                            t.received_at = time.time()
+                        t.received_at = time.time()
 
                     if dbus_service is None and classifier is not None:
                         try:
                             from piclassifier.service import DbusService
 
-                            dbus_service = DbusService(headers,None, classifier.labels,None,None,None,True,True)
-                            dbus_service.recording(time.time(),True)
+                            dbus_service = DbusService(
+                                headers,
+                                None,
+                                classifier.labels,
+                                None,
+                                None,
+                                None,
+                                True,
+                                True,
+                            )
+                            dbus_service.recording(time.time(), True)
                             rec_sent = True
                         except:
                             logging.error(
@@ -810,7 +850,7 @@ def run_classifier(frame_queue):
                             )
                     elif not rec_sent:
                         try:
-                            dbus_service.recording(time.time(),True)
+                            dbus_service.recording(time.time(), True)
                             rec_sent = True
                         except:
                             pass
@@ -826,7 +866,6 @@ def run_classifier(frame_queue):
                             if track._id in monitored_tracks:
                                 stale_track_ids.add(track._id)
 
-                    
                     if dbus_service:
                         # list(...) snapshots the items so popping a stale
                         # entry below doesn't disturb this iteration
@@ -868,12 +907,13 @@ def run_classifier(frame_queue):
         logging.error("Error running classifier restarting ..", exc_info=True)
         if PROCESS_LOAD:
             from piclassifier.utils import kill_process_with_timeout
+
             kill_process_with_timeout(classifier_process)
         return
 
 
 # class DefaultTracking:
-#     def 
+#     def
 
 
 def init_trackers(tracking_config):
@@ -894,16 +934,11 @@ def new_clip():
     default_tracking.denoise = False
     track_extractor = init_trackers(default_tracking)
 
-    clip = Clip(default_tracking,"stream",calc_stats= False,model = "lepton3.5")
+    clip = Clip(default_tracking, "stream", calc_stats=False, model="lepton3.5")
     clip.crop_rectangle = track_extractor.background_alg.crop_rectangle
     clip.res_x = 160
     clip.res_y = 120
-    clip.set_frame_buffer(
-            False,
-            keep_frames=True,
-            max_frames=100,
-            lock = False
-        )
+    clip.set_frame_buffer(False, keep_frames=True, max_frames=100, lock=False)
 
     return track_extractor, clip
 
@@ -911,7 +946,7 @@ def new_clip():
 def _classifier_main():
     from piclassifier.servemodel import main
 
-    main(warmup = False,model_file = MODEL_PATH)
+    main(warmup=False, model_file=MODEL_PATH)
 
 
 def run_classifier_process():
@@ -921,7 +956,6 @@ def run_classifier_process():
     )
     p_processor.start()
     return p_processor
-    
 
 
 if __name__ == "__main__":

@@ -117,10 +117,10 @@ def kill_process(process):
         logging.error("Could not kill process", exc_info=True)
 
 
-
 def print_memory_usage():
     import psutil
     import os
+
     process = psutil.Process(os.getpid())
     main_rss = process.memory_info().rss
     main_uss = process.memory_full_info().uss

@@ -295,7 +295,7 @@ def preprocess_file(classifier, filename):
                 classifier.params.channels,
                 classifier.preprocess_fn,
                 sample=f"{clip.id}-{track_id}",
-                pad_with = 0,
+                pad_with=0,
             )
             # preprocess_data["input_image"].append(np.zeros_like(frames))
             preprocess_data["input_image"].append(frames)
@@ -336,14 +336,14 @@ def main():
 
     model = classifier.model
 
-
     if args.weights is not None:
-        print("Loading ",args.weights)
+        print("Loading ", args.weights)
         model.load_weights(args.weights)
     # model = build_model(metadata, old_model)
     model.summary()
 
     from modelevaluate import has_activation, add_sigmoid_output
+
     if not has_activation(model):
         print("Added sigmoid output")
         model = add_sigmoid_output(model)
@@ -355,9 +355,7 @@ def main():
     # img = source[0]                        # (H, W, 3) for display
 
     preds = model.predict(data)
-    for pred, pred_image in zip(
-        preds, data["input_image"]
-    ):
+    for pred, pred_image in zip(preds, data["input_image"]):
         print(pred_image.shape)
         print("Predictions:")
         for i, label in enumerate(labels):

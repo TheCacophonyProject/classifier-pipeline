@@ -98,7 +98,6 @@ class KerasModel(Interpreter):
         self.remapped_labels = None
         self.orig_labels = None
 
-
     def shape(self):
         if self.model is None:
             return None
@@ -364,8 +363,8 @@ class KerasModel(Interpreter):
         self,
         dropout=None,
         multi_input=False,
-        qat = False,
-        enlarge = True,
+        qat=False,
+        enlarge=True,
     ):
         RNN_MODEL = False
         if RNN_MODEL:
@@ -374,11 +373,10 @@ class KerasModel(Interpreter):
             return self.build_model_lstm()
         from tensorflow.keras import layers
 
-
         # width = self.params.frame_size
         width = self.params.output_dim[0]
         if enlarge:
-            width*= 2
+            width *= 2
         input_image = tf.keras.Input(
             shape=(width, width, len(self.params.channels)), name="input_image"
         )
@@ -486,7 +484,9 @@ class KerasModel(Interpreter):
         )
         preds = final_dense(x)
         if activation is not None:
-            preds = tf.keras.layers.Activation(activation, name="prediction_activation")(preds)
+            preds = tf.keras.layers.Activation(
+                activation, name="prediction_activation"
+            )(preds)
 
         self.model = tf.keras.models.Model(input_image, outputs=preds)
 
@@ -559,23 +559,22 @@ class KerasModel(Interpreter):
             self.model.load_weights(self.weights)
             logging.info("Loaded weight %s", self.weights)
 
-
     # 2. Wrap your TFRecord processing inside a python generator function
     def tfrecord_representative_dataset_gen(self):
 
         # Parse the dataset, cast to float32, and grab a tiny batch (10-20 images is plenty)
         # We use .batch(1) because TFLite expects the array to include the batch dimension when yielded.
         parsed_dataset = self.validate.take(1)
-        for batch,_ in parsed_dataset: 
+        for batch, _ in parsed_dataset:
             for raw_tensor in batch:
                 # TFLite expects standard NumPy arrays inside a Python list [tensor]
                 # Cast your uint16 data cleanly to float32 here
                 img_array = raw_tensor.numpy().astype(np.float32)
-                
+
                 # If your model expects normalized inputs (0.0 to 1.0), do it here:
                 # img_array = img_array / 65535.0
                 yield [np.expand_dims(img_array, axis=0)]
-            
+
     def save(
         self,
         run_name=None,
@@ -584,8 +583,8 @@ class KerasModel(Interpreter):
         rebalance=False,
         fine_tune=None,
         multi_input=False,
-        qat = False,
-        enlarge = True
+        qat=False,
+        enlarge=True,
     ):
         # create a save point
         if run_name is None:
@@ -595,9 +594,10 @@ class KerasModel(Interpreter):
         run_dir.mkdir(parents=True, exist_ok=True)
         if qat:
             val_loss = self.checkpoint_folder / run_name / "val_loss.weights.h5"
-            logging.info("Saving with weights %s",val_loss)
+            logging.info("Saving with weights %s", val_loss)
             self.model.load_weights(val_loss)
             import tensorflow_model_optimization as tfmot
+
             # 4. Export the actual full integer TFLite binary
             converter = tf.lite.TFLiteConverter.from_keras_model(self.model)
             converter.optimizations = [tf.lite.Optimize.DEFAULT]
@@ -606,14 +606,23 @@ class KerasModel(Interpreter):
             # Target internal int8 execution structures
             converter.target_spec.supported_ops = [tf.lite.OpsSet.TFLITE_BUILTINS_INT8]
 
-
             tflite_qat_model = converter.convert()
-            with open(str(self.checkpoint_folder / run_name / f"{run_name}.tflite"), "wb") as f:
+            with open(
+                str(self.checkpoint_folder / run_name / f"{run_name}.tflite"), "wb"
+            ) as f:
                 f.write(tflite_qat_model)
         else:
-            self.model.save(str(self.checkpoint_folder / run_name / f"{run_name}.keras"))
+            self.model.save(
+                str(self.checkpoint_folder / run_name / f"{run_name}.keras")
+            )
         self.save_metadata(
-            run_name, history, test_results, rebalance, fine_tune, multi_input=multi_input,enlarge=enlarge
+            run_name,
+            history,
+            test_results,
+            rebalance,
+            fine_tune,
+            multi_input=multi_input,
+            enlarge=enlarge,
         )
 
     def save_metadata(
@@ -624,7 +633,7 @@ class KerasModel(Interpreter):
         rebalance=False,
         fine_tune=None,
         multi_input=False,
-        enlarge = True,
+        enlarge=True,
     ):
         #  save metadata
         if run_name is None:
@@ -822,9 +831,8 @@ class KerasModel(Interpreter):
             self.model = self.build_model(
                 dropout=self.params.dropout,
                 multi_input=multi_input,
-                qat = qat,
-                enlarge = not dont_enlarge,
-
+                qat=qat,
+                enlarge=not dont_enlarge,
             )
 
             if weights is not None:
@@ -840,7 +848,6 @@ class KerasModel(Interpreter):
                     self.model.get_layer("efficientnetv2-b3").trainable = False
                 else:
                     self.model.load_weights(weights)
-
 
         self.model.summary()
 
@@ -872,7 +879,7 @@ class KerasModel(Interpreter):
             use_jitter=use_jitter or None,
             epoch_size=100 if test else None,
             current_epoch=CURRENT_EPOCH,
-            enlarge = not dont_enlarge,
+            enlarge=not dont_enlarge,
         )
 
         steps = epoch_size // self.params.batch_size
@@ -897,8 +904,7 @@ class KerasModel(Interpreter):
             tf_mappings=tf_mappings,
             multi_input=multi_input,
             epoch_size=100 if test else None,
-            enlarge = not dont_enlarge,
-
+            enlarge=not dont_enlarge,
         )
         logging.info(
             "Training on %s  with class weights %s",
@@ -906,10 +912,9 @@ class KerasModel(Interpreter):
             self.class_weights,
         )
 
-
-
-
-        self.save(run_name, fine_tune=fine_tune, rebalance=rebalance,            enlarge = not dont_enlarge)
+        self.save(
+            run_name, fine_tune=fine_tune, rebalance=rebalance, enlarge=not dont_enlarge
+        )
 
         checkpoints = self.checkpoints(
             run_name,
@@ -917,8 +922,6 @@ class KerasModel(Interpreter):
             fine_tuning=warm_down,
         )
 
-
-        
         if warm_down:
             optimizer_fn = tf.keras.optimizers.Adam(
                 learning_rate=self.params.fine_tune_learning_rate
@@ -935,29 +938,33 @@ class KerasModel(Interpreter):
                 JITTER_HEAVY_STAGE_EPOCH,
                 JITTER_MEDIUM_STAGE_EPOCH,
             )
+
             optimizer_fn = optimizer(
                 self.params, steps, self.epochs, fine_tune=fine_tune is not None
             )
             warmup_callback = StepWarmupCallback(
-                target_lr=self.params.fine_tune_learning_rate if use_jitter or qat else self.params.learning_rate ,
+                target_lr=(
+                    self.params.fine_tune_learning_rate
+                    if use_jitter or qat
+                    else self.params.learning_rate
+                ),
                 warmup_epochs=2,
                 steps_per_epoch=steps,
-                medium_epoch =JITTER_MEDIUM_STAGE_EPOCH,
-                heavy_epoch = JITTER_HEAVY_STAGE_EPOCH
+                medium_epoch=JITTER_MEDIUM_STAGE_EPOCH,
+                heavy_epoch=JITTER_HEAVY_STAGE_EPOCH,
             )
             checkpoints.append(warmup_callback)
-
-            
 
         if phase2:
             # not used but kept incase revisited
             self.phase2(epochs)
         else:
             if qat:
-                epochs = 5 
+                epochs = 5
                 logging.info("Using 5 epochs in QAT mode")
                 import tensorflow_model_optimization as tfmot
                 from ml_tools.flattenmodel import flatten_model
+
                 flattened = flatten_model(self.model)
 
                 # TFMOT's default 8-bit scheme doesn't have a QuantizeConfig
@@ -968,10 +975,12 @@ class KerasModel(Interpreter):
                 # anything it doesn't support unannotated -- quantize_apply()
                 # passes unannotated layers through untouched (still float)
                 # instead of erroring.
-                quantize_registry = tfmot.quantization.keras.default_8bit.Default8BitQuantizeRegistry()
+                quantize_registry = (
+                    tfmot.quantization.keras.default_8bit.Default8BitQuantizeRegistry()
+                )
 
                 def annotate_layer(layer):
-                    if layer.name == 'prediction_activation':
+                    if layer.name == "prediction_activation":
                         logging.info("Skipping final activation %s", layer)
                         return layer
                     if not quantize_registry.supports(layer):
@@ -984,8 +993,7 @@ class KerasModel(Interpreter):
                 self.model = tfmot.quantization.keras.quantize_apply(annotated)
                 # self.save(run_name, fine_tune=fine_tune, rebalance=rebalance,qat=qat)
 
-
-            self.compile_training_model(optimizer_fn,qat)
+            self.compile_training_model(optimizer_fn, qat)
             history = self.model.fit(
                 self.train,
                 validation_data=self.validate,
@@ -1020,8 +1028,7 @@ class KerasModel(Interpreter):
                 tf_mappings=tf_mappings,
                 multi_input=multi_input,
                 epoch_size=100 if test else None,
-                enlarge = not dont_enlarge,
-
+                enlarge=not dont_enlarge,
             )
             if self.test:
                 test_accuracy = self.model.evaluate(self.test)
@@ -1033,18 +1040,22 @@ class KerasModel(Interpreter):
             rebalance=rebalance,
             fine_tune=fine_tune,
             multi_input=multi_input,
-            qat = qat,
-            enlarge = not dont_enlarge,
-
-            
+            qat=qat,
+            enlarge=not dont_enlarge,
         )
-    def compile_training_model(self,opt,qat = False):
+
+    def compile_training_model(self, opt, qat=False):
         self.model.compile(
             optimizer=opt,
-            loss=loss(self.params,from_logits = not qat),
-            metrics={"prediction_activation" if qat else "prediction" : metrics(self.params.multi_label,from_logits = not qat)},
+            loss=loss(self.params, from_logits=not qat),
+            metrics={
+                "prediction_activation" if qat else "prediction": metrics(
+                    self.params.multi_label, from_logits=not qat
+                )
+            },
         )
-    def phase2(self,epochs):
+
+    def phase2(self, epochs):
         logging.info(
             "Phase2 stage 1: training new head only for %s epochs with "
             "channel_aligner and efficientnetv2-b3 frozen",
@@ -1073,9 +1084,7 @@ class KerasModel(Interpreter):
 
         # drop the warmup callback, it already ramped to target_lr and
         # would otherwise override the low fine-tuning LR below
-        checkpoints = [
-            c for c in checkpoints if not isinstance(c, StepWarmupCallback)
-        ]
+        checkpoints = [c for c in checkpoints if not isinstance(c, StepWarmupCallback)]
         checkpoints.append(
             tf.keras.callbacks.LearningRateScheduler(stage_3_lr_scheduler)
         )
@@ -1086,11 +1095,7 @@ class KerasModel(Interpreter):
         # was still frozen, and stage 2 can run for a long time only
         # ever comparing against its own epochs.
         early_stopping = next(
-            (
-                c
-                for c in checkpoints
-                if isinstance(c, tf.keras.callbacks.EarlyStopping)
-            ),
+            (c for c in checkpoints if isinstance(c, tf.keras.callbacks.EarlyStopping)),
             None,
         )
         if early_stopping is not None:
@@ -1121,6 +1126,7 @@ class KerasModel(Interpreter):
             class_weight=self.class_weights,
             callbacks=self.checkpoints(),
         )
+
     def phase1_weights(self, weights):
         weights = Path(weights)
         # 1. Build your small Phase 1 architecture layout
@@ -1268,9 +1274,14 @@ class KerasModel(Interpreter):
             save_weights_only=True,
             mode="max",
         )
-        checkpoints = [ tf.keras.callbacks.TensorBoard(
-                            self.log_dir, write_graph=True, write_images=True
-                        ),checkpoint_acc, checkpoint_loss, cp_callback]
+        checkpoints = [
+            tf.keras.callbacks.TensorBoard(
+                self.log_dir, write_graph=True, write_images=True
+            ),
+            checkpoint_acc,
+            checkpoint_loss,
+            cp_callback,
+        ]
         if not fine_tuning:
             earlyStopping = tf.keras.callbacks.EarlyStopping(
                 start_from_epoch=5,
@@ -1420,7 +1431,6 @@ class KerasModel(Interpreter):
         if self.run_over_network:
             return self.predict_over_network(frames)
         return self.model.predict(frames)
-
 
     def confusion_tfrecords(self, dataset, filename):
         true_categories = tf.concat([y for x, y in dataset], axis=0)
@@ -1581,7 +1591,7 @@ class KerasModel(Interpreter):
 
 
 # from tensorflow examples
-def plot_confusion_matrix(cm, class_names, title="Confusion Matrix",totals_row = None):
+def plot_confusion_matrix(cm, class_names, title="Confusion Matrix", totals_row=None):
     """
     Returns a matplotlib figure containing the plotted confusion matrix.
 
@@ -1594,20 +1604,22 @@ def plot_confusion_matrix(cm, class_names, title="Confusion Matrix",totals_row =
     tick_marks = np.arange(len(class_names))
 
     if totals_row is not None:
-        plt.imshow(np.vstack((cm,totals_row)), interpolation="nearest", cmap=plt.cm.Blues)
+        plt.imshow(
+            np.vstack((cm, totals_row)), interpolation="nearest", cmap=plt.cm.Blues
+        )
     else:
         plt.imshow(cm, interpolation="nearest", cmap=plt.cm.Blues)
 
     plt.title(title)
     plt.colorbar()
-    
+
     plt.xticks(tick_marks, class_names, rotation=90)
     ylabels = []
     for i, label in enumerate(class_names):
         ylabel = f"{label} ({np.sum(cm[i])})"
         ylabels.append(ylabel)
     if totals_row is not None:
-        tick_marks = np.arange(len(class_names)+1)
+        tick_marks = np.arange(len(class_names) + 1)
         ylabels.append("totals")
     plt.yticks(tick_marks, ylabels)
 
@@ -1626,9 +1638,9 @@ def plot_confusion_matrix(cm, class_names, title="Confusion Matrix",totals_row =
         plt.text(j, i, cm[i, j], horizontalalignment="center", color=color)
     if totals_row is not None:
         i = len(cm)
-        for j,count in enumerate(totals_row):
-            color = "white" if count> threshold else "black"
-            plt.text(j, i, count, horizontalalignment="center", color=color)   
+        for j, count in enumerate(totals_row):
+            color = "white" if count > threshold else "black"
+            plt.text(j, i, count, horizontalalignment="center", color=color)
     plt.tight_layout()
     plt.ylabel("True label")
     plt.xlabel("Predicted label")
@@ -1673,7 +1685,7 @@ def plot_to_image(figure):
     return image
 
 
-def loss(params,from_logits = True):
+def loss(params, from_logits=True):
     if params.multi_label:
         # return tf.keras.losses.BinaryFocalCrossentropy(gamma=2.0, alpha=0.25),
         return tf.keras.losses.BinaryCrossentropy(
@@ -2046,7 +2058,9 @@ from tensorflow.keras.callbacks import Callback
 
 
 class StepWarmupCallback(Callback):
-    def __init__(self, target_lr, warmup_epochs, steps_per_epoch,medium_epoch,heavy_epoch):
+    def __init__(
+        self, target_lr, warmup_epochs, steps_per_epoch, medium_epoch, heavy_epoch
+    ):
         super(StepWarmupCallback, self).__init__()
         self.target_lr = target_lr
         self.warmup_epochs = warmup_epochs

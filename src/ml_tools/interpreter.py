@@ -48,8 +48,8 @@ class Interpreter(ABC):
         self.preprocess_fn = self.get_preprocess_fn()
         self.preprocess_v2 = metadata.get("v2_preprocess", False)
         self.multi_input = metadata.get("multi_input", False)
-        self.scale_thresholds = metadata.get("scale_thresholds",False)
-        self.enlarge = metadata.get("enlarge",True)
+        self.scale_thresholds = metadata.get("scale_thresholds", False)
+        self.enlarge = metadata.get("enlarge", True)
         from ml_tools.interpreter import get_mappings
 
         parent_mappings = {}
@@ -79,6 +79,7 @@ class Interpreter(ABC):
                     depth += 1
 
         self.parent_mappings = parent_mappings
+
     def load_training_meta(self, base_dir):
         from ml_tools.thermalwriter import MeanData
 
@@ -108,8 +109,6 @@ class Interpreter(ABC):
             self.pads = self.pads * 255
         logging.info("Pads are %s", self.pads)
 
-
-
     def confusion_tracks(
         self, dataset, filename, threshold=0.8, thresholds_per_label=None
     ):
@@ -118,6 +117,7 @@ class Interpreter(ABC):
 
         import tensorflow as tf
         from classify.trackprediction import TrackPrediction
+
         logging.info(
             "Calculating confusion with threshold %s saving to %s", threshold, filename
         )
@@ -143,17 +143,19 @@ class Interpreter(ABC):
         if LiteInterpreter.TYPE == "TFLite":
             y_pred = []
             for x in dataset.map(
-                        lambda x, _: x,
-                        num_parallel_calls=tf.data.AUTOTUNE,
-                    ):
-                res = self.predict(x)
-                y_pred.extend(res)
-            y_pred  = np.array(y_pred)
-        else:
-            y_pred = self.model.predict(dataset.map(
                 lambda x, _: x,
                 num_parallel_calls=tf.data.AUTOTUNE,
-            ))  
+            ):
+                res = self.predict(x)
+                y_pred.extend(res)
+            y_pred = np.array(y_pred)
+        else:
+            y_pred = self.model.predict(
+                dataset.map(
+                    lambda x, _: x,
+                    num_parallel_calls=tf.data.AUTOTUNE,
+                )
+            )
         pred_per_track = {}
         # if self.params.multi_label:
         # predicted_categori/es = []
@@ -201,7 +203,7 @@ class Interpreter(ABC):
                     confidences.append(no_smoothing[y])
                     raw_class_confidences.append(no_smoothing)
                     flat_y.append(y)
-                    
+
                     if len(y_true) > 1:
                         logging.info(
                             "Pred %s for %s confs %s",
@@ -269,10 +271,16 @@ class Interpreter(ABC):
                 preds[pred_mask & conf_mask] = len(labels) - 1
             cm = confusion_matrix(true_categories, preds, labels=np.arange(len(labels)))
             # Log the confusion matrix as an image summary.
-            figure = plot_confusion_matrix(cm, class_names=labels,totals_row=totals_row)
+            figure = plot_confusion_matrix(
+                cm, class_names=labels, totals_row=totals_row
+            )
             fscore_file = filename.parent / f"{filename.stem}-fscore"
             plt.savefig(fscore_file.with_suffix(".png"), format="png")
-            np.savez(fscore_file.with_suffix(".npz"), cm = np.vstack((cm, totals_row)),labels = labels)
+            np.savez(
+                fscore_file.with_suffix(".npz"),
+                cm=np.vstack((cm, totals_row)),
+                labels=labels,
+            )
 
         preds = results.copy()
 
@@ -281,10 +289,12 @@ class Interpreter(ABC):
         cm = confusion_matrix(true_categories, preds, labels=np.arange(len(labels)))
 
         # Log the confusion matrix as an image summary.
-        figure = plot_confusion_matrix(cm, class_names=labels,totals_row=totals_row)
+        figure = plot_confusion_matrix(cm, class_names=labels, totals_row=totals_row)
         out_file = filename.parent / f"{filename.stem}-{round(100*threshold)}%"
         plt.savefig(out_file.with_suffix(".png"), format="png")
-        np.savez(out_file.with_suffix(".npz"), cm = np.vstack((cm, totals_row)),labels = labels)
+        np.savez(
+            out_file.with_suffix(".npz"), cm=np.vstack((cm, totals_row)), labels=labels
+        )
 
     @abstractmethod
     def shape(self):
@@ -347,27 +357,34 @@ class Interpreter(ABC):
         logging.warn("pretrained model %s has no preprocessing function", model_name)
         return None
 
-
     # use when predictin as tracks are being tracked i.e not finished yet
     def preprocess_track(self, clip, track, **args):
         samples = self.frames_for_prediction(clip, track, **args)
-        min_frames_for_prediction =  args.get("min_frames_for_prediction",None)
-        if min_frames_for_prediction is not None and len(samples)== 1 and len(samples[0].frame_indices) < min_frames_for_prediction:
-            logging.info("Not enough frames for a prediction have %s required %s", len(samples[0].frame_indices), min_frames_for_prediction)
+        min_frames_for_prediction = args.get("min_frames_for_prediction", None)
+        if (
+            min_frames_for_prediction is not None
+            and len(samples) == 1
+            and len(samples[0].frame_indices) < min_frames_for_prediction
+        ):
+            logging.info(
+                "Not enough frames for a prediction have %s required %s",
+                len(samples[0].frame_indices),
+                min_frames_for_prediction,
+            )
 
             return None
-        
-        frames, preprocessed, mass  =  self.preprocess(clip, track, samples, **args)
+
+        frames, preprocessed, mass = self.preprocess(clip, track, samples, **args)
         if preprocessed is None or len(preprocessed) == 0:
             return None
         return frames, preprocessed, mass
-    
+
     # use when predictin as tracks are being tracked i.e not finished yet
     def predict_recent_frames(self, clip, track, **args):
-        preprocessed_result = self.preprocess_track(clip,track,**args)
+        preprocessed_result = self.preprocess_track(clip, track, **args)
         if preprocessed_result is None:
             return None
-        frames, preprocessed, mass  = preprocessed_result
+        frames, preprocessed, mass = preprocessed_result
         try:
             prediction = self.predict(preprocessed)
         except:
@@ -434,7 +451,7 @@ class Interpreter(ABC):
             multi_label=self.params.multi_label,
             parent_mappings=self.parent_mappings,
             scale_thresholds=self.scale_thresholds,
-            thresholds_per_label=self.thresholds_per_label
+            thresholds_per_label=self.thresholds_per_label,
         )
         track_prediction.classified_track(
             output,
@@ -445,9 +462,9 @@ class Interpreter(ABC):
         #     len(prediction_frames) == 1
         #     and len(set(prediction_frames[0])) < self.params.square_width**2 / 4
         # ):
-            # if we don't have many frames to get a good prediction, lets assume only false-positive is a good prediction and filter the rest to a maximum of 0.5
-            # if track_prediction.predicted_tags() != "false-positive":
-            #     track_prediction.cap_confidences(0.5)
+        # if we don't have many frames to get a good prediction, lets assume only false-positive is a good prediction and filter the rest to a maximum of 0.5
+        # if track_prediction.predicted_tags() != "false-positive":
+        #     track_prediction.cap_confidences(0.5)
         return track_prediction
 
     def predict_track(self, clip, track, **args):
@@ -634,6 +651,7 @@ class Interpreter(ABC):
 
     def preprocess_segments_v2(self, clip, track, segments, predict_from_last=None):
         from ml_tools.preprocess import preprocess_frame_v2, preprocess_movement
+
         track_data = {}
         masses = []
         preprocessed = {}
@@ -901,9 +919,7 @@ def get_interpreter_from_path(model_file, run_over_network=False, load_model=Tru
         from ml_tools.kerasmodel import KerasModel
 
         classifier = KerasModel(run_over_network=run_over_network)
-        classifier.init_model(
-            model_file, load_model=load_model
-        )
+        classifier.init_model(model_file, load_model=load_model)
     elif model_file.suffix == ".tflite":
         classifier = LiteInterpreter(
             model_file, run_over_network=run_over_network, load_model=load_model
@@ -950,6 +966,7 @@ def get_interpreter(model, run_over_network=False, load_model=True, seed=None):
         classifier = ForestModel(model.model_file, load_model=load_model)
     else:
         from ml_tools.kerasmodel import KerasModel
+
         classifier = KerasModel(run_over_network=run_over_network)
         classifier.init_model(
             model.model_file, weights=model.model_weights, load_model=load_model
@@ -1044,9 +1061,8 @@ def get_mappings():
     return label_paths
 
 
-
 # from tensorflow examples
-def plot_confusion_matrix(cm, class_names, title="Confusion Matrix",totals_row = None):
+def plot_confusion_matrix(cm, class_names, title="Confusion Matrix", totals_row=None):
     """
     Returns a matplotlib figure containing the plotted confusion matrix.
 
@@ -1056,25 +1072,28 @@ def plot_confusion_matrix(cm, class_names, title="Confusion Matrix",totals_row =
     """
     import matplotlib.pyplot as plt
     import itertools
+
     plt.clf()
     figure = plt.figure(figsize=(16, 16))
     tick_marks = np.arange(len(class_names))
 
     if totals_row is not None:
-        plt.imshow(np.vstack((cm,totals_row)), interpolation="nearest", cmap=plt.cm.Blues)
+        plt.imshow(
+            np.vstack((cm, totals_row)), interpolation="nearest", cmap=plt.cm.Blues
+        )
     else:
         plt.imshow(cm, interpolation="nearest", cmap=plt.cm.Blues)
 
     plt.title(title)
     plt.colorbar()
-    
+
     plt.xticks(tick_marks, class_names, rotation=90)
     ylabels = []
     for i, label in enumerate(class_names):
         ylabel = f"{label} ({np.sum(cm[i])})"
         ylabels.append(ylabel)
     if totals_row is not None:
-        tick_marks = np.arange(len(class_names)+1)
+        tick_marks = np.arange(len(class_names) + 1)
         ylabels.append("totals")
     plt.yticks(tick_marks, ylabels)
 
@@ -1093,9 +1112,9 @@ def plot_confusion_matrix(cm, class_names, title="Confusion Matrix",totals_row =
         plt.text(j, i, cm[i, j], horizontalalignment="center", color=color)
     if totals_row is not None:
         i = len(cm)
-        for j,count in enumerate(totals_row):
-            color = "white" if count> threshold else "black"
-            plt.text(j, i, count, horizontalalignment="center", color=color)   
+        for j, count in enumerate(totals_row):
+            color = "white" if count > threshold else "black"
+            plt.text(j, i, count, horizontalalignment="center", color=color)
     plt.tight_layout()
     plt.ylabel("True label")
     plt.xlabel("Predicted label")

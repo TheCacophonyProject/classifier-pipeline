@@ -309,6 +309,7 @@ class Frame:
 
     def resize(self, dim, interpolation=opencvconstants.INTER_NEAREST):
         from ml_tools.imageprocessing import resize_cv
+
         self.thermal = resize_cv(self.thermal, dim, interpolation=interpolation)
         self.filtered = resize_cv(self.filtered, dim, interpolation=interpolation)
         self.thermal_norm = resize_cv(

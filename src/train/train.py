@@ -56,7 +56,7 @@ def train_model(
     init_logging()
     if qat:
         logging.info("Using legacy keras because of qat")
-        os.environ["TF_USE_LEGACY_KERAS"] = "1" 
+        os.environ["TF_USE_LEGACY_KERAS"] = "1"
     from ml_tools.kerasmodel import KerasModel, grid_search
 
     """Trains a model with the given hyper parameters."""

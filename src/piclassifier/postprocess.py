@@ -1,11 +1,10 @@
-
-
 def process_mem():
     import os
 
     # return the memory usage in MB
     process = psutil.Process(os.getpid())
     return process.memory_info().rss / (1024 * 1024)
+
 
 import psutil
 import queue
@@ -29,7 +28,6 @@ import threading
 import dbus
 from gi.repository import GLib
 
-
 TIMESTAMP_FORMATS = [
     (re.compile(r"^\d{4}-\d{2}-\d{2}--\d{2}-\d{2}-\d{2}"), "%Y-%m-%d--%H-%M-%S"),
     (re.compile(r"^\d{8}-\d{6}\.\d+"), "%Y%m%d-%H%M%S.%f"),
@@ -44,6 +42,7 @@ def filename_timestamp(cptv_file):
             return datetime.strptime(match.group(), fmt)
 
     return datetime.fromtimestamp(0)
+
 
 logging.info("Process usage %s", process_mem())
 
@@ -205,7 +204,6 @@ def main():
                             raise ex
                         time.sleep(20)
                     attempt += 1
-
 
             try:
                 if clip_classifier._is_recording:

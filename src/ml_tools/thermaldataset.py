@@ -270,7 +270,7 @@ def load_dataset(filenames, remap_lookup, labels, args):
             current_epoch=args.get("current_epoch"),
             use_velocity=USE_VELOCITY,
             multi_input=args.get("multi_input", False),
-            enlarge = args.get("enlarge",True),
+            enlarge=args.get("enlarge", True),
         ),
         num_parallel_calls=AUTOTUNE,
         deterministic=deterministic,
@@ -354,7 +354,6 @@ def load_dataset(filenames, remap_lookup, labels, args):
                 current_epoch=args.get("current_epoch"),
                 multi_input=multi_input,
             )
-
 
     else:
         # remove num_frames_used from y
@@ -554,7 +553,7 @@ def read_tfrecord(
     current_epoch=None,
     use_velocity=False,
     multi_input=False,
-    enlarge = True,
+    enlarge=True,
 ):
     logging.info(
         "Read tf record with image %s lbls %s aug  %s  prepr %s only features %s one hot %s include fetures %s num frames %s mosaic_size %s mosaic_enalrged %s padding %s enlarge %s",
@@ -608,7 +607,7 @@ def read_tfrecord(
     if include_track:
         tfrecord_format["image/track_id"] = tf.io.FixedLenFeature((), tf.int64, -1)
         # tfrecord_format["image/avg_mass"] = tf.io.FixedLenFeature((), tf.int64, -1)
-        tfrecord_format["image/source_id"] =  tf.io.FixedLenFeature([], tf.string)
+        tfrecord_format["image/source_id"] = tf.io.FixedLenFeature([], tf.string)
 
     if include_features or only_features:
         tfrecord_format["image/features"] = tf.io.FixedLenSequenceFeature(
@@ -760,9 +759,9 @@ def read_tfrecord(
 
             # TF complains if these aren't hard coded numbers
             if enlarge:
-                rgb_image = tf.ensure_shape(rgb_image, [num_frames, 64,64, 3])
+                rgb_image = tf.ensure_shape(rgb_image, [num_frames, 64, 64, 3])
             else:
-                rgb_image = tf.ensure_shape(rgb_image, [num_frames, 32,32, 3])
+                rgb_image = tf.ensure_shape(rgb_image, [num_frames, 32, 32, 3])
 
         elif num_frames > 1:
             raise Exception("Repeating frames is not implemented as not used")
@@ -953,7 +952,9 @@ def jitter_dataset(x, y, current_epoch, multi_input=False):
     return tf.cond(should_jitter, jitter, no_jitter)
 
 
-def prepare_cutmix_dataset(dataset_original, img_size, prob, current_epoch, multi_input=False):
+def prepare_cutmix_dataset(
+    dataset_original, img_size, prob, current_epoch, multi_input=False
+):
     # 1. Create a second dataset and shuffle it to mix different images together
     dataset_shuffled = dataset_original.shuffle(buffer_size=4096)
 
@@ -1105,7 +1106,6 @@ def video_sequential_cutmix(data1, data2, current_epoch, multi_input=False):
 
     # Conditionally execute the mix or no_mix subgraph based on probability
     return tf.cond(tf.random.uniform([]) < prob, mix, no_mix)
-
 
 
 def tile_images(images):
@@ -1289,13 +1289,13 @@ def show_batch(image_batch, label_batch, labels, save=None, tracks=False):
         plt.savefig(save)
     plt.show()
 
-import tensorflow as tf
 
+import tensorflow as tf
 
 
 # this backfired and just force the modal to rely on thermal
 @tf.function
-def train_all_channel_dropout_tf(mosaic_grid_dic, labels,dropout_prob=0.15):
+def train_all_channel_dropout_tf(mosaic_grid_dic, labels, dropout_prob=0.15):
     """
     Fast, pure TensorFlow channel dropout for 3-channel images.
     Operates on a single tensor image of shape (H, W, 3).
@@ -1304,15 +1304,15 @@ def train_all_channel_dropout_tf(mosaic_grid_dic, labels,dropout_prob=0.15):
 
     # 1. Generate random uniform numbers for each of the 3 channels
     rand_vals = tf.random.uniform(shape=(3,), minval=0.0, maxval=1.0)
-    
+
     # 2. Determine which channels hit the threshold to be dropped
     # True means 'drop', False means 'keep'
     drop_mask = rand_vals < dropout_prob
-    
+
     # 3. Safety Check: If ALL three channels are marked for dropping,
     # force-save one randomly so the model doesn't get a completely black image.
     all_dropped = tf.reduce_all(drop_mask)
-    
+
     if all_dropped:
         # Pick an index (0, 1, or 2) to force-keep
         keep_idx = tf.random.uniform(shape=(), minval=0, maxval=3, dtype=tf.int32)
@@ -1321,17 +1321,19 @@ def train_all_channel_dropout_tf(mosaic_grid_dic, labels,dropout_prob=0.15):
         keep_mask = tf.equal(indices, keep_idx)
         # Flip the drop flag back to False for that chosen channel
         drop_mask = tf.logical_and(drop_mask, tf.logical_not(keep_mask))
-        
+
     # 4. Invert the mask: Convert 'drop' flags to standard multiplication masks
     # False (keep) becomes 1.0, True (drop) becomes 0.0
     channel_multipliers = tf.where(drop_mask, 0.0, 1.0)
-    
+
     # 5. Broadcast and apply the multipliers across the H x W dimensions
     # Reshapes from (3,) to (1, 1, 3) to multiply across pixel space
     channel_multipliers = tf.reshape(channel_multipliers, (1, 1, 3))
-    
-    return {"input_image":image * channel_multipliers,"input_mask":mosaic_grid_dic["input_mask"]}, labels
 
+    return {
+        "input_image": image * channel_multipliers,
+        "input_mask": mosaic_grid_dic["input_mask"],
+    }, labels
 
 
 @tf.function
@@ -1345,7 +1347,9 @@ def sensor_dropout_augmentation(mosaic_grid_dic, labels, multi_input=False):
     mosaic_grid = mosaic_grid_dic["input_image"] if multi_input else mosaic_grid_dic
 
     if tf.random.uniform([]) < 0.30:
-        ch0 = tf.zeros_like(mosaic_grid[:, :, 0])  # Zero out the thermal channel completely
+        ch0 = tf.zeros_like(
+            mosaic_grid[:, :, 0]
+        )  # Zero out the thermal channel completely
         ch1 = mosaic_grid[:, :, 1]
         ch2 = mosaic_grid[:, :, 2]
 
@@ -1353,7 +1357,11 @@ def sensor_dropout_augmentation(mosaic_grid_dic, labels, multi_input=False):
 
     if not multi_input:
         return mosaic_grid, labels
-    return {"input_image":mosaic_grid,"input_mask":mosaic_grid_dic["input_mask"]}, labels
+    return {
+        "input_image": mosaic_grid,
+        "input_mask": mosaic_grid_dic["input_mask"],
+    }, labels
+
 
 @tf.function
 def mask_random_frames(rgb_image, frame_indices, record_frames):

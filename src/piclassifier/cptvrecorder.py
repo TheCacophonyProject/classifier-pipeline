@@ -27,7 +27,9 @@ class CPTVRecorder(Recorder):
             **args,
         )
 
-    def new_recording(self, background_frame, preview_frames, temp_thresh, frame_time,motion_config):
+    def new_recording(
+        self, background_frame, preview_frames, temp_thresh, frame_time, motion_config
+    ):
         self.frames = 0
         can_rec = self.can_record(frame_time)
         if not can_rec:
@@ -72,7 +74,8 @@ def record(
     init_logging()
     frames = 0
     try:
-        from cptv import CPTVWriter,Frame
+        from cptv import CPTVWriter, Frame
+
         logging.info("%s Recorder %s started", name, filename.resolve())
         f = open(filename, "wb")
         writer = CPTVWriter(f)

@@ -28,7 +28,7 @@ def log_event(event_type, details=None):
         if data is None:
             json_d = "{}"
         else:
-            json_d = json.dumps(data,cls=CustomJSONEncoder)
+            json_d = json.dumps(data, cls=CustomJSONEncoder)
         proxy.Add(json_d, event_type, dbus.Int64(time.time_ns()))
     except:
         logging.error("log event dbus error ", exc_info=True)
@@ -37,6 +37,7 @@ def log_event(event_type, details=None):
 class CustomJSONEncoder(json.JSONEncoder):
     def default(self, obj):
         import numpy as np
+
         if isinstance(obj, np.integer):
             return int(obj)
         elif isinstance(obj, np.floating):

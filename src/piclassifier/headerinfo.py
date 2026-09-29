@@ -21,7 +21,6 @@ class HeaderInfo:
     FIRMWARE = "Firmware"
     SOURCE = "Source"
 
-
     medium_power: Any = False
     res_x: Any = 160
     res_y: Any = 120

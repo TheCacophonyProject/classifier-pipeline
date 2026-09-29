@@ -10,8 +10,17 @@ try:
     import tf_keras
 except ImportError:
     import subprocess
-    subprocess.check_call([sys.executable, "-m", "pip", "install", "tf-keras tensorflow-model-optimization"])
+
+    subprocess.check_call(
+        [
+            sys.executable,
+            "-m",
+            "pip",
+            "install",
+            "tf-keras tensorflow-model-optimization",
+        ]
+    )
     import tf_keras
 
 # 3. Intercept and redirect the module path globally
-sys.modules['tensorflow.keras'] = tf_keras
+sys.modules["tensorflow.keras"] = tf_keras

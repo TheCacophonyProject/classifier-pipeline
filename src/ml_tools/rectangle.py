@@ -200,7 +200,7 @@ class Rectangle:
     def meta_dictionary(self):
         # Return object as dictionary without is_along_border,was_cropped and id for saving to json
         region_info = asdict(self)
-        for excluded in ("is_along_border", "was_cropped", "id", "centroid"):
+        for excluded in ("is_along_border", "was_cropped", "id", "centroid", "mask_id"):
             region_info.pop(excluded, None)
         # region_info["centroid"][0] = round(region_info["centroid"][0], 1)
         # region_info["centroid"][1] = round(region_info["centroid"][1], 1)

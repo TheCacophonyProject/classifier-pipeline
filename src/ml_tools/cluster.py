@@ -331,7 +331,7 @@ def run_umap(model_file, features_file, labels, filter_labels=None):
 
 # These labels are treated as one group when working out whether a majority
 # label dominates a cluster, since bird/chicken/penguin can be visually similar.
-BIRD_FAMILY_LABELS = {"bird", "chicken", "penguin","weka"}
+BIRD_FAMILY_LABELS = {"bird", "chicken", "penguin", "weka"}
 
 
 def find_mislabeled_points(clusterer, y_true, tracks, features_file):
@@ -351,7 +351,6 @@ def find_mislabeled_points(clusterer, y_true, tracks, features_file):
             "y_true": y_true,
             "tracks": tracks,
             "source_ids": source_ids,
-
             "hdbscan_cluster": hdbscan_labels,
             "confidence": probabilities,
         }
@@ -404,19 +403,21 @@ def find_mislabeled_points(clusterer, y_true, tracks, features_file):
         # total occurrences in the whole dataset landed here.
         label_cluster_counts = cluster_subset["y_true"].value_counts()
         label_coverage = (
-            label_cluster_counts / total_label_counts.reindex(label_cluster_counts.index)
+            label_cluster_counts
+            / total_label_counts.reindex(label_cluster_counts.index)
         ).sort_values(ascending=False)
         for label, pct in label_coverage.items():
             label_cluster_tally[label][cluster_id] = pct
         label_breakdown = ", ".join(
             f"{label}:{pct:.1%} of label, {label_counts[label]:.1%} of cluster"
             for label, pct in sorted(
-                label_coverage.items(), key=lambda item: label_counts[item[0]], reverse=True
+                label_coverage.items(),
+                key=lambda item: label_counts[item[0]],
+                reverse=True,
             )
             if label_counts[label] > 0.20 or pct > 0.50
         )
 
-        
         # A soft majority isn't actually ambiguous if this cluster is where most of
         # that label's data lives; only flag it when neither signal is strong.
         if is_bird_family_majority:
@@ -459,17 +460,23 @@ def find_mislabeled_points(clusterer, y_true, tracks, features_file):
     # Also tally noise (cluster -1) so the per-label breakdown accounts for all points.
     noise_subset = results[results["hdbscan_cluster"] == -1]
     noise_label_counts = noise_subset["y_true"].value_counts()
-    noise_coverage = noise_label_counts / total_label_counts.reindex(noise_label_counts.index)
+    noise_coverage = noise_label_counts / total_label_counts.reindex(
+        noise_label_counts.index
+    )
     for label, pct in noise_coverage.items():
         label_cluster_tally[label][-1] = pct
-    cluster_label_tally[-1] = noise_subset["y_true"].value_counts(normalize=True).to_dict()
+    cluster_label_tally[-1] = (
+        noise_subset["y_true"].value_counts(normalize=True).to_dict()
+    )
 
     print("\nPer-label cluster distribution:")
     for label in total_label_counts.index:
         breakdown = ", ".join(
             f"cluster {cluster_id}: {pct:.1%}"
             for cluster_id, pct in sorted(
-                label_cluster_tally[label].items(), key=lambda item: item[1], reverse=True
+                label_cluster_tally[label].items(),
+                key=lambda item: item[1],
+                reverse=True,
             )
         )
         print(f"  {label}: {breakdown}")
@@ -479,7 +486,9 @@ def find_mislabeled_points(clusterer, y_true, tracks, features_file):
         breakdown = ", ".join(
             f"{label}: {pct:.1%}"
             for label, pct in sorted(
-                cluster_label_tally[cluster_id].items(), key=lambda item: item[1], reverse=True
+                cluster_label_tally[cluster_id].items(),
+                key=lambda item: item[1],
+                reverse=True,
             )
         )
         print(f"  Cluster {cluster_id}: {breakdown}")
@@ -540,7 +549,9 @@ def find_mislabeled_points(clusterer, y_true, tracks, features_file):
             breakdown = ", ".join(
                 f"cluster {cluster_id}: {pct:.1%}"
                 for cluster_id, pct in sorted(
-                    label_cluster_tally[label].items(), key=lambda item: item[1], reverse=True
+                    label_cluster_tally[label].items(),
+                    key=lambda item: item[1],
+                    reverse=True,
                 )
             )
             f.write(f"{label}: {breakdown}\n")
@@ -549,7 +560,9 @@ def find_mislabeled_points(clusterer, y_true, tracks, features_file):
             breakdown = ", ".join(
                 f"{label}: {pct:.1%}"
                 for label, pct in sorted(
-                    cluster_label_tally[cluster_id].items(), key=lambda item: item[1], reverse=True
+                    cluster_label_tally[cluster_id].items(),
+                    key=lambda item: item[1],
+                    reverse=True,
                 )
             )
             f.write(f"Cluster {cluster_id}: {breakdown}\n")
@@ -563,7 +576,9 @@ def find_mislabeled_points(clusterer, y_true, tracks, features_file):
     mismatched_tracks_file = features_file.with_name("mismatched-tracks.txt")
     print("saving mismatched tracks to ", mismatched_tracks_file)
     with open(mismatched_tracks_file, "w") as f:
-        for track,source in zip(no_ambiguous_df["tracks"],no_ambiguous_df["source_ids"]):
+        for track, source in zip(
+            no_ambiguous_df["tracks"], no_ambiguous_df["source_ids"]
+        ):
             f.write(f"{track}-{source}\n")
         f.write("\ncluster_to_class_map\n")
         for cluster_id, mapped_class in sorted(cluster_to_class_map.items()):
@@ -573,7 +588,9 @@ def find_mislabeled_points(clusterer, y_true, tracks, features_file):
             breakdown = ", ".join(
                 f"cluster {cluster_id}: {pct:.1%}"
                 for cluster_id, pct in sorted(
-                    label_cluster_tally[label].items(), key=lambda item: item[1], reverse=True
+                    label_cluster_tally[label].items(),
+                    key=lambda item: item[1],
+                    reverse=True,
                 )
             )
             f.write(f"{label}: {breakdown}\n")
@@ -582,7 +599,9 @@ def find_mislabeled_points(clusterer, y_true, tracks, features_file):
             breakdown = ", ".join(
                 f"{label}: {pct:.1%}"
                 for label, pct in sorted(
-                    cluster_label_tally[cluster_id].items(), key=lambda item: item[1], reverse=True
+                    cluster_label_tally[cluster_id].items(),
+                    key=lambda item: item[1],
+                    reverse=True,
                 )
             )
             f.write(f"Cluster {cluster_id}: {breakdown}\n")
@@ -676,7 +695,7 @@ def extract_embeddings(
     for _, batch_y in dataset:
         track_batch = batch_y[1]
         source_batch = batch_y[2]
-        sources = [int(b.decode('utf-8')) for b in source_batch.numpy()]
+        sources = [int(b.decode("utf-8")) for b in source_batch.numpy()]
 
         tracks.extend(track_batch)
         source_ids.extend(sources)
@@ -703,7 +722,7 @@ def extract_embeddings(
     np.save(output_predictions, predictions)
     np.save(output_labels, true_labels)
     np.save(new_labels_out, new_labels)
-    np.save(tracks_out, np.stack((tracks,source_ids),axis=1))
+    np.save(tracks_out, np.stack((tracks, source_ids), axis=1))
 
     logging.info("New labls are %s", new_labels)
     logging.info(

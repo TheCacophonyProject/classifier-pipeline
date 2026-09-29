@@ -29,7 +29,7 @@ class FrameBuffer:
         cache_to_disk,
         keep_frames,
         max_frames=None,
-        lock= True,
+        lock=True,
     ):
 
         if cache_to_disk:
@@ -51,6 +51,7 @@ class FrameBuffer:
         self.frame_lock = None
         if lock:
             from threading import Lock
+
             self.frame_lock = Lock()
 
         self.reset()

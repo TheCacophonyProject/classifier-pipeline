@@ -26,54 +26,62 @@ ROWS = 120
 
 
 class CPTVWriter:
-    def __init__(self,filebase):
+    def __init__(self, filebase):
         self.filebase = filebase
         self.f = open(f"{filebase}.cptv", "wb")
 
         logging.info(f"Writing cptv file %s", self.f.name)
 
-    def write(self,bytes):
+    def write(self, bytes):
         self.f.write(bytes)
 
     def remove(self):
         self.f.close()
         remove_file(self.f.name)
+
     # writes a header file and then combines the frames and the headers into the final file
-    # this is done so we can add min and max values of the entire clip into the header 
-    def combine_file(self, headers,config,timestamp_micros, min_value = 0,max_value=0,num_frames = 0):
+    # this is done so we can add min and max values of the entire clip into the header
+    def combine_file(
+        self, headers, config, timestamp_micros, min_value=0, max_value=0, num_frames=0
+    ):
         from pathlib import Path
 
         self.f.close()
         file_path = Path(self.f.name)
-        header_file = self.write_header( headers,config,timestamp_micros, min_value ,max_value,num_frames)
+        header_file = self.write_header(
+            headers, config, timestamp_micros, min_value, max_value, num_frames
+        )
         output_file = file_path.parent.parent / file_path.name
-        
+
         import subprocess
         import os
+
         try:
-        # Simple cat command to display a file's content
+            # Simple cat command to display a file's content
             command = f"cat {header_file} {file_path} >> {str(output_file)}"
-            result = subprocess.run(    ["sudo", "bash", "-c", command],capture_output=True,check=True)
+            result = subprocess.run(
+                ["sudo", "bash", "-c", command], capture_output=True, check=True
+            )
         except:
-            logging.error("Failed to combine %s %s",header_file,file_path,exc_info=True)
-    
+            logging.error(
+                "Failed to combine %s %s", header_file, file_path, exc_info=True
+            )
+
         remove_file(header_file)
         remove_file(file_path)
 
-
-
-    def write_header(self, headers,config,timestamp_micros, min_value = 0,max_value=0,num_frames = 0):
+    def write_header(
+        self, headers, config, timestamp_micros, min_value=0, max_value=0, num_frames=0
+    ):
         header_file = f"{self.file_base}-headers.gz"
-        with gzip.open(header_file, 'wb', compresslevel=1) as s:
+        with gzip.open(header_file, "wb", compresslevel=1) as s:
             s.write(MAGIC)
             s.write(VERSION)
-
 
             fw = FieldWriter()
             fw.uint16(ord(Field.MIN_VALUE), min_value)
             fw.uint16(ord(Field.MAX_VALUE), max_value)
             fw.uint16(ord(Field.NUM_FRAMES), num_frames)
-
 
             fw.uint8(ord(Field.COMPRESSION), 1)
             fw.uint32(ord(Field.X_RESOLUTION), COLS)
@@ -82,11 +90,11 @@ class CPTVWriter:
             fw.uint32(ord(Field.DEVICEID), config.device.device_id)
             fw.timestamp(ord(Field.TIMESTAMP), timestamp_micros)
             fw.string(ord(Field.MODEL), headers.model.encode())
-            fw.string(ord(Field.BRAND),headers.brand.encode())
+            fw.string(ord(Field.BRAND), headers.brand.encode())
             if headers.serial:
                 # sometimes sent as None
-                fw.uint32(ord(Field.CAMERA_SERIAL),headers.serial)
-            fw.string(ord(Field.FIRMWARE),headers.firmware.encode())
+                fw.uint32(ord(Field.CAMERA_SERIAL), headers.serial)
+            fw.string(ord(Field.FIRMWARE), headers.firmware.encode())
             if config.location.latitude != 0:
                 fw.float32(ord(Field.LATITUDE), config.location.latitude)
             if config.location.longitude != 0:
@@ -101,10 +109,12 @@ class CPTVWriter:
 
 def remove_file(file_name):
     import os
+
     try:
         os.remove(file_name)
     except:
-        logging.error("Failed to remove %s",file_name,exc_info=True)
+        logging.error("Failed to remove %s", file_name, exc_info=True)
+
 
 class FieldWriter:
     def __init__(self):
@@ -122,7 +132,6 @@ class FieldWriter:
         self.s.write(struct.pack("<BBB", 1, code, val))
         self.count += 1
 
-        
     def uint16(self, code, val):
         self.s.write(struct.pack("<BBH", 2, code, int(val)))
         self.count += 1
@@ -185,7 +194,7 @@ class Field:
 
     MIN_VALUE = b"Q"
     MAX_VALUE = b"K"
-    NUM_FRAMES = b'J'
+    NUM_FRAMES = b"J"
 
 
 TIMESTAMP_FIELDS = {Field.TIMESTAMP, Field.LOC_TIMESTAMP}
@@ -224,4 +233,3 @@ FLOAT_FIELDS = {
     Field.LAST_FFC_TEMP_C,
     Field.TEMP_C,
 }
-
