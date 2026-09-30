@@ -108,6 +108,8 @@ class FrameCache:
 
     def open(self, mode="a"):
         if not self.db:
+            import h5py
+
             self.db = h5py.File(self.filename, mode)
 
     def delete(self):
