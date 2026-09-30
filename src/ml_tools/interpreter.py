@@ -1119,3 +1119,151 @@ def plot_confusion_matrix(cm, class_names, title="Confusion Matrix", totals_row=
     plt.ylabel("True label")
     plt.xlabel("Predicted label")
     return figure
+
+
+
+class Yolo(Interpreter):
+    TYPE = "YOLO"
+
+    def __init__(self, model_name, run_over_network=False, load_model=True):
+        # super().__init__(model_name, run_over_network)
+        self.model_file = model_name
+        import math
+        if run_over_network or not load_model:
+            return
+        self.load_model()
+        self.tta = True
+        self.imgsz = 320
+        self.tiles = False
+        self.iou = 0.55
+        # fraction of a box inside a larger box to suppress it, 0 disables
+        self.overlap = 0.8
+        height = 120
+        width = 160
+        self.device = "cpu"
+        sizes = sorted({max(32, round(self.imgsz*scale/32)*32) for scale in (0.75, 1, 1.25)}) if self.tta else [self.imgsz]
+        self.views = [(0, 0, width, height, size, flip) for size in sizes for flip in ([False, True] if self.tta else [False])]
+        if self.tiles and min(width, height) >= 8:
+            tile_w, tile_h = math.ceil(width*2/3), math.ceil(height*2/3)
+            self.views.extend((x, y, x+tile_w, y+tile_h, self.imgsz, False)
+                        for y in (0, height-tile_h) for x in (0, width-tile_w))
+        
+    def load_model(self):
+        from ultralytics import YOLO
+
+        self.model = YOLO(self.model_file)
+        print("Model Name:", self.model.names) 
+        print("Model Task:", self.model.task)
+
+        # 3. View the detailed structure and model information
+        self.model.info()
+
+    def predict(self, thermal):
+        # if self.run_over_network:
+        #     return self.predict_over_network(np.float32(input_x))
+        detections, _, _ = self.predict_frame( thermal)
+        return detections
+
+
+    def predict_frame(self, thermal):
+        gray = grayscale_pixels(thermal)
+        import numpy as np
+        import math
+        rgb = np.repeat(gray[..., None], 3, axis=2)
+        height, width = rgb.shape[:2]
+        boxes = []
+
+        for left, top, right, bottom, size, flip in self.views:
+            crop = rgb[top:bottom, left:right]
+            pixels = np.ascontiguousarray(crop[:, ::-1] if flip else crop)
+            # ndarray input to Ultralytics is BGR. Thermal channels are identical,
+            # but convert explicitly so this is also correct for future RGB images.
+            result = self.model.predict(np.ascontiguousarray(pixels[..., ::-1]), imgsz=size, conf=.2,
+                                iou=self.iou if self.tta or self.tiles else 0.7,
+                                augment=False, device=self.device, save=False, verbose=False)[0]
+            tile = (left, top, right, bottom) != (0, 0, width, height)
+            for xyxy, score, class_id in zip(result.boxes.xyxy.cpu().tolist(), result.boxes.conf.cpu().tolist(), result.boxes.cls.cpu().tolist()):
+                x0, y0, x1, y1 = xyxy
+                if flip:
+                    x0, x1 = right-left-x1, right-left-x0
+                # Ignore boxes cut by an internal tile edge; other overlapping
+                # tiles and the full-frame passes provide their complete view.
+                if tile and ((left > 0 and x0 <= 1) or (top > 0 and y0 <= 1) or
+                            (right < width and x1 >= right-left-1) or (bottom < height and y1 >= bottom-top-1)):
+                    continue
+                x0, x1 = max(0, x0+left), min(width, x1+left)
+                y0, y1 = max(0, y0+top), min(height, y1+top)
+                if x1 <= x0 or y1 <= y0:
+                    continue
+                class_id = int(class_id)
+                boxes.append(dict(kind="yolo", label=result.names[class_id], class_id=class_id,
+                                confidence=score, x=x0, y=y0, width=x1-x0, height=y1-y0))
+        raw_count = len(boxes)
+        if self.tta or self.tiles:
+            boxes = merge_detections(boxes, self.iou)
+        boxes = suppress_inner(boxes, self.overlap)
+        return boxes, len(self.views), raw_count
+
+
+    def shape(self):
+            return 1, self.input["shape"]
+
+def merge_detections(boxes, threshold):
+    """Class-aware NMS in original-image coordinates; retain actual model scores."""
+    kept = []
+    for box in sorted(boxes, key=lambda b: b["confidence"], reverse=True):
+        suppress = False
+        for other in kept:
+            if box["class_id"] != other["class_id"]:
+                continue
+            w = max(0, min(box["x"]+box["width"], other["x"]+other["width"]) - max(box["x"], other["x"]))
+            h = max(0, min(box["y"]+box["height"], other["y"]+other["height"]) - max(box["y"], other["y"]))
+            intersection = w*h
+            union = box["width"]*box["height"] + other["width"]*other["height"] - intersection
+            if union > 0 and intersection/union > threshold:
+                suppress = True
+                break
+        if not suppress:
+            kept.append(box)
+    return kept
+
+def suppress_inner(boxes, overlap=0.8):
+    """Drop boxes mostly contained in a larger box, regardless of class."""
+    if overlap == 0:
+        return list(boxes)
+    kept = []
+    for box in sorted(
+        boxes, key=lambda b: (b["width"] * b["height"], b["confidence"]), reverse=True
+    ):
+        area = box["width"] * box["height"]
+        if area <= 0:
+            continue
+        for outer in kept:
+            w = max(
+                0,
+                min(box["x"] + box["width"], outer["x"] + outer["width"])
+                - max(box["x"], outer["x"]),
+            )
+            h = max(
+                0,
+                min(box["y"] + box["height"], outer["y"] + outer["height"])
+                - max(box["y"], outer["y"]),
+            )
+            if w * h / area >= overlap:
+                break
+        else:
+            kept.append(box)
+    return kept
+
+
+def grayscale_pixels(pixels):
+    import numpy as np
+
+    values = np.asarray(pixels, dtype=np.float32)
+    low, high = float(values.min()), float(values.max())
+    if high == low:
+        return np.zeros(values.shape, dtype=np.uint8)
+    return np.rint((values - low) * (255.0 / (high - low))).clip(0, 255).astype(np.uint8)
+   
+
+

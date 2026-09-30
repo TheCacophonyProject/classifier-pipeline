@@ -86,6 +86,10 @@ class ClipTrackExtractor(ClipTracker):
         # if self.config.dilation_pixels > 0:
         #     size = self.config.dilation_pixels * 2 + 1
         #     self.dilate_kernel = np.ones((size, size), np.uint8)
+        from ml_tools.interpreter import Yolo
+
+        self.yolo = Yolo("/home/gp/cacophony/yolo/best_2026092901.pt")
+    print(self.yolo.model.names)
 
     def init_clip(self, clip):
         from cptv_rs_python_bindings import CptvReader
@@ -154,9 +158,10 @@ class ClipTrackExtractor(ClipTracker):
         from cptv_rs_python_bindings import CptvReader
 
         reader = CptvReader(str(clip.source_file))
+        frame_i = 0
         while True:
             frame = reader.next_frame()
-
+            frame_i+=1
             if frame is None:
                 break
 
@@ -170,7 +175,8 @@ class ClipTrackExtractor(ClipTracker):
                     [f.thermal for f in clip.frame_buffer.get_last_x(x=45)], axis=0
                 )
                 self.background_alg.process_frame(last_avg)
-
+            if frame_i > 900:
+                break
         if not clip.from_metadata and self.do_tracking:
             self.apply_track_filtering(clip)
 
@@ -212,26 +218,36 @@ class ClipTrackExtractor(ClipTracker):
             filtered = np.float32(frame.pix) - self.background_alg.background
         if self.do_tracking or self.calculate_thumbnail_info:
             from ml_tools.imageprocessing import detect_objects
-
-            obj_filtered, threshold = self._get_normalized_filtered_frame(
-                clip, thermal, filtered, denoise=self.config.denoise
-            )
-            _, mask, component_details, centroids = detect_objects(
-                obj_filtered, otsus=False, threshold=threshold, kernel=(5, 5)
-            )
-        _ = clip.add_frame(thermal, filtered, mask, ffc_affected)
+            detections = self.yolo.predict(thermal)
+            # convert to connectedComponentsWithStats format [x, y, w, h, area]
+            # yolo gives no mask so use box area as mass
+            component_details = []
+            for det in detections:
+                x = int(round(det["x"]))
+                y = int(round(det["y"]))
+                w = max(1, int(round(det["width"])))
+                h = max(1, int(round(det["height"])))
+                component_details.append([x, y, w, h, w * h])
+            # obj_filtered, threshold = self._get_normalized_filtered_frame(
+            #     clip, thermal, filtered, denoise=self.config.denoise
+            # )
+            # _, mask, component_details, centroids = detect_objects(
+            #     obj_filtered, otsus=False, threshold=threshold, kernel=(5, 5)
+            # )
+        clip_frame = clip.add_frame(thermal, filtered, mask, ffc_affected)
         if not self.do_tracking:
             return [], []
 
         new_tracks = []
         stale_tracks = []
+        regions = None
         if not clip.from_metadata:
             regions = []
             if ffc_affected:
                 clip.active_tracks = set()
             else:
                 regions = self._get_regions_of_interest(
-                    clip, component_details[1:], centroids[1:]
+                    clip, component_details
                 )
                 new_tracks, stale_tracks = self._apply_region_matchings(clip, regions)
             if not self.from_pi:
@@ -239,10 +255,13 @@ class ClipTrackExtractor(ClipTracker):
                 # selection (classify.thumbnail.best_trackless_thumb); on the
                 # Pi it would just grow unbounded for the life of the clip
                 clip.region_history.append(regions)
+        debug = False
+        if debug:
+            debug_frame(clip_frame, regions)
         return new_tracks, stale_tracks
 
 
-def debug_frame(frame):
+def debug_frame(frame, regions):
     if frame.filtered is None or frame.thermal is None:
         return
     from ml_tools.imageprocessing import normalize
@@ -251,8 +270,16 @@ def debug_frame(frame):
     filtered, _ = normalize(frame.filtered, new_max=255)
     import cv2
 
-    cv2.imshow("t", np.uint8(thermal))
+    thermal = cv2.cvtColor(np.uint8(thermal), cv2.COLOR_GRAY2BGR)
+    filtered = cv2.cvtColor(np.uint8(filtered), cv2.COLOR_GRAY2BGR)
+    for region in regions:
+        start = (int(region.left), int(region.top))
+        end = (int(region.right), int(region.bottom))
+        cv2.rectangle(thermal, start, end, (0, 0, 255), 1)
+        cv2.rectangle(filtered, start, end, (0, 0, 255), 1)
 
-    cv2.imshow("f", np.uint8(filtered))
+    cv2.imshow("t", thermal)
+
+    cv2.imshow("f", filtered)
     cv2.moveWindow("f", 300, 300)
     cv2.waitKey()
