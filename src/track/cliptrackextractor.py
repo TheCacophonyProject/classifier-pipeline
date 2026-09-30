@@ -89,7 +89,6 @@ class ClipTrackExtractor(ClipTracker):
         from ml_tools.interpreter import Yolo
 
         self.yolo = Yolo("/home/gp/cacophony/yolo/best_2026092901.pt")
-    print(self.yolo.model.names)
 
     def init_clip(self, clip):
         from cptv_rs_python_bindings import CptvReader
@@ -158,10 +157,8 @@ class ClipTrackExtractor(ClipTracker):
         from cptv_rs_python_bindings import CptvReader
 
         reader = CptvReader(str(clip.source_file))
-        frame_i = 0
         while True:
             frame = reader.next_frame()
-            frame_i+=1
             if frame is None:
                 break
 
@@ -175,8 +172,6 @@ class ClipTrackExtractor(ClipTracker):
                     [f.thermal for f in clip.frame_buffer.get_last_x(x=45)], axis=0
                 )
                 self.background_alg.process_frame(last_avg)
-            if frame_i > 900:
-                break
         if not clip.from_metadata and self.do_tracking:
             self.apply_track_filtering(clip)
 

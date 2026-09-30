@@ -70,6 +70,7 @@ def get_track_thumb_stats(clip, track):
     max_contour = 0
     stats = []
     for region in track.bounds_history:
+        continue
         if region.blank or region.mass == 0:
             continue
         frame = clip.frame_buffer.get_frame(region.frame_number)
@@ -79,11 +80,11 @@ def get_track_thumb_stats(clip, track):
             logging.info("Doing contours by filtered")
             contour_image = frame.filtered
 
-            contour_image, stats = normalize(contour_image, new_max=255)
-            if stats[1] == stats[2]:
+            contour_image, norm_stats = normalize(contour_image, new_max=255)
+            if norm_stats[1] == norm_stats[2]:
                 mapped_thresh = 50
             else:
-                mapped_thresh = clip.background_thresh / (stats[1] - stats[2]) * 255
+                mapped_thresh = clip.background_thresh / (norm_stats[1] - norm_stats[2]) * 255
 
             flags = cv2.THRESH_BINARY
             _, image = cv2.threshold(contour_image, mapped_thresh, 255, flags)

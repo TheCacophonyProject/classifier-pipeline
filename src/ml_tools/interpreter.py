@@ -1132,7 +1132,7 @@ class Yolo(Interpreter):
         if run_over_network or not load_model:
             return
         self.load_model()
-        self.tta = True
+        self.tta = False
         self.imgsz = 320
         self.tiles = False
         self.iou = 0.55
@@ -1152,11 +1152,8 @@ class Yolo(Interpreter):
         from ultralytics import YOLO
 
         self.model = YOLO(self.model_file)
-        print("Model Name:", self.model.names) 
-        print("Model Task:", self.model.task)
-
+        self.labels  =         self.model.names
         # 3. View the detailed structure and model information
-        self.model.info()
 
     def predict(self, thermal):
         # if self.run_over_network:
