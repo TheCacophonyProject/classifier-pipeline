@@ -70,7 +70,6 @@ def get_track_thumb_stats(clip, track):
     max_contour = 0
     stats = []
     for region in track.bounds_history:
-        continue
         if region.blank or region.mass == 0:
             continue
         frame = clip.frame_buffer.get_frame(region.frame_number)
