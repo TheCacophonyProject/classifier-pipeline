@@ -1113,72 +1113,80 @@ class PiClassifier(Processor):
                 self.motion_detector.movement_detected, lepton_frame, received_at
             )
             self.rec_time += time.time() - s_r
-            if self.classify:
-                if self.motion_detector.calibrating:
-                    # dont think we will get ffcs if we are recording
-                    self.classified_consec = 0
-                else:
-                    identified = self.identify_last_frame()
-                    if not identified:
+            # recording stopped on this frame, tracks have been filtered and
+            # the clip is finished so there is nothing more to report
+            # we may want to change this to run a final classification
+            if self.recorder.recording:
+                if self.classify:
+                    if self.motion_detector.calibrating:
+                        # dont think we will get ffcs if we are recording
                         self.classified_consec = 0
-            elif len(self.monitored_tracks) == 0 and self.tracking_events:
-                active_tracks = self.get_active_tracks()
+                    else:
+                        identified = self.identify_last_frame()
+                        if not identified:
+                            self.classified_consec = 0
+                elif len(self.monitored_tracks) == 0 and self.tracking_events:
+                    active_tracks = self.get_active_tracks()
 
-                active_tracks = [
-                    track
-                    for track in active_tracks
-                    if len(track) > 10 and track.last_bound.mass > 16
-                ]
-                logging.debug(
-                    "got active tracks bigger than 16 and longer than 10 frames %s",
-                    active_tracks,
-                )
-
-                active_tracks = sorted(
-                    active_tracks,
-                    key=lambda track: track.last_mass,
-                    reverse=True,
-                )
-
-                if len(active_tracks) > 0:
+                    active_tracks = [
+                        track
+                        for track in active_tracks
+                        if len(track) > 10 and track.last_bound.mass > 16
+                    ]
                     logging.debug(
-                        "tracking by biggest mass %s",
-                        active_tracks[0],
+                        "got active tracks bigger than 16 and longer than 10 frames %s",
+                        active_tracks,
                     )
-                    self.monitored_tracks[active_tracks[0].id] = active_tracks[0]
 
-            if len(self.monitored_tracks) > 0:
-                monitored_tracks = list(self.monitored_tracks.values())
-                for monitored_track in monitored_tracks:
-                    tracking = monitored_track in self.clip.active_tracks
-                    score = 0
-                    prediction = ""
-                    all_scores = None
-                    model_id = None
-                    track_prediction = None
-                    last_prediction = 0
-                    if self.classify:
-                        track_prediction, model_id = self.get_best_prediction(
-                            monitored_track.id
+                    active_tracks = sorted(
+                        active_tracks,
+                        key=lambda track: track.last_mass,
+                        reverse=True,
+                    )
+
+                    if len(active_tracks) > 0:
+                        logging.debug(
+                            "tracking by biggest mass %s",
+                            active_tracks[0],
                         )
-                        all_scores = track_prediction.get_normalized_score()
-                        last_prediction = track_prediction.last_frame_classified
-                    self.service.tracking(
-                        self.clip._id,
-                        monitored_track,
-                        all_scores,
-                        monitored_track.bounds_history[-1],
-                        tracking,
-                        last_prediction,
-                        [] if model_id is None else self.predictions[model_id].labels,
-                        model_id,
-                        monitored_track.received_at,
-                    )
+                        self.monitored_tracks[active_tracks[0].id] = active_tracks[0]
 
-                    if not tracking:
-                        del self.monitored_tracks[monitored_track.id]
+                if len(self.monitored_tracks) > 0:
+                    monitored_tracks = list(self.monitored_tracks.values())
+                    for monitored_track in monitored_tracks:
+                        tracking = monitored_track in self.clip.active_tracks
+                        score = 0
+                        prediction = ""
+                        all_scores = None
+                        model_id = None
+                        track_prediction = None
+                        last_prediction = 0
                         if self.classify:
-                            track_prediction.tracking = False
+                            track_prediction, model_id = self.get_best_prediction(
+                                monitored_track.id
+                            )
+                            all_scores = track_prediction.get_normalized_score()
+                            last_prediction = track_prediction.last_frame_classified
+                        self.service.tracking(
+                            self.clip._id,
+                            monitored_track,
+                            all_scores,
+                            monitored_track.bounds_history[-1],
+                            tracking,
+                            last_prediction,
+                            (
+                                []
+                                if model_id is None
+                                else self.predictions[model_id].labels
+                            ),
+                            model_id,
+                            monitored_track.received_at,
+                        )
+
+                        if not tracking:
+                            del self.monitored_tracks[monitored_track.id]
+                            if self.classify:
+                                track_prediction.tracking = False
         elif self.clip is not None:
             self.end_clip()
 

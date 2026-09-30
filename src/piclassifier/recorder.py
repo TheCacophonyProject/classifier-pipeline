@@ -112,6 +112,9 @@ class Recorder(ABC):
         self.rec_time += time.time() - start
         final_name = self.final_name()
         logging.info("%s Waiting for recorder to finish", self.name)
+
+        # TODO make the join async
+        # i dont think this is causing issues but there is no need for it to be synchronous
         self.frame_q.put(0)
         self.rec_p.join()
         self.recording = False

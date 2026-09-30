@@ -309,7 +309,9 @@ class TrackPrediction:
         """
 
         tag, confidence, threshold = self.prediction_with_confidence()
-        return f"{tag} {confidence:.0%} threshold: {threshold:.0%}"
+        confidence = "None" if confidence is None else f"{confidence:.0%}"
+        threshold = "None" if threshold is None else f"{threshold:.0%}"
+        return f"{tag} {confidence} threshold: {threshold}"
 
     @property
     def num_frames(self):
