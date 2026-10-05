@@ -623,6 +623,15 @@ class ClipClassifier:
                         data["frames"][frame_i] = f
 
                     else:
+                        # shouldn't happen but if the metadata was incorrect it could
+                        if frame_i not in data["frames"]:
+                            logging.error(
+                                "couldn't get %s for %s of %s",
+                                frame_i,
+                                track_id,
+                                filename,
+                            )
+                            continue
                         f = data["frames"][frame_i]
                     if not f.preprocessed:
                         if classifier.preprocess_v2:

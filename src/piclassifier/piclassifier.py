@@ -60,7 +60,7 @@ def run_classifier(
                     logging.info("PiClassifier received stop signal")
                     pi_classifier.disconnected()
                     return
-                if item == "skip":
+                if item == SKIP_SIGNAL:
                     pi_classifier.skip_frame()
                 elif item == SNAPSHOT_SIGNAL:
                     pi_classifier.take_snapshot()
@@ -1003,8 +1003,8 @@ class PiClassifier(Processor):
         self.service.quit()
 
     def skip_frame(self):
-        if self.clip:
-            self.clip.current_frame += 1
+        # May want to update tracks so they know they have missed a frame and  the kalman filter can work
+        pass
 
     def take_snapshot(self):
         started = self.snapshot_recorder.start_recording(
