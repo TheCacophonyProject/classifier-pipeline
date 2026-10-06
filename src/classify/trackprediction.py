@@ -506,7 +506,9 @@ class TrackPrediction:
         prediction_meta["tag"] = tag
 
         prediction_meta["threshold_used"] = threshold
-        prediction_meta["confident"] = confidence >= threshold
+        prediction_meta["confident"] = (
+            confidence is not None and confidence >= threshold
+        )
 
         # label and confident tag can be removed once api is updated gp 24th dec 2025
         # prediction_meta["label"] = self.predicted_tag()
@@ -515,8 +517,9 @@ class TrackPrediction:
         # else:
         #     # check api can handle None
         #     prediction_meta["confident_tag"] = None
-
-        prediction_meta["confidence"] = round(confidence, 2)
+        prediction_meta["confidence"] = (
+            0 if confidence is None else round(confidence, 2)
+        )
         prediction_meta["clarity"] = round(self.clarity, 3) if self.clarity else 0
         prediction_meta["all_class_confidences"] = {}
         preds = []
