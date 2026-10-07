@@ -128,6 +128,9 @@ class ForestModel(Interpreter):
 
         with self.model_file.open("rb") as f:
             self.model = pickle.load(f)
+        # run single-threaded: on the Pi we predict a few rows at a time, and
+        # threaded prediction races on the shared warning filters in sklearn >= 1.9
+        self.model.n_jobs = 1
 
     def classify_track(
         self, clip, track, last_x_frames=None, segment_frames=None, min_segments=None

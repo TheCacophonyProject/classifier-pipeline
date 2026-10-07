@@ -51,17 +51,10 @@ class FrameCache:
             channels.append(TrackChannels.filtered.value)
             dims += 1
             data.append(np.float32(frame.filtered))
-
-        if frame.flow is not None:
-            from ml_tools.tools import get_clipped_flow
-
-            channels.append(TrackChannels.flow.value)
-            scaled_flow = get_clipped_flow(frame.flow)
-            scaled_flow_h = np.float32(scaled_flow[:, :, 0])
-            scaled_flow_v = np.float32(scaled_flow[:, :, 1])
-            data.append(scaled_flow_h)
-            data.append(scaled_flow_v)
-            dims += 2
+        if frame.thermal_norm is not None:
+            channels.append(TrackChannels.thermal_norm.value)
+            dims += 1
+            data.append(np.float32(frame.thermal_norm))
         if frame.mask is not None:
             channels.append(TrackChannels.mask.value)
             data.append(np.float32(frame.mask))
@@ -108,6 +101,8 @@ class FrameCache:
 
     def open(self, mode="a"):
         if not self.db:
+            import h5py
+
             self.db = h5py.File(self.filename, mode)
 
     def delete(self):
@@ -126,7 +121,6 @@ def get_frame_from_group(raw, frame_number):
             frame_node,
             channels,
             frame_number,
-            flow_clipped=True,
             ffc_affected=ffc_affected,
         )
     else:
