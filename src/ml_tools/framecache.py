@@ -51,6 +51,10 @@ class FrameCache:
             channels.append(TrackChannels.filtered.value)
             dims += 1
             data.append(np.float32(frame.filtered))
+        if frame.thermal_norm is not None:
+            channels.append(TrackChannels.thermal_norm.value)
+            dims += 1
+            data.append(np.float32(frame.thermal_norm))
         if frame.mask is not None:
             channels.append(TrackChannels.mask.value)
             data.append(np.float32(frame.mask))
