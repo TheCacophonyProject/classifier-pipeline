@@ -397,7 +397,7 @@ class TrackHeader:
         min_segments=None,
         rng=None,
         min_frames=0,
-        ceil_num_windows=True,
+        inference=True,
     ):
         NO_MIN_FRAMES = ["stoat", "mustelid", "weasel", "ferret"]
         if rng is None:
@@ -436,7 +436,7 @@ class TrackHeader:
             rec_time=self.start_time,
             min_segments=min_segments,
             rng=rng,
-            ceil_num_windows=ceil_num_windows,
+            inference=inference,
         )
         self.filtered_stats.update(filtered_stats)
         # GP could get this from the tracks when writing
@@ -1022,21 +1022,21 @@ DOMINANT_LABELS = [
 
 # 12 seconds is chosen by looking at the average track length of our dataset
 def get_samples_by_label_urgency(
-    label, total_frames, window_frames=100, max_samples=5, ceil_num_windows=True
+    label, total_frames, window_frames=100, max_samples=5, inference=True
 ):
 
     # Define your rare labels that desperately need more representation
     # rare_labels = ["fox", "wolf", "badger"]
     num_windows = 1
     stride_offset = 0
-    if ceil_num_windows == False and total_frames < window_frames + window_frames // 2:
+    if not inference and total_frames < window_frames + window_frames // 2:
         samples_to_take = 1  # Don't waste time on duplicate common data
         num_windows = 1
         stride_offset = total_frames % (window_frames / 2)
 
     else:
         windows_float = (total_frames - window_frames) / (window_frames // 2) + 1
-        if ceil_num_windows:
+        if inference:
             num_windows = math.ceil(windows_float)
         else:
             num_windows = int(windows_float)
@@ -1048,6 +1048,9 @@ def get_samples_by_label_urgency(
         samples_to_take = max(1, samples_to_take)
         num_windows = max(num_windows, 1)
     if total_frames < window_frames:
+        stride_offset = 0
+    elif inference:
+        # windows are spread evenly at inference, no random phasing
         stride_offset = 0
     if label in MODERATE_RARE_LABELS or label in CRITICALLY_RARE_LABELS:
         # no point repeating the same image even if we want more samples
@@ -1198,7 +1201,7 @@ def random_sections(
     max_samples=5,
     min_frames=1,
     min_segments=None,
-    ceil_num_windows=True,
+    inference=True,
 ):
     min_frames = max(min_frames, 1)
     if rng is None:
@@ -1217,16 +1220,18 @@ def random_sections(
         num_frames,
         window_frames=max_window_frames,
         max_samples=max_samples,
-        ceil_num_windows=ceil_num_windows,
+        inference=inference,
     )
     window_frames = min(max_window_frames, num_frames)
     upsampled = False
     step = window_frames // 2
-    if ceil_num_windows:
-        offset = num_frames % window_frames
-        if offset != 0:
-            step = offset
-    if step == 0:
+    if inference and num_windows > 1:
+        # spread windows evenly from the first frame to the last, rounding each start
+        # rather than the step so the gaps differ by at most 1 frame
+        windows = (
+            np.linspace(0, num_frames - window_frames, num_windows).round().astype(int)
+        )
+    elif step == 0 or inference:
         windows = [0]
     else:
         windows = np.arange(0, num_windows * step, step=step)
@@ -1235,10 +1240,8 @@ def random_sections(
     # try to get an extra sample if its short
     num_frames_sampled = max(1, window_frames / chunk_size)
 
-    # ceil num windows is only set at inference time, so really checking if we are doing inference
-    doing_inference = ceil_num_windows
     if (
-        doing_inference
+        inference
         and num_frames_sampled < 2
         and round(num_frames_sampled) > num_frames_sampled
     ):
@@ -1246,31 +1249,32 @@ def random_sections(
         logging.info("set chunk size %s", chunk_size)
 
     # over sampling logic more samples than windows, used for low data labels
-    if samples > num_windows:
-        # this is our labels that we have low samples for
-        extra_samples = samples - num_windows
-        num_repeats = math.ceil(extra_samples / num_windows)
-        phase_offset = chunk_size // (num_repeats + 1)
+    if not inference:
+        if samples > num_windows:
+            # this is our labels that we have low samples for
+            extra_samples = samples - num_windows
+            num_repeats = math.ceil(extra_samples / num_windows)
+            phase_offset = chunk_size // (num_repeats + 1)
 
-        # extra samples is 3 and  num windows 2
-        # we should repeat twice
-        extra_windows = np.repeat(windows, num_repeats)
-        extra_windows = extra_windows + phase_offset
-        upsampled = True
+            # extra samples is 3 and  num windows 2
+            # we should repeat twice
+            extra_windows = np.repeat(windows, num_repeats)
+            extra_windows = extra_windows + phase_offset
+            upsampled = True
 
-        if stride_offset > 0:
-            choices = np.arange(stride_offset + 1)
-            exclude = int(phase_offset)
-            choices = np.concatenate([choices[:exclude], choices[exclude + 1 :]])
-            random_offset = rng.choice(choices)
+            if stride_offset > 0:
+                choices = np.arange(stride_offset + 1)
+                exclude = int(phase_offset)
+                choices = np.concatenate([choices[:exclude], choices[exclude + 1 :]])
+                random_offset = rng.choice(choices)
 
-            windows = windows + random_offset
-        windows = np.concatenate([windows, extra_windows])
-    else:
-        if stride_offset > 0:
-            random_offset = rng.integers(low=0, high=stride_offset + 1)
-            windows += random_offset
-            # could do separate offset per window but i think this is fine removes need to handle windows being closer than expected
+                windows = windows + random_offset
+            windows = np.concatenate([windows, extra_windows])
+        else:
+            if stride_offset > 0:
+                random_offset = rng.integers(low=0, high=stride_offset + 1)
+                windows += random_offset
+                # could do separate offset per window but i think this is fine removes need to handle windows being closer than expected
 
     # shuffle windows
     rng.shuffle(windows)
@@ -1373,7 +1377,7 @@ def get_segments(
     repeat_frame_indices=False,
     min_segments=None,
     rng=None,
-    ceil_num_windows=True,
+    inference=True,
     from_last=None,
 ):
 
@@ -1531,7 +1535,7 @@ def get_segments(
                     max_samples=max_segments,
                     min_frames=min_frames,
                     min_segments=min_segments,
-                    ceil_num_windows=ceil_num_windows,
+                    inference=inference,
                 )
                 segments.extend(new_segments)
                 continue

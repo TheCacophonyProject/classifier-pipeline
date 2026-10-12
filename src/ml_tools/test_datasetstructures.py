@@ -60,7 +60,9 @@ COMMON_KWARGS = dict(
 )
 
 
-def call_random_sections(label, num_frames, start_frame=100, seed=42, gap_every=None):
+def call_random_sections(
+    label, num_frames, start_frame=100, seed=42, gap_every=None, inference=True
+):
     fi, regions, mass = make_track(
         num_frames, start_frame=start_frame, gap_every=gap_every
     )
@@ -71,6 +73,7 @@ def call_random_sections(label, num_frames, start_frame=100, seed=42, gap_every=
         mass,
         start_frame,
         rng=np.random.default_rng(seed),
+        inference=inference,
         **COMMON_KWARGS,
     )
 
@@ -251,13 +254,15 @@ class TestRandomSectionsRareLabels:
         # 100-frame fox clip is "short" (< 18 s threshold → num_windows=1) but the
         # rare-label override still requests 2 samples; stride_offset = 100//25 = 4
         # so the two windows should get independent random offsets and differ
-        expected_samples, num_windows, _ = get_samples_by_label_urgency("fox", 99)
+        expected_samples, num_windows, _ = get_samples_by_label_urgency(
+            "fox", 99, inference=False
+        )
         assert num_windows == 1, "should be a short clip with only one natural window"
         assert (
             expected_samples == 2
         ), "rare-label override should push samples above num_windows"
 
-        segs = call_random_sections("fox", 100, seed=7)
+        segs = call_random_sections("fox", 100, seed=7, inference=False)
         assert len(segs) == expected_samples
         starts = [min(s.frame_indices) for s in segs]
         assert (
