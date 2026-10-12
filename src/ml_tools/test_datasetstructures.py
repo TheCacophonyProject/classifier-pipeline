@@ -286,6 +286,24 @@ class TestRandomSectionsEdgeCases:
             assert s.mass > 0
 
 
+class TestRandomSectionsInferenceWindows:
+    @pytest.mark.parametrize("seed", range(10))
+    def test_inference_windows_evenly_spaced(self, seed):
+        # 120 frames at inference: ceil((120 - 100) / 50 + 1) = 2 windows, spread
+        # evenly from the first frame to the last -> starts at 0 and 20, each
+        # covering 100 frames split into 25 chunks of 4 frames
+        start_frame = 100
+        segs = call_random_sections("possum", 120, start_frame=start_frame, seed=seed)
+        assert len(segs) == 2
+        segs = sorted(segs, key=lambda s: min(s.frame_indices))
+        for s, window_start in zip(segs, [0, 20]):
+            frames = np.array(s.frame_indices) - start_frame
+            assert len(frames) == 25
+            # first frame is picked from the window's first 4-frame chunk
+            assert window_start <= frames.min() < window_start + 4
+            assert frames.max() < window_start + 100
+
+
 # ---------------------------------------------------------------------------
 # Windowing math
 # ---------------------------------------------------------------------------
