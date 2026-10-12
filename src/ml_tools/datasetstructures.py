@@ -1173,7 +1173,7 @@ def get_segment_indices(
                 offset = len(valid_frames) - 1
             elif inference:
                 # no augmentation at inference, pick a fixed frame so results are repeatable
-                offset = 0 if short_track else len(valid_frames) // 2
+                offset = len(valid_frames) // 2
             else:
                 offset = rng.integers(low=0, high=len(valid_frames))
         frame_num = valid_frames[offset]
