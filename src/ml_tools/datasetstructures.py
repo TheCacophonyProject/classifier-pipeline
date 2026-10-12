@@ -1081,6 +1081,7 @@ def get_segment_indices(
     short_track,
     vel_x,
     vel_y,
+    inference=True,
 ):
     segment_frames = []
     seg_regions = []
@@ -1168,9 +1169,13 @@ def get_segment_indices(
             offset = 0
 
         else:
-            offset = rng.integers(low=0, high=len(valid_frames))
             if last_chunk:
                 offset = len(valid_frames) - 1
+            elif inference:
+                # no augmentation at inference, pick a fixed frame so results are repeatable
+                offset = 0 if short_track else len(valid_frames) // 2
+            else:
+                offset = rng.integers(low=0, high=len(valid_frames))
         frame_num = valid_frames[offset]
         frame_indices[frame_to_closest_valid[frame_num]] = -1
         assert frame_num not in frame_indices
@@ -1204,7 +1209,7 @@ def random_sections(
     inference=True,
 ):
     min_frames = max(min_frames, 1)
-    if rng is None:
+    if rng is None and not inference:
         rng = np.random.default_rng()
 
     chunks = 25
@@ -1276,19 +1281,21 @@ def random_sections(
                 windows += random_offset
                 # could do separate offset per window but i think this is fine removes need to handle windows being closer than expected
 
-    # shuffle windows
-    rng.shuffle(windows)
+        # shuffle windows
+        rng.shuffle(windows)
+
+        # very unlikely we need to try more than once since we accept short segments
+        chosen_windows = windows[:samples]
+        windows = windows[samples:]
+        windows = np.sort(windows)
+        chosen_windows = np.sort(chosen_windows)
+        chosen_windows = np.concatenate([chosen_windows, windows])
+    else:
+        chosen_windows = np.asarray(windows)
 
     segments = []
     frame_to_closest_valid = {}
     last_index = None
-    # # might need to try more than once if there are large gaps at some window starts which causes no segments to be added
-    # while len(segments)!= samples and len(windows)>0:
-    chosen_windows = windows[:samples]
-    windows = windows[samples:]
-    np.sort(windows)
-    chosen_windows = np.sort(chosen_windows)
-    chosen_windows = np.concatenate([chosen_windows, windows])
     centre_x = np.float32([r.centroid[0] for r in regions])
     centre_y = np.float32([r.centroid[1] for r in regions])
 
@@ -1315,6 +1322,7 @@ def random_sections(
                 num_frames < max_window_frames,
                 vel_x,
                 vel_y,
+                inference=inference,
             )
         )
         if (
@@ -1384,7 +1392,6 @@ def get_segments(
     if rng is None:
         rng = np.random.default_rng()
 
-    start = time.time()
     if segment_types is None:
         segment_types = [SegmentType.ALL_RANDOM_MASKED]
     if min_frames is None:

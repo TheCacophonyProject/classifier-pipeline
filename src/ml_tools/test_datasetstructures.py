@@ -213,8 +213,9 @@ class TestRandomSectionsOutputShape:
             assert sorted(a.frame_indices) == sorted(b.frame_indices)
 
     def test_different_seeds_produce_different_results(self):
-        segs_a = call_random_sections("possum", 200, seed=1)
-        segs_b = call_random_sections("possum", 200, seed=2)
+        # only training picks random frames, inference is fixed
+        segs_a = call_random_sections("possum", 200, seed=1, inference=False)
+        segs_b = call_random_sections("possum", 200, seed=2, inference=False)
         assert any(
             sorted(a.frame_indices) != sorted(b.frame_indices)
             for a, b in zip(segs_a, segs_b)
@@ -302,6 +303,15 @@ class TestRandomSectionsInferenceWindows:
             # first frame is picked from the window's first 4-frame chunk
             assert window_start <= frames.min() < window_start + 4
             assert frames.max() < window_start + 100
+
+    @pytest.mark.parametrize("num_frames", [60, 200])
+    def test_inference_frames_independent_of_seed(self, num_frames):
+        # 60 frames is a short track (< 100 frame window), 200 is not
+        segs_a = call_random_sections("possum", num_frames, seed=1)
+        segs_b = call_random_sections("possum", num_frames, seed=2)
+        assert len(segs_a) == len(segs_b)
+        for a, b in zip(segs_a, segs_b):
+            assert list(a.frame_indices) == list(b.frame_indices)
 
 
 # ---------------------------------------------------------------------------
