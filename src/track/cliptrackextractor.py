@@ -86,9 +86,11 @@ class ClipTrackExtractor(ClipTracker):
         # if self.config.dilation_pixels > 0:
         #     size = self.config.dilation_pixels * 2 + 1
         #     self.dilate_kernel = np.ones((size, size), np.uint8)
-        from ml_tools.interpreter import Yolo
+        if self.config.model:
+            logging.info("Using yolo model for object detection")
+            from ml_tools.interpreter import Yolo
 
-        self.yolo = Yolo("/home/gp/cacophony/yolo/best_2026092901.pt")
+            self.model = Yolo(self.config.model)
 
     def init_clip(self, clip):
         from cptv_rs_python_bindings import CptvReader
@@ -212,23 +214,27 @@ class ClipTrackExtractor(ClipTracker):
         if self.do_tracking or self.calculate_filtered or self.calculate_thumbnail_info:
             filtered = np.float32(frame.pix) - self.background_alg.background
         if self.do_tracking or self.calculate_thumbnail_info:
+            # done to get the mask regardless of yolo
             from ml_tools.imageprocessing import detect_objects
-            detections = self.yolo.predict(thermal)
-            # convert to connectedComponentsWithStats format [x, y, w, h, area]
-            # yolo gives no mask so use box area as mass
-            component_details = []
-            for det in detections:
-                x = int(round(det["x"]))
-                y = int(round(det["y"]))
-                w = max(1, int(round(det["width"])))
-                h = max(1, int(round(det["height"])))
-                component_details.append([x, y, w, h, w * h])
-            # obj_filtered, threshold = self._get_normalized_filtered_frame(
-            #     clip, thermal, filtered, denoise=self.config.denoise
-            # )
-            # _, mask, component_details, centroids = detect_objects(
-            #     obj_filtered, otsus=False, threshold=threshold, kernel=(5, 5)
-            # )
+            obj_filtered, threshold = self._get_normalized_filtered_frame(
+                clip, thermal, filtered, denoise=self.config.denoise
+            )
+            _, mask, component_details, centroids = detect_objects(
+                obj_filtered, otsus=False, threshold=threshold, kernel=(5, 5)
+            )
+            if self.model:
+                centroids = None
+                detections = self.model.predict(thermal)
+                # convert to connectedComponentsWithStats format [x, y, w, h, area]
+                # yolo gives no mask so use box area as mass
+                component_details = []
+                for det in detections:
+                    x = int(round(det["x"]))
+                    y = int(round(det["y"]))
+                    w = max(1, int(round(det["width"])))
+                    h = max(1, int(round(det["height"])))
+                    component_details.append([x, y, w, h, w * h])
+                    # TODO keep confidence and class info
         clip_frame = clip.add_frame(thermal, filtered, mask, ffc_affected)
         if not self.do_tracking:
             return [], []
@@ -242,7 +248,7 @@ class ClipTrackExtractor(ClipTracker):
                 clip.active_tracks = set()
             else:
                 regions = self._get_regions_of_interest(
-                    clip, component_details
+                    clip, component_details,centroids=centroids
                 )
                 new_tracks, stale_tracks = self._apply_region_matchings(clip, regions)
             if not self.from_pi:

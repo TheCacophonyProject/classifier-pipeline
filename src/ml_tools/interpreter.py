@@ -469,6 +469,8 @@ class Interpreter(ABC):
 
     def predict_track(self, clip, track, **args):
         samples = self.frames_for_prediction(clip, track, **args)
+        for s in samples:
+            print(s.frame_indices)
         frames, preprocessed, masses = self.preprocess(clip, track, samples, **args)
         if preprocessed is None or len(preprocessed) == 0:
             return None, None, None
@@ -1122,7 +1124,7 @@ def plot_confusion_matrix(cm, class_names, title="Confusion Matrix", totals_row=
 
 
 
-class Yolo(Interpreter):
+class Yolo:
     TYPE = "YOLO"
 
     def __init__(self, model_name, run_over_network=False, load_model=True):

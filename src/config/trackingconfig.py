@@ -63,6 +63,7 @@ class TrackingConfig(DefaultConfig):
     # filter regions out by mass and variance before matching to a track
     filter_regions_pre_match: Any
     min_hist_diff: Any
+    model: Any
 
     @classmethod
     def load(cls, tracking):
@@ -113,6 +114,8 @@ class TrackingConfig(DefaultConfig):
             max_mass_std_percent=tracking["max_mass_std_percent"],
             filter_regions_pre_match=tracking["filter_regions_pre_match"],
             min_hist_diff=tracking["min_hist_diff"],
+            model=tracking["model"],
+
         )
 
     @classmethod
@@ -167,6 +170,7 @@ class TrackingConfig(DefaultConfig):
             },
             filter_regions_pre_match=True,
             min_hist_diff=None,
+            model = None,
         )
         return default_tracking
 
