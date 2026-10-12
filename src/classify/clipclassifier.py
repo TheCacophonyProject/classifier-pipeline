@@ -531,7 +531,6 @@ class ClipClassifier:
             if current_frame_num in track_samples:
                 thermal_median = np.median(frame.pix)
                 for track_id, region in track_samples[current_frame_num].items():
-
                     if classifier.preprocess_v2:
                         background = track_extractor.background_alg.background
 
@@ -545,7 +544,6 @@ class ClipClassifier:
                             enlarge=classifier.enlarge,
                             new_max=255.0,
                         )
-                        f.preprocessed = True
                     elif classifier.params.diff_norm:
                         # support for previous models is obselete now
                         thermal = region.subimage(frame.pix).astype(np.float32)
@@ -621,33 +619,31 @@ class ClipClassifier:
                             continue
                         f.region = track_data[track_id]["regions"][frame_i]
                         data["frames"][frame_i] = f
-
                     else:
+                        # shouldn't happen but if the metadata was incorrect it could
+                        if frame_i not in data["frames"]:
+                            logging.error(
+                                "couldn't get %s for %s of %s",
+                                frame_i,
+                                track_id,
+                                filename,
+                            )
+                            continue
                         f = data["frames"][frame_i]
-                    if not f.preprocessed:
-                        if classifier.preprocess_v2:
-                            f = preprocess_frame_v2(
-                                f,
+                    if not classifier.preprocess_v2:
+                        f = preprocess_frame(
+                            f,
+                            (
                                 classifier.params.frame_size,
-                                f.region,
-                                clip.crop_rectangle,
-                                enlarge=classifier.enlarge,
-                                new_max=255.0,
-                            )
-                        else:
-                            f = preprocess_frame(
-                                f,
-                                (
-                                    classifier.params.frame_size,
-                                    classifier.params.frame_size,
-                                ),
-                                clip.background,
-                                clip.crop_rectangle,
-                                calculate_filtered=False,
-                                filtered_norm_limits=data["limits"],
-                                cropped=True,
-                                sub_median=False,
-                            )
+                                classifier.params.frame_size,
+                            ),
+                            clip.background,
+                            clip.crop_rectangle,
+                            calculate_filtered=False,
+                            filtered_norm_limits=data["limits"],
+                            cropped=True,
+                            sub_median=False,
+                        )
                         data["frames"][frame_i] = f
                     # probably no need to copy
                     segment_frames.append(f)
