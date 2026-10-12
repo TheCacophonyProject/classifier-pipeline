@@ -236,6 +236,15 @@ class KerasModel(Interpreter):
                 ),
                 tf.keras.applications.nasnet.preprocess_input,
             )
+        elif pretrained_model == "wideresnet":
+            from ml_tools.wideresnet import wide_resnet_backbone
+
+            return (
+                wide_resnet_backbone(
+                    input, depth=self.params.get("depth", 16), k=self.params.get("k", 2)
+                ),
+                None,
+            )
         elif pretrained_model == "wr-resnet":
             return (
                 WRResNet(
@@ -385,85 +394,24 @@ class KerasModel(Interpreter):
         self.preprocess_fn = preprocess
         # inputs = base_model.input
 
-        # Step A: Standardise channel means (92.96, 47.33, 30.62) & variances automatically
-        # x = layers.BatchNormalization(axis=-1, name="channel_standardizer")(input_image)
         x = input_image
-        # 2. Trainable 1x1 conv with 3 filters to re-weight and re-bias the RGB channels
-        # This lets the network automatically discover the optimal math to align your normalisations
-        x = tf.keras.layers.Conv2D(3, (1, 1), activation=None, name="channel_aligner")(
-            x
-        )
+        if self.params.model_name == "wideresnet":
+            # Trained from scratch so just standardise channel means (92.96, 47.33, 30.62) & variances
+            # rescale 0-255 to 0-1 first so BN moving stats start closer to the real values
+            x = layers.Rescaling(1.0 / 255, name="input_rescale")(x)
+            x = layers.BatchNormalization(axis=-1, name="channel_standardizer")(x)
+        else:
+            # Trainable 1x1 conv with 3 filters to re-weight and re-bias the RGB channels
+            # This lets the network automatically discover the optimal math to align your normalisations
+            x = tf.keras.layers.Conv2D(
+                3, (1, 1), activation=None, name="channel_aligner"
+            )(x)
 
         x = base_model(x)
 
         # Multi input adding information about the frame number used
         if multi_input:
-            # --- Input 2: The Timeline Mask Layer (5x5x7) ---
-            # Channels 0-3: absolute time, presence, width, height
-            # Channels 4-6: Vx velocity, Vy velocity, forward-aligned delta-T
-            # Both the absolute-time cumsum and the forward alignment of
-            # delta-T against velocity are done upstream in the tf.data
-            # pipeline (thermaldataset.reconstruct_absolute_time and
-            # get_frame_mask_v2), so the branches below are plain slices.
-            mask_input = layers.Input(shape=(5, 5, 2), name="input_mask")
-            input_image = {"input_image": input_image, "input_mask": mask_input}
-
-            # =====================================================================
-            # FULLY SYNCHRONIZED SYMMETRIC METADATA ENGINE
-            # =====================================================================
-            # mask_input Shape: (None, 5, 5, 7) - Perfectly matching the visual 5x5 footprint
-
-            # Layer 1: Local Dimensional Projection (1x1 Kernel)
-            # Prepares the 7 channels by mixing them locally within each individual tile cell
-            m_embed = layers.Conv2D(
-                64,
-                (1, 1),
-                activation="swish",
-                padding="same",
-                name="metadata_local_projection",
-            )(mask_input)
-            t_embed = layers.Dense(32, activation="swish", name="temporal_embedding")(
-                t_project
-            )
-
-            # Layer 2: Symmetric Receptive Field Matcher (3x3 Kernel)
-            # Uses a symmetric (3,3) kernel to mirror the exact spatial blending
-            # patterns occurring inside your EfficientNet visual backbone!
-            time_embedding = layers.Conv2D(
-                128,
-                (3, 3),  # Locked back to symmetric to align with image feature maps
-                activation="swish",
-                padding="same",
-                name="metadata_symmetric_receptive_engine",
-            )(
-                m_embed
-            )  # Output Footprint: (None, 5, 5, 128) - Flawless structural
-
-            # --- Feature Fusion (Maintains your exact native dimensions) ---
-            image_features = layers.MaxPooling2D(
-                pool_size=(2, 2), name="preserve_tiny_anomalies"
-            )(x)
-            # BOTTLENECK
-            image_features = layers.Conv2D(
-                512, (1, 1), activation="swish", name="visual_bottleneck"
-            )(image_features)
-
-            image_features = tf.keras.layers.SpatialDropout2D(0.3)(image_features)
-
-            # 512 (Vision, post-bottleneck) + 128 (Metadata) = 640
-            combined = layers.Concatenate(name="input_concat")(
-                [image_features, time_embedding]
-            )  # Shape: (None, 5, 5, 640)
-
-            # 1. Compress channel depth from 640 to 256 using 1x1 convolution
-            x = layers.Conv2D(
-                256, (1, 1), activation="swish", padding="same", name="fusion_conv1"
-            )(combined)
-
-            # Mix the combined space-time features together
-            x = layers.Conv2D(
-                256, (3, 3), activation="swish", padding="same", name="fusion_conv2"
-            )(x)
+           add_multi_input()
 
         gap = tf.keras.layers.GlobalAveragePooling2D()
         x = gap(x)
@@ -492,7 +440,7 @@ class KerasModel(Interpreter):
 
         base_model.trainable = self.params.base_training
         return self.model
-
+    
     def adjust_final_layer(self):
         # Adjust final layer to a new set of labels, by removing it and re adding
         # new_model = tf.keras.models.Sequential(self.model.layers[:-3])
@@ -784,6 +732,9 @@ class KerasModel(Interpreter):
         qat=False,
         dont_enlarge=False,
     ):
+        if  self.params.model_name =="wideresnet":
+            dont_enlarge = True
+
         logging.info(
             "%s Training model for %s epochs with weights %s with multi input as: %s phase2 %s use_jitter %s qat %s",
             run_name,
@@ -2216,3 +2167,72 @@ def stage_3_lr_scheduler(epoch, lr):
                 f"\n[Epoch {epoch+1}] Phase 2C Transition: Entering Max Jitter. Final Deep LR Drop to 2e-6"
             )
         return 2e-6  # Drop to final safety floor during hard regularisation
+
+
+def add_multi_input():
+     # --- Input 2: The Timeline Mask Layer (5x5x7) ---
+    # Channels 0-3: absolute time, presence, width, height
+    # Channels 4-6: Vx velocity, Vy velocity, forward-aligned delta-T
+    # Both the absolute-time cumsum and the forward alignment of
+    # delta-T against velocity are done upstream in the tf.data
+    # pipeline (thermaldataset.reconstruct_absolute_time and
+    # get_frame_mask_v2), so the branches below are plain slices.
+    mask_input = layers.Input(shape=(5, 5, 2), name="input_mask")
+    input_image = {"input_image": input_image, "input_mask": mask_input}
+
+    # =====================================================================
+    # FULLY SYNCHRONIZED SYMMETRIC METADATA ENGINE
+    # =====================================================================
+    # mask_input Shape: (None, 5, 5, 7) - Perfectly matching the visual 5x5 footprint
+
+    # Layer 1: Local Dimensional Projection (1x1 Kernel)
+    # Prepares the 7 channels by mixing them locally within each individual tile cell
+    m_embed = layers.Conv2D(
+        64,
+        (1, 1),
+        activation="swish",
+        padding="same",
+        name="metadata_local_projection",
+    )(mask_input)
+    t_embed = layers.Dense(32, activation="swish", name="temporal_embedding")(
+        t_project
+    )
+
+    # Layer 2: Symmetric Receptive Field Matcher (3x3 Kernel)
+    # Uses a symmetric (3,3) kernel to mirror the exact spatial blending
+    # patterns occurring inside your EfficientNet visual backbone!
+    time_embedding = layers.Conv2D(
+        128,
+        (3, 3),  # Locked back to symmetric to align with image feature maps
+        activation="swish",
+        padding="same",
+        name="metadata_symmetric_receptive_engine",
+    )(
+        m_embed
+    )  # Output Footprint: (None, 5, 5, 128) - Flawless structural
+
+    # --- Feature Fusion (Maintains your exact native dimensions) ---
+    image_features = layers.MaxPooling2D(
+        pool_size=(2, 2), name="preserve_tiny_anomalies"
+    )(x)
+    # BOTTLENECK
+    image_features = layers.Conv2D(
+        512, (1, 1), activation="swish", name="visual_bottleneck"
+    )(image_features)
+
+    image_features = tf.keras.layers.SpatialDropout2D(0.3)(image_features)
+
+    # 512 (Vision, post-bottleneck) + 128 (Metadata) = 640
+    combined = layers.Concatenate(name="input_concat")(
+        [image_features, time_embedding]
+    )  # Shape: (None, 5, 5, 640)
+
+    # 1. Compress channel depth from 640 to 256 using 1x1 convolution
+    x = layers.Conv2D(
+        256, (1, 1), activation="swish", padding="same", name="fusion_conv1"
+    )(combined)
+
+    # Mix the combined space-time features together
+    x = layers.Conv2D(
+        256, (3, 3), activation="swish", padding="same", name="fusion_conv2"
+    )(x)
