@@ -74,7 +74,6 @@ def evaluate_dir(model_path, dir, device, batch_size, workers):
             if loaded is None:
                 continue
             cptv_file, metadata_file, metadata, frame_numbers, thermals = loaded
-            print("Saving ", cptv_file)
             try:
                 frame_boxes = model.predict_batch(thermals)
             except:
