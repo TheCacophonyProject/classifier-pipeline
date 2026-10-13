@@ -1,11 +1,4 @@
-"""
-Author: Giampaolo Ferraro
-Date: December 2025
 
-Script used to false-positive or not prediction data into the metadata of cptv files
-
-This metadata can then be used when building a dataset to filter out frames which are tagged as an animal but predicted as false-positive (by this model)
-"""
 
 import argparse
 from ml_tools.logs import init_logging
@@ -59,6 +52,8 @@ def main():
 def evaluate_dir(model_path, dir, device, batch_size, workers):
     logging.info("Evaluating cptv files in %s", dir)
     from multiprocessing import Pool
+    from collections import deque
+    import itertools
 
     files = list(dir.glob(f"**/*cptv"))
     total_files = len(files)
@@ -67,7 +62,17 @@ def evaluate_dir(model_path, dir, device, batch_size, workers):
     with Pool(workers) as pool:
         model = Yolo(model_path, device=device, batch_size=batch_size)
         writes = []
-        for loaded in pool.imap_unordered(load_clip, files):
+        # bound how many decoded clips are queued, imap_unordered has no
+        # backpressure and buffers every result in this process until OOM
+        pending = deque()
+        remaining = iter(files)
+        for cptv_file in itertools.islice(remaining, workers * 2):
+            pending.append(pool.apply_async(load_clip, (cptv_file,)))
+        while pending:
+            loaded = pending.popleft().get()
+            next_file = next(remaining, None)
+            if next_file is not None:
+                pending.append(pool.apply_async(load_clip, (next_file,)))
             complete += 1
             if complete % 100 == 0:
                 logging.info("Done %s / %s ", complete, total_files)
@@ -116,8 +121,7 @@ def load_clip(cptv_file):
         # tracks = meta_data.get("Tracks", [])
         metadata = clip_db.meta_data
         if "yolo_bb" in metadata and metadata.get("yolo_version") ==VERSION:
-            pass
-            # return
+            return
         clip = clip_db.get_clip_tracks(BuildConfig.DEFAULT_GROUPS)
         if clip is None:
             logging.warn("No clip for %s", cptv_file)
@@ -139,7 +143,8 @@ def load_clip(cptv_file):
         if len(clip_db.frames) == 0:
             return None
         frame_numbers = [f.frame_number for f in clip_db.frames]
-        thermals = np.stack([f.thermal for f in clip_db.frames])
+        # normalise here so we send uint8 frames back to the main process
+        thermals = np.stack([grayscale_pixels(f.thermal) for f in clip_db.frames])
         return cptv_file, clip_db.meta_data_file, metadata, frame_numbers, thermals
     except:
         logging.error("Could not load %s", cptv_file, exc_info=True)
@@ -195,10 +200,16 @@ class Yolo:
 
 
     def predict_batch(self, thermals):
-        """Predict every frame in thermals, batching each TTA view across frames"""
+        """Predict every frame in thermals, batching each TTA view across frames
+        thermals may already be uint8 grayscale from load_clip"""
         import numpy as np
 
-        rgbs = [np.repeat(grayscale_pixels(t)[..., None], 3, axis=2) for t in thermals]
+        rgbs = [
+            np.repeat(
+                (t if t.dtype == np.uint8 else grayscale_pixels(t))[..., None], 3, axis=2
+            )
+            for t in thermals
+        ]
         height, width = rgbs[0].shape[:2]
         frame_boxes = [[] for _ in rgbs]
         for left, top, right, bottom, size, flip in self.views:
