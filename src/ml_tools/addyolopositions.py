@@ -3,6 +3,7 @@ from ml_tools.ammendtrackingboxes import grayscale_pixels, save_metadata
 from config.buildconfig import BuildConfig
 from pathlib import Path
 import argparse
+import logging
 import cv2
 import numpy as np
 
@@ -18,9 +19,13 @@ def parse_args():
 
     parser.add_argument(
         "cptv_file",
-        help="File to eval",
+        help="File to eval, or a directory to search recursively for *.cptv files",
     )
-    parser.add_argument("-o", "--output", help="Output mp4 file")
+    parser.add_argument(
+        "-o",
+        "--output",
+        help="Output mp4 file, or output directory when cptv_file is a directory",
+    )
     parser.add_argument(
         "-s", "--scale", type=int, default=4, help="Upscale factor for video"
     )
@@ -41,6 +46,13 @@ def parse_args():
         "--preview",
         action="store_true",
         help="Make a video with yolo boxes (yellow), tracks (blue) and yolo_positions (red)",
+    )
+    parser.add_argument(
+        "-w",
+        "--workers",
+        type=int,
+        default=8,
+        help="Processes used for --write-meta when cptv_file is a directory",
     )
     args = parser.parse_args()
     if not args.write_meta and not args.preview:
@@ -154,16 +166,13 @@ def write_meta(clip_db, tracks, yolo_boxes):
     print("Saved yolo positions to", clip_db.meta_data_file)
 
 
-def preview(clip_db, tracks, yolo_boxes, args):
+def preview(clip_db, tracks, yolo_boxes, args, output):
     track_meta = clip_db.meta_data.get("Tracks") or clip_db.meta_data.get("tracks", [])
     yolo_positions = {}
     for t in track_meta:
         for bb in t.get("yolo_positions", []):
             yolo_positions.setdefault(bb["frame_number"], []).append((t["id"], bb))
 
-    output = args.output
-    if output is None:
-        output = Path(args.cptv_file).with_suffix(".mp4")
     scale = args.scale
     clip_db.load_frames()
     frames = clip_db.get_frames()
@@ -236,15 +245,60 @@ def preview(clip_db, tracks, yolo_boxes, args):
     print("Saved", output)
 
 
-def main():
-    args = parse_args()
-    clip_db = RawDatabase(args.cptv_file)
+def load_clip(cptv_file):
+    clip_db = RawDatabase(cptv_file)
     tracks = clip_db.get_clip_tracks(BuildConfig.DEFAULT_GROUPS).tracks
     yolo_boxes = yolo_by_frame(clip_db.meta_data)
+    return clip_db, tracks, yolo_boxes
+
+
+def write_file(cptv_file):
+    # run in a worker process, so catch everything to keep the pool going
+    try:
+        write_meta(*load_clip(cptv_file))
+    except Exception:
+        logging.error("Could not write metadata for %s", cptv_file, exc_info=True)
+
+
+def main():
+    args = parse_args()
+    path = Path(args.cptv_file)
+    if not path.is_dir():
+        clip = load_clip(path)
+        if args.write_meta:
+            write_meta(*clip)
+        if args.preview:
+            output = args.output
+            if output is None:
+                output = path.with_suffix(".mp4")
+            preview(*clip, args, output)
+        return
+
+    files = sorted(path.glob("**/*.cptv"))
     if args.write_meta:
-        write_meta(clip_db, tracks, yolo_boxes)
+        from multiprocessing import Pool
+
+        with Pool(args.workers) as pool:
+            for i, _ in enumerate(pool.imap_unordered(write_file, files)):
+                if (i + 1) % 100 == 0:
+                    print(f"Written {i + 1}/{len(files)}")
+        print(f"Written {len(files)}/{len(files)}")
+
     if args.preview:
-        preview(clip_db, tracks, yolo_boxes, args)
+        out_dir = None
+        if args.output is not None:
+            out_dir = Path(args.output)
+            out_dir.mkdir(parents=True, exist_ok=True)
+        for i, cptv_file in enumerate(files):
+            print(f"{i + 1}/{len(files)}", cptv_file)
+            if out_dir is None:
+                output = cptv_file.with_suffix(".mp4")
+            else:
+                output = out_dir / cptv_file.with_suffix(".mp4").name
+            try:
+                preview(*load_clip(cptv_file), args, output)
+            except Exception:
+                logging.error("Could not preview %s", cptv_file, exc_info=True)
 
 
 if __name__ == "__main__":

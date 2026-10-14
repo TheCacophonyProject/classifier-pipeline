@@ -16,7 +16,7 @@ from .frame import Frame, TrackChannels
 import json
 from pathlib import Path
 import numpy as np
-from track.region import Region
+from track.region import Region, YoloRegion
 from ml_tools.datasetstructures import TrackHeader, ClipHeader
 from track.track import Track
 from piclassifier.cptvmotiondetector import is_affected_by_ffc
@@ -172,7 +172,8 @@ class RawDatabase:
         self.clip_id = self._meta_data.get("id")
         return self._meta_data
 
-    def get_clip_tracks(self, tag_precedence):
+    def get_clip_tracks(self, tag_precedence, use_yolo=False):
+        """use_yolo loads each track's regions from yolo_positions instead of positions"""
         metadata = self.meta_data
         if metadata is None:
             return None
@@ -226,13 +227,6 @@ class RawDatabase:
         for track_meta in tracks:
 
             try:
-                if "positions" not in track_meta:
-                    logging.error(
-                        "No positions for track %s in %s",
-                        track_meta.get("id"),
-                        self.file,
-                    )
-                    continue
                 tags = track_meta.get("tags", [])
                 tag = Track.get_best_human_tag(tags, tag_precedence, 0)
                 human_tag = None
@@ -258,14 +252,27 @@ class RawDatabase:
                     if t.get("automatic", False) != True
                 ]
 
+                # yolo doesn't detect false-positives so keep the tracker positions
+                yolo_track = use_yolo and human_tag != "false-positive"
+                positions_key = "yolo_positions" if yolo_track else "positions"
+                region_cls = YoloRegion if yolo_track else Region
+                if len(track_meta.get(positions_key, [])) == 0:
+                    if not yolo_track:
+                        logging.error(
+                            "No positions for track %s in %s",
+                            track_meta.get("id"),
+                            self.file,
+                        )
+                    continue
+
                 start = None
                 end = None
 
                 prev_frame = None
                 regions = {}
-                for i, r in enumerate(track_meta.get("positions")):
+                for i, r in enumerate(track_meta.get(positions_key)):
                     if isinstance(r, list):
-                        region = Region.region_from_array(r[1])
+                        region = region_cls.region_from_array(r[1])
                         if region.frame_number is None:
                             if i == 0:
                                 frame_number = round(r[0] * FPS)
@@ -273,7 +280,7 @@ class RawDatabase:
                             else:
                                 region.frame_number = prev_frame + 1
                     else:
-                        region = Region.region_from_json(r)
+                        region = region_cls.region_from_json(r)
                     if region.frame_number is None:
                         if "frameTime" in r:
                             if i == 0:
@@ -335,8 +342,8 @@ class RawDatabase:
     def get_id(self):
         return self.meta_data_file
 
-    def get_clip_meta(self, tag_precedence):
-        return self.get_clip_tracks(tag_precedence)
+    def get_clip_meta(self, tag_precedence, use_yolo=False):
+        return self.get_clip_tracks(tag_precedence, use_yolo=use_yolo)
         #
         # clip_meta = {}
         # clip_meta["clip_id"] = r_id

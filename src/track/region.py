@@ -21,6 +21,7 @@ from ml_tools.rectangle import Rectangle
 from dataclasses import dataclass
 from typing import Any
 import logging
+import math
 import numpy as np
 
 
@@ -254,3 +255,50 @@ def blur_and_return_as_mask(frame, threshold):
     mass = len(values)
     values = 1
     return thresh, mass
+
+
+@dataclass(eq=False, slots=True)
+class YoloRegion(Region):
+    """Region from a yolo detection, with the detection's label and confidence."""
+
+    confidence: Any = None
+    label: Any = None
+    class_id: Any = None
+
+    @classmethod
+    def region_from_json(cls, region_json):
+        # yolo boxes are floats, round outwards to whole pixels so the box
+        # still contains the whole detection
+        left = int(math.floor(region_json["x"]))
+        top = int(math.floor(region_json["y"]))
+        right = int(math.ceil(region_json["x"] + region_json["width"]))
+        bottom = int(math.ceil(region_json["y"] + region_json["height"]))
+        return cls(
+            left,
+            top,
+            right - left,
+            bottom - top,
+            centroid=[(left + right) / 2.0, (top + bottom) / 2.0],
+            frame_number=region_json.get("frame_number"),
+            confidence=region_json.get("confidence"),
+            label=region_json.get("label"),
+            class_id=region_json.get("class_id"),
+        )
+
+    def copy(self):
+        return YoloRegion(
+            self.x,
+            self.y,
+            self.width,
+            self.height,
+            self.centroid,
+            self.mass,
+            self.frame_number,
+            self.pixel_variance,
+            self.was_cropped,
+            self.blank,
+            self.is_along_border,
+            confidence=self.confidence,
+            label=self.label,
+            class_id=self.class_id,
+        )
