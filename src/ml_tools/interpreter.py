@@ -1162,7 +1162,7 @@ class Yolo:
 
         import torch
 
-        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         logging.info("Yolo running under device: %s", device)
         sizes = (
             sorted(
