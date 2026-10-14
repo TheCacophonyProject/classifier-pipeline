@@ -969,8 +969,9 @@ def main():
         "by_label": False,
         "config": config.as_dict(),
         "segment_types": master_dataset.segment_types,
-                "use_yolo": master_dataset.use_yolo,
-
+        "use_yolo": master_dataset.use_yolo,
+        # thermal channel is written as raw centi kelvin (image/thermal_ck_encoded)
+        "thermal_format": "centikelvin",
     }
     meta_data["dataset_backgrounds"] = {}
 

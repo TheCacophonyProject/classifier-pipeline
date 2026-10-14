@@ -10,6 +10,34 @@ import cv2
 MIN_SIZE = 4
 EDGE = 1
 
+# thermal values are in centi kelvin
+THERMAL_MIN_KV = 27315  # 0 celcius
+THERMAL_MAX_KV = 31515  # 42 celcius
+
+# how preprocess_frame_v2 normalizes the thermal channel
+THERMAL_NORM_FIXED = "fixed"  # THERMAL_MIN_KV - THERMAL_MAX_KV
+THERMAL_NORM_MINMAX = "minmax"  # min max of each frame
+THERMAL_NORM_RAW = "raw"  # leave as centi kelvin, used when writing training records
+
+
+def normalize_thermal(thermal, thermal_norm):
+    """Normalize thermal to 0-1 in place where possible"""
+    from ml_tools.imageprocessing import normalize
+
+    if thermal_norm == THERMAL_NORM_FIXED:
+        np.clip(thermal, THERMAL_MIN_KV, THERMAL_MAX_KV, out=thermal)
+        thermal, _ = normalize(thermal, min=THERMAL_MIN_KV, max=THERMAL_MAX_KV)
+    elif thermal_norm == THERMAL_NORM_MINMAX:
+        t_min = np.amin(thermal)
+        t_max = np.amax(thermal)
+        if t_max > t_min:
+            thermal = (thermal - t_min) / (t_max - t_min)
+        else:
+            thermal = np.zeros_like(thermal)
+    elif thermal_norm != THERMAL_NORM_RAW:
+        raise ValueError(f"Unknown thermal normalization {thermal_norm}")
+    return thermal
+
 res_x = 120
 res_y = 160
 
@@ -60,14 +88,13 @@ def preprocess_frame_v2(
     original_dim=None,  # represent if we are taking extra padding
     enlarge=True,  # when building a dataset this will be false as resize happens on train time
     new_max=1,
+    thermal_norm=THERMAL_NORM_FIXED,
 ):
     import math
     from ml_tools.imageprocessing import normalize, apply_fair_clahe_cv2
     from ml_tools.frame import repeat_border
     from ml_tools.datasetstructures import MeanData
 
-    THERMAL_MIN_KV = 27315
-    THERMAL_MAX_KV = 31515  # 42 celcius
     if original_dim is None:
         original_dim = out_dim
     median = np.median(frame.thermal)
@@ -148,13 +175,7 @@ def preprocess_frame_v2(
         cropped_frame.filtered = None
         return None
 
-    np.clip(
-        cropped_frame.thermal, THERMAL_MIN_KV, THERMAL_MAX_KV, out=cropped_frame.thermal
-    )
-
-    cropped_frame.thermal, _ = normalize(
-        cropped_frame.thermal, min=THERMAL_MIN_KV, max=THERMAL_MAX_KV
-    )
+    cropped_frame.thermal = normalize_thermal(cropped_frame.thermal, thermal_norm)
 
     # apply paddings
     needs_pad = (
@@ -209,7 +230,8 @@ def preprocess_frame_v2(
         # inter cubic can cause values out of range
         np.clip(cropped_frame.filtered, 0, 1, out=cropped_frame.filtered)
         np.clip(cropped_frame.thermal_norm, 0, 1, out=cropped_frame.thermal_norm)
-        np.clip(cropped_frame.thermal, 0, 1, out=cropped_frame.thermal)
+        if thermal_norm != THERMAL_NORM_RAW:
+            np.clip(cropped_frame.thermal, 0, 1, out=cropped_frame.thermal)
         # t_norm = cropped_frame.thermal_norm.copy()
         # t_norm = np.uint8(t_norm*255)
         # cv2.imshow("f",t_norm)
@@ -299,9 +321,13 @@ def preprocess_frame_v2(
             (out_dim * 2, out_dim * 2),
             interpolation=cv2.INTER_CUBIC,
         )
-        cropped_frame.clip(0, 1)
+        np.clip(cropped_frame.filtered, 0, 1, out=cropped_frame.filtered)
+        np.clip(cropped_frame.thermal_norm, 0, 1, out=cropped_frame.thermal_norm)
+        if thermal_norm != THERMAL_NORM_RAW:
+            np.clip(cropped_frame.thermal, 0, 1, out=cropped_frame.thermal)
     if new_max != 1:
-        cropped_frame.thermal *= new_max
+        if thermal_norm != THERMAL_NORM_RAW:
+            cropped_frame.thermal *= new_max
         cropped_frame.thermal_norm *= new_max
         cropped_frame.filtered *= new_max
     cropped_frame.preprocessed = True

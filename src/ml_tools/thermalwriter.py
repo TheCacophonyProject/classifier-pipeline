@@ -101,7 +101,8 @@ def create_tf_example(sample, data, features, labels, country_code):
     #     filtereds.append(np.zeros((filtereds[0].shape),dtype = np.uint8))
     #     thermal_norm.append(np.zeros((thermal_norm[0].shape),dtype=np.uint8))
 
-    thermal_raw = np.array(thermal_raw)
+    # thermal is raw centi kelvin, rounding to uint16 loses < 0.01 celcius
+    thermal_raw = np.uint16(np.clip(np.rint(np.array(thermal_raw)), 0, 65535))
     filtered = np.array(filtered)
     thermal_norm = np.array(thermal_norm)
     frame_indices = np.array(frame_indices)
@@ -138,8 +139,9 @@ def create_tf_example(sample, data, features, labels, country_code):
             str(sample.source_file).encode("utf8")
         ),
         "image/source_id": tfrecord_util.bytes_feature(str(image_id).encode("utf8")),
-        "image/thermal_raw_encoded": tfrecord_util.float_list_feature(
-            thermal_raw.ravel()
+        # new key so these can't be read as the old 0-1 thermal_raw_encoded
+        "image/thermal_ck_encoded": tfrecord_util.bytes_feature(
+            thermal_raw.ravel().tobytes()
         ),
         "image/filtered_encoded": tfrecord_util.float_list_feature(filtered.ravel()),
         "image/thermal_norm_encoded": tfrecord_util.float_list_feature(
@@ -194,7 +196,7 @@ def get_data(source_file, excluded_tags, extra_args):
     import cv2
     import math
     from ml_tools.dataset import filter_track
-    from ml_tools.preprocess import preprocess_frame_v2
+    from ml_tools.preprocess import preprocess_frame_v2, THERMAL_NORM_RAW
 
     # prepare the sample data for saving
     ENLARGE_FOR_AUGMENT = True
@@ -313,6 +315,8 @@ def get_data(source_file, excluded_tags, extra_args):
                             crop_rectangle,
                             original_dim=mosaic_dim,
                             enlarge=False,
+                            # write raw centi kelvin, normalized at train time
+                            thermal_norm=THERMAL_NORM_RAW,
                         )
                         if result is None:
                             by_frame_number[frame_number] = None
