@@ -11,11 +11,6 @@ classify:
       type: "RandomForest"
       ignored_tags: ["animal","vehicle"]
 tracking:
-  thermal:
-    filters:
-      track_min_offset: 0
-      min_duration_secs: 0.0
-  ir:
-    filters:
-      track_min_offset: 0
-      min_duration_secs: 0.5
+  model: /etc/cacophony/models/yolo/best.pt
+  params:
+    "mass_change_percent": null

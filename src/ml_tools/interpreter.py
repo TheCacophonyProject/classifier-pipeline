@@ -489,8 +489,6 @@ class Interpreter(ABC):
 
     def predict_track(self, clip, track, **args):
         samples = self.frames_for_prediction(clip, track, **args)
-        for s in samples:
-            print(s.frame_indices)
         frames, preprocessed, masses = self.preprocess(clip, track, samples, **args)
         if preprocessed is None or len(preprocessed) == 0:
             return None, None, None

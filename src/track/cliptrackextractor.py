@@ -52,6 +52,7 @@ class ClipTrackExtractor(ClipTracker):
         calculate_thumbnail_info=False,
         from_pi=False,
         max_frames=None,
+        model=None,
     ):
         super().__init__(
             config,
@@ -86,7 +87,8 @@ class ClipTrackExtractor(ClipTracker):
         # if self.config.dilation_pixels > 0:
         #     size = self.config.dilation_pixels * 2 + 1
         #     self.dilate_kernel = np.ones((size, size), np.uint8)
-        if self.config.model:
+        self.model = model
+        if self.config.model and model is None and do_tracking:
             logging.info("Using yolo model for object detection")
             from ml_tools.interpreter import Yolo
 

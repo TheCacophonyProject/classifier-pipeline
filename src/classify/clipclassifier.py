@@ -167,6 +167,17 @@ class ClipClassifier:
         elif ext == ".cptv":
             from track.cliptrackextractor import ClipTrackExtractor
 
+            model = None
+            # load first time only
+            if self.config.tracking.model is not None:
+                if "tracking-model" in self.models:
+                    model = self.models["tracking-model"]
+                else:
+                    from ml_tools.interpreter import Yolo
+
+                    model = Yolo(self.config.tracking.model)
+                    self.models["tracking-model"] = model
+
             track_extractor = ClipTrackExtractor(
                 self.config.tracking,
                 cache_to_disk,
@@ -174,6 +185,7 @@ class ClipClassifier:
                 calculate_filtered=True,
                 verbose=self.config.verbose,
                 calculate_thumbnail_info=calculate_thumbnails,
+                model=model,
             )
             logging.info("Using clip extractor")
 

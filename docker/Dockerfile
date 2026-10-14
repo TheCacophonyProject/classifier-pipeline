@@ -14,7 +14,8 @@ RUN python3 get-pip.py
 RUN pip3 install --upgrade pip
 RUN pip3 install cmake
 RUN pip3 install -r requirements.txt
-
+RUN pip3 install ultralytics==8.4.166
+RUN pip3 install torch==2.5.1 torchvision==0.20.1 torchaudio==2.5.1 --index-url https://download.pytorch.org/whl/cu121
 
 RUN mkdir -p /var/log/supervisor
 COPY docker/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
@@ -24,6 +25,11 @@ RUN cp classifier-docker.yaml /etc/cacophony/classifier.yaml
 RUN touch /etc/cacophony/classifier
 RUN python3 latestmodel.py
 
+
+RUN wget https://github.com/TheCacophonyProject/AI-Model/releases/download/yolo-v1.0/model.tar
+RUN mkdir /etc/cacophony/models/yolo
+RUN tar xzvf model.tar -C /etc/cacophony/models/yolo --strip-components=1
+RUN rm model.tar
 
 RUN pip install --no-cache-dir --upgrade keras==3.14.1
 

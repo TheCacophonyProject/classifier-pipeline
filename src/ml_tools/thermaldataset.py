@@ -692,7 +692,9 @@ def read_tfrecord(
         for c, n in zip(channels, thermal_norms)
     ]
     # centi kelvin thermal stays unscaled until normalize_thermal_channel
-    mean_scale = [1.0 if centikelvin and n is not None else 255.0 for n in thermal_norms]
+    mean_scale = [
+        1.0 if centikelvin and n is not None else 255.0 for n in thermal_norms
+    ]
     frame_means = tf.gather(means, mean_indices, axis=1) * mean_scale
 
     record_frames = tf.cast(record_frames, tf.int32)
@@ -790,9 +792,7 @@ def read_tfrecord(
         # normalize after cropping so min max uses the same area as at inference
         for i, norm in enumerate(thermal_norms):
             if norm is not None:
-                rgb_image = normalize_thermal_channel(
-                    rgb_image, i, norm, centikelvin
-                )
+                rgb_image = normalize_thermal_channel(rgb_image, i, norm, centikelvin)
 
         # double the resolution of each frame (mosaic_size -> mosaic_size * 2)
         if enlarge:

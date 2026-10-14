@@ -59,6 +59,7 @@ def normalize_thermal(thermal, thermal_norm):
         raise ValueError(f"Unknown thermal normalization {thermal_norm}")
     return thermal
 
+
 res_x = 120
 res_y = 160
 

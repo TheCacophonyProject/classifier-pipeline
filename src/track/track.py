@@ -144,11 +144,7 @@ class RegionTracker(Tracker):
                 distances = [(distances[0] + distances[2]) / 2]
                 max_distances = max_distances[:1]
 
-            if (
-                False
-                and max_mass_change
-                and abs(avg_mass - region.mass) > max_mass_change
-            ):
+            if max_mass_change and abs(avg_mass - region.mass) > max_mass_change:
                 logging.debug(
                     "track %s region mass %s deviates too much from %s for region %s max change is %s",
                     track.id,

@@ -26,3 +26,9 @@ h5py~=3.14.0
 # cacophonyapi
 
 scikit-image~=0.26.0
+# if using yolo
+# ultralytics== 8.4.166
+# for using older gpu on processing
+# torch==2.5.1  --index-url https://download.pytorch.org/whl/cu121
+# torchvision==0.20.1  --index-url https://download.pytorch.org/whl/cu121
+# torchaudio==2.5.1 --index-url https://download.pytorch.org/whl/cu121
