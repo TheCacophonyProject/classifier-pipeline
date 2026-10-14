@@ -9,9 +9,9 @@ def wrn_block(x, filters, stride):
     # First Conv
     x = layers.BatchNormalization()(x)
     x = layers.Activation("relu")(x)
-    x = layers.Conv2D(
-        filters, (3, 3), strides=stride, padding="same", use_bias=False
-    )(x)
+    x = layers.Conv2D(filters, (3, 3), strides=stride, padding="same", use_bias=False)(
+        x
+    )
 
     # Second Conv
     x = layers.BatchNormalization()(x)

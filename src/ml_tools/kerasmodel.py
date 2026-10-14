@@ -411,7 +411,7 @@ class KerasModel(Interpreter):
 
         # Multi input adding information about the frame number used
         if multi_input:
-           add_multi_input()
+            add_multi_input()
 
         gap = tf.keras.layers.GlobalAveragePooling2D()
         x = gap(x)
@@ -440,7 +440,7 @@ class KerasModel(Interpreter):
 
         base_model.trainable = self.params.base_training
         return self.model
-    
+
     def adjust_final_layer(self):
         # Adjust final layer to a new set of labels, by removing it and re adding
         # new_model = tf.keras.models.Sequential(self.model.layers[:-3])
@@ -732,7 +732,7 @@ class KerasModel(Interpreter):
         qat=False,
         dont_enlarge=False,
     ):
-        if  self.params.model_name =="wideresnet":
+        if self.params.model_name == "wideresnet":
             dont_enlarge = True
 
         logging.info(
@@ -2170,7 +2170,7 @@ def stage_3_lr_scheduler(epoch, lr):
 
 
 def add_multi_input():
-     # --- Input 2: The Timeline Mask Layer (5x5x7) ---
+    # --- Input 2: The Timeline Mask Layer (5x5x7) ---
     # Channels 0-3: absolute time, presence, width, height
     # Channels 4-6: Vx velocity, Vy velocity, forward-aligned delta-T
     # Both the absolute-time cumsum and the forward alignment of
@@ -2194,9 +2194,7 @@ def add_multi_input():
         padding="same",
         name="metadata_local_projection",
     )(mask_input)
-    t_embed = layers.Dense(32, activation="swish", name="temporal_embedding")(
-        t_project
-    )
+    t_embed = layers.Dense(32, activation="swish", name="temporal_embedding")(t_project)
 
     # Layer 2: Symmetric Receptive Field Matcher (3x3 Kernel)
     # Uses a symmetric (3,3) kernel to mirror the exact spatial blending
