@@ -209,20 +209,16 @@ def get_data(source_file, excluded_tags, extra_args):
     if ENLARGE_FOR_AUGMENT:
         # allow extra pixels for augmentation
         resize_dim = int(math.floor(mosaic_dim * 1.41))
-    if source_file.suffix == ".hdf5":
-        from ml_tools.trackdatabase import TrackDatabase
-
-        raise Exception("Need to implement min max filtered values for hdf5 track")
-
-        db = TrackDatabase(clip_samples[0].source_file)
-    else:
-        db = RawDatabase(source_file)
-        db.load_frames()
+    db = RawDatabase(source_file)
+    db.load_frames()
     # going to redo segments to get rid of ffc segments
     rng = np.random.default_rng(seed=db.timestamp)
 
     try:
-        clip_meta = db.get_clip_meta(extra_args.get("tag_precedence"))
+        clip_meta = db.get_clip_meta(
+            extra_args.get("tag_precedence"),
+            use_yolo=extra_args.get("use_yolo", False),
+        )
         frame_temp_median = clip_meta.frame_temp_median
 
         # group samples by track_id

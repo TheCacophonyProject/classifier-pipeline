@@ -58,7 +58,12 @@ def parse_args():
     )
     parser.add_argument("--split-file", help="Json file defining a split")
     parser.add_argument(
-        "--ext", default=".cptv", help="Extension of files to load .mp4,.cptv,.hdf5"
+        "--ext", default=".cptv", help="Extension of files to load .mp4,.cptv"
+    )
+    parser.add_argument(
+        "--use-yolo",
+        action="store_true",
+        help="Use each track's yolo_positions instead of tracker positions (see ml_tools/addyolopositions.py)",
     )
 
     parser.add_argument("-c", "--config-file", help="Path to config file to use")
@@ -70,7 +75,7 @@ def parse_args():
         default=False,
         help="Use consecutive frames for segments",
     )
-    parser.add_argument("data_dir", help="Directory of hdf5 files")
+    parser.add_argument("data_dir", help="Directory of cptv files")
 
     parser.add_argument(
         "--seed",
@@ -406,7 +411,7 @@ def split_by_file(dataset, config, split_file, base_dir, make_val=False, seed=No
             config,
             label_mapping=dataset.label_mapping,
             ext=dataset.ext,
-            raw=dataset.raw,
+            use_yolo=dataset.use_yolo,
         )
         if name == "train":
             split_dataset.enable_augmentation = True
@@ -446,7 +451,7 @@ def split_randomly(dataset, config, date, test_clips=[], use_test=True):
         "train",
         config,
         label_mapping=dataset.label_mapping,
-        raw=dataset.raw,
+        use_yolo=dataset.use_yolo,
         ext=dataset.ext,
     )
     train.enable_augmentation = True
@@ -455,7 +460,7 @@ def split_randomly(dataset, config, date, test_clips=[], use_test=True):
         "validation",
         config,
         label_mapping=dataset.label_mapping,
-        raw=dataset.raw,
+        use_yolo=dataset.use_yolo,
         ext=dataset.ext,
     )
     test = None
@@ -468,7 +473,7 @@ def split_randomly(dataset, config, date, test_clips=[], use_test=True):
             "test",
             config,
             label_mapping=dataset.label_mapping,
-            raw=dataset.raw,
+            use_yolo=dataset.use_yolo,
             ext=dataset.ext,
         )
         add_samples(dataset.labels, test, test_c, test_counts)
@@ -821,8 +826,8 @@ def main():
         config,
         consecutive_segments=args.consecutive_segments,
         label_mapping=label_mapping,
-        raw=False if args.ext == ".hdf5" else True,
         ext=args.ext,
+        use_yolo=args.use_yolo,
     )
     if args.save_master_only:
         base_dir = Path(args.save_master_only)
@@ -946,6 +951,7 @@ def main():
         "dont_filter_segment": True,
         "skip_ffc": True,
         "tag_precedence": config.build.tag_precedence,
+        "use_yolo": master_dataset.use_yolo,
         "min_mass": master_dataset.min_frame_mass,
         "thermal_diff_norm": config.build.thermal_diff_norm,
         "filter_by_lq": master_dataset.filter_by_lq,
@@ -963,6 +969,8 @@ def main():
         "by_label": False,
         "config": config.as_dict(),
         "segment_types": master_dataset.segment_types,
+                "use_yolo": master_dataset.use_yolo,
+
     }
     meta_data["dataset_backgrounds"] = {}
 

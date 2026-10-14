@@ -1070,9 +1070,7 @@ def get_segment_indices(
     chunk_size,
     frame_indices,
     rng,
-    start_frame,
     regions,
-    mass_history,
     last_index,
     frame_to_closest_valid,
     short_track,
@@ -1172,10 +1170,11 @@ def get_segment_indices(
         frame_indices[frame_to_closest_valid[frame_num]] = -1
         assert frame_num not in frame_indices
         segment_frames.append(frame_num)
-        region_index = frame_num - start_frame
+        # regions line up with frame_indices
+        region_index = frame_to_closest_valid[frame_num]
         seg_regions.append(regions[region_index])
         assert seg_regions[-1].frame_number == frame_num
-        mass += mass_history[frame_num - start_frame]
+        mass += regions[region_index].mass
         if last_chunk:
             break
     return segment_frames, seg_regions, mass, last_index, stopped_early
@@ -1183,9 +1182,7 @@ def get_segment_indices(
 
 def random_sections(
     label,
-    frame_indices,
     regions,
-    mass_history,
     start_frame,
     source_file,
     clip_id,
@@ -1210,8 +1207,11 @@ def random_sections(
     # number that rouunds chunk size to 4, roughly 11 seconds
     chunk_size = int(max_window_frames / 25)
 
-    num_frames = frame_indices[-1] - frame_indices[0] + 1
-    frame_indices = list(frame_indices.copy())
+    # regions are the valid regions to sample from, they may skip frames
+    # frame_indices lines up with regions and tracks which frames are still
+    # available, get_segment_indices sets chosen frames to -1
+    frame_indices = [r.frame_number for r in regions]
+    num_frames = regions[-1].frame_number - regions[0].frame_number + 1
     samples, num_windows, stride_offset = get_samples_by_label_urgency(
         label,
         num_frames,
@@ -1292,7 +1292,7 @@ def random_sections(
 
     vel_y = centre_y[1:] - centre_y[:-1]
 
-    chosen_windows = chosen_windows + frame_indices[0]
+    chosen_windows = chosen_windows + regions[0].frame_number
     # probably having the extra windows in here is redundant now as we dont care if we skip a bunch of frames
     # and accept segmetns with a small number of frames
     for window_start in chosen_windows:
@@ -1303,9 +1303,7 @@ def random_sections(
                 chunk_size,
                 frame_indices,
                 rng,
-                start_frame,
                 regions,
-                mass_history,
                 last_index,
                 frame_to_closest_valid,
                 num_frames < max_window_frames,
@@ -1390,8 +1388,8 @@ def get_segments(
     filtered_stats = {"segment_mass": 0, "too short": 0}
     has_no_mass = np.sum(mass_history) == 0
     # Filter out frames bused of ffc, blank and mass
-    frame_indices = [
-        region.frame_number
+    valid_regions = [
+        region
         for region in regions
         if (has_no_mass or region.mass > 0)
         and (
@@ -1408,19 +1406,33 @@ def get_segments(
 
     # this is checking that frames for an animal haven't been predicted as FP by the random forest model
     if fp_frames is not None and label not in FP_LABELS:
-        frame_indices = [f for f in frame_indices if f not in fp_frames]
+        valid_regions = [r for r in valid_regions if r.frame_number not in fp_frames]
 
     # regions may include extra frames beyond from_last (see Track.get_segments'
     # available_frames) purely so blank/invalid frames can be filtered out above
     # while still returning from_last valid ones
     if from_last is not None:
-        frame_indices = frame_indices[-from_last:]
+        valid_regions = valid_regions[-from_last:]
 
-    if len(frame_indices) == 0:
+    if len(valid_regions) == 0:
         logging.warn("Nothing to load for %s - %s", clip_id, track_id)
         return [], filtered_stats
 
-    frame_indices = np.array(frame_indices)
+    # valid_regions, valid_frames and valid_mass line up index for index, so
+    # they work even if regions has gaps (e.g. yolo positions)
+    valid_frames = np.array([r.frame_number for r in valid_regions])
+    valid_mass = np.uint16([r.mass for r in valid_regions])
+    frame_indices = valid_frames.copy()
+
+    if any(t != SegmentType.RANDOM_SECTIONS for t in segment_types):
+        # every other segment type indexes regions by frame_number - start_frame
+        if regions[0].frame_number != start_frame or regions[
+            -1
+        ].frame_number - start_frame + 1 != len(regions):
+            raise ValueError(
+                f"{clip_id}-{track_id} regions are not one per frame, only "
+                "RANDOM_SECTIONS supports tracks with missing frames"
+            )
 
     for segment_type in segment_types:
         s_min_mass = segment_min_mass
@@ -1430,7 +1442,7 @@ def get_segments(
         if s_min_mass is not None:
             s_min_mass = min(
                 s_min_mass,
-                np.median(mass_history[frame_indices - start_frame]),
+                np.median(valid_mass),
             )
         else:
             s_min_mass = 1
@@ -1516,9 +1528,7 @@ def get_segments(
             if segment_type == SegmentType.RANDOM_SECTIONS:
                 new_segments = random_sections(
                     label,
-                    frame_indices,
-                    regions,
-                    mass_history,
+                    valid_regions,
                     start_frame,
                     source_file,
                     clip_id,

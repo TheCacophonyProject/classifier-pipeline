@@ -16,11 +16,10 @@ from ml_tools.datasetstructures import random_sections, get_samples_by_label_urg
 
 def make_track(num_frames, start_frame=100, base_mass=50, gap_every=None):
     """
-    Build the three arrays that random_sections() expects.
+    Build the regions random_sections() expects, plus their frame numbers.
 
-    regions / mass_history are always DENSE (one entry per consecutive frame,
-    matching how TrackHeader.bounds_history is stored).  frame_indices is the
-    (possibly filtered) subset of frame numbers that are valid for sampling.
+    regions are the (possibly filtered) valid regions to sample from, as
+    get_segments passes them, so they may skip frames.
     """
     all_regions = [
         Region(
@@ -35,18 +34,14 @@ def make_track(num_frames, start_frame=100, base_mass=50, gap_every=None):
         for i in range(num_frames)
     ]
     regions_arr = np.array(all_regions)
-    mass_history = np.array([r.mass for r in all_regions], dtype=np.float32)
 
-    if gap_every is None:
-        frame_indices = [r.frame_number for r in all_regions]
-    else:
-        # simulate filtered frames: remove every gap_every-th frame from the
-        # valid set while keeping regions/mass_history dense
-        frame_indices = [
-            r.frame_number for i, r in enumerate(all_regions) if i % gap_every != 0
-        ]
+    if gap_every is not None:
+        # simulate filtered frames: remove every gap_every-th frame
+        keep = [i % gap_every != 0 for i in range(num_frames)]
+        regions_arr = regions_arr[keep]
+    frame_indices = [r.frame_number for r in regions_arr]
 
-    return frame_indices, regions_arr, mass_history
+    return frame_indices, regions_arr
 
 
 COMMON_KWARGS = dict(
@@ -61,14 +56,10 @@ COMMON_KWARGS = dict(
 
 
 def call_random_sections(label, num_frames, start_frame=100, seed=42, gap_every=None):
-    fi, regions, mass = make_track(
-        num_frames, start_frame=start_frame, gap_every=gap_every
-    )
+    fi, regions = make_track(num_frames, start_frame=start_frame, gap_every=gap_every)
     return random_sections(
         label,
-        fi,
         regions,
-        mass,
         start_frame,
         rng=np.random.default_rng(seed),
         **COMMON_KWARGS,
@@ -188,12 +179,10 @@ class TestRandomSectionsOutputShape:
     def test_all_frames_exist_in_original_frame_indices(self):
         start_frame = 100
         num_frames = 200
-        fi, regions, mass = make_track(num_frames, start_frame=start_frame)
+        fi, regions = make_track(num_frames, start_frame=start_frame)
         segs = random_sections(
             "possum",
-            fi,
             regions,
-            mass,
             start_frame,
             rng=np.random.default_rng(42),
             **COMMON_KWARGS,
@@ -220,15 +209,13 @@ class TestRandomSectionsOutputShape:
 
 class TestRandomSectionsWithGaps:
     def test_sparse_frame_indices_all_valid(self):
-        # Every 5th frame filtered — frame_indices has gaps but regions is dense
+        # Every 5th frame missing, e.g. filtered out or no yolo position
         start_frame = 100
         num_frames = 200
-        fi, regions, mass = make_track(num_frames, start_frame=start_frame, gap_every=5)
+        fi, regions = make_track(num_frames, start_frame=start_frame, gap_every=5)
         segs = random_sections(
             "possum",
-            fi,
             regions,
-            mass,
             start_frame,
             rng=np.random.default_rng(42),
             **COMMON_KWARGS,

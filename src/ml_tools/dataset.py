@@ -15,7 +15,6 @@ import time
 import numpy as np
 import gc
 from ml_tools.datasetstructures import TrackHeader, TrackingSample, SegmentType
-from ml_tools.trackdatabase import TrackDatabase
 from ml_tools.rawdb import RawDatabase
 from ml_tools import tools
 from track.region import Region
@@ -42,13 +41,12 @@ class Dataset:
         consecutive_segments=False,
         labels=[],
         label_mapping=None,
-        raw=True,
         ext=".cptv",
+        use_yolo=False,
     ):
         self.ext = ext
-        self.raw = raw
-        # if self.raw and self.ext == ".cptv":
-        # raise Exception("Raw CPTV not implemented yet")
+        # load track regions from yolo_positions instead of positions
+        self.use_yolo = use_yolo
         self.dataset_dir = Path(dataset_dir)
         self.consecutive_segments = consecutive_segments
         self.label_mapping = label_mapping
@@ -218,7 +216,7 @@ class Dataset:
             skip_ffc=self.skip_ffc,
             max_segments=self.max_segments,
             country_rectangle=self.country_rectangle,
-            raw=self.raw,
+            use_yolo=self.use_yolo,
             min_frame_mass=self.min_frame_mass,
             max_frame_mass=self.max_frame_mass,
             filter_by_lq=self.filter_by_lq,
@@ -272,12 +270,11 @@ class Dataset:
                 self.filtered_stats[reason] += count
 
     def load_clip(self, db_clip, dont_filter_segment=False, seed=None):
-        if self.raw:
-            db = RawDatabase(db_clip)
-        else:
-            db = TrackDatabase(db_clip)
+        db = RawDatabase(db_clip)
         try:
-            clip_header = db.get_clip_tracks(self.tag_precedence)
+            clip_header = db.get_clip_tracks(
+                self.tag_precedence, use_yolo=self.use_yolo
+            )
         except:
             logging.error("Could not load %s", db_clip, exc_info=True)
             return 0
@@ -733,7 +730,7 @@ def load_clip_multi(
     skip_ffc=True,
     max_segments=None,
     country_rectangle=None,
-    raw=True,
+    use_yolo=False,
     min_frame_mass=None,
     max_frame_mass=None,
     filter_by_lq=False,
@@ -742,10 +739,7 @@ def load_clip_multi(
     min_frames=0,
 ):
     filtered_stats = {}
-    if raw:
-        db = RawDatabase(str(db_clip))
-    else:
-        db = TrackDatabase(str(db_clip))
+    db = RawDatabase(str(db_clip))
 
     db.check_model()
     if db.model != "lepton3.5":
@@ -753,7 +747,7 @@ def load_clip_multi(
         filtered_stats["model"] = 1
         return None, filtered_stats
     try:
-        clip_header = db.get_clip_tracks(tag_precedence)
+        clip_header = db.get_clip_tracks(tag_precedence, use_yolo=use_yolo)
     except:
         logging.error("Could not load %s", db_clip, exc_info=True)
         return None, filtered_stats
