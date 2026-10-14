@@ -87,7 +87,7 @@ def run_cmd(cmd):
 #     main(thermal_config)
 
 
-def main(config=None):
+def main(config):
     logging.info("Medium Power started")
     global connected
     frame_queue = Queue()
@@ -113,6 +113,7 @@ def main(config=None):
     sock.listen(1)
     global start
     keep_running = True
+    post_process = None
     while keep_running:
         logging.info("waiting for a connection %s", time.time() - start)
         try:
@@ -120,7 +121,9 @@ def main(config=None):
             connected = True
             logging.info("connection from %s", client_address)
             # log_event("camera-connected", {"type": "thermal"})
-            keep_running = medium_power(connection, frame_queue, processor, config)
+            keep_running, post_process = medium_power(
+                connection, frame_queue, processor, config, post_process
+            )
         except KeyboardInterrupt:
             logging.info("\nCtrl+C pressed. Exiting gracefully.")
             break
@@ -137,6 +140,10 @@ def main(config=None):
         start = time.time()
     frame_queue.put(STOP_SIGNAL)
     processor.join()
+    if post_process is not None and post_process.is_alive():
+        from piclassifier.utils import kill_process_with_timeout
+
+        kill_process_with_timeout(post_process)
 
 
 def handle_headers(connection):
@@ -191,7 +198,7 @@ def ask_to_stay_on(duration=5):
     return False
 
 
-def medium_power(connection, frame_queue, processor, config):
+def medium_power(connection, frame_queue, processor, config, post_process):
     from cptv_rs_python_bindings import CptvStreamReader
     import zlib
     from cptv import Frame
@@ -203,11 +210,12 @@ def medium_power(connection, frame_queue, processor, config):
     logging.info("Medium Power =======")
     asked_to_stay_on = False
 
+    # process postprocessing runs under
     inital_header_length = (
         8 + 4 + 4
     )  # Timestamp, lepton serial and firmware in the first message
     while True:
-        if config is not None and not config.recorder.rec_window.inside_window():
+        if not config.recorder.rec_window.inside_window():
             logging.info("No longer inside recorder window, leaving medium power")
             return False
         # wait for start message
@@ -288,6 +296,8 @@ def medium_power(connection, frame_queue, processor, config):
             if WRITE_CPTV:
                 writer.write(extra_b)
         stream_i += 1
+        file_completed = False
+        reconnect = False
         while not finished:
             try:
                 byte_data = connection.recv(headers.frame_size)
@@ -301,8 +311,8 @@ def medium_power(connection, frame_queue, processor, config):
                         writer.combine_headers(
                             headers, config, timestamp, min_value, max_value, frame_i
                         )
-
-                    return True
+                        file_completed = True
+                    reconnect = True
             except:
                 if recording:
                     logging.error("Mid recording failed to receive more data")
@@ -311,6 +321,8 @@ def medium_power(connection, frame_queue, processor, config):
                     writer.combine_headers(
                         headers, config, timestamp, min_value, max_value, frame_i
                     )
+                    file_completed = True
+
                     break
                 time.sleep(1)
                 continue
@@ -327,6 +339,7 @@ def medium_power(connection, frame_queue, processor, config):
                     writer.combine_headers(
                         headers, config, timestamp, min_value, max_value, frame_i
                     )
+                    file_completed = True
 
                 # might have another start
                 extra_b = byte_data[clear_index + len("clear") :]
@@ -357,7 +370,7 @@ def medium_power(connection, frame_queue, processor, config):
             except:
                 # if this happens log it and then get the file from rp2040
                 logging.error("Error decompressing ", exc_info=True)
-                return True
+                return True, post_process
                 # time.sleep(1)
                 # continue
 
@@ -406,11 +419,19 @@ def medium_power(connection, frame_queue, processor, config):
             "None" if u8_data is None else len(u8_data),
             frame_i,
         )
+        if file_completed and thermal_config.base_motion.postprocess:
+            # run postprocessing
+            from piclassifier.extraservices import run_postprocess
+
+            if post_process is not None or not post_process.is_alive():
+                logging.info("Starting post processing")
+                post_process = run_postprocess
+        if reconnect:
+            return True, post_process
         u8_data = None
         data = b""
         reader = None
         asked_to_stay_on = ask_to_stay_on()
-    return True
 
 
 def combine_file(header_file, frame_file, output_file):
@@ -773,7 +794,7 @@ def run_classifier(frame_queue):
                                     for track in clip.tracks
                                     if track._id == track_id
                                 ]
-                                if len(track) == 0:
+                                if lenkill_process_with_timeout(track) == 0:
                                     # guessing its finished now probably can be deleted need to check
                                     continue
                                 track = track[0]
@@ -959,4 +980,7 @@ def run_classifier_process():
 
 
 if __name__ == "__main__":
-    main()
+    from config.thermalconfig import ThermalConfig
+
+    thermal_config = ThermalConfig.load_from_file()
+    main(thermal_config)
