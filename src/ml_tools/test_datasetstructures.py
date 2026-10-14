@@ -213,8 +213,9 @@ class TestRandomSectionsOutputShape:
             assert sorted(a.frame_indices) == sorted(b.frame_indices)
 
     def test_different_seeds_produce_different_results(self):
-        segs_a = call_random_sections("possum", 200, seed=1)
-        segs_b = call_random_sections("possum", 200, seed=2)
+        # only training picks random frames, inference is fixed
+        segs_a = call_random_sections("possum", 200, seed=1, inference=False)
+        segs_b = call_random_sections("possum", 200, seed=2, inference=False)
         assert any(
             sorted(a.frame_indices) != sorted(b.frame_indices)
             for a, b in zip(segs_a, segs_b)
@@ -284,6 +285,33 @@ class TestRandomSectionsEdgeCases:
         segs = call_random_sections("possum", 200)
         for s in segs:
             assert s.mass > 0
+
+
+class TestRandomSectionsInferenceWindows:
+    @pytest.mark.parametrize("seed", range(10))
+    def test_inference_windows_evenly_spaced(self, seed):
+        # 120 frames at inference: ceil((120 - 100) / 50 + 1) = 2 windows, spread
+        # evenly from the first frame to the last -> starts at 0 and 20, each
+        # covering 100 frames split into 25 chunks of 4 frames
+        start_frame = 100
+        segs = call_random_sections("possum", 120, start_frame=start_frame, seed=seed)
+        assert len(segs) == 2
+        segs = sorted(segs, key=lambda s: min(s.frame_indices))
+        for s, window_start in zip(segs, [0, 20]):
+            frames = np.array(s.frame_indices) - start_frame
+            assert len(frames) == 25
+            # first frame is picked from the window's first 4-frame chunk
+            assert window_start <= frames.min() < window_start + 4
+            assert frames.max() < window_start + 100
+
+    @pytest.mark.parametrize("num_frames", [60, 200])
+    def test_inference_frames_independent_of_seed(self, num_frames):
+        # 60 frames is a short track (< 100 frame window), 200 is not
+        segs_a = call_random_sections("possum", num_frames, seed=1)
+        segs_b = call_random_sections("possum", num_frames, seed=2)
+        assert len(segs_a) == len(segs_b)
+        for a, b in zip(segs_a, segs_b):
+            assert list(a.frame_indices) == list(b.frame_indices)
 
 
 # ---------------------------------------------------------------------------
