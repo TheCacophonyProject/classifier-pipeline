@@ -83,7 +83,9 @@ def get_track_thumb_stats(clip, track):
             if norm_stats[1] == norm_stats[2]:
                 mapped_thresh = 50
             else:
-                mapped_thresh = clip.background_thresh / (norm_stats[1] - norm_stats[2]) * 255
+                mapped_thresh = (
+                    clip.background_thresh / (norm_stats[1] - norm_stats[2]) * 255
+                )
 
             flags = cv2.THRESH_BINARY
             _, image = cv2.threshold(contour_image, mapped_thresh, 255, flags)

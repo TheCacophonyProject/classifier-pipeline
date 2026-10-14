@@ -115,7 +115,6 @@ class TrackingConfig(DefaultConfig):
             filter_regions_pre_match=tracking["filter_regions_pre_match"],
             min_hist_diff=tracking["min_hist_diff"],
             model=tracking["model"],
-
         )
 
     @classmethod
@@ -170,7 +169,7 @@ class TrackingConfig(DefaultConfig):
             },
             filter_regions_pre_match=True,
             min_hist_diff=None,
-            model = None,
+            model=None,
         )
         return default_tracking
 

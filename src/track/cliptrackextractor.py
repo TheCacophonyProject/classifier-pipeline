@@ -216,6 +216,7 @@ class ClipTrackExtractor(ClipTracker):
         if self.do_tracking or self.calculate_thumbnail_info:
             # done to get the mask regardless of yolo
             from ml_tools.imageprocessing import detect_objects
+
             obj_filtered, threshold = self._get_normalized_filtered_frame(
                 clip, thermal, filtered, denoise=self.config.denoise
             )
@@ -248,7 +249,7 @@ class ClipTrackExtractor(ClipTracker):
                 clip.active_tracks = set()
             else:
                 regions = self._get_regions_of_interest(
-                    clip, component_details,centroids=centroids
+                    clip, component_details, centroids=centroids
                 )
                 new_tracks, stale_tracks = self._apply_region_matchings(clip, regions)
             if not self.from_pi:

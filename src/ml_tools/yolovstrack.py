@@ -155,9 +155,7 @@ def write_meta(clip_db, tracks, yolo_boxes):
 
 
 def preview(clip_db, tracks, yolo_boxes, args):
-    track_meta = clip_db.meta_data.get("Tracks") or clip_db.meta_data.get(
-        "tracks", []
-    )
+    track_meta = clip_db.meta_data.get("Tracks") or clip_db.meta_data.get("tracks", [])
     yolo_positions = {}
     for t in track_meta:
         for bb in t.get("yolo_positions", []):
