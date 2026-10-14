@@ -19,6 +19,27 @@ THERMAL_NORM_FIXED = "fixed"  # THERMAL_MIN_KV - THERMAL_MAX_KV
 THERMAL_NORM_MINMAX = "minmax"  # min max of each frame
 THERMAL_NORM_RAW = "raw"  # leave as centi kelvin, used when writing training records
 
+# training-meta.json thermal_format, records hold raw centi kelvin thermal
+# (image/thermal_ck_encoded) by default
+THERMAL_FORMAT_CENTIKELVIN = "centikelvin"
+# older records hold THERMAL_NORM_FIXED 0-1 values (image/thermal_raw_encoded),
+# their training-meta.json has no thermal_format
+THERMAL_FORMAT_FIXED = "fixed"
+
+
+def thermal_channel_norm(channel, thermal_norm=THERMAL_NORM_FIXED):
+    """
+    Normalization for a channel made from the thermal data, None for other channels.
+    thermal_fixed and thermal_minmax are set by name, thermal uses thermal_norm
+    """
+    if channel == TrackChannels.thermal_fixed.name:
+        return THERMAL_NORM_FIXED
+    if channel == TrackChannels.thermal_minmax.name:
+        return THERMAL_NORM_MINMAX
+    if channel == TrackChannels.thermal.name:
+        return thermal_norm
+    return None
+
 
 def normalize_thermal(thermal, thermal_norm):
     """Normalize thermal to 0-1 in place where possible"""

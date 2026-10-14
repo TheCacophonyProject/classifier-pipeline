@@ -6,6 +6,8 @@ import logging
 import os
 import random
 import math
+from ml_tools.frame import TrackChannels
+from ml_tools.preprocess import THERMAL_NORM_FIXED, thermal_channel_norm
 
 AUTOTUNE = tf.data.AUTOTUNE
 
@@ -240,11 +242,25 @@ def get_dataset(load_function, base_dir, labels, **args):
         # logging.info("Augmenting on batches")
         fp_index = labels.index("false-positive")
         fp_index = tf.constant(fp_index)
+        channels = args.get(
+            "channels",
+            [
+                TrackChannels.thermal.name,
+                TrackChannels.thermal_norm.name,
+                TrackChannels.filtered.name,
+            ],
+        )
+        thermal_norms = [
+            thermal_channel_norm(c, args.get("thermal_norm", THERMAL_NORM_FIXED))
+            for c in channels
+        ]
         if multi_input:
             dataset = dataset.map(
                 lambda x, y: (
                     {
-                        "input_image": data_augmentation(x["input_image"], y, fp_index),
+                        "input_image": data_augmentation(
+                            x["input_image"], y, fp_index, thermal_norms
+                        ),
                         "input_mask": x["input_mask"],
                     },
                     y,
@@ -253,7 +269,7 @@ def get_dataset(load_function, base_dir, labels, **args):
             )
         else:
             dataset = dataset.map(
-                lambda x, y: (data_augmentation(x, y, fp_index), y),
+                lambda x, y: (data_augmentation(x, y, fp_index, thermal_norms), y),
                 num_parallel_calls=tf.data.AUTOTUNE,
             )
 
@@ -375,28 +391,39 @@ brightness_contrast_aug = tf.keras.Sequential(
 )
 
 
-def data_augmentation(image, y, fp_index, training=True):
-    # only apply brightness/contrast to channels 2,3 (thermal_norm, filtered),
-    # leave channel 1 (raw thermal) untouched
-    raw = image[..., :1]
-    augmented = brightness_contrast_aug(image[..., 1:], training=training)
+def data_augmentation(image, y, fp_index, thermal_norms, training=True):
+    """
+    thermal_norms gives each channel's thermal normalization, None for channels
+    not made from thermal (e.g. thermal_norm, filtered) which get brightness/contrast
+    """
+    augmented_channels = [None] * len(thermal_norms)
+    # channels not made from thermal data e.g. thermal_norm, filtered
+    non_thermal = [i for i, norm in enumerate(thermal_norms) if norm is None]
+    if non_thermal:
+        augmented = brightness_contrast_aug(
+            tf.gather(image, non_thermal, axis=-1), training=training
+        )
+        for j, i in enumerate(non_thermal):
+            augmented_channels[i] = augmented[..., j : j + 1]
 
-    # 3. Apply the true thermal-scaled adjustments to Channel 0
+    # one shift for all fixed thermal channels as they are the same temperatures
     # A max minval/maxval of 9.1 represents a realistic environmental fluctuation of +/- 1.5°C
     thermal_offset = tf.random.uniform(
         shape=[], minval=-9.1, maxval=9.1, dtype=tf.float32
     )
-    raw = raw + thermal_offset
-
     # Apply a gentle contrast/gain shift (scaling the thermal variance by +/- 6%)
     thermal_gain = tf.random.uniform(
         shape=[], minval=0.94, maxval=1.06, dtype=tf.float32
     )
-    raw = raw * thermal_gain
-
-    # Ensure values stay bounded inside your standard 0-255 frame container
-    raw = tf.clip_by_value(raw, 0.0, 255.0)
-    return tf.concat([raw, augmented], axis=-1)
+    for i, norm in enumerate(thermal_norms):
+        if norm == THERMAL_NORM_FIXED:
+            raw = (image[..., i : i + 1] + thermal_offset) * thermal_gain
+            # Ensure values stay bounded inside your standard 0-255 frame container
+            augmented_channels[i] = tf.clip_by_value(raw, 0.0, 255.0)
+        elif norm is not None:
+            # min max thermal always spans 0-255 so temperature shifts don't apply
+            augmented_channels[i] = image[..., i : i + 1]
+    return tf.concat(augmented_channels, axis=-1)
 
 
 def resample(dataset, labels):

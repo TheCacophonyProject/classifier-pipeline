@@ -13,6 +13,8 @@ class TrackChannels(enum.Enum):
     mask = 4
     raw = 6
     thermal_norm = 7
+    thermal_fixed = 8
+    thermal_minmax = 9
 
 
 @dataclass(slots=True, eq=False)

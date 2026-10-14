@@ -23,6 +23,7 @@ class HyperParams(dict):
         self["multi_label"] = False
         self["diff_norm"] = self.diff_norm
         self["thermal_diff_norm"] = self.thermal_diff_norm
+        self["thermal_norm"] = self.thermal_norm
 
         self["channels"] = self.channels
         self["image_modality_dropout"] = self.image_modality_dropout
@@ -57,6 +58,12 @@ class HyperParams(dict):
     @property
     def remapped_labels(self):
         return self.get("remapped_labels", None)
+
+    @property
+    def thermal_norm(self):
+        # how the thermal channel is normalized, see preprocess.normalize_thermal
+        # models saved before this was added used "fixed"
+        return self.get("thermal_norm", "fixed")
 
     @property
     def thermal_diff_norm(self):

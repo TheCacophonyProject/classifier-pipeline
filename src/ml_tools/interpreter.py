@@ -41,6 +41,10 @@ class Interpreter(ABC):
 
         self.params.update(metadata.get("hyperparams", {}))
         self.data_type = metadata.get("type", "thermal")
+        from ml_tools.preprocess import THERMAL_FORMAT_CENTIKELVIN
+
+        # set by load_training_meta when reading tf records
+        self.thermal_format = THERMAL_FORMAT_CENTIKELVIN
 
         self.mapped_labels = metadata.get("mapped_labels")
         self.label_probabilities = metadata.get("label_probabilities")
@@ -82,6 +86,12 @@ class Interpreter(ABC):
 
     def load_training_meta(self, base_dir):
         from ml_tools.thermalwriter import MeanData
+        from ml_tools.preprocess import (
+            THERMAL_FORMAT_CENTIKELVIN,
+            THERMAL_FORMAT_FIXED,
+            THERMAL_MIN_KV,
+            THERMAL_MAX_KV,
+        )
 
         file = f"{base_dir}/training-meta.json"
         logging.info("loading meta %s", file)
@@ -90,6 +100,8 @@ class Interpreter(ABC):
         self.labels = meta.get("labels", [])
         self.data_type = meta.get("type", "thermal")
         self.dataset_counts = meta.get("counts")
+        # meta written before thermal_format existed is for fixed normalized records
+        self.thermal_format = meta.get("thermal_format", THERMAL_FORMAT_FIXED)
         self.ds_by_label = meta.get("by_label", True)
         self.excluded_labels = meta.get("excluded_labels")
         self.remapped_labels = meta.get("remapped_labels")
@@ -100,8 +112,16 @@ class Interpreter(ABC):
         if pads is None:
             self.pads = MeanData()
         else:
+            thermal_pad = pads["thermal"]
+            if self.thermal_format == THERMAL_FORMAT_CENTIKELVIN:
+                # border means were written in centi kelvin, scale like old records
+                thermal_pad = np.clip(
+                    (thermal_pad - THERMAL_MIN_KV) / (THERMAL_MAX_KV - THERMAL_MIN_KV),
+                    0,
+                    1,
+                )
             self.pads = MeanData(
-                thermal=pads["thermal"],
+                thermal=thermal_pad,
                 filtered=pads["filtered"],
                 thermal_norm=pads["thermal_norm"],
                 frames_used=1,
@@ -674,6 +694,7 @@ class Interpreter(ABC):
                         clip.crop_rectangle,
                         enlarge=self.enlarge,
                         new_max=255.0,
+                        thermal_norm=self.params.thermal_norm,
                     )
                     if result is None:
                         track_data[region.frame_number] = None

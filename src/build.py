@@ -15,6 +15,7 @@ from dateutil.parser import parse as parse_date
 from ml_tools.logs import init_logging
 from config.config import Config
 from ml_tools.dataset import Dataset
+from ml_tools.preprocess import THERMAL_FORMAT_CENTIKELVIN
 from ml_tools.datasetstructures import Camera
 from ml_tools.tfwriter import create_tf_records
 from ml_tools.thermalwriter import MeanData
@@ -971,7 +972,7 @@ def main():
         "segment_types": master_dataset.segment_types,
         "use_yolo": master_dataset.use_yolo,
         # thermal channel is written as raw centi kelvin (image/thermal_ck_encoded)
-        "thermal_format": "centikelvin",
+        "thermal_format": THERMAL_FORMAT_CENTIKELVIN,
     }
     meta_data["dataset_backgrounds"] = {}
 

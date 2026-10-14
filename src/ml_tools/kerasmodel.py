@@ -23,6 +23,7 @@ from ml_tools.datasetstructures import SegmentType
 from ml_tools.interpreter import Interpreter
 from classify.trackprediction import TrackPrediction
 from ml_tools.hyperparams import HyperParams
+from ml_tools.preprocess import THERMAL_FORMAT_CENTIKELVIN
 from ml_tools import thermaldataset
 from ml_tools.resnet.wr_resnet import WRResNet
 
@@ -78,6 +79,8 @@ class KerasModel(Interpreter):
         # dictionary containing current hyper parameters
         self.params = HyperParams()
         self.data_type = None
+        # set by load_training_meta
+        self.thermal_format = THERMAL_FORMAT_CENTIKELVIN
         self.data_dir = data_dir
         if train_config:
             self.log_base = train_config.train_dir / "logs"
@@ -872,6 +875,8 @@ class KerasModel(Interpreter):
             num_frames=self.params.square_width**2,
             channels=self.params.channels,
             pads=self.pads,
+            thermal_norm=self.params.thermal_norm,
+            thermal_format=self.thermal_format,
             tf_mappings=tf_mappings,
             downsize_fp=True,
             rebalance=rebalance,
@@ -901,6 +906,8 @@ class KerasModel(Interpreter):
             num_frames=self.params.square_width**2,
             channels=self.params.channels,
             pads=self.pads,
+            thermal_norm=self.params.thermal_norm,
+            thermal_format=self.thermal_format,
             tf_mappings=tf_mappings,
             multi_input=multi_input,
             epoch_size=100 if test else None,
@@ -1025,6 +1032,8 @@ class KerasModel(Interpreter):
                 num_frames=self.params.square_width**2,
                 channels=self.params.channels,
                 pads=self.pads,
+                thermal_norm=self.params.thermal_norm,
+                thermal_format=self.thermal_format,
                 tf_mappings=tf_mappings,
                 multi_input=multi_input,
                 epoch_size=100 if test else None,
@@ -1179,6 +1188,8 @@ class KerasModel(Interpreter):
             num_frames=self.params.square_width**2,
             channels=self.params.channels,
             pads=self.pads,
+            thermal_norm=self.params.thermal_norm,
+            thermal_format=self.thermal_format,
             downsize_fp=True,
             tf_mappings=tf_mappings,
             multi_input=multi_input,

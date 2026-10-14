@@ -339,7 +339,11 @@ def get_data(source_file, excluded_tags, extra_args):
 
                         by_frame_number[frame_number] = cropped_frame
                     else:
-                        cropped_frame, _ = by_frame_number[frame_number]
+                        # random sections never share frames between samples, if
+                        # this changes mean_value and data_region need caching too
+                        raise ValueError(
+                            f"Frame {frame_number} used by more than one sample"
+                        )
 
                     assert cropped_frame.thermal.shape == (
                         resize_dim,

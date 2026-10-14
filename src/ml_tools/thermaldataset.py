@@ -12,6 +12,15 @@ import logging
 
 from ml_tools.featurenorms import mean_v, std_v
 from ml_tools.frame import TrackChannels
+from ml_tools.preprocess import (
+    THERMAL_MIN_KV,
+    THERMAL_MAX_KV,
+    THERMAL_NORM_FIXED,
+    THERMAL_NORM_MINMAX,
+    THERMAL_FORMAT_CENTIKELVIN,
+    THERMAL_FORMAT_FIXED,
+    thermal_channel_norm,
+)
 from pathlib import Path
 from ml_tools.tools import saveclassify_image
 
@@ -271,6 +280,8 @@ def load_dataset(filenames, remap_lookup, labels, args):
             use_velocity=USE_VELOCITY,
             multi_input=args.get("multi_input", False),
             enlarge=args.get("enlarge", True),
+            thermal_norm=args.get("thermal_norm", THERMAL_NORM_FIXED),
+            thermal_format=args.get("thermal_format", THERMAL_FORMAT_CENTIKELVIN),
         ),
         num_parallel_calls=AUTOTUNE,
         deterministic=deterministic,
@@ -520,6 +531,31 @@ class SequenceRotation(tf.keras.layers.Layer):
         return rotated_sequence, angle
 
 
+def normalize_thermal_channel(images, channel, thermal_norm, centikelvin):
+    """
+    Scale the thermal channel of [frames, h, w, channels] images to 0-255, the tf
+    version of preprocess.normalize_thermal (which is used at inference)
+    """
+    thermal = images[..., channel : channel + 1]
+    if thermal_norm == THERMAL_NORM_FIXED:
+        if not centikelvin:
+            # older records were written already normalized
+            return images
+        thermal = (thermal - THERMAL_MIN_KV) / (THERMAL_MAX_KV - THERMAL_MIN_KV)
+    elif thermal_norm == THERMAL_NORM_MINMAX:
+        # min max is unaffected by the fixed scaling, so works on older records too
+        t_min = tf.reduce_min(thermal, axis=[1, 2, 3], keepdims=True)
+        t_max = tf.reduce_max(thermal, axis=[1, 2, 3], keepdims=True)
+        # flat frames become 0
+        thermal = tf.math.divide_no_nan(thermal - t_min, t_max - t_min)
+    else:
+        raise ValueError(f"Can't train with thermal normalization {thermal_norm}")
+    thermal = tf.clip_by_value(thermal, 0.0, 1.0) * 255.0
+    return tf.concat(
+        [images[..., :channel], thermal, images[..., channel + 1 :]], axis=-1
+    )
+
+
 # order the "image/means" feature is written in, see thermalwriter.py create_tf_example
 MEANS_CHANNEL_ORDER = [
     TrackChannels.thermal.name,
@@ -545,7 +581,7 @@ def read_tfrecord(
     include_track=False,
     num_frames=25,
     channels=[
-        TrackChannels.thermal.name,
+        TrackChannels.thermal_fixed.name,
         TrackChannels.thermal_norm.name,
         TrackChannels.filtered.name,
     ],
@@ -554,7 +590,21 @@ def read_tfrecord(
     use_velocity=False,
     multi_input=False,
     enlarge=True,
+    thermal_norm=THERMAL_NORM_FIXED,
+    thermal_format=THERMAL_FORMAT_CENTIKELVIN,
 ):
+    # records either hold raw centi kelvin thermal or (older) fixed 0-1 thermal
+    if thermal_format not in (THERMAL_FORMAT_CENTIKELVIN, THERMAL_FORMAT_FIXED):
+        raise ValueError(f"Unknown thermal format {thermal_format}")
+    centikelvin = thermal_format == THERMAL_FORMAT_CENTIKELVIN
+    # channels made from the thermal data, normalized by their name
+    thermal_norms = [thermal_channel_norm(c, thermal_norm) for c in channels]
+    has_thermal = any(n is not None for n in thermal_norms)
+    logging.info(
+        "Thermal format %s normalizing thermal channels %s",
+        thermal_format,
+        [(c, n) for c, n in zip(channels, thermal_norms) if n is not None],
+    )
     logging.info(
         "Read tf record with image %s lbls %s aug  %s  prepr %s only features %s one hot %s include fetures %s num frames %s mosaic_size %s mosaic_enalrged %s padding %s enlarge %s",
         image_size,
@@ -600,10 +650,17 @@ def read_tfrecord(
             tfrecord_format["image/thermal_norm_encoded"] = (
                 tf.io.FixedLenSequenceFeature([], dtype=tf.float32, allow_missing=True)
             )
-        if TrackChannels.thermal.name in channels:
-            tfrecord_format["image/thermal_raw_encoded"] = (
-                tf.io.FixedLenSequenceFeature([], dtype=tf.float32, allow_missing=True)
-            )
+        if has_thermal:
+            if centikelvin:
+                tfrecord_format["image/thermal_ck_encoded"] = tf.io.FixedLenFeature(
+                    [], tf.string
+                )
+            else:
+                tfrecord_format["image/thermal_raw_encoded"] = (
+                    tf.io.FixedLenSequenceFeature(
+                        [], dtype=tf.float32, allow_missing=True
+                    )
+                )
     if include_track:
         tfrecord_format["image/track_id"] = tf.io.FixedLenFeature((), tf.int64, -1)
         # tfrecord_format["image/avg_mass"] = tf.io.FixedLenFeature((), tf.int64, -1)
@@ -629,8 +686,14 @@ def read_tfrecord(
     regions = tf.reshape(regions, [record_frames, 4])
     # written as [thermal, filtered, thermal_norm] per frame, see thermalwriter.py
     means = tf.reshape(means, [record_frames, 3])
-    mean_indices = [MEANS_CHANNEL_ORDER.index(c) for c in channels]
-    frame_means = tf.gather(means, mean_indices, axis=1) * 255.0
+    # thermal channels all use the thermal border mean
+    mean_indices = [
+        MEANS_CHANNEL_ORDER.index(c if n is None else TrackChannels.thermal.name)
+        for c, n in zip(channels, thermal_norms)
+    ]
+    # centi kelvin thermal stays unscaled until normalize_thermal_channel
+    mean_scale = [1.0 if centikelvin and n is not None else 255.0 for n in thermal_norms]
+    frame_means = tf.gather(means, mean_indices, axis=1) * mean_scale
 
     record_frames = tf.cast(record_frames, tf.int32)
     if load_images:
@@ -645,20 +708,26 @@ def read_tfrecord(
                 filteredencoded,
                 [record_frames, mosaic_larger_size, mosaic_larger_size, 1],
             )
-        if TrackChannels.thermal.name in channels:
-            rawthermal = 255.0 * example["image/thermal_raw_encoded"]
+        if has_thermal:
+            if centikelvin:
+                rawthermal = tf.cast(
+                    tf.io.decode_raw(example["image/thermal_ck_encoded"], tf.uint16),
+                    tf.float32,
+                )
+            else:
+                rawthermal = 255.0 * example["image/thermal_raw_encoded"]
             rawthermal = tf.reshape(
                 rawthermal, [record_frames, mosaic_larger_size, mosaic_larger_size, 1]
             )
 
         rgb_image = None
 
-        for type in channels:
+        for type, norm in zip(channels, thermal_norms):
             if type == TrackChannels.thermal_norm.name:
                 image = thermals
             elif type == TrackChannels.filtered.name:
                 image = filtered
-            elif type == TrackChannels.thermal.name:
+            elif norm is not None:
                 image = rawthermal
             if rgb_image is None:
                 rgb_image = image
@@ -717,6 +786,13 @@ def read_tfrecord(
             rgb_image = tf.image.crop_to_bounding_box(
                 rgb_image, padding, padding, mosaic_size, mosaic_size
             )
+
+        # normalize after cropping so min max uses the same area as at inference
+        for i, norm in enumerate(thermal_norms):
+            if norm is not None:
+                rgb_image = normalize_thermal_channel(
+                    rgb_image, i, norm, centikelvin
+                )
 
         # double the resolution of each frame (mosaic_size -> mosaic_size * 2)
         if enlarge:
@@ -1185,6 +1261,7 @@ def main():
         num_frames=25,
         deterministic=True,
         pads=pads,
+        thermal_format=meta.get("thermal_format", THERMAL_FORMAT_FIXED),
         tf_mappings=tf_mappings,
         rebalance=False,
         current_epoch=tf.Variable(

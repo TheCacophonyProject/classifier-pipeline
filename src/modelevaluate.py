@@ -1073,6 +1073,8 @@ def main():
                     channels=model.params.channels,
                     num_frames=model.params.square_width**2,
                     pads=model.pads,
+                    thermal_norm=model.params.thermal_norm,
+                    thermal_format=model.thermal_format,
                     tf_mappings=tf_mappings,
                     enlarge=model.enlarge,
                 )
@@ -1110,6 +1112,8 @@ def main():
                 channels=model.params.channels,
                 num_frames=model.params.square_width**2,
                 pads=model.pads,
+                thermal_norm=model.params.thermal_norm,
+                thermal_format=model.thermal_format,
                 tf_mappings=tf_mappings,
                 enlarge=model.enlarge,
             )
@@ -1181,6 +1185,8 @@ def main():
                 channels=model.params.channels,
                 num_frames=model.params.square_width**2,
                 pads=model.pads,
+                thermal_norm=model.params.thermal_norm,
+                thermal_format=model.thermal_format,
                 tf_mappings=tf_mappings,
                 enlarge=model.enlarge,
             )

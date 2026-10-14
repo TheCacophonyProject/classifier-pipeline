@@ -544,6 +544,7 @@ class ClipClassifier:
                             clip.crop_rectangle,
                             enlarge=classifier.enlarge,
                             new_max=255.0,
+                            thermal_norm=classifier.params.thermal_norm,
                         )
                         f.preprocessed = True
                     elif classifier.params.diff_norm:
@@ -633,6 +634,7 @@ class ClipClassifier:
                                 clip.crop_rectangle,
                                 enlarge=classifier.enlarge,
                                 new_max=255.0,
+                                thermal_norm=classifier.params.thermal_norm,
                             )
                         else:
                             f = preprocess_frame(

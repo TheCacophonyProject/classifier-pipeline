@@ -177,6 +177,7 @@ def preprocess_file(classifier, filename):
                     classifier.params.frame_size,
                     region,
                     clip.crop_rectangle,
+                    thermal_norm=classifier.params.thermal_norm,
                 )
                 pre_f.thermal *= 255
                 pre_f.thermal_norm *= 255
