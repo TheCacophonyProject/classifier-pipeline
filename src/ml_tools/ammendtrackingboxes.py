@@ -69,9 +69,10 @@ def evaluate_dir(model_path, dir, device, batch_size, workers):
             logging.error("Could not load clip", exc_info=e)
             done.put(None)
 
+        writes = []
         remaining = iter(files)
         in_flight = 0
-        for cptv_file in itertools.islice(remaining, workers * 2):
+        for cptv_file in itertools.islice(remaining, workers * 4):
             pool.apply_async(
                 load_clip, (cptv_file,), callback=done.put, error_callback=on_error
             )
@@ -104,7 +105,13 @@ def evaluate_dir(model_path, dir, device, batch_size, workers):
                     yolo_preditions.append(boxes)
             metadata["yolo_bb"] = yolo_preditions
             metadata["yolo_version"] = VERSION
-            save_metadata(cptv_file, metadata_file, metadata)
+            # json.dump is pure python and slow, keep it off the gpu loop
+            writes.append(
+                pool.apply_async(save_metadata, (cptv_file, metadata_file, metadata))
+            )
+            writes = [w for w in writes if not w.ready()]
+        for w in writes:
+            w.wait()
     logging.info("Done %s / %s ", complete, total_files)
 
 
