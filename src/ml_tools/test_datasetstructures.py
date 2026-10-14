@@ -58,9 +58,7 @@ COMMON_KWARGS = dict(
 def call_random_sections(
     label, num_frames, start_frame=100, seed=42, gap_every=None, inference=True
 ):
-    fi, regions, mass = make_track(
-        num_frames, start_frame=start_frame, gap_every=gap_every
-    )
+    fi, regions = make_track(num_frames, start_frame=start_frame, gap_every=gap_every)
     return random_sections(
         label,
         regions,
