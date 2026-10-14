@@ -82,7 +82,6 @@ class TrackingConfig(DefaultConfig):
     def load_type(cls, tracking):
         defaults = cls.get_defaults()
         deep_copy_map_if_key_not_exist(defaults.as_dict(), tracking)
-        print("Loading params", tracking["params"])
         return cls(
             tracker=tracking["tracker"],
             params=tracking["params"],
