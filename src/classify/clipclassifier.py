@@ -161,15 +161,9 @@ class ClipClassifier:
             logging.info("Doing tracking")
             from track.trackextractor import extract_file
 
-            clip, track_extractor, meta_data = extract_file(
-                filename, self.config, cache_to_disk, to_stdout=False, save_meta=False
-            )
-        elif ext == ".cptv":
-            from track.cliptrackextractor import ClipTrackExtractor
-
             model = None
             # load first time only
-            if self.config.tracking.model is not None:
+            if self.config.tracking.model is not None and track:
                 if "tracking-model" in self.models:
                     model = self.models["tracking-model"]
                 else:
@@ -177,6 +171,16 @@ class ClipClassifier:
 
                     model = Yolo(self.config.tracking.model)
                     self.models["tracking-model"] = model
+            clip, track_extractor, meta_data = extract_file(
+                filename,
+                self.config,
+                cache_to_disk,
+                to_stdout=False,
+                save_meta=False,
+                model=model,
+            )
+        elif ext == ".cptv":
+            from track.cliptrackextractor import ClipTrackExtractor
 
             track_extractor = ClipTrackExtractor(
                 self.config.tracking,

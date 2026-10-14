@@ -116,6 +116,7 @@ def extract_file(
     to_stdout=False,
     max_frames=None,
     save_meta=True,
+    model=None,
 ):
 
     filename = Path(filename)
@@ -136,6 +137,7 @@ def extract_file(
             cache_to_disk,
             verbose=config.verbose,
             max_frames=max_frames,
+            model=model,
         )
         logging.info("Using cptv extractor")
 
