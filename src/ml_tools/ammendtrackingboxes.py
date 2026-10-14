@@ -7,8 +7,13 @@ from config.buildconfig import BuildConfig
 from ml_tools.dataset import filter_clip, filter_track
 from ml_tools.tools import CustomJSONEncoder
 import json
+import time
+from collections import defaultdict
 
 VERSION = "0.1"
+# cumulative seconds spent in each stage of the main process
+timings = defaultdict(float)
+log_every = 20
 
 
 def parse_args():
@@ -77,8 +82,12 @@ def evaluate_dir(model_path, dir, device, batch_size, workers):
                 load_clip, (cptv_file,), callback=done.put, error_callback=on_error
             )
             in_flight += 1
+        run_start = time.perf_counter()
         while in_flight:
+            start_t = time.perf_counter()
             loaded = done.get()
+            # time spent here means the loaders aren't keeping up
+            timings["wait_for_clip"] += time.perf_counter() - start_t
             in_flight -= 1
             next_file = next(remaining, None)
             if next_file is not None:
@@ -89,14 +98,21 @@ def evaluate_dir(model_path, dir, device, batch_size, workers):
             complete += 1
             if complete % 100 == 0:
                 logging.info("Done %s / %s ", complete, total_files)
+            if complete % log_every == 0:
+                log_timings(time.perf_counter() - run_start, in_flight, len(writes))
             if loaded is None:
                 continue
             cptv_file, metadata_file, metadata, frame_numbers, thermals = loaded
+            timings["clips"] += 1
+            timings["frames"] += len(frame_numbers)
+            start_t = time.perf_counter()
             try:
                 frame_boxes = model.predict_batch(thermals)
             except:
                 logging.error("Could not predict %s", cptv_file, exc_info=True)
                 continue
+            timings["predict_batch"] += time.perf_counter() - start_t
+            start_t = time.perf_counter()
             yolo_preditions = []
             for frame_number, boxes in zip(frame_numbers, frame_boxes):
                 for bb in boxes:
@@ -110,9 +126,44 @@ def evaluate_dir(model_path, dir, device, batch_size, workers):
                 pool.apply_async(save_metadata, (cptv_file, metadata_file, metadata))
             )
             writes = [w for w in writes if not w.ready()]
+            # includes pickling metadata to send to the pool
+            timings["queue_save"] += time.perf_counter() - start_t
         for w in writes:
             w.wait()
+        log_timings(time.perf_counter() - run_start, in_flight, len(writes))
     logging.info("Done %s / %s ", complete, total_files)
+
+
+def log_timings(elapsed, in_flight, pending_writes):
+    """Log cumulative main process timings, gpu is idle for anything outside yolo_inference"""
+    if elapsed <= 0:
+        return
+    parts = []
+    for key in [
+        "wait_for_clip",
+        "predict_batch",
+        "make_images",
+        "predict",
+        "yolo_preprocess",
+        "yolo_inference",
+        "yolo_postprocess",
+        "result_boxes",
+        "merge_suppress",
+        "queue_save",
+    ]:
+        parts.append(f"{key} {timings[key]:.1f}s ({100 * timings[key] / elapsed:.0f}%)")
+    logging.info(
+        "Timings over %.1fs, %d clips %d frames (%.1f frames/s), %d predict calls, "
+        "%d clips in flight, %d writes pending: %s",
+        elapsed,
+        timings["clips"],
+        timings["frames"],
+        timings["frames"] / elapsed,
+        timings["predict_calls"],
+        in_flight,
+        pending_writes,
+        ", ".join(parts),
+    )
 
 
 def save_metadata(cptv_file, metadata_file, metadata):
@@ -233,6 +284,7 @@ class Yolo:
         thermals may already be uint8 grayscale from load_clip"""
         import numpy as np
 
+        start_t = time.perf_counter()
         rgbs = [
             np.repeat(
                 (t if t.dtype == np.uint8 else grayscale_pixels(t))[..., None],
@@ -243,14 +295,18 @@ class Yolo:
         ]
         height, width = rgbs[0].shape[:2]
         frame_boxes = [[] for _ in rgbs]
+        timings["make_images"] += time.perf_counter() - start_t
         for left, top, right, bottom, size, flip in self.views:
+            start_t = time.perf_counter()
             images = []
             for rgb in rgbs:
                 crop = rgb[top:bottom, left:right]
                 pixels = crop[:, ::-1] if flip else crop
                 # ndarray input to Ultralytics is BGR
                 images.append(np.ascontiguousarray(pixels[..., ::-1]))
+            timings["make_images"] += time.perf_counter() - start_t
             for start in range(0, len(images), self.batch_size):
+                start_t = time.perf_counter()
                 results = self.model.predict(
                     images[start : start + self.batch_size],
                     imgsz=size,
@@ -261,16 +317,27 @@ class Yolo:
                     save=False,
                     verbose=False,
                 )
+                timings["predict"] += time.perf_counter() - start_t
+                # ultralytics speed is ms per image, averaged over the batch
+                if len(results) > 0:
+                    for stage, ms in results[0].speed.items():
+                        if ms is not None:
+                            timings[f"yolo_{stage}"] += ms * len(results) / 1000
+                timings["predict_calls"] += 1
+                start_t = time.perf_counter()
                 for i, result in enumerate(results):
                     frame_boxes[start + i].extend(
                         self.result_boxes(
                             result, left, top, right, bottom, flip, width, height
                         )
                     )
+                timings["result_boxes"] += time.perf_counter() - start_t
+        start_t = time.perf_counter()
         for i, boxes in enumerate(frame_boxes):
             if self.tta or self.tiles:
                 boxes = merge_detections(boxes, self.iou)
             frame_boxes[i] = suppress_inner(boxes, self.overlap)
+        timings["merge_suppress"] += time.perf_counter() - start_t
         return frame_boxes
 
     def result_boxes(self, result, left, top, right, bottom, flip, width, height):
