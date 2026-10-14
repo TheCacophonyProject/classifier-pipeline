@@ -65,7 +65,9 @@ class Frame:
                 f.thermal = data
             elif TrackChannels.filtered.value == channel:
                 f.filtered = data
-            if TrackChannels.mask == channel:
+            elif TrackChannels.thermal_norm.value == channel:
+                f.thermal_norm = data
+            elif TrackChannels.mask.value == channel:
                 f.mask = data
         return f
 

@@ -16,7 +16,7 @@ class Interpreter(ABC):
         self.port = 8123
         self.id = None
         self._seed = None
-        self.rng = np.random.default_rng(seed=self.seed)
+        # self.rng = np.random.default_rng(seed=self.seed)
 
     @property
     def seed(self):
@@ -25,7 +25,7 @@ class Interpreter(ABC):
     @seed.setter
     def seed(self, value):
         self._seed = value
-        self.rng = np.random.default_rng(seed=value)
+        # self.rng = np.random.default_rng(seed=value)
 
     def load_json(self, filename):
         """Loads model and parameters from file."""
@@ -528,7 +528,7 @@ class Interpreter(ABC):
             else:
                 start_frame = track.start_frame
                 regions = np.array(track.bounds_history)
-
+            # not using rng or seed anymore as at inference time the selection is deterministic
             segments, _ = get_segments(
                 track.clip_id,
                 track.id,
@@ -544,7 +544,8 @@ class Interpreter(ABC):
                 max_segments=max_predictions,
                 dont_filter=dont_filter,
                 min_segments=args.get("min_segments"),
-                rng=self.rng,
+                inference=True,
+                # rng=self.rng,
                 # min_frames = args.get("min_frames")
             )
             return segments
