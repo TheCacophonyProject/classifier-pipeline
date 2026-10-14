@@ -1145,13 +1145,11 @@ def plot_confusion_matrix(cm, class_names, title="Confusion Matrix", totals_row=
 class Yolo:
     TYPE = "YOLO"
 
-    def __init__(self, model_name, run_over_network=False, load_model=True):
+    def __init__(self, model_name, device="cpu"):
         # super().__init__(model_name, run_over_network)
         self.model_file = model_name
         import math
 
-        if run_over_network or not load_model:
-            return
         self.load_model()
         self.tta = False
         self.imgsz = 320
@@ -1161,7 +1159,11 @@ class Yolo:
         self.overlap = 0.8
         height = 120
         width = 160
-        self.device = "cpu"
+
+        import torch
+
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        logging.info("Yolo running under device: %s", device)
         sizes = (
             sorted(
                 {
