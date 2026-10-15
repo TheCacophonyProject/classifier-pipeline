@@ -157,11 +157,11 @@ class ClipClassifier:
             cache if cache is not None else self.config.classify.cache_to_disk
         )
         meta_data = None
+        model = None
         if track:
             logging.info("Doing tracking")
             from track.trackextractor import extract_file
 
-            model = None
             # load first time only
             if self.config.tracking.model is not None and track:
                 if "tracking-model" in self.models:
