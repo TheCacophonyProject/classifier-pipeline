@@ -210,9 +210,11 @@ class ClipTracker(ABC):
         for region in unmatched_regions:
             # make sure we don't overlap with existing tracks.  This can happen if a tail gets tracked as a new object
             overlaps = [
-                track.last_bound.overlap_area(region) for track in clip.active_tracks if track.last_bound.width < 158 and track.last_bound.height < 120
+                track.last_bound.overlap_area(region)
+                for track in clip.active_tracks
+                if track.last_bound.width < 158 and track.last_bound.height < 120
             ]
-            if   len(overlaps) > 0 and max(overlaps) > (region.area * 0.25):
+            if len(overlaps) > 0 and max(overlaps) > (region.area * 0.25):
                 continue
 
             track = Track.from_region(
