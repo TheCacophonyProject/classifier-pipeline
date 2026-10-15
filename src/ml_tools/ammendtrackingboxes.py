@@ -200,8 +200,13 @@ def load_clip(cptv_file):
             for track in clip.tracks
             if not filter_track(track, BuildConfig.EXCLUDED_TAGS, reason)
         ]
+        # filter_track drops tracks with no human tag (label is None), so a clip
+        # with no human tags ends up here with no tracks
         if len(clip.tracks) == 0:
             logging.info("No tracks after filtering %s", cptv_file)
+            return None
+        if all(track.label == "false-positive" for track in clip.tracks):
+            logging.info("All tracks are false-positive %s", cptv_file)
             return None
         clip_db.load_frames()
         if len(clip_db.frames) == 0:
