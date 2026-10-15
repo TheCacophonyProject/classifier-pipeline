@@ -125,7 +125,6 @@ class ClipTracker(ABC):
         """
         unmatched_regions, matched_tracks = self._match_existing_tracks(clip, regions)
         new_tracks = self._create_new_tracks(clip, unmatched_regions)
-
         unactive_tracks = clip.active_tracks - matched_tracks - new_tracks
         clip.active_tracks = matched_tracks | new_tracks
         stale_tracks = self._filter_inactive_tracks(clip, unactive_tracks)
@@ -211,9 +210,9 @@ class ClipTracker(ABC):
         for region in unmatched_regions:
             # make sure we don't overlap with existing tracks.  This can happen if a tail gets tracked as a new object
             overlaps = [
-                track.last_bound.overlap_area(region) for track in clip.active_tracks
+                track.last_bound.overlap_area(region) for track in clip.active_tracks if track.last_bound.width < 158 and track.last_bound.height < 120
             ]
-            if len(overlaps) > 0 and max(overlaps) > (region.area * 0.25):
+            if   len(overlaps) > 0 and max(overlaps) > (region.area * 0.25):
                 continue
 
             track = Track.from_region(
@@ -282,11 +281,15 @@ class ClipTracker(ABC):
         delta_thermal = np.abs(np.float32(thermal) - prev_thermal)
         return delta_thermal, delta_filtered
 
-    def _get_regions_of_interest(self, clip, component_details, centroids=None):
+    def _get_regions_of_interest(
+        self, clip, component_details, centroids=None, source="cv2"
+    ):
         """
         Calculates pixels of interest mask from filtered image, and returns both the labeled mask and their bounding
         rectangles.
         :param filtered: The filtered frame
+        :param source: "cv2" if component_details came from connectedComponentsWithStats,
+        "model" if they came from yolo detections with mask_id as the 6th element
         :return: regions of interest, mask frame
         """
         delta_filtered = self.get_delta_filtered(
@@ -313,7 +316,7 @@ class ClipTracker(ABC):
                 mass=component[4],
                 frame_number=clip.current_frame,
                 centroid=centroid,
-                mask_id=i + 1,
+                mask_id=component[5] if source == "model" else i + 1,
             )
             if self.scale:
                 region.rescale(1 / self.scale)
@@ -437,6 +440,9 @@ class ClipTracker(ABC):
             clip.filtered_tracks.append(("Track filtered.  Too short", track))
             return True
 
+        if self.model is not None:
+            # dont bother with this stuff for yolo
+            return False
         # discard tracks that do not move enough
 
         if (

@@ -14,3 +14,6 @@ tracking:
   model: /etc/cacophony/models/yolo/best.pt
   params:
     "mass_change_percent": null
+    "max_blanks": 30
+  filters:
+    "min_duration_secs": 0.2

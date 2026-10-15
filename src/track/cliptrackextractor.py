@@ -229,14 +229,21 @@ class ClipTrackExtractor(ClipTracker):
                 centroids = None
                 detections = self.model.predict(thermal)
                 # convert to connectedComponentsWithStats format [x, y, w, h, area]
-                # yolo gives no mask so use box area as mass
+                # plus mask_id, the most common mask label inside the box
+                # yolo gives no mask so use the motion mask pixels inside the box as mass
                 component_details = []
                 for det in detections:
                     x = int(round(det["x"]))
                     y = int(round(det["y"]))
                     w = max(1, int(round(det["width"])))
                     h = max(1, int(round(det["height"])))
-                    component_details.append([x, y, w, h, w * h])
+                    masked_region = mask[
+                        max(0, y) : max(0, y + h), max(0, x) : max(0, x + w)
+                    ]
+                    labels = masked_region[masked_region > 0]
+                    mass = len(labels)
+                    mask_id = int(np.bincount(labels).argmax()) if mass > 0 else None
+                    component_details.append([x, y, w, h, mass, mask_id])
                     # TODO keep confidence and class info
         clip_frame = clip.add_frame(thermal, filtered, mask, ffc_affected)
         if not self.do_tracking:
@@ -251,7 +258,10 @@ class ClipTrackExtractor(ClipTracker):
                 clip.active_tracks = set()
             else:
                 regions = self._get_regions_of_interest(
-                    clip, component_details, centroids=centroids
+                    clip,
+                    component_details,
+                    centroids=centroids,
+                    source="model" if self.model else "cv2",
                 )
                 new_tracks, stale_tracks = self._apply_region_matchings(clip, regions)
             if not self.from_pi:

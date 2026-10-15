@@ -142,25 +142,11 @@ def extract_file(
         logging.info("Using cptv extractor")
 
     else:
-        from track.irtrackextractor import IRTrackExtractor
-
-        track_extractor = IRTrackExtractor(
-            config.tracking,
-            cache_to_disk,
-            verbose=config.verbose,
-            keep_frames=True,
-            # False if previewer is None else True,
-            tracking_alg="subsense",
-        )
-
-        logging.info("Using ir extractor")
+        raise Exception("Unknown extension {} for {}".format(extension, filename))
     from track.clip import Clip
 
     clip = Clip(track_extractor.config, filename)
-    if extension == ".cptv":
-        clip.frames_per_second = 9
-    else:
-        clip.frames_per_second = 10
+    clip.frames_per_second = 9
     existing_metadata = None
     if filename.with_suffix(".txt").exists():
         from ml_tools.tools import load_clip_metadata
