@@ -308,7 +308,7 @@ def medium_power(connection, frame_queue, processor, config, post_process):
                         logging.error("Mid recording failed to receive more data")
                         # Do we want to keep these files or delete them
                         # i think for until tested thoroughly keep them as it will highlight any possible issues
-                        writer.combine_headers(
+                        writer.combine_file(
                             headers, config, timestamp, min_value, max_value, frame_i
                         )
                         file_completed = True
@@ -318,7 +318,7 @@ def medium_power(connection, frame_queue, processor, config, post_process):
                     logging.error("Mid recording failed to receive more data")
                     frame_queue.put(CLEAR_SIGNAL)
                     # once tested this file could be deleted instead
-                    writer.combine_headers(
+                    writer.combine_file(
                         headers, config, timestamp, min_value, max_value, frame_i
                     )
                     file_completed = True
@@ -336,7 +336,7 @@ def medium_power(connection, frame_queue, processor, config, post_process):
                 frame_queue.put(CLEAR_SIGNAL)
                 if WRITE_CPTV:
                     writer.write(byte_data)
-                    writer.combine_headers(
+                    writer.combine_file(
                         headers, config, timestamp, min_value, max_value, frame_i
                     )
                     file_completed = True

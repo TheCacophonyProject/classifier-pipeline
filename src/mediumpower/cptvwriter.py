@@ -18,6 +18,7 @@ from io import BytesIO
 
 import logging
 import struct
+from pathlib import Path
 
 MAGIC = b"CPTV"
 VERSION = b"\x02"
@@ -25,10 +26,18 @@ COLS = 160
 ROWS = 120
 
 
+OUTPUT_DIR = Path("/var/spool/cptv")
+
+
 class CPTVWriter:
-    def __init__(self, filebase):
-        self.filebase = filebase
-        self.f = open(f"{filebase}.cptv", "wb")
+    def __init__(self, formatted_time, postprocess):
+        out_dir = OUTPUT_DIR
+        if postprocess:
+            out_dir = out_dir / "postprocess"
+        self.filebase = out_dir / "temp" / f"{formatted_time}.cptv"
+
+        self.f = open(self.filebase, "wb")
+        self.postprocess = postprocess
 
         logging.info(f"Writing cptv file %s", self.f.name)
 
@@ -44,36 +53,32 @@ class CPTVWriter:
     def combine_file(
         self, headers, config, timestamp_micros, min_value=0, max_value=0, num_frames=0
     ):
-        from pathlib import Path
-
         self.f.close()
-        file_path = Path(self.f.name)
         header_file = self.write_header(
             headers, config, timestamp_micros, min_value, max_value, num_frames
         )
-        output_file = file_path.parent.parent / file_path.name
+        output_file = self.filebase.parent.parent / self.filebase.name
 
         import subprocess
-        import os
 
         try:
             # Simple cat command to display a file's content
-            command = f"cat {header_file} {file_path} >> {str(output_file)}"
+            command = f"cat {header_file} {self.filebase} >> {str(output_file)}"
             result = subprocess.run(
                 ["sudo", "bash", "-c", command], capture_output=True, check=True
             )
         except:
             logging.error(
-                "Failed to combine %s %s", header_file, file_path, exc_info=True
+                "Failed to combine %s %s", header_file, self.filebase, exc_info=True
             )
 
         remove_file(header_file)
-        remove_file(file_path)
+        remove_file(self.filebase)
 
     def write_header(
         self, headers, config, timestamp_micros, min_value=0, max_value=0, num_frames=0
     ):
-        header_file = f"{self.file_base}-headers.gz"
+        header_file = self.filebase.with_name(f"{self.filebase.stem}-headers.gz")
         with gzip.open(header_file, "wb", compresslevel=1) as s:
             s.write(MAGIC)
             s.write(VERSION)
