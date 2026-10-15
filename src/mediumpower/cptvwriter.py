@@ -39,7 +39,7 @@ class CPTVWriter:
         self.f = open(self.filebase, "wb")
         self.postprocess = postprocess
 
-        logging.info(f"Writing cptv file %s", self.f.name)
+        logging.info("Writing cptv file %s postprocess %s", self.f.name, postprocess)
 
     def write(self, bytes):
         self.f.write(bytes)

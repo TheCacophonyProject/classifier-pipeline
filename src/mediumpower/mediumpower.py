@@ -289,7 +289,7 @@ def medium_power(connection, frame_queue, processor, config, post_process):
 
             # write header and cptv file seperately and then concat later
             # this way can write header with total frames and min max value
-            writer = CPTVWriter(f"/var/spool/cptv/temp/{formatted_time}")
+            writer = CPTVWriter(formatted_time, config.base_motion.postprocess)
         byte_data = b""
         if extra_b is not None:
             data = extra_b
@@ -313,6 +313,8 @@ def medium_power(connection, frame_queue, processor, config, post_process):
                         )
                         file_completed = True
                     reconnect = True
+                    frame_queue.put(CLEAR_SIGNAL)
+                    break
             except:
                 if recording:
                     logging.error("Mid recording failed to receive more data")
@@ -419,13 +421,13 @@ def medium_power(connection, frame_queue, processor, config, post_process):
             "None" if u8_data is None else len(u8_data),
             frame_i,
         )
-        if file_completed and thermal_config.base_motion.postprocess:
+        if file_completed and config.base_motion.postprocess:
             # run postprocessing
             from piclassifier.extraservices import run_postprocess
 
-            if post_process is not None or not post_process.is_alive():
+            if post_process is None or not post_process.is_alive():
                 logging.info("Starting post processing")
-                post_process = run_postprocess
+                post_process = run_postprocess()
         if reconnect:
             return True, post_process
         u8_data = None
