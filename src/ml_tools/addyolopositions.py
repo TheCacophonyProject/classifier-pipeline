@@ -159,7 +159,9 @@ def get_yolo_positions(tracks, yolo_boxes):
 def write_meta(clip_db, tracks, yolo_boxes):
     yolo_positions = get_yolo_positions(tracks, yolo_boxes)
     metadata = clip_db.meta_data
-    track_meta = metadata.get("Tracks") or metadata.get("tracks", [])
+    track_meta = metadata.get("Tracks", [])
+    if len(track_meta) == 0:
+        track_meta = metadata.get("tracks", [])
     for t in track_meta:
         t["yolo_positions"] = yolo_positions.get(int(t["id"]), [])
     save_metadata(clip_db.file, clip_db.meta_data_file, metadata)
