@@ -136,7 +136,8 @@ def main(thermal_config=None):
             raise
     logging.info("running as thermal")
 
-    if thermal_config.base_motion.run_classifier:
+    # In postprocess mode only, could possibly start up the classifier only when a file for postprocessing 
+    if thermal_config.base_motion.run_classifier or thermal_config.base_motion.postprocess:
         other_services.append(start_service(run_classifier))
     if thermal_config.base_motion.postprocess:
         other_services.append(start_service(run_postprocess))

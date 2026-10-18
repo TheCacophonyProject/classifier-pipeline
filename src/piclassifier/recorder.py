@@ -21,7 +21,7 @@ class Recorder(ABC):
         file_suffix=None,
     ):
         self.postprocess = thermal_config.base_motion.postprocess
-        self.do_tracking = thermal_config.base_motion.do_tracking
+        self.do_tracking = thermal_config.base_motion.run_classifier
         self.file_suffix = file_suffix
         self.file_extention = file_extention
         self.name = name

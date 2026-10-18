@@ -159,7 +159,6 @@ class PiClassifier(Processor):
         self.tracking_events = self.classify
         self.bluetooth_beacons = thermal_config.base_motion.bluetooth_beacons
         self.preview_frames = thermal_config.recorder.preview_secs * headers.fps
-        self.do_tracking = thermal_config.base_motion.do_tracking
         self.fps_timer = SlidingWindow((headers.fps * 3), np.float32)
         self.preview_type = preview_type
         self.max_keep_frames = None if preview_type else 0
@@ -174,7 +173,7 @@ class PiClassifier(Processor):
         self.max_keep_frames = 25
         self.max_pred_frames = None
 
-        if self.classify and self.do_tracking:
+        if self.classify:
             self.init_classifiers(config.classify.models, preview_type)
             self.update_service_labels()
 
@@ -364,7 +363,7 @@ class PiClassifier(Processor):
         logging.info("Running on Thermal")
         self.tracking_config = self.config.tracking
 
-        if self.do_tracking:
+        if self.classify:
             self.init_tracking()
         self.init_recorders()
         self.type = "thermal"
@@ -545,7 +544,7 @@ class PiClassifier(Processor):
 
         self.clip.update_background(self.motion_detector.background.copy())
         self.clip._background_calculated()
-        if self.do_tracking == False:
+        if not self.classify:
             return
         # no need to retrack all of preview
         background_frames = None
@@ -1094,7 +1093,7 @@ class PiClassifier(Processor):
 
         if self.recorder.recording:
             t_start = time.time()
-            if self.do_tracking:
+            if self.classify:
                 new_tracks, _ = self.track_extractor.process_frame(
                     self.clip, lepton_frame
                 )

@@ -70,7 +70,6 @@ class CameraMotionConfig:
     # TODO these need to be moved into a different configf that isn't dependent on model info
     run_classifier: Any = False
     bluetooth_beacons: Any = False
-    do_tracking: Any = False
     postprocess: Any = False
 
     @classmethod
@@ -114,7 +113,6 @@ class CameraMotionConfig:
             dynamic_thresh=motion.get("dynamic-thresh"),
             run_classifier=motion.get("run-classifier", False),
             bluetooth_beacons=motion.get("bluetooth-beacons", False),
-            do_tracking=motion.get("do-tracking", False),
             postprocess=motion.get("postprocess", False),
         )
         return motion
@@ -141,7 +139,6 @@ class CameraMotionConfig:
             dynamic_thresh=value_for("dynamic_thresh"),
             run_classifier=self.run_classifier,
             bluetooth_beacons=self.bluetooth_beacons,
-            do_tracking=self.do_tracking,
             postprocess=self.postprocess,
         )
 
