@@ -156,7 +156,7 @@ class PiClassifier(Processor):
         self.fp_time = 0
         self.monitored_tracks = {}
         self.recording = False
-        self.tracking_events = thermal_config.base_motion.tracking_events
+        self.tracking_events = self.classify
         self.bluetooth_beacons = thermal_config.base_motion.bluetooth_beacons
         self.preview_frames = thermal_config.recorder.preview_secs * headers.fps
         self.do_tracking = thermal_config.base_motion.do_tracking

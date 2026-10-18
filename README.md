@@ -25,7 +25,7 @@ If post processing is enabled new recordings will be placed in /var/spool/cptv/p
 
 Post process service will listen for new files in this directory and then process them fully using samples generated from all of the track frames. Once complete files will be placed in the output dir /var/spool/cptv where thermal-uploader can upload them.
 
-If postprocess-events are enabled then events will generated after processing is complete. This allows listeners to know the final predictions of each track and ge a thumbnail for each track. See [dbuslistener.py](src/piclassifier/dbuslistener.py) for examples.
+Events are generated after processing is complete. This allows listeners to know the final predictions of each track and ge a thumbnail for each track. See [dbuslistener.py](src/piclassifier/dbuslistener.py) for examples.
 
 ## Scripts
 

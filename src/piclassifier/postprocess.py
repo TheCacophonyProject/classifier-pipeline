@@ -62,6 +62,16 @@ def filename_timestamp(cptv_file):
     return datetime.fromtimestamp(0)
 
 
+def is_complete(cptv_file):
+    # a cptv is ready once its .txt metadata has been written, track files
+    # don't get a .txt
+    return (
+        cptv_file.with_suffix(".txt").exists()
+        or cptv_file.stem.endswith("-track")
+        or cptv_file.stem.endswith("-track-test")
+    )
+
+
 class DirWatcher(FileSystemEventHandler):
     def __init__(self, priority_queue):
         # files detected live take priority over the backlog list built at
@@ -73,11 +83,7 @@ class DirWatcher(FileSystemEventHandler):
         if not event.is_directory:
             event_file = Path(event.src_path)
             if event_file.suffix == ".cptv":
-                if (
-                    event_file.with_suffix(".txt").exists()
-                    or event_file.stem.endswith("-track")
-                    or event_file.stem.endswith("-track-test")
-                ):
+                if is_complete(event_file):
                     self._queue_file(event_file)
             elif event_file.suffix == ".txt":
                 if event_file.with_suffix(
@@ -116,7 +122,7 @@ def service_started():
     # but calling methods wont
 
 
-def main():
+def main(parse_incomplete=True):
     init_logging(name="postprocess")
     config = Config.load_from_file()
     thermal_config = ThermalConfig.load_from_file()
@@ -132,7 +138,10 @@ def main():
     dir_watcher = DirWatcher(priority_queue)
     observer = Observer()
     # oldest first, so newest can be popped off the end in O(1)
-    reprocess_files = sorted(reprocess_dir.glob("*.cptv"), key=filename_timestamp)
+    reprocess_files = reprocess_dir.glob("*.cptv")
+    if not parse_incomplete:
+        reprocess_files = filter(is_complete, reprocess_files)
+    reprocess_files = sorted(reprocess_files, key=filename_timestamp)
     logging.info("Adding existing %s", reprocess_files)
 
     postprocess = thermal_config.base_motion.postprocess
@@ -157,13 +166,12 @@ def main():
         config,
         network_model,
         keep_original_predictions=True,
-        tracking_events=thermal_config.base_motion.postprocess_events,
+        tracking_events=True,
     )
 
     callback_fn = partial(rec_callback, set_function=clip_classifier.set_is_recording)
     bus = None
     dbus_object = None
-    need_dbus = thermal_config.base_motion.postprocess_events
     loop = None
 
     try:
@@ -186,24 +194,23 @@ def main():
 
             # reprocess file
             send_on_request(60 * 6)
-            if need_dbus:
-                max_attempts = 3
-                attempt = 1
-                while bus is None:
-                    try:
-                        dbus_object, bus, _, loop = connect_to_dbus(callback_fn)
-                    except Exception as ex:
-                        # this may not be running due to tc2-agent stopping it
-                        # start_thermal_recorder()
-                        logging.info(
-                            "Couldn't connect to dbus (%s) waiting 20 seconds and trying again",
-                            service.DBUS_NAME,
-                            exc_info=True,
-                        )
-                        if attempt >= max_attempts:
-                            raise ex
-                        time.sleep(20)
-                    attempt += 1
+            max_attempts = 3
+            attempt = 1
+            while bus is None:
+                try:
+                    dbus_object, bus, _, loop = connect_to_dbus(callback_fn)
+                except Exception as ex:
+                    # this may not be running due to tc2-agent stopping it
+                    # start_thermal_recorder()
+                    logging.info(
+                        "Couldn't connect to dbus (%s) waiting 20 seconds and trying again",
+                        service.DBUS_NAME,
+                        exc_info=True,
+                    )
+                    if attempt >= max_attempts:
+                        raise ex
+                    time.sleep(20)
+                attempt += 1
 
             try:
                 if clip_classifier._is_recording:
@@ -212,19 +219,16 @@ def main():
                             "Waiting for current recording to finish before processing"
                         )
                         time.sleep(10)
-                if need_dbus:
-                    # ensures dbus service is always, can be invalidated if thermal-recorder restarts
-                    try:
-                        dbus_object = bus.get_object(
-                            service.DBUS_NAME, service.DBUS_PATH
-                        )
-                    except:
-                        logging.error(
-                            "Could not connect to dbus service %s",
-                            service.DBUS_NAME,
-                            exc_info=True,
-                        )
-                        break
+                # ensures dbus service is always, can be invalidated if thermal-recorder restarts
+                try:
+                    dbus_object = bus.get_object(service.DBUS_NAME, service.DBUS_PATH)
+                except:
+                    logging.error(
+                        "Could not connect to dbus service %s",
+                        service.DBUS_NAME,
+                        exc_info=True,
+                    )
+                    break
                 clip_classifier.post_process_file(new_file, dbus_object)
 
             except:

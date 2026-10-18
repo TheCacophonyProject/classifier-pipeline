@@ -70,10 +70,8 @@ class CameraMotionConfig:
     # TODO these need to be moved into a different configf that isn't dependent on model info
     run_classifier: Any = False
     bluetooth_beacons: Any = False
-    tracking_events: Any = False
     do_tracking: Any = False
     postprocess: Any = False
-    postprocess_events: Any = False
 
     @classmethod
     def defaults_for(cls, model):
@@ -116,10 +114,8 @@ class CameraMotionConfig:
             dynamic_thresh=motion.get("dynamic-thresh"),
             run_classifier=motion.get("run-classifier", False),
             bluetooth_beacons=motion.get("bluetooth-beacons", False),
-            tracking_events=motion.get("tracking-events", False),
             do_tracking=motion.get("do-tracking", False),
             postprocess=motion.get("postprocess", False),
-            postprocess_events=motion.get("postprocess-events", False),
         )
         return motion
 
@@ -145,10 +141,8 @@ class CameraMotionConfig:
             dynamic_thresh=value_for("dynamic_thresh"),
             run_classifier=self.run_classifier,
             bluetooth_beacons=self.bluetooth_beacons,
-            tracking_events=self.tracking_events,
             do_tracking=self.do_tracking,
             postprocess=self.postprocess,
-            postprocess_events=self.postprocess_events,
         )
 
 

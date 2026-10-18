@@ -37,7 +37,6 @@ class CPTVWriter:
         self.filebase = out_dir / "temp" / f"{formatted_time}.cptv"
 
         self.f = open(self.filebase, "wb")
-        self.postprocess = postprocess
 
         logging.info("Writing cptv file %s postprocess %s", self.f.name, postprocess)
 
@@ -58,12 +57,17 @@ class CPTVWriter:
             headers, config, timestamp_micros, min_value, max_value, num_frames
         )
         output_file = self.filebase.parent.parent / self.filebase.name
+        # combine in the temp dir then move, so the postprocess watcher only
+        # sees the cptv once it is complete
+        combined_file = self.filebase.with_name(f"{self.filebase.stem}-combined.cptv")
 
         import subprocess
 
         try:
-            # Simple cat command to display a file's content
-            command = f"cat {header_file} {self.filebase} >> {str(output_file)}"
+            command = (
+                f"cat {header_file} {self.filebase} > {combined_file}"
+                f" && mv {combined_file} {output_file}"
+            )
             result = subprocess.run(
                 ["sudo", "bash", "-c", command], capture_output=True, check=True
             )

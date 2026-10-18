@@ -395,6 +395,7 @@ class Track:
         Creates a new Track.
         :param id: id number for track, if not specified is provided by an auto-incrementer
         """
+        self.stats = None
         self.in_trap = False
         self.received_at = None
         self.trap_reported = False

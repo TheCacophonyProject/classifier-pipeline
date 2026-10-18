@@ -25,7 +25,6 @@ SOCKET_NAME = "/var/run/lepton-frames"
 start = time.time()
 
 
-WRITE_CPTV = True
 PROCESS_LOAD = True
 TEST = len(sys.argv) > 1
 MODEL_PATH = "/home/pi/tflite/converted_model.tflite"
@@ -217,7 +216,7 @@ def medium_power(connection, frame_queue, processor, config, post_process):
     while True:
         if not config.recorder.rec_window.inside_window():
             logging.info("No longer inside recorder window, leaving medium power")
-            return False
+            return False, post_process
         # wait for start message
         if extra_b is None or len(extra_b) == 0:
             try:
@@ -240,7 +239,7 @@ def medium_power(connection, frame_queue, processor, config, post_process):
             if len(extra_b) == 0:
                 logging.info("Disconnected waiting for start")
                 # disconnected
-                return
+                return True, post_process
             extra_b = None
             continue
 
@@ -262,7 +261,7 @@ def medium_power(connection, frame_queue, processor, config, post_process):
                 if len(byte_data) == 0:
                     # disconnected from socket
                     logging.info("Disconnected from socket")
-                    return
+                    return True, post_process
                 extra_b += byte_data
             except:
                 time.sleep(1)
@@ -281,20 +280,19 @@ def medium_power(connection, frame_queue, processor, config, post_process):
         formatted_time = datetime.fromtimestamp(timestamp / 1e6).strftime(
             "%Y%m%d-%H%M%S.%f"
         )
-        frame_queue.put(timestamp / 1e6)
 
         extra_b = extra_b[8 + 4 + 4 :]
-        if WRITE_CPTV:
-            from mediumpower.cptvwriter import CPTVWriter
+        from mediumpower.cptvwriter import CPTVWriter
 
-            # write header and cptv file seperately and then concat later
-            # this way can write header with total frames and min max value
-            writer = CPTVWriter(formatted_time, config.base_motion.postprocess)
+        # write header and cptv file seperately and then concat later
+        # this way can write header with total frames and min max value
+        writer = CPTVWriter(formatted_time, config.base_motion.postprocess)
+        frame_queue.put((timestamp / 1e6, str(writer.filebase)))
+
         byte_data = b""
         if extra_b is not None:
             data = extra_b
-            if WRITE_CPTV:
-                writer.write(extra_b)
+            writer.write(extra_b)
         stream_i += 1
         file_completed = False
         reconnect = False
@@ -336,25 +334,22 @@ def medium_power(connection, frame_queue, processor, config, post_process):
                 logging.info("Received clear finished file")
                 finished = True
                 frame_queue.put(CLEAR_SIGNAL)
-                if WRITE_CPTV:
-                    writer.write(byte_data)
-                    writer.combine_file(
-                        headers, config, timestamp, min_value, max_value, frame_i
-                    )
-                    file_completed = True
+                writer.write(byte_data)
+                writer.combine_file(
+                    headers, config, timestamp, min_value, max_value, frame_i
+                )
+                file_completed = True
 
                 # might have another start
                 extra_b = byte_data[clear_index + len("clear") :]
             elif byte_data.find(b"abort") > -1:
                 logging.info("Received abort signal")
                 finished = True
-                frame_queue.put(CLEAR_SIGNAL)
-                if WRITE_CPTV:
-                    writer.remove()
+                frame_queue.put(ABORT_SIGNAL)
+                writer.remove()
                 break
             else:
-                if WRITE_CPTV:
-                    writer.write(byte_data)
+                writer.write(byte_data)
                 logging.debug(
                     "Adding new data %s to old data %s", len(byte_data), len(data)
                 )
@@ -427,7 +422,7 @@ def medium_power(connection, frame_queue, processor, config, post_process):
 
             if post_process is None or not post_process.is_alive():
                 logging.info("Starting post processing")
-                post_process = run_postprocess()
+                post_process = run_postprocess(parse_incomplete=False)
         if reconnect:
             return True, post_process
         u8_data = None
@@ -503,6 +498,7 @@ def decompress(decompressor, data, read_header=False):
 
 
 CLEAR_SIGNAL = "clear"
+ABORT_SIGNAL = "abort"
 
 STOP_SIGNAL = "stop"
 SKIP_SIGNAL = "skip"
@@ -727,28 +723,18 @@ def run_classifier(frame_queue):
             if len(tracking_events) > 0:
                 from piclassifier.eventreporter import log_event
 
-                logging.info("Logging tracking events")
-                for tracking_event in tracking_events:
-                    (
-                        track_id,
-                        tag,
-                        conf,
-                        region,
-                        last_frame_classified,
-                        classified_at,
-                    ) = tracking_event
-                    region_list = [int(x) for x in region.to_ltrb()]
-                    log_event(
-                        "tracking",
-                        {
-                            "track_id": track_id,
-                            "tag": tag,
-                            "confidence": int(round(100 * conf)),
-                            "region": region_list,
-                            "last_frame_classified": last_frame_classified,
-                            "time": classified_at,
-                        },
-                    )
+                # logging.info("Logging tracking events")
+                # for tracking_event in tracking_events:
+                #     (
+                #         track_id,
+                #         tag,
+                #         conf,
+                #         region,
+                #         last_frame_classified,
+                #         classified_at,
+                #     ) = tracking_event
+                #     region_list = [int(x) for x in region.to_ltrb()]
+
                 tracking_events = []
             logging.info("Making a new clip")
             monitored_tracks = {}
@@ -766,12 +752,14 @@ def run_classifier(frame_queue):
                 time.time() - run_classifier_start,
             )
             rec_sent = False
+            first_message = True
+            filename = None
             while True:
                 try:
                     if not imported_requests:
-                        frame = frame_queue.get(timeout=0)
+                        message = frame_queue.get(timeout=0)
                     else:
-                        frame = frame_queue.get()
+                        message = frame_queue.get()
                 except:
                     # means when first predictions comes through this wont need to be imported which takes a second
                     import requests
@@ -779,8 +767,8 @@ def run_classifier(frame_queue):
                     imported_requests = True
                     continue
 
-                if isinstance(frame, str):
-                    if frame == CLEAR_SIGNAL:
+                if isinstance(message, str):
+                    if message in [CLEAR_SIGNAL, ABORT_SIGNAL]:
                         rec_sent = False
                         logging.info(
                             "PiClassifier received clear signal will start a new clip"
@@ -796,10 +784,11 @@ def run_classifier(frame_queue):
                                     for track in clip.tracks
                                     if track._id == track_id
                                 ]
-                                if lenkill_process_with_timeout(track) == 0:
+                                if len(track) == 0:
                                     # guessing its finished now probably can be deleted need to check
                                     continue
                                 track = track[0]
+                                # TODO could show aborted here
                                 dbus_service.tracking(
                                     clip.id,
                                     track,
@@ -809,6 +798,7 @@ def run_classifier(frame_queue):
                                     track_pred.last_frame_classified,
                                     classifier.labels,
                                     classifier.id,
+                                    track.received_at,
                                 )
                             dbus_service.recording(False, time.time())
                         else:
@@ -816,18 +806,25 @@ def run_classifier(frame_queue):
                                 "Dbus service never got started and recording is now finished"
                             )
                         frame_i = 0
+
+                        if filename is not None and message == CLEAR_SIGNAL:
+                            save_metadata(
+                                filename, clip, timestamp, track_extractor.VERSION
+                            )
                         break
-                    elif frame == STOP_SIGNAL:
+                    elif message == STOP_SIGNAL:
                         logging.info("PiClassifier received stop signal")
                         if PROCESS_LOAD:
                             from piclassifier.utils import kill_process_with_timeout
 
                             kill_process_with_timeout(classifier_process)
                         return
-                elif isinstance(frame, float):
-                    timestamp = frame
+                elif first_message:
+                    # always first message of new clip
+                    timestamp, filename = message
+                    first_message = False
                 else:
-                    frame, time_sent = frame
+                    frame, time_sent = message
                     if running_mean is None:
                         running_mean = RunningMean([frame.pix], 45)
                     else:
@@ -849,7 +846,7 @@ def run_classifier(frame_queue):
                         clip, frame
                     )
                     for t in new_tracks:
-                        t.received_at = time.time()
+                        t.received_at = time_sent
 
                     if dbus_service is None and classifier is not None:
                         try:
@@ -935,8 +932,25 @@ def run_classifier(frame_queue):
         return
 
 
-# class DefaultTracking:
-#     def
+def save_metadata(cptv_file, clip, timestamp, tracking_version):
+    # write in temp dir then move next to the final cptv, so the postprocess
+    # watcher never sees a partially written file
+    # timestamp is epoch seconds
+    clip.video_start_time = datetime.fromtimestamp(timestamp)
+    temp_meta = Path(cptv_file).with_suffix(".txt")
+    meta_name = temp_meta.parent.parent / temp_meta.name
+
+    meta_data = clip.get_metadata(None)
+    meta_data["algorithm"] = {}
+    meta_data["algorithm"]["tracker_version"] = f"PI-MEDIUM-{tracking_version}"
+    meta_data["metadata_source"] = "PI"
+    from ml_tools.tools import CustomJSONEncoder
+    import json
+
+    logging.info("Saving metadata to %s", meta_name)
+    with open(temp_meta, "w") as f:
+        json.dump(meta_data, f, cls=CustomJSONEncoder)
+    os.rename(temp_meta, meta_name)
 
 
 def init_trackers(tracking_config):
