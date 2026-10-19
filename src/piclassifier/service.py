@@ -13,6 +13,15 @@ class ParseFileError(dbus.exceptions.DBusException):
     _dbus_error_name = DBUS_NAME + ".ParseFileError"
 
 
+def dbus_prediction(track_prediction):
+    # tag and confidence can be None if nothing has been confidently classified,
+    # dbus can't send None so fall back to empty values
+    tag, confidence, threshold = track_prediction.prediction_with_confidence()
+    if tag is None or confidence is None:
+        return "", 0, False
+    return tag, round(confidence * 100), confidence >= threshold
+
+
 class Service(dbus.service.Object):
     def __init__(
         self,
@@ -85,6 +94,8 @@ class Service(dbus.service.Object):
         out_signature="s",
     )
     def ParsingFile(self):
+        if self.is_parsing_file is None:
+            return ""
         parsing_file = self.is_parsing_file()
         return parsing_file if parsing_file is not None else ""
 
@@ -105,14 +116,6 @@ class Service(dbus.service.Object):
     )
     def IsReady(self):
         return self.is_ready()
-
-    @dbus.service.method(
-        DBUS_NAME,
-        out_signature="s",
-    )
-    def ParsingFile(self):
-        parsing_file = self.is_parsing_file()
-        return parsing_file if parsing_file is not None else ""
 
     @dbus.service.method(
         DBUS_NAME,
@@ -174,7 +177,7 @@ class Service(dbus.service.Object):
             return dbus.Array([], signature="(ias)")
         return self.labels
 
-    @dbus.service.signal(DBUS_NAME, signature="iiaisiaiiibbisx")
+    @dbus.service.signal(DBUS_NAME, signature="iiaisiaiiibbisxb")
     def Tracking(
         self,
         clip_id,
@@ -190,6 +193,7 @@ class Service(dbus.service.Object):
         last_prediction_frame,
         model_id,
         track_start_time,
+        confident,
     ):
         pass
 
@@ -201,7 +205,9 @@ class Service(dbus.service.Object):
     def Recording(self, timestamp, is_recording):
         pass
 
-    @dbus.service.method(DBUS_NAME, in_signature="iiaisiaiiibbisx")
+    # this is used to receive information from post process and then pass it on as a signal to any other
+    # services listening
+    @dbus.service.method(DBUS_NAME, in_signature="iiaisiaiiibbisxb")
     def TrackReprocessed(
         self,
         clip_id,
@@ -217,6 +223,7 @@ class Service(dbus.service.Object):
         last_prediction_frame,
         model_id,
         clip_end_time,
+        confident,
     ):
         # just passing on the tracking info
         return self.TrackingReprocessed(
@@ -233,10 +240,11 @@ class Service(dbus.service.Object):
             last_prediction_frame,
             str(model_id),
             dbus.Int64(clip_end_time),
+            confident,
         )
         # pass
 
-    @dbus.service.signal(DBUS_NAME, signature="iiaisiaiiibbisx")
+    @dbus.service.signal(DBUS_NAME, signature="iiaisiaiiibbisxb")
     def TrackingReprocessed(
         self,
         clip_id,
@@ -252,6 +260,7 @@ class Service(dbus.service.Object):
         last_prediction_frame,
         model_id,
         clip_end_time,
+        confident,
     ):
         pass
 
@@ -345,41 +354,43 @@ class DbusService:
         self,
         clip_id,
         track,
-        prediction,
-        region,
+        track_prediction,
         tracking,
-        last_prediction_frame,
-        labels,
         model_id,
         track_start_time,
     ):
+        region = track.bounds_history[-1]
         logging.debug(
             "Tracking?  %s region %s prediction %s track %s",
             tracking,
             region,
-            prediction,
+            track_prediction.description(),
             track.id,
         )
         if self.service is None:
             return
-        if prediction is not None and last_prediction_frame is not None:
-            predictions = prediction.copy()
+        if (
+            track_prediction is not None
+            and track_prediction.last_frame_classified is not None
+        ):
+            predictions = track_prediction.get_normalized_score().copy()
+            tag, confidence, confident = dbus_prediction(track_prediction)
             predictions = np.uint8(np.round(predictions * 100))
-            best = np.argmax(predictions)
             self.service.Tracking(
                 clip_id,
                 track.id,
                 predictions,
-                labels[best],
-                predictions[best],
+                tag,
+                confidence,
                 region.to_ltrb(),
                 region.frame_number,
                 region.mass,
                 region.blank,
                 tracking,
-                last_prediction_frame,
+                track_prediction.last_frame_classified,
                 str(model_id),
                 int(track_start_time * 1000),  # convert to ms
+                confident,
             )
         else:
             self.service.Tracking(
@@ -396,6 +407,7 @@ class DbusService:
                 0,
                 "0",
                 int(track_start_time * 1000),  # convert to ms
+                False,
             )
 
     def track_filtered(self, clip_id, track_id):

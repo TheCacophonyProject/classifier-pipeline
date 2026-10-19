@@ -36,15 +36,17 @@ def tracking(
     last_prediction_frame,
     model_id,
     tracking_start_time,
+    confident,
 ):
     tracking_start_time = datetime.fromtimestamp(tracking_start_time / 1000)
 
     logging.info(
-        "Received tracking event for clip %s track %s prediction of %s with %s%% confidence still tracking ? %s at region %s tracking_start_time %s",
+        "Received tracking event for clip %s track %s prediction of %s with %s%% confidence (confident ? %s) still tracking ? %s at region %s tracking_start_time %s",
         clip_id,
         track_id,
         what,
         confidence,
+        confident,
         tracking,
         region,
         tracking_start_time,
@@ -86,15 +88,17 @@ def tracking_reprocessed(
     last_prediction_frame,
     model_id,
     rec_end,
+    confident,
 ):
     rec_end = datetime.fromtimestamp(rec_end / 1000)
     logging.info(
-        "Received post processing event for recording ended at %s clip %s track %s prediction of %s with %s%% confidence at region %s",
+        "Received post processing event for recording ended at %s clip %s track %s prediction of %s with %s%% confidence (confident ? %s) at region %s",
         rec_end,
         clip_id,
         track_id,
         what,
         confidence,
+        confident,
         region,
     )
 

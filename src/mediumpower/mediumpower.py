@@ -113,6 +113,7 @@ def main(config):
     global start
     keep_running = True
     post_process = None
+    parse_file = None
     while keep_running:
         logging.info("waiting for a connection %s", time.time() - start)
         try:
@@ -143,6 +144,8 @@ def main(config):
         from piclassifier.utils import kill_process_with_timeout
 
         kill_process_with_timeout(post_process)
+
+    return parse_file
 
 
 def handle_headers(connection):
@@ -792,11 +795,8 @@ def run_classifier(frame_queue):
                                 dbus_service.tracking(
                                     clip.id,
                                     track,
-                                    track_pred.get_normalized_score(),
-                                    track.bounds_history[-1],
+                                    track_pred,
                                     False,
-                                    track_pred.last_frame_classified,
-                                    classifier.labels,
                                     classifier.id,
                                     track.received_at,
                                 )
@@ -858,7 +858,8 @@ def run_classifier(frame_queue):
                                 classifier.labels,
                                 None,
                                 None,
-                                None,
+                                parse_file,
+                                lambda: False,
                                 True,
                                 True,
                             )
@@ -913,11 +914,8 @@ def run_classifier(frame_queue):
                             dbus_service.tracking(
                                 clip.id,
                                 track,
-                                track_pred.get_normalized_score(),
-                                track.bounds_history[-1],
+                                track_pred,
                                 tracking,
-                                track_pred.last_frame_classified,
-                                classifier.labels,
                                 classifier.id,
                                 track.received_at,
                             )

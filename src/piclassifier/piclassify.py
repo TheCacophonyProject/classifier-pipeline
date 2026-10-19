@@ -74,10 +74,11 @@ def parse_args():
 
 
 # Links to socket and continuously waits for 1 connection
-def main(thermal_config=None):
+def main(thermal_config=None, parse_file=None):
     init_logging()
     args = parse_args()
-
+    if parse_file:
+        args.file = parse_file
     config = Config.load_from_file(args.config_file)
     if thermal_config is None or args.thermal_config_file is not None:
         thermal_config = ThermalConfig.load_from_file(args.thermal_config_file)
@@ -136,8 +137,11 @@ def main(thermal_config=None):
             raise
     logging.info("running as thermal")
 
-    # In postprocess mode only, could possibly start up the classifier only when a file for postprocessing 
-    if thermal_config.base_motion.run_classifier or thermal_config.base_motion.postprocess:
+    # In postprocess mode only, could possibly start up the classifier only when a file for postprocessing
+    if (
+        thermal_config.base_motion.run_classifier
+        or thermal_config.base_motion.postprocess
+    ):
         other_services.append(start_service(run_classifier))
     if thermal_config.base_motion.postprocess:
         other_services.append(start_service(run_postprocess))

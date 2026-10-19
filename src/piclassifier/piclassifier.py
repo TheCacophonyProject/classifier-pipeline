@@ -740,11 +740,8 @@ class PiClassifier(Processor):
                     self.service.tracking(
                         self.clip._id,
                         track,
-                        track_prediction.get_normalized_score(),
-                        track.bounds_history[-1],
+                        track_prediction,
                         False,
-                        track_prediction.last_frame_classified,
-                        self.predictions[model_id].labels,
                         model_id,
                         track.received_at,
                     )
@@ -1154,30 +1151,17 @@ class PiClassifier(Processor):
                     monitored_tracks = list(self.monitored_tracks.values())
                     for monitored_track in monitored_tracks:
                         tracking = monitored_track in self.clip.active_tracks
-                        score = 0
-                        prediction = ""
-                        all_scores = None
                         model_id = None
                         track_prediction = None
-                        last_prediction = 0
                         if self.classify:
                             track_prediction, model_id = self.get_best_prediction(
                                 monitored_track.id
                             )
-                            all_scores = track_prediction.get_normalized_score()
-                            last_prediction = track_prediction.last_frame_classified
                         self.service.tracking(
                             self.clip._id,
                             monitored_track,
-                            all_scores,
-                            monitored_track.bounds_history[-1],
+                            track_prediction,
                             tracking,
-                            last_prediction,
-                            (
-                                []
-                                if model_id is None
-                                else self.predictions[model_id].labels
-                            ),
                             model_id,
                             monitored_track.received_at,
                         )

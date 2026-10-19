@@ -397,6 +397,7 @@ class ClipClassifier:
 
     def post_process_file(self, filename, service):
         from piclassifier.eventreporter import log_event
+        from piclassifier.service import dbus_prediction
         from classify.trackprediction import Predictions
 
         from track.cliptrackextractor import ClipTrackExtractor
@@ -746,17 +747,13 @@ class ClipClassifier:
                 dbus_preds = np.uint8(np.round(dbus_preds * 100))
                 dbus_preds = dbus_preds.tolist()
                 try:
-
-                    # since grouped by parents this should only ever be at most one tag
-                    tags = track_prediction.predicted_tags()
-                    if tags is not None:
-                        tag = tags[0]
+                    tag, confidence, confident = dbus_prediction(track_prediction)
                     service.TrackReprocessed(
                         meta_data.get("id", 0),
                         track_id,
                         dbus_preds,
                         tag,
-                        int(round(100 * track_prediction.max_score)),
+                        confidence,
                         np.uint8(region.to_ltrb()).tolist(),
                         region.frame_number,
                         int(region.mass),
@@ -765,6 +762,7 @@ class ClipClassifier:
                         last_frame_num,
                         model.id,
                         dbus.Int64(int(1000 * rec_end.timestamp())),
+                        confident,
                     )
                 except:
                     logging.error(

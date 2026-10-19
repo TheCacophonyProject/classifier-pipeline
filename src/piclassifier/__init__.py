@@ -8,10 +8,10 @@ def pi_classify():
     ):
         from mediumpower.mediumpower import main
 
-        main(thermal_config)
+        parse_file = main(thermal_config)
     from piclassifier.piclassify import main
 
-    main(thermal_config)
+    main(thermal_config, parse_file=parse_file)
 
 
 def serve_model():
