@@ -123,26 +123,24 @@ def preprocess_frame_v2(
     # enlarge to
     enlarged_region = region.copy()
     resize_times = None
-    if region.width > out_dim or region.height > out_dim:
-        enlarged_region.enlarge_for_rotation(final_dim=out_dim, extra_needed=0)
+    if region.width > original_dim or region.height > original_dim:
+        # scale the region to original_dim with out_dim - original_dim
+        # extra pixels around it for rotating and cropping at train time
+        enlarged_region.enlarge_for_rotation(
+            final_dim=original_dim, extra_needed=out_dim - original_dim
+        )
     else:
         # we are going to resize up to 4 times.
         MAX_RESIZE = 4
         resize_dim = max(region.width, region.height)
+        # region is <= original_dim so resize_times is always >= 1
         resize_times = min(MAX_RESIZE, original_dim / resize_dim)
-        if resize_times < 1:
-            enlarged_region.enlarge_to(out_dim)
-            # logging.info("Resizing %s enlarging to %s region %s  enlarged %s",resize_times,resize_dim ,region,enlarged_region)
-
-            resize_times = None
-        else:
-
-            extra_padding = (out_dim - (resize_dim * resize_times)) / resize_times
-            if extra_padding > 0:
-                # ceil this and maybe crop it out later
-                extra_padding = math.ceil(extra_padding)
-                enlarged_region.enlarge_to(resize_dim + extra_padding)
-            # logging.info("Resizing %s enlarging to %s region %s  enlarged %s",resize_times,resize_dim + extra_padding,region,enlarged_region)
+        extra_padding = (out_dim - (resize_dim * resize_times)) / resize_times
+        if extra_padding > 0:
+            # ceil this and maybe crop it out later
+            extra_padding = math.ceil(extra_padding)
+            enlarged_region.enlarge_to(resize_dim + extra_padding)
+        # logging.info("Resizing %s enlarging to %s region %s  enlarged %s",resize_times,resize_dim + extra_padding,region,enlarged_region)
         # logging.info("Resizing %s max %s ",resize_dim,out_dim / MAX_RESIZE)
     pad_top = 0
     pad_left = 0
@@ -156,11 +154,11 @@ def preprocess_frame_v2(
         and crop_rectangle.top > enlarged_region.top
     ):
         pad_top = crop_rectangle.top - enlarged_region.top
-    new_width = max(out_dim, min(crop_rectangle.width, enlarged_region.width))
-    new_height = max(
-        out_dim,
-        min(crop_rectangle.height, enlarged_region.height),
-    )
+    # canvas is the full enlarged region, not capped to crop_rectangle, so that
+    # resizing it to out_dim keeps the region at the intended scale, anything
+    # outside crop_rectangle is padded
+    new_width = max(out_dim, enlarged_region.width)
+    new_height = max(out_dim, enlarged_region.height)
     content_region = enlarged_region.copy()
     content_region.crop(crop_rectangle)
     cropped_frame = frame.crop_and_copy_as_float(content_region, make_copy=True)
@@ -209,9 +207,9 @@ def preprocess_frame_v2(
     # check the padded canvas not just the content, cropping to crop_rectangle
     # can leave content <= out_dim while the canvas (with pad_top/pad_left)
     # is still bigger than out_dim
-    needs_resize = new_width > out_dim or new_height > out_dim
+    downsize = new_width > out_dim or new_height > out_dim
 
-    if needs_resize:
+    if downsize:
         # resize the real content first, then pad - padding
         # the full (new_height, new_width) canvas before
         # resizing would resize the border padding along with

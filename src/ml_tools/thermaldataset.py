@@ -50,6 +50,9 @@ LAST_JITTER_STAGE = tf.Variable(
 insect = None
 fp = None
 USE_VELOCITY = False
+# max pixels the augmentation crop is shifted from centre, records have the
+# animal in the central mosaic_size so larger shifts cut off the animal
+MAX_CROP_JITTER = 3.0
 
 
 # labels can be any subset of this, prevents new labels being trained on until we explicitly add them to here
@@ -448,6 +451,27 @@ def randomized_balance_filter(image, label, keep_probs):
     return random_roll < max_keep_prob
 
 
+@tf.function
+def rotation_crop_offset(angle, crop_size, image_size, max_jitter=MAX_CROP_JITTER):
+    """
+    Random (top, left) for a crop_size crop of an image_size image rotated by angle.
+    The shift from centre is limited so the crop stays inside the rotated image
+    (no rotation fill) and to max_jitter so the animal isn't cut off.
+    A crop_size square shifted by s on each axis stays inside an image_size square
+    rotated by angle while (crop_size / 2 + s) * (|cos| + |sin|) <= image_size / 2
+    """
+    crop_size_f = tf.cast(crop_size, tf.float32)
+    image_size_f = tf.cast(image_size, tf.float32)
+    spread = tf.abs(tf.cos(angle)) + tf.abs(tf.sin(angle))
+    slack = image_size_f / (2.0 * spread) - crop_size_f / 2.0
+    max_shift = tf.cast(tf.floor(tf.clip_by_value(slack, 0.0, max_jitter)), tf.int32)
+    shift = tf.random.uniform([2], -max_shift, max_shift + 1, dtype=tf.int32)
+    # floor centre, clip so the crop never leaves the image when the
+    # size difference is odd
+    max_offset = tf.cast(image_size, tf.int32) - tf.cast(crop_size, tf.int32)
+    return tf.clip_by_value(max_offset // 2 + shift, 0, max_offset)
+
+
 class RandomRotationPerChannelFill(tf.keras.layers.Layer):
     def __init__(self, factor, **kwargs):
         super().__init__(**kwargs)
@@ -744,6 +768,9 @@ def read_tfrecord(
             rgb_image, rotation_angle = rotation_augmentation(
                 rgb_image, frame_means, training=True
             )
+            crop_offset = rotation_crop_offset(
+                rotation_angle, mosaic_size, mosaic_larger_size
+            )
             random_value = tf.random.uniform(
                 shape=[], minval=0.0, maxval=1.0, dtype=tf.float32
             )
@@ -752,8 +779,9 @@ def read_tfrecord(
                 rgb_image = tf.image.flip_left_right(rgb_image)
                 rotation_angle += math.pi
 
-            rgb_image = tf.image.random_crop(
-                rgb_image, size=[record_frames, mosaic_size, mosaic_size, 3]
+            # same crop for every frame so motion between frames is kept
+            rgb_image = tf.image.crop_to_bounding_box(
+                rgb_image, crop_offset[0], crop_offset[1], mosaic_size, mosaic_size
             )
 
             logging.info("Applying random frame mask")
