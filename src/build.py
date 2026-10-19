@@ -432,8 +432,8 @@ def split_by_file(dataset, config, split_file, base_dir, make_val=False, seed=No
                 except:
                     logging.error("Could not load %s", source_file, exc_info=True)
             else:
-                pass
-                # logging.warn("No source file %s found for %s", f, name)
+                # pass
+                logging.warn("No source file %s found for %s", f, name)
         datasets.append(split_dataset)
 
     print_counts(*datasets)
