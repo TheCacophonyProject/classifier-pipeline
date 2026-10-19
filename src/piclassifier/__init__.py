@@ -1,7 +1,9 @@
 def pi_classify():
     from config.thermalconfig import ThermalConfig
 
+    parse_file = None
     thermal_config = ThermalConfig.load_from_file()
+    parse_file = None
     if (
         thermal_config.recorder.instant_classify
         and thermal_config.recorder.rec_window.inside_window()

@@ -607,7 +607,7 @@ def most_specific_tag(labels, indices, parent_mappings):
     return final_tag
 
 
-def get_scaled_thresh(threshold, num_frames, max_frames=25, k=4, max_threshold=0.96):
+def get_scaled_thresh(threshold, num_frames, max_frames=25, max_threshold=0.96):
     if num_frames < max_frames:
         missing_fraction = (max_frames - num_frames) / (max_frames - 1)
         scaling_factor = missing_fraction**2

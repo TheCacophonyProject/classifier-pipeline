@@ -5,7 +5,7 @@ import os
 import time
 import logging
 import sys
-from multiprocessing import Queue, Process
+from multiprocessing import Queue, Process, Pipe
 import numpy as np
 from pathlib import Path
 from datetime import datetime
@@ -90,7 +90,9 @@ def main(config):
     logging.info("Medium Power started")
     global connected
     frame_queue = Queue()
-    processor = get_processor(frame_queue)
+    # dbus ParseFile callback in the classifier process sends the file name here
+    parse_recv, parse_send = Pipe(duplex=False)
+    processor = get_processor(frame_queue, parse_send)
     processor.start()
 
     if TEST:
@@ -108,13 +110,14 @@ def main(config):
     sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
 
     sock.bind(SOCKET_NAME)
-    sock.settimeout(3 * 60)  # 3 minutes
+    # short timeout so a parse file request is noticed while no camera is connected
+    sock.settimeout(10)
     sock.listen(1)
     global start
     keep_running = True
     post_process = None
     parse_file = None
-    while keep_running:
+    while keep_running and not parse_recv.poll():
         logging.info("waiting for a connection %s", time.time() - start)
         try:
             connection, client_address = sock.accept()
@@ -122,7 +125,12 @@ def main(config):
             logging.info("connection from %s", client_address)
             # log_event("camera-connected", {"type": "thermal"})
             keep_running, post_process = medium_power(
-                connection, frame_queue, processor, config, post_process
+                connection,
+                frame_queue,
+                processor,
+                config,
+                post_process,
+                parse_recv,
             )
         except KeyboardInterrupt:
             logging.info("\nCtrl+C pressed. Exiting gracefully.")
@@ -145,6 +153,9 @@ def main(config):
 
         kill_process_with_timeout(post_process)
 
+    if parse_recv.poll():
+        parse_file = parse_recv.recv()
+        logging.info("Exiting medium power to parse %s", parse_file)
     return parse_file
 
 
@@ -176,10 +187,10 @@ def handle_headers(connection):
     return HeaderInfo.parse_header(header_s), left_over
 
 
-def get_processor(process_queue):
+def get_processor(process_queue, parse_send):
     p_processor = Process(
         target=run_classifier,
-        args=(process_queue,),
+        args=(process_queue, parse_send),
     )
     return p_processor
 
@@ -200,7 +211,7 @@ def ask_to_stay_on(duration=5):
     return False
 
 
-def medium_power(connection, frame_queue, processor, config, post_process):
+def medium_power(connection, frame_queue, processor, config, post_process, parse_recv):
     from cptv_rs_python_bindings import CptvStreamReader
     import zlib
     from cptv import Frame
@@ -219,6 +230,9 @@ def medium_power(connection, frame_queue, processor, config, post_process):
     while True:
         if not config.recorder.rec_window.inside_window():
             logging.info("No longer inside recorder window, leaving medium power")
+            return False, post_process
+        if parse_recv.poll():
+            logging.info("Parse file requested, leaving medium power")
             return False, post_process
         # wait for start message
         if extra_b is None or len(extra_b) == 0:
@@ -248,7 +262,6 @@ def medium_power(connection, frame_queue, processor, config, post_process):
 
         reader = CptvStreamReader()
         decompressor = zlib.decompressobj(wbits=-zlib.MAX_WBITS)
-        recording = False
         u8_data = None
         frame_i = 0
         read_header = False
@@ -300,35 +313,36 @@ def medium_power(connection, frame_queue, processor, config, post_process):
         file_completed = False
         reconnect = False
         while not finished:
+            if parse_recv.poll():
+                logging.info("Parse file requested, stopping current recording")
+                frame_queue.put(CLEAR_SIGNAL)
+                writer.combine_file(
+                    headers, config, timestamp, min_value, max_value, frame_i
+                )
+                return False, post_process
             try:
                 byte_data = connection.recv(headers.frame_size)
                 if len(byte_data) == 0:
                     # disconnected from socket
-                    logging.info("Disconnected from socket")
-                    if recording:
-                        logging.error("Mid recording failed to receive more data")
-                        # Do we want to keep these files or delete them
-                        # i think for until tested thoroughly keep them as it will highlight any possible issues
-                        writer.combine_file(
-                            headers, config, timestamp, min_value, max_value, frame_i
-                        )
-                        file_completed = True
-                    reconnect = True
-                    frame_queue.put(CLEAR_SIGNAL)
-                    break
-            except:
-                if recording:
-                    logging.error("Mid recording failed to receive more data")
-                    frame_queue.put(CLEAR_SIGNAL)
-                    # once tested this file could be deleted instead
+                    logging.error("Disconnected from socket mid recording")
+                    # Do we want to keep these files or delete them
+                    # i think for until tested thoroughly keep them as it will highlight any possible issues
                     writer.combine_file(
                         headers, config, timestamp, min_value, max_value, frame_i
                     )
                     file_completed = True
-
+                    reconnect = True
+                    frame_queue.put(CLEAR_SIGNAL)
                     break
-                time.sleep(1)
-                continue
+            except:
+                logging.error("Mid recording failed to receive more data")
+                frame_queue.put(CLEAR_SIGNAL)
+                # once tested this file could be deleted instead
+                writer.combine_file(
+                    headers, config, timestamp, min_value, max_value, frame_i
+                )
+                file_completed = True
+                break
 
             clear_index = byte_data.find(b"clear")
             if clear_index > -1:
@@ -370,13 +384,14 @@ def medium_power(connection, frame_queue, processor, config, post_process):
             except:
                 # if this happens log it and then get the file from rp2040
                 logging.error("Error decompressing ", exc_info=True)
+                # classifier needs to end this clip before the next header arrives
+                frame_queue.put(ABORT_SIGNAL)
                 return True, post_process
                 # time.sleep(1)
                 # continue
 
             if len(decompressed_chunk) == 0:
                 continue
-            recording = True
             if u8_data is None:
                 u8_data = np.frombuffer(decompressed_chunk, dtype=np.uint8)
             else:
@@ -589,9 +604,6 @@ def submit_prediction(clip, monitored_tracks, tracking_events):
             multi_label=classifier.params.multi_label,
         ),
     )
-    if track_pred.previous_prediction_was_short():
-        logging.info("Resetting as was short")
-        track_pred.reset()
 
     preprocessed_result = classifier.preprocess_track(
         clip,
@@ -635,6 +647,10 @@ def _predict_and_apply(
     try:
         last_region = track.bounds_history[-1]
         prediction = classifier.predict(preprocessed)
+        if track_pred.previous_prediction_was_short():
+            logging.info("Resetting as was short %s")
+            track_pred.reset()
+
         track_pred.classified_frames(frames, prediction, mass)
         logging.info(
             "Track %s is predicted as %s conf %s took %s track frames %s",
@@ -688,7 +704,17 @@ def load_model(over_network=False):
         logging.error("Could not load model", exc_info=True)
 
 
-def run_classifier(frame_queue):
+def make_parse_file_callback(parse_send):
+    # called from the dbus ParseFile thread in the classifier process, main process
+    # picks this up, shuts down medium power and returns the file
+    def parse_file(file, fps, seed):
+        logging.info("Parse file %s requested, leaving medium power", file)
+        parse_send.send(file)
+
+    return parse_file
+
+
+def run_classifier(frame_queue, parse_send):
 
     global predicting_track_id
     run_classifier_start = time.time()
@@ -768,6 +794,20 @@ def run_classifier(frame_queue):
                     import requests
 
                     imported_requests = True
+                    if dbus_service is None:
+                        from piclassifier.service import DbusService
+
+                        dbus_service = DbusService(
+                            headers,
+                            None,
+                            classifier.labels,
+                            None,
+                            None,
+                            make_parse_file_callback(parse_send),
+                            lambda: None,
+                            lambda: True,
+                            True,
+                        )
                     continue
 
                 if isinstance(message, str):
@@ -800,7 +840,7 @@ def run_classifier(frame_queue):
                                     classifier.id,
                                     track.received_at,
                                 )
-                            dbus_service.recording(False, time.time())
+                            dbus_service.recording(time.time(), False)
                         else:
                             logging.error(
                                 "Dbus service never got started and recording is now finished"
@@ -858,9 +898,9 @@ def run_classifier(frame_queue):
                                 classifier.labels,
                                 None,
                                 None,
-                                parse_file,
-                                lambda: False,
-                                True,
+                                make_parse_file_callback(parse_send),
+                                lambda: None,
+                                lambda: True,
                                 True,
                             )
                             dbus_service.recording(time.time(), True)
