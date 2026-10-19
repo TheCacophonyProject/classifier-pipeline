@@ -327,41 +327,26 @@ def medium_power(connection, frame_queue, processor, config, post_process, parse
                     logging.error("Disconnected from socket mid recording")
                     # Do we want to keep these files or delete them
                     # i think for until tested thoroughly keep them as it will highlight any possible issues
-                    writer.combine_file(
-                        headers, config, timestamp, min_value, max_value, frame_i
-                    )
-                    file_completed = True
+                    finished = True
                     reconnect = True
-                    frame_queue.put(CLEAR_SIGNAL)
                     break
             except:
                 logging.error("Mid recording failed to receive more data")
-                frame_queue.put(CLEAR_SIGNAL)
                 # once tested this file could be deleted instead
-                writer.combine_file(
-                    headers, config, timestamp, min_value, max_value, frame_i
-                )
-                file_completed = True
+                finished = True
                 break
 
             clear_index = byte_data.find(b"clear")
             if clear_index > -1:
-                byte_data = byte_data[:clear_index]
-
                 logging.info("Received clear finished file")
-                finished = True
-                frame_queue.put(CLEAR_SIGNAL)
-                writer.write(byte_data)
-                writer.combine_file(
-                    headers, config, timestamp, min_value, max_value, frame_i
-                )
-                file_completed = True
-
                 # might have another start
                 extra_b = byte_data[clear_index + len("clear") :]
+                byte_data = byte_data[:clear_index]
+                # clear is sent after the loop once frames from this last chunk are queued
+                finished = True
+                writer.write(byte_data)
             elif byte_data.find(b"abort") > -1:
                 logging.info("Received abort signal")
-                finished = True
                 frame_queue.put(ABORT_SIGNAL)
                 writer.remove()
                 break
@@ -429,6 +414,14 @@ def medium_power(connection, frame_queue, processor, config, post_process, parse
                         len(u8_data),
                     )
                     break
+        if finished:
+            # only clear once every frame from the final chunk has been queued, otherwise
+            # the classifier takes those frames as the start of the next clip
+            frame_queue.put(CLEAR_SIGNAL)
+            writer.combine_file(
+                headers, config, timestamp, min_value, max_value, frame_i
+            )
+            file_completed = True
         logging.info(
             "Finished processing left over bytes are %s num frames %s",
             "None" if u8_data is None else len(u8_data),
@@ -440,6 +433,8 @@ def medium_power(connection, frame_queue, processor, config, post_process, parse
 
             if post_process is None or not post_process.is_alive():
                 logging.info("Starting post processing")
+                # dont parse existing files that dont have a txt, as the txt may still be writing
+                # this happens in a different process
                 post_process = run_postprocess(parse_incomplete=False)
         if reconnect:
             return True, post_process
@@ -697,6 +692,8 @@ def load_model(over_network=False):
     try:
         print("Loading ", MODEL_PATH)
         classifier = LiteInterpreter(Path(MODEL_PATH), over_network, True)
+        classifier.id = 1
+
         # this way metadata is loaded
         # classifier.load_model()
         logging.info("Loaded tflite model in %.2fs", time.time() - load_start)
@@ -800,7 +797,7 @@ def run_classifier(frame_queue, parse_send):
                         dbus_service = DbusService(
                             headers,
                             None,
-                            classifier.labels,
+                            {classifier.id: classifier.labels},
                             None,
                             None,
                             make_parse_file_callback(parse_send),
@@ -895,7 +892,7 @@ def run_classifier(frame_queue, parse_send):
                             dbus_service = DbusService(
                                 headers,
                                 None,
-                                classifier.labels,
+                                {classifier.id: classifier.labels},
                                 None,
                                 None,
                                 make_parse_file_callback(parse_send),

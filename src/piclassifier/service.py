@@ -168,13 +168,17 @@ class Service(dbus.service.Object):
 
         return result
 
-    @dbus.service.method(DBUS_NAME, signature="a{ias}")
+    @dbus.service.method(DBUS_NAME, out_signature="y")
+    def Version(self):
+        return 1
+
+    @dbus.service.method(DBUS_NAME, out_signature="a{ias}")
     def ClassificationLabels(self):
         if not self.classifier_loaded:
             raise DBusException("Labels have not been initialized")
         # logging.info("Getting labels %s", self.labels)
-        if len(self.labels) == 0:
-            return dbus.Array([], signature="(ias)")
+        if not self.labels:
+            return {}
         return self.labels
 
     @dbus.service.signal(DBUS_NAME, signature="iiaisiaiiibbisxb")

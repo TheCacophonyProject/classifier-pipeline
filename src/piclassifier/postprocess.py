@@ -122,7 +122,10 @@ def service_started():
     # but calling methods wont
 
 
-def main(parse_incomplete=True):
+def main(parse_incomplete=True, only_new_files=False, exit_event=None):
+    # only_new_files: skip files already in the postprocess dir, only process files the
+    # observer finds
+    # exit_event: multiprocessing Event, once set finish whatever is queued and exit
     init_logging(name="postprocess")
     config = Config.load_from_file()
     thermal_config = ThermalConfig.load_from_file()
@@ -137,12 +140,15 @@ def main(parse_incomplete=True):
     priority_queue = queue.PriorityQueue()
     dir_watcher = DirWatcher(priority_queue)
     observer = Observer()
-    # oldest first, so newest can be popped off the end in O(1)
-    reprocess_files = reprocess_dir.glob("*.cptv")
-    if not parse_incomplete:
-        reprocess_files = filter(is_complete, reprocess_files)
-    reprocess_files = sorted(reprocess_files, key=filename_timestamp)
-    logging.info("Adding existing %s", reprocess_files)
+    if only_new_files:
+        reprocess_files = []
+    else:
+        # oldest first, so newest can be popped off the end in O(1)
+        reprocess_files = reprocess_dir.glob("*.cptv")
+        if not parse_incomplete:
+            reprocess_files = filter(is_complete, reprocess_files)
+        reprocess_files = sorted(reprocess_files, key=filename_timestamp)
+        logging.info("Adding existing %s", reprocess_files)
 
     postprocess = thermal_config.base_motion.postprocess
     pending_exit = False
@@ -160,7 +166,7 @@ def main(parse_incomplete=True):
         logging.info("Watching %s", reprocess_dir)
         observer.schedule(dir_watcher, reprocess_dir, recursive=False)
         observer.start()
-        config.validate()
+    config.validate()
 
     clip_classifier = ClipClassifier(
         config,
@@ -183,6 +189,8 @@ def main(parse_incomplete=True):
                     new_file = reprocess_files.pop()
                 else:
                     send_finished_request()
+                    if exit_event is not None and exit_event.is_set():
+                        pending_exit = True
                     if pending_exit:
                         logging.info("Finished processing exit")
                         break
@@ -253,16 +261,16 @@ def main(parse_incomplete=True):
             logging.info("Finished processing %s", meta_f)
 
     except KeyboardInterrupt:
-        observer.stop()
+        if observer:
+            observer.stop()
     if loop is not None:
         loop.quit()
-    if observer.is_alive:
+    if observer and observer.is_alive:
         observer.stop()
 
 
 def connect_to_dbus(rec_callback):
-    dbus.mainloop.glib.DBusGMainLoop(set_as_default=True)
-    bus = dbus.SystemBus()
+    bus = get_system_bus()
     dbus_object = bus.get_object(service.DBUS_NAME, service.DBUS_PATH)
     loop = GLib.MainLoop()
 
@@ -293,8 +301,21 @@ from dbus.mainloop.glib import DBusGMainLoop
 60 * 5
 
 
+_system_bus = None
+
+
+def get_system_bus():
+    # private so we don't reuse a shared connection inherited from the parent when forked,
+    # that connection's socket is still read by the parent so replies never reach us
+    global _system_bus
+    if _system_bus is None:
+        DBusGMainLoop(set_as_default=True)
+        _system_bus = dbus.SystemBus(private=True)
+    return _system_bus
+
+
 def send_on_request(delay):
-    bus = dbus.SystemBus(mainloop=DBusGMainLoop())
+    bus = get_system_bus()
     try:
         proxy = bus.get_object(DBUS_NAME, DBUS_PATH)
         proxy.StayOnForProcess("postprocess", delay)
@@ -303,7 +324,7 @@ def send_on_request(delay):
 
 
 def send_finished_request():
-    bus = dbus.SystemBus(mainloop=DBusGMainLoop())
+    bus = get_system_bus()
     try:
         proxy = bus.get_object(DBUS_NAME, DBUS_PATH)
         proxy.StayOnFinished("postprocess")

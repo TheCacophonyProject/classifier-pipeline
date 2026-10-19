@@ -85,16 +85,27 @@ def main(thermal_config=None, parse_file=None):
 
     other_services = []
     if args.file:
-        if thermal_config.base_motion.run_classifier:
+        if (
+            thermal_config.base_motion.run_classifier
+            or thermal_config.base_motion.postprocess
+        ):
             other_services.append(start_service(run_classifier))
+
         from config.timewindow import TimeWindow, RelAbsTime
 
         thermal_config.recorder.rec_window = TimeWindow(
             RelAbsTime(""), RelAbsTime(""), None, None, 0
         )
         parse_cptv(
-            args.file, config, thermal_config, args.preview_type, args.fps, args.seed
+            args.file,
+            config,
+            thermal_config,
+            args.preview_type,
+            args.fps,
+            args.seed,
+            thermal_config.base_motion.postprocess,
         )
+
         for service in other_services:
             try:
                 utils.kill_process_with_timeout(service["process"])
@@ -240,7 +251,7 @@ def file_changed(event):
     shutdown_event.set()
 
 
-def parse_cptv(file, config, thermal_config, preview_type, fps, seed):
+def parse_cptv(file, config, thermal_config, preview_type, fps, seed, postprocess):
     from .piclassifier import PiClassifier
 
     # this doesnt matter since it will get read from file later
@@ -264,7 +275,22 @@ def parse_cptv(file, config, thermal_config, preview_type, fps, seed):
         thermal_config.base_motion.run_classifier,
         preview_type,
     )
+    postprocess_process = None
+    if postprocess:
+        logging.info("Running post processing")
+        import multiprocessing
+
+        # set once the file is parsed so postprocess exits after processing it
+        exit_event = multiprocessing.Event()
+        postprocess_process = run_postprocess(
+            only_new_files=True, exit_event=exit_event
+        )
     pi_classifier.parse_file(file, fps, seed)
+
+    if postprocess_process:
+        logging.info("Waiting for post process to finish")
+        exit_event.set()
+        postprocess_process.join()
     pi_classifier.service.quit()
 
 
