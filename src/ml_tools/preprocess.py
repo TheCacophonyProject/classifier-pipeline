@@ -206,9 +206,10 @@ def preprocess_frame_v2(
         or content_region.width < new_width
         or content_region.height < new_height
     )
-    needs_resize = (
-        cropped_frame.region.width > out_dim or cropped_frame.region.height > out_dim
-    )
+    # check the padded canvas not just the content, cropping to crop_rectangle
+    # can leave content <= out_dim while the canvas (with pad_top/pad_left)
+    # is still bigger than out_dim
+    needs_resize = new_width > out_dim or new_height > out_dim
 
     if needs_resize:
         # resize the real content first, then pad - padding

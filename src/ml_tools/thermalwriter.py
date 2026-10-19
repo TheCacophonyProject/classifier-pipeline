@@ -344,11 +344,10 @@ def get_data(source_file, excluded_tags, extra_args):
                         raise ValueError(
                             f"Frame {frame_number} used by more than one sample"
                         )
-
                     assert cropped_frame.thermal.shape == (
                         resize_dim,
                         resize_dim,
-                    ), f"Shape is wrong {cropped_frame.region}"
+                    ), f"Shape is wrong {cropped_frame.region} should be {resize_dim} got {cropped_frame.thermal.shape} track region {region} frame {frame_number}"
                     # GP could handle each type separately, may be instances where one is valid
                     if (
                         cropped_frame is not None
