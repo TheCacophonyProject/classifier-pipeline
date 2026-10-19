@@ -66,6 +66,11 @@ def parse_args():
         action="store_true",
         help="Use each track's yolo_positions instead of tracker positions (see ml_tools/addyolopositions.py)",
     )
+    parser.add_argument(
+        "--dont-filter-fp",
+        action="store_true",
+        help="Keep frames listed in a track's fp_frames instead of filtering them out",
+    )
 
     parser.add_argument("-c", "--config-file", help="Path to config file to use")
     parser.add_argument("-d", "--date", help="Use clips after this")
@@ -413,7 +418,9 @@ def split_by_file(dataset, config, split_file, base_dir, make_val=False, seed=No
             label_mapping=dataset.label_mapping,
             ext=dataset.ext,
             use_yolo=dataset.use_yolo,
+            filter_by_fp=dataset.filter_by_fp,
         )
+        logging.info("Loading %s", name)
         if name == "train":
             split_dataset.enable_augmentation = True
         elif name == "test":
@@ -453,6 +460,7 @@ def split_randomly(dataset, config, date, test_clips=[], use_test=True):
         config,
         label_mapping=dataset.label_mapping,
         use_yolo=dataset.use_yolo,
+        filter_by_fp=dataset.filter_by_fp,
         ext=dataset.ext,
     )
     train.enable_augmentation = True
@@ -462,6 +470,7 @@ def split_randomly(dataset, config, date, test_clips=[], use_test=True):
         config,
         label_mapping=dataset.label_mapping,
         use_yolo=dataset.use_yolo,
+        filter_by_fp=dataset.filter_by_fp,
         ext=dataset.ext,
     )
     test = None
@@ -475,6 +484,7 @@ def split_randomly(dataset, config, date, test_clips=[], use_test=True):
             config,
             label_mapping=dataset.label_mapping,
             use_yolo=dataset.use_yolo,
+            filter_by_fp=dataset.filter_by_fp,
             ext=dataset.ext,
         )
         add_samples(dataset.labels, test, test_c, test_counts)
@@ -829,6 +839,7 @@ def main():
         label_mapping=label_mapping,
         ext=args.ext,
         use_yolo=args.use_yolo,
+        filter_by_fp=not args.dont_filter_fp,
     )
     if args.save_master_only:
         base_dir = Path(args.save_master_only)
@@ -979,7 +990,9 @@ def main():
     for dataset in datasets:
         dir = os.path.join(record_dir, dataset.name)
         # dont filter the test set,
-        extra_args["filter_by_fp"] = dataset.name != "test"
+        extra_args["filter_by_fp"] = (
+            master_dataset.filter_by_fp and dataset.name != "test"
+        )
         dataset_border_sum = create_tf_records(
             dataset,
             dir,

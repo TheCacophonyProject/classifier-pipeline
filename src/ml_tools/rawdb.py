@@ -263,6 +263,12 @@ class RawDatabase:
                             track_meta.get("id"),
                             self.file,
                         )
+                    else:
+                        logging.error(
+                            "No yolo positions for track %s in %s",
+                            track_meta.get("id"),
+                            self.file,
+                        )
                     continue
 
                 start = None

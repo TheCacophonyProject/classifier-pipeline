@@ -43,10 +43,13 @@ class Dataset:
         label_mapping=None,
         ext=".cptv",
         use_yolo=False,
+        filter_by_fp=True,
     ):
         self.ext = ext
         # load track regions from yolo_positions instead of positions
         self.use_yolo = use_yolo
+        # drop frames listed in a track's fp_frames from non false-positive tracks
+        self.filter_by_fp = filter_by_fp
         self.dataset_dir = Path(dataset_dir)
         self.consecutive_segments = consecutive_segments
         self.label_mapping = label_mapping
@@ -217,6 +220,7 @@ class Dataset:
             max_segments=self.max_segments,
             country_rectangle=self.country_rectangle,
             use_yolo=self.use_yolo,
+            filter_by_fp=self.filter_by_fp,
             min_frame_mass=self.min_frame_mass,
             max_frame_mass=self.max_frame_mass,
             filter_by_lq=self.filter_by_lq,
@@ -319,6 +323,7 @@ class Dataset:
                     dont_filter=dont_filter_segment,
                     skip_ffc=self.skip_ffc,
                     ffc_frames=clip_header.ffc_frames,
+                    filter_by_fp=self.filter_by_fp,
                     rng=rng,
                     inference=False,
                 )
@@ -731,6 +736,7 @@ def load_clip_multi(
     max_segments=None,
     country_rectangle=None,
     use_yolo=False,
+    filter_by_fp=True,
     min_frame_mass=None,
     max_frame_mass=None,
     filter_by_lq=False,
@@ -792,6 +798,7 @@ def load_clip_multi(
                 dont_filter=dont_filter_segment,
                 skip_ffc=skip_ffc,
                 ffc_frames=clip_header.ffc_frames,
+                filter_by_fp=filter_by_fp,
                 rng=rng,
                 min_frames=min_frames,
                 inference=False,
