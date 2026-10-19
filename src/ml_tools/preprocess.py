@@ -291,6 +291,15 @@ def preprocess_frame_v2(
     )
 
     # calculate averages of background
+    # GP the border is the outer 2 pixels of the content, which assumes there is a
+    # margin around the region. At inference (out_dim == original_dim) no margin is
+    # added, so this relies on the region already having some space around the animal,
+    # which most tracker regions do. Tight regions (e.g. yolo boxes) can have the border
+    # on the animal, giving a high filtered threshold (animal smeared into the padding,
+    # or the filtered_thresh < 1 assert in repeat_border).
+    # Could be changed to always take an extra 2 pixels each side (out_dim + 4, even
+    # at inference), sample the border from that ring then crop it off before returning.
+    # This changes the area normalize and CLAHE see so inference inputs change slightly
     thermal_border = content_region.get_border(cropped_frame.thermal, 2, crop_rectangle)
     filtered_border = content_region.get_border(
         cropped_frame.filtered, 2, crop_rectangle
