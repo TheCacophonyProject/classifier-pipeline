@@ -10,7 +10,7 @@ import json
 import time
 from collections import defaultdict
 
-VERSION = "0.1"
+VERSION = "0.2"
 # cumulative seconds spent in each stage of the main process
 timings = defaultdict(float)
 log_every = 20
@@ -121,6 +121,7 @@ def evaluate_dir(model_path, dir, device, batch_size, workers):
                     yolo_preditions.append(boxes)
             metadata["yolo_bb"] = yolo_preditions
             metadata["yolo_version"] = VERSION
+            metadata["yolo_tta"] = False
             # json.dump is pure python and slow, keep it off the gpu loop
             writes.append(
                 pool.apply_async(save_metadata, (cptv_file, metadata_file, metadata))
@@ -185,7 +186,8 @@ def load_clip(cptv_file):
         clip_db = RawDatabase(cptv_file)
         # tracks = meta_data.get("Tracks", [])
         metadata = clip_db.meta_data
-        if "yolo_bb" in metadata and metadata.get("yolo_version") == VERSION:
+        if "yolo_bb" in metadata:
+            # and metadata.get("yolo_version") == VERSION:
             return
         clip = clip_db.get_clip_tracks(BuildConfig.DEFAULT_GROUPS)
         if clip is None:
@@ -238,7 +240,7 @@ class Yolo:
         if run_over_network or not load_model:
             return
         self.load_model()
-        self.tta = True
+        self.tta = False
         self.imgsz = 320
         self.tiles = False
         self.iou = 0.55
