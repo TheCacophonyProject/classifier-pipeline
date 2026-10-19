@@ -92,7 +92,9 @@ def main(config):
     frame_queue = Queue()
     # dbus ParseFile callback in the classifier process sends the file name here
     parse_recv, parse_send = Pipe(duplex=False)
-    processor = get_processor(frame_queue, parse_send)
+    processor = get_processor(
+        frame_queue, parse_send, thermal_config.base_motion.run_classifier
+    )
     processor.start()
 
     if TEST:
@@ -187,10 +189,10 @@ def handle_headers(connection):
     return HeaderInfo.parse_header(header_s), left_over
 
 
-def get_processor(process_queue, parse_send):
+def get_processor(process_queue, parse_send, classify):
     p_processor = Process(
         target=run_classifier,
-        args=(process_queue, parse_send),
+        args=(process_queue, parse_send, classify),
     )
     return p_processor
 
@@ -711,27 +713,44 @@ def make_parse_file_callback(parse_send):
     return parse_file
 
 
-def run_classifier(frame_queue, parse_send):
+def start_dbus_service(headers, parse_send):
+    from piclassifier.service import DbusService
 
-    global predicting_track_id
-    run_classifier_start = time.time()
-    if PROCESS_LOAD:
-        # this needs ot be killed
-        classifier_process = run_classifier_process()
-        load_model(over_network=True)
-    else:
-        load_model(over_network=False)
-    logging.info(
-        "Model load kicked off after %.2fs (THREAD_LOAD=%s)",
-        time.time() - run_classifier_start,
-        PROCESS_LOAD,
+    # classifier is None when running with classify=False
+    labels = {classifier.id: classifier.labels} if classifier is not None else {}
+    return DbusService(
+        headers,
+        None,
+        labels,
+        None,
+        None,
+        make_parse_file_callback(parse_send),
+        lambda: None,
+        lambda: True,
+        classifier is not None,
     )
 
-    from piclassifier.motiondetector import RunningMean
-    from concurrent.futures import ThreadPoolExecutor
 
-    global classify_executor
-    classify_executor = ThreadPoolExecutor(max_workers=1)
+def run_classifier(frame_queue, parse_send, classify):
+
+    global predicting_track_id
+    classifier_process = None
+    if classify:
+        run_classifier_start = time.time()
+        if PROCESS_LOAD:
+            classifier_process = run_classifier_process()
+        load_model(over_network=PROCESS_LOAD)
+
+        logging.info(
+            "Model load kicked off after %.2fs (THREAD_LOAD=%s)",
+            time.time() - run_classifier_start,
+            PROCESS_LOAD,
+        )
+        from concurrent.futures import ThreadPoolExecutor
+
+        global classify_executor
+        classify_executor = ThreadPoolExecutor(max_workers=1)
+    from piclassifier.motiondetector import RunningMean
 
     headers = {}
     frame_i = 0
@@ -747,7 +766,7 @@ def run_classifier(frame_queue, parse_send):
             running_mean = None
 
             if len(tracking_events) > 0:
-                from piclassifier.eventreporter import log_event
+                # from piclassifier.eventreporter import log_event
 
                 # logging.info("Logging tracking events")
                 # for tracking_event in tracking_events:
@@ -791,20 +810,10 @@ def run_classifier(frame_queue, parse_send):
                     import requests
 
                     imported_requests = True
-                    if dbus_service is None:
-                        from piclassifier.service import DbusService
-
-                        dbus_service = DbusService(
-                            headers,
-                            None,
-                            {classifier.id: classifier.labels},
-                            None,
-                            None,
-                            make_parse_file_callback(parse_send),
-                            lambda: None,
-                            lambda: True,
-                            True,
-                        )
+                    if dbus_service is None and (
+                        not classify or classifier is not None
+                    ):
+                        dbus_service = start_dbus_service(headers, parse_send)
                     continue
 
                 if isinstance(message, str):
@@ -885,31 +894,19 @@ def run_classifier(frame_queue, parse_send):
                     for t in new_tracks:
                         t.received_at = time_sent
 
-                    if dbus_service is None and classifier is not None:
+                    if dbus_service is None and (
+                        not classify or classifier is not None
+                    ):
                         try:
-                            from piclassifier.service import DbusService
-
-                            dbus_service = DbusService(
-                                headers,
-                                None,
-                                {classifier.id: classifier.labels},
-                                None,
-                                None,
-                                make_parse_file_callback(parse_send),
-                                lambda: None,
-                                lambda: True,
-                                True,
-                            )
-                            dbus_service.recording(time.time(), True)
-                            rec_sent = True
+                            dbus_service = start_dbus_service(headers, parse_send)
+                            rec_sent = dbus_service.recording(time.time(), True)
                         except:
                             logging.error(
                                 "Couldnt load dbus will try again ", exc_info=True
                             )
                     elif not rec_sent:
                         try:
-                            dbus_service.recording(time.time(), True)
-                            rec_sent = True
+                            rec_sent = dbus_service.recording(time.time(), True)
                         except:
                             pass
                     frame_i += 1
@@ -956,11 +953,11 @@ def run_classifier(frame_queue, parse_send):
                                 classifier.id,
                                 track.received_at,
                             )
-                    if predicting_track_id is None:
+                    if classify and predicting_track_id is None:
                         submit_prediction(clip, monitored_tracks, tracking_events)
     except:
         logging.error("Error running classifier restarting ..", exc_info=True)
-        if PROCESS_LOAD:
+        if classify and PROCESS_LOAD:
             from piclassifier.utils import kill_process_with_timeout
 
             kill_process_with_timeout(classifier_process)

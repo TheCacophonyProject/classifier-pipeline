@@ -313,6 +313,9 @@ class DbusService:
             target=self.run_server,
         )
         self.started = False
+        # set once the Service is exported on the bus, emitting signals before
+        # this raises AttributeError as dbus.service.Object isn't initialised
+        self.registered = False
         self.t.daemon = True
         self.t.start()
 
@@ -336,7 +339,12 @@ class DbusService:
 
     def quit(self):
         self.loop.quit()
+        self.registered = False
         self.service = None
+
+    @property
+    def ready(self):
+        return self.registered and self.service is not None
 
     def run_server(
         self,
@@ -347,6 +355,7 @@ class DbusService:
             session_bus = dbus.SystemBus(mainloop=DBusGMainLoop())
             name = dbus.service.BusName(DBUS_NAME, session_bus)
             self.service.start_service(session_bus)
+            self.registered = True
             self.started = True
             self.loop.run()
         except:
@@ -371,7 +380,7 @@ class DbusService:
             track_prediction.description(),
             track.id,
         )
-        if self.service is None:
+        if not self.ready:
             return
         if (
             track_prediction is not None
@@ -415,12 +424,13 @@ class DbusService:
             )
 
     def track_filtered(self, clip_id, track_id):
-        if self.service is None:
+        if not self.ready:
             return
         self.service.TrackFiltered(clip_id, track_id)
 
     def recording(self, epoch_time, is_recording):
-        if self.service is None:
-            return
+        if not self.ready:
+            return False
         # convert to ms
         self.service.Recording(dbus.Int64(int(epoch_time * 1000)), is_recording)
+        return True
