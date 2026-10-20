@@ -382,7 +382,9 @@ def load_dataset(filenames, remap_lookup, labels, args):
             lambda x, y: (tile_input(x, USE_VELOCITY, multi_input), y),
             num_parallel_calls=tf.data.AUTOTUNE,
         )
-    if augment:
+    # dropping channel 0 only helps if the other channels aren't just more thermal
+    visual_channels = [TrackChannels.filtered.name, TrackChannels.thermal_norm.name]
+    if augment and any(c in visual_channels for c in channels):
         dataset = dataset.map(
             lambda x, y: sensor_dropout_augmentation(x, y, multi_input),
             num_parallel_calls=tf.data.AUTOTUNE,
@@ -1237,11 +1239,15 @@ def main():
     labels = meta.get("labels", [])
     pads = meta.get("background_average")
     from ml_tools.thermalwriter import MeanData
-    
-    channels =config.train.hyper_params.get("channels")
+
+    channels = config.train.hyper_params.get("channels")
     if channels is None:
-        channels = [TrackChannels.thermal_fixed.name,TrackChannels.thermal_norm.name,TrackChannels.filtered.name]
-    print("Channels are ",channels)
+        channels = [
+            TrackChannels.thermal_fixed.name,
+            TrackChannels.thermal_norm.name,
+            TrackChannels.filtered.name,
+        ]
+    print("Channels are ", channels)
     if pads is None:
         pads = MeanData()
     else:
