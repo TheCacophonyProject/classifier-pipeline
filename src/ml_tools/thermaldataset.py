@@ -1237,7 +1237,11 @@ def main():
     labels = meta.get("labels", [])
     pads = meta.get("background_average")
     from ml_tools.thermalwriter import MeanData
-
+    
+    channels =config.train.hyper_params.get("channels")
+    if channels is None:
+        channels = [TrackChannels.thermal_fixed.name,TrackChannels.thermal_norm.name,TrackChannels.filtered.name]
+    print("Channels are ",channels)
     if pads is None:
         pads = MeanData()
     else:
@@ -1296,6 +1300,7 @@ def main():
             0, dtype=tf.int32, trainable=False, name="current_epoch"
         ),
         multi_input=False,
+        channels=channels,
     )
     print("Epoch size is", epoch_size)
     # print(get_distribution(resampled_ds, len(labels), extra_meta=False))
@@ -1318,8 +1323,8 @@ save_index = 0
 
 def save_batch(image_batch, label_batch, labels, save_dir, tracks=False):
     global save_index
-    masks = image_batch["input_mask"]
-    image_batch = image_batch["input_image"]
+    # masks = image_batch["input_mask"]
+    # image_batch = image_batch["input_image"]
 
     # for m in masks:
     # print("masks are ",m[0].shape,m.shape,m[1].shape)
