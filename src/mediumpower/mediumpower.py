@@ -89,13 +89,19 @@ def run_cmd(cmd):
 def main(config):
     logging.info("Medium Power started")
     global connected
-    frame_queue = Queue()
     # dbus ParseFile callback in the classifier process sends the file name here
     parse_recv, parse_send = Pipe(duplex=False)
-    processor = get_processor(
-        frame_queue, parse_send, thermal_config.base_motion.run_classifier
-    )
-    processor.start()
+    # frames are only queued for tracking/classifying when run_classifier is set,
+    # otherwise recordings are just written to disk
+    frame_queue = None
+    processor = None
+    if config.base_motion.run_classifier:
+        frame_queue = Queue()
+
+        processor = get_processor(
+            frame_queue, parse_send, config.base_motion.run_classifier
+        )
+        processor.start()
 
     if TEST:
         print("Parsing test.cptv")
@@ -129,7 +135,6 @@ def main(config):
             keep_running, post_process = medium_power(
                 connection,
                 frame_queue,
-                processor,
                 config,
                 post_process,
                 parse_recv,
@@ -148,8 +153,9 @@ def main(config):
                 pass
         connected = False
         start = time.time()
-    frame_queue.put(STOP_SIGNAL)
-    processor.join()
+    if processor is not None:
+        frame_queue.put(STOP_SIGNAL)
+        processor.join()
     if post_process is not None and post_process.is_alive():
         from piclassifier.utils import kill_process_with_timeout
 
@@ -213,7 +219,7 @@ def ask_to_stay_on(duration=5):
     return False
 
 
-def medium_power(connection, frame_queue, processor, config, post_process, parse_recv):
+def medium_power(connection, frame_queue, config, post_process, parse_recv):
     from cptv_rs_python_bindings import CptvStreamReader
     import zlib
     from cptv import Frame
@@ -305,7 +311,8 @@ def medium_power(connection, frame_queue, processor, config, post_process, parse
         # write header and cptv file seperately and then concat later
         # this way can write header with total frames and min max value
         writer = CPTVWriter(formatted_time, config.base_motion.postprocess)
-        frame_queue.put((timestamp / 1e6, str(writer.filebase)))
+        if frame_queue is not None:
+            frame_queue.put((timestamp / 1e6, str(writer.filebase)))
 
         byte_data = b""
         if extra_b is not None:
@@ -317,7 +324,8 @@ def medium_power(connection, frame_queue, processor, config, post_process, parse
         while not finished:
             if parse_recv.poll():
                 logging.info("Parse file requested, stopping current recording")
-                frame_queue.put(CLEAR_SIGNAL)
+                if frame_queue is not None:
+                    frame_queue.put(CLEAR_SIGNAL)
                 writer.combine_file(
                     headers, config, timestamp, min_value, max_value, frame_i
                 )
@@ -349,7 +357,8 @@ def medium_power(connection, frame_queue, processor, config, post_process, parse
                 writer.write(byte_data)
             elif byte_data.find(b"abort") > -1:
                 logging.info("Received abort signal")
-                frame_queue.put(ABORT_SIGNAL)
+                if frame_queue is not None:
+                    frame_queue.put(ABORT_SIGNAL)
                 writer.remove()
                 break
             else:
@@ -372,7 +381,8 @@ def medium_power(connection, frame_queue, processor, config, post_process, parse
                 # if this happens log it and then get the file from rp2040
                 logging.error("Error decompressing ", exc_info=True)
                 # classifier needs to end this clip before the next header arrives
-                frame_queue.put(ABORT_SIGNAL)
+                if frame_queue is not None:
+                    frame_queue.put(ABORT_SIGNAL)
                 return True, post_process
                 # time.sleep(1)
                 # continue
@@ -407,7 +417,8 @@ def medium_power(connection, frame_queue, processor, config, post_process, parse
                     if max_value is None or max_value > frame_max:
                         max_value = frame_max
 
-                    frame_queue.put((py_frame, time.time()))
+                    if frame_queue is not None:
+                        frame_queue.put((py_frame, time.time()))
                     frame_i += 1
 
                 else:
@@ -419,7 +430,8 @@ def medium_power(connection, frame_queue, processor, config, post_process, parse
         if finished:
             # only clear once every frame from the final chunk has been queued, otherwise
             # the classifier takes those frames as the start of the next clip
-            frame_queue.put(CLEAR_SIGNAL)
+            if frame_queue is not None:
+                frame_queue.put(CLEAR_SIGNAL)
             writer.combine_file(
                 headers, config, timestamp, min_value, max_value, frame_i
             )
@@ -735,8 +747,9 @@ def run_classifier(frame_queue, parse_send, classify):
 
     global predicting_track_id
     classifier_process = None
+    run_classifier_start = time.time()
+
     if classify:
-        run_classifier_start = time.time()
         if PROCESS_LOAD:
             classifier_process = run_classifier_process()
         load_model(over_network=PROCESS_LOAD)
