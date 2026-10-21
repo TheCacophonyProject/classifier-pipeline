@@ -146,7 +146,7 @@ class Interpreter(ABC):
         for y in dataset.map(
             lambda _, y: y,
             num_parallel_calls=tf.data.AUTOTUNE,
-    ):
+        ):
             true_categories.extend(y[0].numpy())
             # dataset_y[0]
             track_ids.extend(y[1].numpy())
