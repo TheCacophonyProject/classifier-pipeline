@@ -96,6 +96,11 @@ def parse_args():
         help="Defaults to number of cores",
     )
     parser.add_argument("--save-master-only", help="Save master only")
+    parser.add_argument(
+        "--test-only",
+        action="store_true",
+        help="Only write the test set records, keeping the existing train / validation records and meta",
+    )
 
     args = parser.parse_args()
     if args.save_master_only is not None:
@@ -398,7 +403,9 @@ def get_test_set_camera(dataset, test_clips, after_date):
     return test_samples
 
 
-def split_by_file(dataset, config, split_file, base_dir, make_val=False, seed=None):
+def split_by_file(
+    dataset, config, split_file, base_dir, make_val=False, seed=None, load_only=None
+):
     base_dir = Path(base_dir)
     with open(split_file, "r") as f:
         split = json.load(f)
@@ -426,6 +433,9 @@ def split_by_file(dataset, config, split_file, base_dir, make_val=False, seed=No
         elif name == "test":
             split_dataset.skip_ffc = False
         split_files = split.get(name, [])
+        if load_only is not None and name not in load_only:
+            # still return an empty dataset so the train, validation, test order is kept
+            split_files = []
         for f in split_files:
             # print("loading", base_dir / f["source"])
             # continue
@@ -848,11 +858,32 @@ def main():
     record_dir = base_dir / "training-data"
     record_dir.mkdir(parents=True, exist_ok=True)
 
+    meta_filename = record_dir / "training-meta.json"
+    existing_meta = None
+    if args.test_only:
+        if meta_filename.exists():
+            with meta_filename.open("r") as f:
+                existing_meta = json.load(f)
+        else:
+            logging.warning(
+                "No existing %s, meta will only describe the test set", meta_filename
+            )
+
     if args.split_file:
         logging.info("Loading datasets from split file %s", args.split_file)
-        datasets = split_by_file(
-            master_dataset, config, args.split_file, args.data_dir, args.seed
-        )
+        if args.test_only:
+            datasets = split_by_file(
+                master_dataset,
+                config,
+                args.split_file,
+                args.data_dir,
+                seed=args.seed,
+                load_only=["test"],
+            )
+        else:
+            datasets = split_by_file(
+                master_dataset, config, args.split_file, args.data_dir, seed=args.seed
+            )
         labels = set()
         for dataset in datasets:
             labels.update(dataset.labels)
@@ -895,11 +926,20 @@ def main():
             datasets = split_randomly(master_dataset, config, args.date, test_clips)
             rough_balance(datasets)
         validate_datasets(datasets, test_clips, args.date)
-        dump_split_ids(
-            datasets,
-            args.seed,
-            record_dir / "datasplit.json",
-        )
+        if args.test_only:
+            # dont overwrite the split the existing train / validation records came from
+            logging.warning(
+                "Building test set from a new split, it may overlap the existing train / validation records"
+            )
+            split_file = record_dir / "datasplit-test.json"
+        else:
+            split_file = record_dir / "datasplit.json"
+        dump_split_ids(datasets, args.seed, split_file)
+    if existing_meta is not None:
+        # label indexes in the records must match the existing train / validation records
+        logging.info("Using labels from %s", meta_filename)
+        for dataset in datasets:
+            dataset.labels = list(existing_meta["labels"])
     if not args.save_master_only:
         print_counts(*datasets)
     print("split data")
@@ -988,6 +1028,8 @@ def main():
     meta_data["dataset_backgrounds"] = {}
 
     for dataset in datasets:
+        if args.test_only and dataset.name != "test":
+            continue
         dir = os.path.join(record_dir, dataset.name)
         # dont filter the test set,
         extra_args["filter_by_fp"] = (
@@ -1017,8 +1059,14 @@ def main():
         )
     logging.info("Averages for total dataset is %s ", border_sum)
     meta_data["background_average"] = border_sum.to_dict()
+    if existing_meta is not None:
+        # only update the test entries, background_average is used for training
+        existing_meta.setdefault("counts", {})["test"] = meta_data["counts"]["test"]
+        existing_meta.setdefault("dataset_backgrounds", {})["test"] = meta_data[
+            "dataset_backgrounds"
+        ]["test"]
+        meta_data = existing_meta
     # dont need dataset anymore just need some meta
-    meta_filename = f"{record_dir}/training-meta.json"
 
     with open(meta_filename, "w") as f:
         json.dump(meta_data, f, indent=4, cls=CustomJSONEncoder)
