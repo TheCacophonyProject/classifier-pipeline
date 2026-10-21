@@ -41,7 +41,10 @@ def wide_resnet_backbone(inputs, depth=16, k=2):
 
     # Block Groups at stride 1, 2, 2 -> 4x total downsampling
     # e.g. 160x160 -> 160x160 -> 80x80 -> 40x40 so each 32x32 tile becomes 8x8
-    for filters, stride in [(16 * k, 1), (32 * k, 2), (64 * k, 2)]:
+    # wide models are too expensive at full resolution so stride 2, 2, 2 -> 8x
+    # e.g. 160x160 -> 80x80 -> 40x40 -> 20x20 so each 32x32 tile becomes 4x4
+    first_stride = 2 if k >= 8 else 1
+    for filters, stride in [(16 * k, first_stride), (32 * k, 2), (64 * k, 2)]:
         for b in range(n):
             x = wrn_block(x, filters, stride if b == 0 else 1)
 
