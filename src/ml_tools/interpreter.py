@@ -129,6 +129,19 @@ class Interpreter(ABC):
             self.pads = self.pads * 255
         logging.info("Pads are %s", self.pads)
 
+    def thresholds_by_label(self, thresholds_per_label, default_thresh=0.8):
+        """
+        thresholds_per_label is a dict of label -> threshold, returns them as an array in
+        self.labels order. Missing labels are default_thresh (0.8) which is treated as no threshold calculated
+        """
+        missing = [l for l in self.labels if l not in thresholds_per_label]
+        if len(missing) > 0:
+            logging.warning("No thresholds for labels %s", missing)
+        return np.array(
+            [thresholds_per_label.get(l, default_thresh) for l in self.labels],
+            dtype=np.float32,
+        )
+
     def confusion_tracks(
         self, dataset, filename, threshold=0.8, thresholds_per_label=None
     ):
@@ -203,7 +216,7 @@ class Interpreter(ABC):
 
         to_run = []
         if thresholds_per_label is not None:
-            raw_thresholds = np.array(thresholds_per_label, dtype=np.float32)
+            raw_thresholds = self.thresholds_by_label(thresholds_per_label)
             # 0 means the label had no samples to calculate a threshold from
             raw_thresholds[raw_thresholds == 0] = 0.8
             capped_thresholds = np.clip(raw_thresholds, 0.5, 0.8)
@@ -412,7 +425,7 @@ class Interpreter(ABC):
             np.save(f, raw_class_confidences)
             np.save(f, len(pred_per_track))
         if thresholds_per_label is not None:
-            raw_thresholds = np.array(thresholds_per_label, dtype=np.float32)
+            raw_thresholds = self.thresholds_by_label(thresholds_per_label)
             # 0 means the label had no samples to calculate a threshold from
             raw_thresholds[raw_thresholds == 0] = 0.8
             capped_thresholds = np.clip(raw_thresholds, 0.5, 0.8)

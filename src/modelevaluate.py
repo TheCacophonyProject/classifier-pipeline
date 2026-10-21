@@ -1109,10 +1109,7 @@ def main():
                         meta_file,
                         original_thresholds,
                     )
-                    # confusion_tracks wants them in model.labels order
-                    thresholds = np.array(
-                        [original_thresholds[l] for l in model.labels]
-                    )
+                    thresholds = original_thresholds
             if thresholds is None:
                 logging.info("Loading val files to get best thresholds")
                 files = base_dir / "validation"
@@ -1192,6 +1189,8 @@ def main():
                 with threshold_out.open("w") as f:
                     json.dump(thresh_dict, f)
                 model_meta["original_thresholds"] = thresh_dict
+                # confusion_tracks orders these by model.labels
+                thresholds = thresh_dict
                 logging.info("Saving original_thresholds to %s", meta_file)
                 with meta_file.open("w") as f:
                     json.dump(model_meta, f, indent=4)
