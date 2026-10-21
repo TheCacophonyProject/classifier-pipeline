@@ -301,13 +301,15 @@ def load_dataset(filenames, remap_lookup, labels, args):
 
     dataset = dataset.filter(filter_nan)
 
-    logging.info("Filtering tracks that have been considered misclassified by umap")
-    excluded_tracks_table = load_excluded_tracks()
-    if excluded_tracks_table is not None:
-        filter_bad_tracks = lambda x, y: tf.math.logical_not(
-            tf.cast(excluded_tracks_table.lookup(y["label"][1]), tf.bool)
-        )
-        dataset = dataset.filter(filter_bad_tracks)
+    # off for the test set so it isn't filtered by the training exclusions
+    if args.get("filter_excluded_tracks", True):
+        logging.info("Filtering tracks that have been considered misclassified by umap")
+        excluded_tracks_table = load_excluded_tracks()
+        if excluded_tracks_table is not None:
+            filter_bad_tracks = lambda x, y: tf.math.logical_not(
+                tf.cast(excluded_tracks_table.lookup(y["label"][1]), tf.bool)
+            )
+            dataset = dataset.filter(filter_bad_tracks)
     if not args.get("include_track", False):
         dataset = dataset.map(
             lambda x, y: (x, {"label": y["label"][0], "num_frames": y["num_frames"]}),

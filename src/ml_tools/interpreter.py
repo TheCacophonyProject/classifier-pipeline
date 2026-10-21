@@ -136,6 +136,133 @@ class Interpreter(ABC):
         import matplotlib.pyplot as plt
 
         import tensorflow as tf
+        from classify.trackprediction import TrackPrediction, most_specific_tag
+
+        logging.info(
+            "Calculating confusion with threshold %s saving to %s", threshold, filename
+        )
+        true_categories = []
+        track_ids = []
+        for y in dataset.map(
+            lambda _, y: y,
+            num_parallel_calls=tf.data.AUTOTUNE,
+        ):
+            true_categories.extend(y[0].numpy())
+            # dataset_y[0]
+            track_ids.extend(y[1].numpy())
+        if len(true_categories) > 1:
+            if self.params.multi_label:
+                # multi = []
+                # for y in true_categories:
+                # multi.append(tf.where(y).numpy().ravel())
+                # print(y, tf.where(y))
+                # true_categories = np.int64(true_categories)
+                pass
+            else:
+                true_categories = np.int64(tf.argmax(true_categories, axis=1))
+        if LiteInterpreter.TYPE == "TFLite":
+            y_pred = []
+            for x in dataset.map(
+                lambda x, _: x,
+                num_parallel_calls=tf.data.AUTOTUNE,
+            ):
+                res = self.predict(x)
+                y_pred.extend(res)
+            y_pred = np.array(y_pred)
+        else:
+            y_pred = self.model.predict(
+                dataset.map(
+                    lambda x, _: x,
+                    num_parallel_calls=tf.data.AUTOTUNE,
+                )
+            )
+        pred_per_track = {}
+        # if self.params.multi_label:
+        # predicted_categori/es = []
+        # for p in y_pred:
+        # predicted_categories.append(tf.where(p >= 0.8).numpy().ravel())
+        # predicted_categories = np.int64(predicted_categories)
+        for y, track_id, p in zip(true_categories, track_ids, y_pred):
+            # if self.params.multi_label:
+            #     y_max = np.argmax(y)
+            # else:
+            #     y_max = y
+            track_pred = pred_per_track.setdefault(
+                track_id,
+                (
+                    np.nonzero(y)[0],
+                    TrackPrediction(
+                        track_id,
+                        self.labels,
+                        multi_label=True,
+                        parent_mappings=self.parent_mappings,
+                    ),
+                ),
+            )
+            track_pred[1].classified_frame(None, p, 0)
+
+        to_run = []
+        if thresholds_per_label is not None:
+            raw_thresholds = np.array(thresholds_per_label, dtype=np.float32)
+            # 0 means the label had no samples to calculate a threshold from
+            raw_thresholds[raw_thresholds == 0] = 0.8
+            capped_thresholds = np.clip(raw_thresholds, 0.5, 0.8)
+            to_run.append(("fscore-capped", capped_thresholds))
+            to_run.append(("fscore-raw", raw_thresholds))
+        to_run.append(
+            (f"{round(100*threshold)}%", np.full(len(self.labels), threshold))
+        )
+
+        for name, label_thresholds in to_run:
+            logging.info("Using %s thresholds %s", name, label_thresholds)
+            flat_y = []
+            tags = []
+            for y_true, track_pred in pred_per_track.values():
+                # predicted_tags only accepts a list or dict
+                track_pred.thresholds_per_label = label_thresholds.tolist()
+                tag = track_pred.predicted_tags(
+                    group_by_parents=True, fallback_to_most_confident=False
+                )
+                # group_by_parents gives a single tag or nothing
+                tag = tag[0] if len(tag) > 0 else "None"
+                # reduce multiple true labels the same way i.e. bird and chicken is chicken
+                true_tag = most_specific_tag(self.labels, y_true, self.parent_mappings)
+                flat_y.append(true_tag if true_tag is not None else "None")
+                tags.append(tag)
+
+            # tags that aren't a model label i.e. a common parent such as "mammal"
+            # get their own entry before "None"
+            parent_tags = sorted(
+                set(t for t in flat_y + tags if t != "None" and t not in self.labels)
+            )
+            if len(parent_tags) > 0:
+                logging.info("Parent tags for %s: %s", name, parent_tags)
+            labels = self.labels + parent_tags + ["None"]
+            flat_y = [labels.index(t) for t in flat_y]
+            results = [labels.index(t) for t in tags]
+            totals_row = np.zeros(len(labels))
+            for y in flat_y:
+                totals_row[y] += 1
+            cm = confusion_matrix(flat_y, results, labels=np.arange(len(labels)))
+            # Log the confusion matrix as an image summary.
+            figure = plot_confusion_matrix(
+                cm, class_names=labels, totals_row=totals_row
+            )
+            out_file = filename.parent / f"{filename.stem}-{name}"
+            plt.savefig(out_file.with_suffix(".png"), format="png")
+            np.savez(
+                out_file.with_suffix(".npz"),
+                cm=np.vstack((cm, totals_row)),
+                labels=labels,
+            )
+
+    def confusion_tracks_old(
+        self, dataset, filename, threshold=0.8, thresholds_per_label=None
+    ):
+        from sklearn.metrics import confusion_matrix
+        import matplotlib.pyplot as plt
+
+        import tensorflow as tf
         from classify.trackprediction import TrackPrediction
 
         logging.info(
@@ -189,7 +316,11 @@ class Interpreter(ABC):
             # else:
             #     y_max = y
             track_pred = pred_per_track.setdefault(
-                track_id, (np.nonzero(y)[0], TrackPrediction(track_id, self.labels))
+                track_id,
+                (
+                    np.nonzero(y)[0],
+                    TrackPrediction(track_id, self.labels, multi_label=True),
+                ),
             )
             track_pred[1].classified_frame(None, p, 0)
         flat_y = []
@@ -201,6 +332,7 @@ class Interpreter(ABC):
         totals_row = np.zeros(len(labels))
 
         for y_true, pred in pred_per_track.values():
+
             preds = np.array([p.prediction for p in pred.predictions])
             # if we do multi label we may of multiple y_true and preds
             # otherwise this will calculate the same as before
@@ -280,27 +412,35 @@ class Interpreter(ABC):
             np.save(f, raw_class_confidences)
             np.save(f, len(pred_per_track))
         if thresholds_per_label is not None:
-            thresholds_per_label = np.array(thresholds_per_label)
-            thresholds_per_label[thresholds_per_label < 0.5] = 0.5
-
-            preds = results.copy()
-            for i, lbl_thresh in enumerate(thresholds_per_label):
-                pred_mask = preds == i
-                # set these to None
-                conf_mask = confidences < lbl_thresh
-                preds[pred_mask & conf_mask] = len(labels) - 1
-            cm = confusion_matrix(true_categories, preds, labels=np.arange(len(labels)))
-            # Log the confusion matrix as an image summary.
-            figure = plot_confusion_matrix(
-                cm, class_names=labels, totals_row=totals_row
-            )
-            fscore_file = filename.parent / f"{filename.stem}-fscore"
-            plt.savefig(fscore_file.with_suffix(".png"), format="png")
-            np.savez(
-                fscore_file.with_suffix(".npz"),
-                cm=np.vstack((cm, totals_row)),
-                labels=labels,
-            )
+            raw_thresholds = np.array(thresholds_per_label, dtype=np.float32)
+            # 0 means the label had no samples to calculate a threshold from
+            raw_thresholds[raw_thresholds == 0] = 0.8
+            capped_thresholds = np.clip(raw_thresholds, 0.5, 0.8)
+            for name, label_thresholds in [
+                ("capped", capped_thresholds),
+                ("raw", raw_thresholds),
+            ]:
+                logging.info("Using %s thresholds %s", name, label_thresholds)
+                preds = results.copy()
+                for i, lbl_thresh in enumerate(label_thresholds):
+                    pred_mask = preds == i
+                    # set these to None
+                    conf_mask = confidences < lbl_thresh
+                    preds[pred_mask & conf_mask] = len(labels) - 1
+                cm = confusion_matrix(
+                    true_categories, preds, labels=np.arange(len(labels))
+                )
+                # Log the confusion matrix as an image summary.
+                figure = plot_confusion_matrix(
+                    cm, class_names=labels, totals_row=totals_row
+                )
+                fscore_file = filename.parent / f"{filename.stem}-fscore-{name}"
+                plt.savefig(fscore_file.with_suffix(".png"), format="png")
+                np.savez(
+                    fscore_file.with_suffix(".npz"),
+                    cm=np.vstack((cm, totals_row)),
+                    labels=labels,
+                )
 
         preds = results.copy()
 

@@ -566,6 +566,15 @@ class KerasModel(Interpreter):
             self.model.save(
                 str(self.checkpoint_folder / run_name / f"{run_name}.keras")
             )
+        # only after training, save is also called before training starts
+        thresholds = None
+        if history is not None:
+            try:
+                thresholds = self.save_val_thresholds(
+                    run_name, multi_input=multi_input, enlarge=enlarge
+                )
+            except:
+                logging.error("Could not calculate val thresholds", exc_info=True)
         self.save_metadata(
             run_name,
             history,
@@ -574,7 +583,68 @@ class KerasModel(Interpreter):
             fine_tune,
             multi_input=multi_input,
             enlarge=enlarge,
+            thresholds=thresholds,
         )
+
+    def save_val_thresholds(self, run_name, multi_input=False, enlarge=True):
+        """
+        Best per label thresholds on the validation set, same as modelevaluate.py
+        writes {run_name}-val-thresholds.json and the precision recall plots to the run dir
+        """
+
+        from modelevaluate import (
+            best_threshold_for_ds,
+            has_activation,
+            add_sigmoid_output,
+        )
+
+        run_dir = self.checkpoint_folder / run_name
+        val_dataset, _ = get_dataset(
+            self.data_dir / "validation",
+            self.data_type,
+            self.labels,
+            batch_size=64,
+            image_size=self.params.output_dim[:2],
+            preprocess_fn=self.preprocess_fn,
+            augment=False,
+            resample=False,
+            include_features=self.params.mvm,
+            one_hot=True,
+            deterministic=True,
+            shuffle=False,
+            excluded_labels=self.excluded_labels,
+            remapped_labels=self.remapped_labels,
+            multi_label=self.params.multi_label,
+            include_track=True,
+            channels=self.params.channels,
+            num_frames=self.params.square_width**2,
+            pads=self.pads,
+            thermal_norm=self.params.thermal_norm,
+            thermal_format=self.thermal_format,
+            tf_mappings=getattr(self, "tf_mappings", None),
+            multi_input=multi_input,
+            enlarge=enlarge,
+        )
+        # thresholds are on probabilities, models trained on logits need a sigmoid
+        model = self.model
+        if not has_activation(model):
+            model = add_sigmoid_output(model)
+
+        plots_dir = run_dir / "val-thresholds"
+        plots_dir.mkdir(parents=True, exist_ok=True)
+        thresholds = best_threshold_for_ds(
+            model,
+            self.labels,
+            val_dataset,
+            plots_dir / f"{run_name}-thresholds",
+        )
+        thresh_dict = {
+            label: float(thresh) for label, thresh in zip(self.labels, thresholds)
+        }
+        logging.info("Writing best val thresholds %s", thresh_dict)
+        with (run_dir / f"{run_name}-val-thresholds.json").open("w") as f:
+            json.dump(thresh_dict, f, indent=4)
+        return thresh_dict
 
     def save_metadata(
         self,
@@ -585,6 +655,7 @@ class KerasModel(Interpreter):
         fine_tune=None,
         multi_input=False,
         enlarge=True,
+        thresholds=None,
     ):
         #  save metadata
         if run_name is None:
@@ -614,6 +685,10 @@ class KerasModel(Interpreter):
         if rebalance:
             model_stats["rebalance"] = rebalance
         model_stats["pads"] = self.pads.to_dict()
+        if thresholds is not None:
+            # best val thresholds by label, not used by the interpreter which reads
+            # "thresholds"
+            model_stats["original_thresholds"] = thresholds
         if history:
             json_history = {}
             for key, item in history.items():
@@ -701,6 +776,8 @@ class KerasModel(Interpreter):
         self.labels, tf_mappings = apply_label_mapping(
             self.labels, self.excluded_labels, self.remapped_labels
         )
+        # kept for building the validation set when saving thresholds
+        self.tf_mappings = tf_mappings
         logging.info(
             "Applied label remapping from %s have model labels of %s",
             self.orig_labels,
@@ -970,6 +1047,7 @@ class KerasModel(Interpreter):
                 test_files,
                 self.data_type,
                 self.labels,
+                filter_excluded_tracks=False,
                 batch_size=self.params.batch_size,
                 image_size=self.params.output_dim[:2],
                 preprocess_fn=self.preprocess_fn,
@@ -1751,6 +1829,7 @@ def train_test_model(model, hparams, log_dir, writer, epochs):
         test_files,
         model.type,
         model.labels,
+        filter_excluded_tracks=False,
         batch_size=model.params.batch_size,
         image_size=model.params.output_dim[:2],
         preprocess_fn=model.preprocess_fn,

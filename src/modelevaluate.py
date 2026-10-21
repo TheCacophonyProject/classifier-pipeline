@@ -1089,86 +1089,121 @@ def main():
             if not tflite_model:
 
                 model.model.summary()
-            logging.info("Loading val files to get best thresholds")
-            files = base_dir / "validation"
-
-            val_dataset, _ = get_dataset(
-                files,
-                model.data_type,
-                labels,
-                batch_size=64,
-                image_size=model.params.output_dim[:2],
-                preprocess_fn=model.preprocess_fn,
-                augment=False,
-                resample=False,
-                include_features=model.params.mvm,
-                one_hot=True,
-                deterministic=True,
-                shuffle=False,
-                excluded_labels=excluded,
-                remapped_labels=remapped,
-                multi_label=model.params.multi_label,
-                include_track=True,
-                channels=model.params.channels,
-                num_frames=model.params.square_width**2,
-                pads=model.pads,
-                thermal_norm=model.params.thermal_norm,
-                thermal_format=model.thermal_format,
-                tf_mappings=tf_mappings,
-                enlarge=model.enlarge,
-            )
-
-            base_confusion_file = Path(args.confusion)
-            base_confusion_file = base_confusion_file.parent / base_confusion_file.stem
-            confusion_final = (
-                base_confusion_file.parent / f"{base_confusion_file.stem}-thresholds"
-            )
-            if not tflite_model:
-                if weight is None:
-                    logging.info("Using loss weights for thresholds on validation set")
-
-                    loss_weights = model_file.parent / "val_loss.weights.h5"
-                    model.model.load_weights(loss_weights)
+            # thresholds are saved in the model metadata, only calculate them if missing
+            meta_file = model_file.with_suffix(".json")
+            with meta_file.open("r") as f:
+                model_meta = json.load(f)
+            original_thresholds = model_meta.get("original_thresholds")
+            thresholds = None
+            if original_thresholds is not None:
+                missing = [l for l in model.labels if l not in original_thresholds]
+                if len(missing) > 0:
+                    logging.warning(
+                        "original_thresholds %s missing labels %s, recalculating",
+                        original_thresholds,
+                        missing,
+                    )
                 else:
                     logging.info(
-                        "Using %s weights for thresholds on validation set", weights
+                        "Using original_thresholds from %s %s",
+                        meta_file,
+                        original_thresholds,
+                    )
+                    # confusion_tracks wants them in model.labels order
+                    thresholds = np.array(
+                        [original_thresholds[l] for l in model.labels]
+                    )
+            if thresholds is None:
+                logging.info("Loading val files to get best thresholds")
+                files = base_dir / "validation"
+
+                val_dataset, _ = get_dataset(
+                    files,
+                    model.data_type,
+                    labels,
+                    batch_size=64,
+                    image_size=model.params.output_dim[:2],
+                    preprocess_fn=model.preprocess_fn,
+                    augment=False,
+                    resample=False,
+                    include_features=model.params.mvm,
+                    one_hot=True,
+                    deterministic=True,
+                    shuffle=False,
+                    excluded_labels=excluded,
+                    remapped_labels=remapped,
+                    multi_label=model.params.multi_label,
+                    include_track=True,
+                    channels=model.params.channels,
+                    num_frames=model.params.square_width**2,
+                    pads=model.pads,
+                    thermal_norm=model.params.thermal_norm,
+                    thermal_format=model.thermal_format,
+                    tf_mappings=tf_mappings,
+                    enlarge=model.enlarge,
+                )
+
+                base_confusion_file = Path(args.confusion)
+                base_confusion_file = (
+                    base_confusion_file.parent / base_confusion_file.stem
+                )
+                confusion_final = (
+                    base_confusion_file.parent
+                    / f"{base_confusion_file.stem}-thresholds"
+                )
+                if not tflite_model:
+                    if weight is None:
+                        logging.info(
+                            "Using loss weights for thresholds on validation set"
+                        )
+
+                        loss_weights = model_file.parent / "val_loss.weights.h5"
+                        model.model.load_weights(loss_weights)
+                    else:
+                        logging.info(
+                            "Using %s weights for thresholds on validation set", weights
+                        )
+
+                        model.model.load_weights(weight)
+                    thresholds = best_threshold_for_ds(
+                        model.model,
+                        model.labels,
+                        val_dataset,
+                        confusion_final,
+                        tflite=tflite_model,
+                    )
+                else:
+                    thresholds = best_threshold_for_ds(
+                        model,
+                        model.labels,
+                        val_dataset,
+                        confusion_final,
+                        tflite=tflite_model,
                     )
 
-                    model.model.load_weights(weight)
-                thresholds = best_threshold_for_ds(
-                    model.model,
-                    model.labels,
-                    val_dataset,
-                    confusion_final,
-                    tflite=tflite_model,
+                threshold_out = (
+                    base_confusion_file.parent
+                    / f"{base_confusion_file.stem}-val-thresholds.json"
                 )
-            else:
-                thresholds = best_threshold_for_ds(
-                    model,
-                    model.labels,
-                    val_dataset,
-                    confusion_final,
-                    tflite=tflite_model,
-                )
-
-            threshold_out = (
-                base_confusion_file.parent
-                / f"{base_confusion_file.stem}-val-thresholds.json"
-            )
-            thresh_dict = {}
-            for label, thresh in zip(model.labels, thresholds):
-                thresh_dict[label] = float(thresh)
-            logging.info("Writing best val thresholds to %s", thresh_dict)
-            with threshold_out.open("w") as f:
-                json.dump(thresh_dict, f)
-            thresholds[thresholds < 0.5] = 0.5
-            thresholds[thresholds > 0.8] = 0.8
+                thresh_dict = {}
+                for label, thresh in zip(model.labels, thresholds):
+                    thresh_dict[label] = float(thresh)
+                logging.info("Writing best val thresholds to %s", thresh_dict)
+                with threshold_out.open("w") as f:
+                    json.dump(thresh_dict, f)
+                model_meta["original_thresholds"] = thresh_dict
+                logging.info("Saving original_thresholds to %s", meta_file)
+                with meta_file.open("w") as f:
+                    json.dump(model_meta, f, indent=4)
+            # thresholds[thresholds < 0.5] = 0.5
+            # thresholds[thresholds > 0.8] = 0.8
 
             files = base_dir / args.dataset
             dataset, _ = get_dataset(
                 files,
                 model.data_type,
                 labels,
+                filter_excluded_tracks=args.dataset != "test",
                 batch_size=64,
                 image_size=model.params.output_dim[:2],
                 preprocess_fn=model.preprocess_fn,
