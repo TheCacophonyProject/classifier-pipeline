@@ -352,7 +352,10 @@ class DbusService:
         from dbus.mainloop.glib import DBusGMainLoop
 
         try:
-            session_bus = dbus.SystemBus(mainloop=DBusGMainLoop())
+            # private so we always get a connection on our main loop, a shared
+            # SystemBus() created earlier (or inherited over fork) without one is
+            # returned as is and the mainloop arg is silently ignored
+            session_bus = dbus.SystemBus(mainloop=DBusGMainLoop(), private=True)
             name = dbus.service.BusName(DBUS_NAME, session_bus)
             self.service.start_service(session_bus)
             self.registered = True

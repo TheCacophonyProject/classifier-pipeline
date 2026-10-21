@@ -206,8 +206,11 @@ def get_processor(process_queue, parse_send, classify):
 def ask_to_stay_on(duration=5):
     import dbus
 
+    # private so the shared SystemBus isn't created here without a main loop, as
+    # piclassify runs in this process after medium power and forks the dbus service
+    bus = None
     try:
-        bus = dbus.SystemBus()
+        bus = dbus.SystemBus(private=True)
         dbus_object = bus.get_object("org.cacophony.ATtiny", "/org/cacophony/ATtiny")
         dbus_object.StayOnForProcess("medium-power", duration)
         logging.info("Asked attiny to stay on for 5 minutes")
@@ -216,6 +219,9 @@ def ask_to_stay_on(duration=5):
 
         logging.error("Error asking to stay on ")
         # error is so verbose and will always happen on startup, exc_info=True)
+    finally:
+        if bus is not None:
+            bus.close()
     return False
 
 
@@ -975,6 +981,9 @@ def run_classifier(frame_queue, parse_send, classify):
 
             kill_process_with_timeout(classifier_process)
         return
+    finally:
+        if dbus_service:
+            dbus_service.quit()
 
 
 def save_metadata(cptv_file, clip, timestamp, tracking_version):
