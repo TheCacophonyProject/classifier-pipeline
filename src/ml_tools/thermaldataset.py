@@ -1288,7 +1288,7 @@ def main():
     )
     resampled_ds, epoch_size = get_dataset(
         load_dataset,
-        training_folder / "validation",
+        training_folder / "test",
         labels,
         batch_size=32,
         image_size=(160, 160),

@@ -226,11 +226,26 @@ class Interpreter(ABC):
             (f"{round(100*threshold)}%", np.full(len(self.labels), threshold))
         )
 
+        # one entry per track with its true tag
+        tracks_out = {}
+        for track_id, (y_true, _) in pred_per_track.items():
+            # reduce multiple true labels the same way i.e. bird and chicken is chicken
+            true_tag = most_specific_tag(self.labels, y_true, self.parent_mappings)
+            track_id = track_id.item() if hasattr(track_id, "item") else track_id
+            if isinstance(track_id, bytes):
+                track_id = track_id.decode()
+            tracks_out[track_id] = {
+                "track_id": track_id,
+                "true": true_tag if true_tag is not None else "None",
+            }
+
         for name, label_thresholds in to_run:
             logging.info("Using %s thresholds %s", name, label_thresholds)
             flat_y = []
             tags = []
-            for y_true, track_pred in pred_per_track.values():
+            for track_out, (y_true, track_pred) in zip(
+                tracks_out.values(), pred_per_track.values()
+            ):
                 # predicted_tags only accepts a list or dict
                 track_pred.thresholds_per_label = label_thresholds.tolist()
                 tag = track_pred.predicted_tags(
@@ -238,9 +253,7 @@ class Interpreter(ABC):
                 )
                 # group_by_parents gives a single tag or nothing
                 tag = tag[0] if len(tag) > 0 else "None"
-                # reduce multiple true labels the same way i.e. bird and chicken is chicken
-                true_tag = most_specific_tag(self.labels, y_true, self.parent_mappings)
-                flat_y.append(true_tag if true_tag is not None else "None")
+                flat_y.append(track_out["true"])
                 tags.append(tag)
 
             # tags that aren't a model label i.e. a common parent such as "mammal"
@@ -268,6 +281,11 @@ class Interpreter(ABC):
                 cm=np.vstack((cm, totals_row)),
                 labels=labels,
             )
+
+        tracks_file = filename.parent / f"{filename.stem}-tracks.json"
+        logging.info("Saving %s track ids to %s", len(tracks_out), tracks_file)
+        with tracks_file.open("w") as f:
+            json.dump(list(tracks_out.values()), f, indent=1)
 
     def confusion_tracks_old(
         self, dataset, filename, threshold=0.8, thresholds_per_label=None
