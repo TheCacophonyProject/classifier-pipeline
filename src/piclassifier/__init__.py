@@ -1,7 +1,6 @@
 def pi_classify():
     from config.thermalconfig import ThermalConfig
 
-    parse_file = None
     thermal_config = ThermalConfig.load_from_file()
     parse_file = None
     if (
@@ -10,7 +9,10 @@ def pi_classify():
     ):
         from mediumpower.mediumpower import main
 
-        parse_file = main(thermal_config)
+        parse_file, restart_pending = main(thermal_config)
+        if not parse_file and restart_pending:
+            return
+
     from piclassifier.piclassify import main
 
     main(thermal_config, parse_file=parse_file)

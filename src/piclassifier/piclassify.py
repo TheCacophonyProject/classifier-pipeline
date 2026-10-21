@@ -116,18 +116,15 @@ def main(thermal_config=None, parse_file=None):
     process_queue = Queue()
     response_queue = Queue()
 
+    # must be before any processes are started, see monitor_file
+    monitor_thread = monitor_file(file_changed, thermal_config.config_file)
+
     # TODO this will break things if we ever have different resolution or FPS
     headers = default_headers()
     processor = get_processor(
         process_queue, response_queue, config, thermal_config, headers
     )
     processor.start()
-
-    monitor_thread = Thread(
-        target=monitor_file, args=(file_changed, thermal_config.config_file)
-    )
-    monitor_thread.daemon = True
-    monitor_thread.start()
 
     # get a cloned window so we dont update it
     if not thermal_config.recorder.use_low_power_mode:

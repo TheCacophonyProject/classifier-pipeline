@@ -85,23 +85,31 @@ def run_cmd(cmd):
 #     )
 #     main(thermal_config)
 
+restart_pending = False
+# config watcher, started by medium_power once it's idle waiting for a recording
+monitor_thread = None
+# current ThermalConfig, set in main after the processor is forked so the child
+# doesn't hold a reference, reloaded by watch_config
+config = None
 
-def main(config):
+
+def main(initial_config):
     logging.info("Medium Power started")
-    global connected
+    global connected, config
     # dbus ParseFile callback in the classifier process sends the file name here
     parse_recv, parse_send = Pipe(duplex=False)
     # frames are only queued for tracking/classifying when run_classifier is set,
     # otherwise recordings are just written to disk
     frame_queue = None
     processor = None
-    if config.base_motion.run_classifier:
+    if initial_config.base_motion.run_classifier:
         frame_queue = Queue()
 
         processor = get_processor(
-            frame_queue, parse_send, config.base_motion.run_classifier
+            frame_queue, parse_send, initial_config.base_motion.run_classifier
         )
         processor.start()
+    config = initial_config
 
     if TEST:
         print("Parsing test.cptv")
@@ -125,7 +133,7 @@ def main(config):
     keep_running = True
     post_process = None
     parse_file = None
-    while keep_running and not parse_recv.poll():
+    while keep_running and not parse_recv.poll() and not restart_pending:
         logging.info("waiting for a connection %s", time.time() - start)
         try:
             connection, client_address = sock.accept()
@@ -135,7 +143,6 @@ def main(config):
             keep_running, post_process = medium_power(
                 connection,
                 frame_queue,
-                config,
                 post_process,
                 parse_recv,
             )
@@ -143,8 +150,9 @@ def main(config):
             logging.info("\nCtrl+C pressed. Exiting gracefully.")
             break
         except Exception as ex:
-            logging.error("Error with connection", exc_info=True)
-
+            logging.error("Socket connection timed out", exc_info=True)
+            if monitor_thread is None:
+                watch_config()
         finally:
             # Clean up the connection
             try:
@@ -164,7 +172,36 @@ def main(config):
     if parse_recv.poll():
         parse_file = parse_recv.recv()
         logging.info("Exiting medium power to parse %s", parse_file)
-    return parse_file
+    return parse_file, restart_pending
+
+
+# only starting watching the config once we aren't busy and restart after current recording
+def watch_config():
+    # reload the config from disk as it may have changed while we were busy, then
+    # watch it for any further changes
+    global monitor_thread, config, restart_pending
+    from piclassifier.monitorconfig import monitor_file
+    from config.thermalconfig import ThermalConfig
+
+    new_config = ThermalConfig.load_from_file(config.config_file)
+    if (
+        not new_config.recorder.instant_classify
+        or not new_config.recorder.rec_window.inside_window()
+        or new_config.base_motion.run_classifier != config.base_motion.run_classifier
+    ):
+        logging.info("Config changed, restarting")
+        restart_pending = True
+    config = new_config
+
+    logging.info("Monitoring config for changes %s", config.config_file)
+    # runs in this thread, so it can't race the post_process fork in medium_power
+    monitor_thread = monitor_file(file_changed, config.config_file)
+
+
+def file_changed(event):
+    logging.info("Received file changed event %s restarting", event)
+    global restart_pending
+    restart_pending = True
 
 
 def handle_headers(connection):
@@ -225,7 +262,7 @@ def ask_to_stay_on(duration=5):
     return False
 
 
-def medium_power(connection, frame_queue, config, post_process, parse_recv):
+def medium_power(connection, frame_queue, post_process, parse_recv):
     from cptv_rs_python_bindings import CptvStreamReader
     import zlib
     from cptv import Frame
@@ -241,7 +278,7 @@ def medium_power(connection, frame_queue, config, post_process, parse_recv):
     inital_header_length = (
         8 + 4 + 4
     )  # Timestamp, lepton serial and firmware in the first message
-    while True:
+    while not restart_pending:
         if not config.recorder.rec_window.inside_window():
             logging.info("No longer inside recorder window, leaving medium power")
             return False, post_process
@@ -254,6 +291,8 @@ def medium_power(connection, frame_queue, config, post_process, parse_recv):
                 extra_b = connection.recv(headers.frame_size)
             except (socket.timeout, TimeoutError):
                 extra_b = None
+                if monitor_thread is None:
+                    watch_config()
                 continue
             except:
                 logging.error("Couldnt get start", exc_info=True)
@@ -462,6 +501,8 @@ def medium_power(connection, frame_queue, config, post_process, parse_recv):
         data = b""
         reader = None
         asked_to_stay_on = ask_to_stay_on()
+    logging.info("Restart pending, leaving medium power")
+    return False, post_process
 
 
 def combine_file(header_file, frame_file, output_file):
