@@ -220,6 +220,12 @@ class Interpreter(ABC):
             # 0 means the label had no samples to calculate a threshold from
             raw_thresholds[raw_thresholds == 0] = 0.8
             capped_thresholds = np.clip(raw_thresholds, 0.5, 0.8)
+
+            bird = self.labels.index("bird")
+            dog = self.labels.index("dog")
+            capped_thresholds[bird] = raw_thresholds[bird]
+            capped_thresholds[dog] = raw_thresholds[dog]
+            logging.info("Capepd thresholds are %s", capped_thresholds)
             to_run.append(("fscore-capped", capped_thresholds))
             to_run.append(("fscore-raw", raw_thresholds))
         to_run.append(
