@@ -993,6 +993,8 @@ def main():
         extra_args["filter_by_fp"] = (
             master_dataset.filter_by_fp and dataset.name != "test"
         )
+        # test set segments are chosen the same way as at inference
+        extra_args["inference"] = dataset.name == "test"
         dataset_border_sum = create_tf_records(
             dataset,
             dir,
