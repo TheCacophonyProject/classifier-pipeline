@@ -91,11 +91,14 @@ monitor_thread = None
 # current ThermalConfig, set in main after the processor is forked so the child
 # doesn't hold a reference, reloaded by watch_config
 config = None
+# postprocess process started by medium_power after a recording, global so the
+# handle isn't lost if medium_power raises and can be killed when main exits
+post_process = None
 
 
 def main(initial_config):
     logging.info("Medium Power started")
-    global connected, config
+    global connected, config, post_process
     # dbus ParseFile callback in the classifier process sends the file name here
     parse_recv, parse_send = Pipe(duplex=False)
     # frames are only queued for tracking/classifying when run_classifier is set,
@@ -131,7 +134,6 @@ def main(initial_config):
     sock.listen(1)
     global start
     keep_running = True
-    post_process = None
     parse_file = None
     while keep_running and not parse_recv.poll() and not restart_pending:
         logging.info("waiting for a connection %s", time.time() - start)
@@ -140,10 +142,9 @@ def main(initial_config):
             connected = True
             logging.info("connection from %s", client_address)
             # log_event("camera-connected", {"type": "thermal"})
-            keep_running, post_process = medium_power(
+            keep_running = medium_power(
                 connection,
                 frame_queue,
-                post_process,
                 parse_recv,
             )
         except KeyboardInterrupt:
@@ -262,7 +263,8 @@ def ask_to_stay_on(duration=5):
     return False
 
 
-def medium_power(connection, frame_queue, post_process, parse_recv):
+def medium_power(connection, frame_queue, parse_recv):
+    global post_process
     from cptv_rs_python_bindings import CptvStreamReader
     import zlib
     from cptv import Frame
@@ -281,10 +283,10 @@ def medium_power(connection, frame_queue, post_process, parse_recv):
     while not restart_pending:
         if not config.recorder.rec_window.inside_window():
             logging.info("No longer inside recorder window, leaving medium power")
-            return False, post_process
+            return False
         if parse_recv.poll():
             logging.info("Parse file requested, leaving medium power")
-            return False, post_process
+            return False
         # wait for start message
         if extra_b is None or len(extra_b) == 0:
             try:
@@ -309,7 +311,7 @@ def medium_power(connection, frame_queue, post_process, parse_recv):
             if len(extra_b) == 0:
                 logging.info("Disconnected waiting for start")
                 # disconnected
-                return True, post_process
+                return True
             extra_b = None
             continue
 
@@ -330,7 +332,7 @@ def medium_power(connection, frame_queue, post_process, parse_recv):
                 if len(byte_data) == 0:
                     # disconnected from socket
                     logging.info("Disconnected from socket")
-                    return True, post_process
+                    return True
                 extra_b += byte_data
             except:
                 time.sleep(1)
@@ -374,7 +376,7 @@ def medium_power(connection, frame_queue, post_process, parse_recv):
                 writer.combine_file(
                     headers, config, timestamp, min_value, max_value, frame_i
                 )
-                return False, post_process
+                return False
             try:
                 byte_data = connection.recv(headers.frame_size)
                 if len(byte_data) == 0:
@@ -428,7 +430,7 @@ def medium_power(connection, frame_queue, post_process, parse_recv):
                 # classifier needs to end this clip before the next header arrives
                 if frame_queue is not None:
                     frame_queue.put(ABORT_SIGNAL)
-                return True, post_process
+                return True
                 # time.sleep(1)
                 # continue
 
@@ -496,13 +498,13 @@ def medium_power(connection, frame_queue, post_process, parse_recv):
                 # this happens in a different process
                 post_process = run_postprocess(parse_incomplete=False)
         if reconnect:
-            return True, post_process
+            return True
         u8_data = None
         data = b""
         reader = None
         asked_to_stay_on = ask_to_stay_on()
     logging.info("Restart pending, leaving medium power")
-    return False, post_process
+    return False
 
 
 def combine_file(header_file, frame_file, output_file):
@@ -641,7 +643,7 @@ def submit_prediction(clip, monitored_tracks, tracking_events):
     monitored_tracks.items() elsewhere, no locking needed."""
     track = best_track_to_classify(clip, monitored_tracks)
     if track is None:
-        logging.info("No active tracks %s", len(clip.active_tracks))
+        # logging.info("No active tracks to identify %s", len(clip.active_tracks))
         return
     if classifier is None:
         logging.info("Not classifying as couldn't load model")
