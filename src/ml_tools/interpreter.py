@@ -145,7 +145,7 @@ class Interpreter(ABC):
     def confusion_tracks(
         self, dataset, filename, threshold=0.8, thresholds_per_label=None
     ):
-        from sklearn.metrics import confusion_matrix
+        from sklearn.metrics import confusion_matrix, f1_score
         import matplotlib.pyplot as plt
 
         import tensorflow as tf
@@ -276,6 +276,12 @@ class Interpreter(ABC):
             for y in flat_y:
                 totals_row[y] += 1
             cm = confusion_matrix(flat_y, results, labels=np.arange(len(labels)))
+            # average over the true labels present, predicting "None" counts as a miss
+            f1_labels = sorted(set(flat_y) - {labels.index("None")})
+            macro_f1 = f1_score(
+                flat_y, results, labels=f1_labels, average="macro", zero_division=0
+            )
+            logging.info("Macro F1 for %s is %s", name, macro_f1)
             # Log the confusion matrix as an image summary.
             figure = plot_confusion_matrix(
                 cm, class_names=labels, totals_row=totals_row
@@ -286,6 +292,8 @@ class Interpreter(ABC):
                 out_file.with_suffix(".npz"),
                 cm=np.vstack((cm, totals_row)),
                 labels=labels,
+                f1=macro_f1,
+                thresholds=label_thresholds,
             )
 
         tracks_file = filename.parent / f"{filename.stem}-tracks.json"
