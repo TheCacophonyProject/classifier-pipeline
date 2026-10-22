@@ -326,6 +326,14 @@ class ClipTracker(ABC):
             # Make this min area
             if region.width < self.min_dimension or region.height < self.min_dimension:
                 continue
+
+            if (
+                abs(region.width - clip.crop_rectangle.width) < 4
+                and abs(region.height - clip.crop_rectangle.height) < 4
+            ):
+                logging.debug("Skipping large region %s", region)
+                continue
+
             # GP this needs to be checked for themals 29/06/2022
             if delta_filtered is not None:
                 region_difference = region.subimage(delta_filtered)

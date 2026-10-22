@@ -1365,12 +1365,18 @@ class Yolo:
                 for x in (0, width - tile_w)
             )
 
+    def version(self):
+        # this should be sufficient for a version
+        return self.date.strftime("%Y%m%d")
+
     def load_model(self):
         from ultralytics import YOLO
+        from datetime import datetime
 
         self.model = YOLO(self.model_file)
+        self.date = datetime.fromisoformat(self.model.ckpt.get("date"))
+
         self.labels = self.model.names
-        # 3. View the detailed structure and model information
 
     def predict(self, thermal):
         # if self.run_over_network:
@@ -1440,20 +1446,20 @@ class Yolo:
         raw_count = len(boxes)
         if self.tta or self.tiles:
             boxes = merge_detections(boxes, self.iou)
-        boxes = suppress_inner(boxes, self.overlap)
+        # boxes = suppress_inner(boxes, self.overlap)
         return boxes, len(self.views), raw_count
 
     def shape(self):
         return 1, self.input["shape"]
 
 
-def merge_detections(boxes, threshold):
+def merge_detections(boxes, threshold, keep_differing_classes=False):
     """Class-aware NMS in original-image coordinates; retain actual model scores."""
     kept = []
     for box in sorted(boxes, key=lambda b: b["confidence"], reverse=True):
         suppress = False
         for other in kept:
-            if box["class_id"] != other["class_id"]:
+            if keep_differing_classes and box["class_id"] != other["class_id"]:
                 continue
             w = max(
                 0,

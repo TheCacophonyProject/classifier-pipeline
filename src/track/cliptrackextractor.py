@@ -93,6 +93,8 @@ class ClipTrackExtractor(ClipTracker):
             from ml_tools.interpreter import Yolo
 
             self.model = Yolo(self.config.model)
+        if self.model is not None:
+            self.version = f"YOLO{self.model.version()}-{self.version}"
 
     def init_clip(self, clip):
         from cptv_rs_python_bindings import CptvReader
