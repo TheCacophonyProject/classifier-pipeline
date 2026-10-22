@@ -297,7 +297,6 @@ class ClipTracker(ABC):
         delta_filtered = self.get_delta_filtered(
             clip,
         )
-
         # we enlarge the rects a bit, partly because we eroded them previously, and partly because we want some context.
         padding = self.frame_padding
         # find regions of interest
@@ -350,12 +349,14 @@ class ClipTracker(ABC):
                     old_region.height - region.height
                 ) / old_region.height
                 if crop_width_fraction > 0.25 or crop_height_fraction > 0.25:
+                    logging.debug("Cropped was ignoring")
                     continue
             elif (
                 self.config.cropped_regions_strategy == "none"
                 or self.config.cropped_regions_strategy is None
             ):
                 if region.was_cropped:
+                    logging.debug("Cropped was ignoring")
                     continue
             elif self.config.cropped_regions_strategy != "all":
                 raise ValueError(
@@ -388,7 +389,7 @@ class ClipTracker(ABC):
 
     def filter_tracks(self, clip):
         for track in clip.tracks:
-            track.trim()
+            track.trim(filter_by_mass=self.model is None)
             track.set_end_s(clip.frames_per_second)
 
         [track.calculate_stats() for track in clip.tracks]

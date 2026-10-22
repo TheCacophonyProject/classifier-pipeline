@@ -106,7 +106,7 @@ class TestGetSamplesByLabelUrgency:
         # fox is CRITICALLY_RARE: max_resample=5, bound by ceil(total_frames / (3*25))
         total_frames = 225
         samples, _, _ = get_samples_by_label_urgency(
-            "fox", total_frames, window_frames=108
+            "fox", total_frames, window_frames=108, inference=False
         )
         max_expected = max(1, int(np.ceil(total_frames / (3 * 25))))
         assert samples <= min(5, max_expected)
@@ -115,7 +115,7 @@ class TestGetSamplesByLabelUrgency:
         # MODERATE_RARE labels (e.g. chicken) cap at max_resample=3
         total_frames = 1000
         samples, _, _ = get_samples_by_label_urgency(
-            "chicken", total_frames, window_frames=108
+            "chicken", total_frames, window_frames=108, inference=False
         )
         assert samples <= 3
 
@@ -123,15 +123,19 @@ class TestGetSamplesByLabelUrgency:
         # CRITICALLY_RARE labels (e.g. fox) cap at max_resample=5
         total_frames = 1000
         samples, _, _ = get_samples_by_label_urgency(
-            "fox", total_frames, window_frames=108
+            "fox", total_frames, window_frames=108, inference=False
         )
         assert samples <= 5
 
     def test_critically_rare_gets_more_samples_than_moderate_rare(self):
         # For a long track, CRITICALLY_RARE allows more samples than MODERATE_RARE
         total_frames = 500
-        samples_critical, _, _ = get_samples_by_label_urgency("fox", total_frames)
-        samples_moderate, _, _ = get_samples_by_label_urgency("chicken", total_frames)
+        samples_critical, _, _ = get_samples_by_label_urgency(
+            "fox", total_frames, inference=False
+        )
+        samples_moderate, _, _ = get_samples_by_label_urgency(
+            "chicken", total_frames, inference=False
+        )
         assert samples_critical >= samples_moderate
 
     def test_unknown_label_treated_as_common(self):
@@ -233,7 +237,7 @@ class TestRandomSectionsWithGaps:
 class TestRandomSectionsRareLabels:
     def test_rare_label_segments_start_at_different_positions(self):
         # fox (CRITICALLY_RARE) with 300 frames: ceil(299/75)=4 samples
-        segs = call_random_sections("fox", 300, seed=42)
+        segs = call_random_sections("fox", 300, seed=42, inference=False)
         assert len(segs) == 4
         starts = [min(s.frame_indices) for s in segs]
         assert len(set(starts)) > 1, "all segments start at identical positions"
