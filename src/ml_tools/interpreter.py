@@ -277,11 +277,17 @@ class Interpreter(ABC):
                 totals_row[y] += 1
             cm = confusion_matrix(flat_y, results, labels=np.arange(len(labels)))
             # average over the true labels present, predicting "None" counts as a miss
+            # one f1 per entry in labels, in the same order
+            f1 = f1_score(
+                flat_y,
+                results,
+                labels=np.arange(len(labels)),
+                average=None,
+                zero_division=0,
+            ).astype(np.float32)
+            # macro over the true labels present, predicting "None" counts as a miss
             f1_labels = sorted(set(flat_y) - {labels.index("None")})
-            macro_f1 = f1_score(
-                flat_y, results, labels=f1_labels, average="macro", zero_division=0
-            )
-            logging.info("Macro F1 for %s is %s", name, macro_f1)
+            logging.info("Macro F1 for %s is %s", name, np.mean(f1[f1_labels]))
             # Log the confusion matrix as an image summary.
             figure = plot_confusion_matrix(
                 cm, class_names=labels, totals_row=totals_row
@@ -292,7 +298,7 @@ class Interpreter(ABC):
                 out_file.with_suffix(".npz"),
                 cm=np.vstack((cm, totals_row)),
                 labels=labels,
-                f1=macro_f1,
+                f1=f1,
                 thresholds=label_thresholds,
             )
 
