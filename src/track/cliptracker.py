@@ -297,7 +297,6 @@ class ClipTracker(ABC):
         delta_filtered = self.get_delta_filtered(
             clip,
         )
-
         # we enlarge the rects a bit, partly because we eroded them previously, and partly because we want some context.
         padding = self.frame_padding
         # find regions of interest
@@ -326,6 +325,14 @@ class ClipTracker(ABC):
             # Make this min area
             if region.width < self.min_dimension or region.height < self.min_dimension:
                 continue
+
+            if (
+                abs(region.width - clip.crop_rectangle.width) < 4
+                and abs(region.height - clip.crop_rectangle.height) < 4
+            ):
+                logging.debug("Skipping large region %s", region)
+                continue
+
             # GP this needs to be checked for themals 29/06/2022
             if delta_filtered is not None:
                 region_difference = region.subimage(delta_filtered)
@@ -342,12 +349,14 @@ class ClipTracker(ABC):
                     old_region.height - region.height
                 ) / old_region.height
                 if crop_width_fraction > 0.25 or crop_height_fraction > 0.25:
+                    logging.debug("Cropped was ignoring")
                     continue
             elif (
                 self.config.cropped_regions_strategy == "none"
                 or self.config.cropped_regions_strategy is None
             ):
                 if region.was_cropped:
+                    logging.debug("Cropped was ignoring")
                     continue
             elif self.config.cropped_regions_strategy != "all":
                 raise ValueError(
@@ -357,9 +366,13 @@ class ClipTracker(ABC):
                 )
 
             # filter out regions that are probably just noise
-            if self.config.filter_regions_pre_match and (
-                region.pixel_variance < self.config.aoi_pixel_variance
-                and region.mass < self.config.aoi_min_mass
+            if (
+                source == "cv2"
+                and self.config.filter_regions_pre_match
+                and (
+                    region.pixel_variance < self.config.aoi_pixel_variance
+                    and region.mass < self.config.aoi_min_mass
+                )
             ):
                 logging.debug(
                     "%s filtering region %s because of variance %s and mass %s",
@@ -380,7 +393,7 @@ class ClipTracker(ABC):
 
     def filter_tracks(self, clip):
         for track in clip.tracks:
-            track.trim()
+            track.trim(filter_by_mass=self.model is None)
             track.set_end_s(clip.frames_per_second)
 
         [track.calculate_stats() for track in clip.tracks]

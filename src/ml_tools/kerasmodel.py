@@ -232,6 +232,16 @@ class KerasModel(Interpreter):
                 ),
                 None,
             )
+        elif pretrained_model == "convnext":
+            # convnext normalizes its input internally, like efficientnet
+            return (
+                tf.keras.applications.ConvNeXtTiny(
+                    weights=weights,
+                    include_top=False,
+                    input_tensor=input,
+                ),
+                None,
+            )
         elif pretrained_model == "nasnet":
             return (
                 tf.keras.applications.nasnet.NASNetLarge(

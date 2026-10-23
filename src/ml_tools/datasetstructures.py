@@ -1052,7 +1052,9 @@ def get_samples_by_label_urgency(
     elif inference:
         # windows are spread evenly at inference, no random phasing
         stride_offset = 0
-    if label in MODERATE_RARE_LABELS or label in CRITICALLY_RARE_LABELS:
+    if not inference and (
+        label in MODERATE_RARE_LABELS or label in CRITICALLY_RARE_LABELS
+    ):
         # no point repeating the same image even if we want more samples
         # taking 25 samples per frame want maybe 1/3 (3 frames) second difference between images
         if label in MODERATE_RARE_LABELS:

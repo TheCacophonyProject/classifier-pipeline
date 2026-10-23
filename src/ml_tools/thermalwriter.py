@@ -250,6 +250,9 @@ def get_data(source_file, excluded_tags, extra_args):
             # GP All assumes we dont have a track over multiple bins (Whcih we probably never want)
             if extra_args.get("use_segments", True):
                 segment_types = extra_args.get("segment_types")
+                inference = extra_args.get("inference", False)
+                # inference needs every segment, so never cap them
+                max_segments = None if inference else extra_args.get("max_segments")
                 # loading segments here again as this has access to ffc frames
                 track.get_segments(
                     segment_width=extra_args.get("segment_width", 25),
@@ -259,11 +262,11 @@ def get_data(source_file, excluded_tags, extra_args):
                     dont_filter=extra_args.get("dont_filter_segment", False),
                     skip_ffc=extra_args.get("skip_ffc", True),
                     ffc_frames=clip_meta.ffc_frames,
-                    max_segments=extra_args.get("max_segments"),
+                    max_segments=max_segments,
                     frame_min_mass=extra_args.get("min_mass"),
                     filter_by_fp=extra_args.get("filter_by_fp"),
                     rng=rng,
-                    inference=extra_args.get("inference", False),
+                    inference=inference,
                 )
             else:
                 filter_by_lq = extra_args.get("filter_by_lq", False)

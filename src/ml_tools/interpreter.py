@@ -145,7 +145,7 @@ class Interpreter(ABC):
     def confusion_tracks(
         self, dataset, filename, threshold=0.8, thresholds_per_label=None
     ):
-        from sklearn.metrics import confusion_matrix
+        from sklearn.metrics import confusion_matrix, f1_score
         import matplotlib.pyplot as plt
 
         import tensorflow as tf
@@ -220,6 +220,12 @@ class Interpreter(ABC):
             # 0 means the label had no samples to calculate a threshold from
             raw_thresholds[raw_thresholds == 0] = 0.8
             capped_thresholds = np.clip(raw_thresholds, 0.5, 0.8)
+
+            bird = self.labels.index("bird")
+            dog = self.labels.index("dog")
+            capped_thresholds[bird] = raw_thresholds[bird]
+            capped_thresholds[dog] = raw_thresholds[dog]
+            logging.info("Capepd thresholds are %s", capped_thresholds)
             to_run.append(("fscore-capped", capped_thresholds))
             to_run.append(("fscore-raw", raw_thresholds))
         to_run.append(
@@ -270,6 +276,18 @@ class Interpreter(ABC):
             for y in flat_y:
                 totals_row[y] += 1
             cm = confusion_matrix(flat_y, results, labels=np.arange(len(labels)))
+            # average over the true labels present, predicting "None" counts as a miss
+            # one f1 per entry in labels, in the same order
+            f1 = f1_score(
+                flat_y,
+                results,
+                labels=np.arange(len(labels)),
+                average=None,
+                zero_division=0,
+            ).astype(np.float32)
+            # macro over the true labels present, predicting "None" counts as a miss
+            f1_labels = sorted(set(flat_y) - {labels.index("None")})
+            logging.info("Macro F1 for %s is %s", name, np.mean(f1[f1_labels]))
             # Log the confusion matrix as an image summary.
             figure = plot_confusion_matrix(
                 cm, class_names=labels, totals_row=totals_row
@@ -280,6 +298,8 @@ class Interpreter(ABC):
                 out_file.with_suffix(".npz"),
                 cm=np.vstack((cm, totals_row)),
                 labels=labels,
+                f1=f1,
+                thresholds=label_thresholds,
             )
 
         tracks_file = filename.parent / f"{filename.stem}-tracks.json"
@@ -1359,12 +1379,18 @@ class Yolo:
                 for x in (0, width - tile_w)
             )
 
+    def version(self):
+        # this should be sufficient for a version
+        return self.date.strftime("%Y%m%d")
+
     def load_model(self):
         from ultralytics import YOLO
+        from datetime import datetime
 
         self.model = YOLO(self.model_file)
+        self.date = datetime.fromisoformat(self.model.ckpt.get("date"))
+
         self.labels = self.model.names
-        # 3. View the detailed structure and model information
 
     def predict(self, thermal):
         # if self.run_over_network:
@@ -1434,20 +1460,20 @@ class Yolo:
         raw_count = len(boxes)
         if self.tta or self.tiles:
             boxes = merge_detections(boxes, self.iou)
-        boxes = suppress_inner(boxes, self.overlap)
+        # boxes = suppress_inner(boxes, self.overlap)
         return boxes, len(self.views), raw_count
 
     def shape(self):
         return 1, self.input["shape"]
 
 
-def merge_detections(boxes, threshold):
+def merge_detections(boxes, threshold, keep_differing_classes=False):
     """Class-aware NMS in original-image coordinates; retain actual model scores."""
     kept = []
     for box in sorted(boxes, key=lambda b: b["confidence"], reverse=True):
         suppress = False
         for other in kept:
-            if box["class_id"] != other["class_id"]:
+            if keep_differing_classes and box["class_id"] != other["class_id"]:
                 continue
             w = max(
                 0,

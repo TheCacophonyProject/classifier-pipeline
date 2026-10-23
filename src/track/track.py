@@ -395,6 +395,7 @@ class Track:
         Creates a new Track.
         :param id: id number for track, if not specified is provided by an auto-incrementer
         """
+        self.stats = None
         self.in_trap = False
         self.received_at = None
         self.trap_reported = False
@@ -806,23 +807,30 @@ class Track:
 
         self.bounds_history = new_bounds_history
 
-    def trim(self):
+    def trim(self, filter_by_mass=True):
         """
         Removes empty frames from start and end of track
+        If filter_by_mass is False, only removes blank regions from the end
         """
-        mass_history = [int(bound.mass) for bound in self.bounds_history]
-        median_mass = np.median(mass_history)
-        filter_mass = 0.005 * median_mass
-        filter_mass = max(filter_mass, 2)
         start = 0
-        logging.debug(
-            "Triming track with median % and filter mass %s", median_mass, filter_mass
-        )
-        while start < len(self) and mass_history[start] <= filter_mass:
-            start += 1
+        if filter_by_mass:
+            mass_history = [int(bound.mass) for bound in self.bounds_history]
+            median_mass = np.median(mass_history)
+            filter_mass = 0.005 * median_mass
+            filter_mass = max(filter_mass, 2)
+            logging.debug(
+                "Triming track with median % and filter mass %s",
+                median_mass,
+                filter_mass,
+            )
+            empty = [mass <= filter_mass for mass in mass_history]
+            while start < len(self) and empty[start]:
+                start += 1
+        else:
+            empty = [bound.blank for bound in self.bounds_history]
         end = len(self) - 1
 
-        while end > 0 and mass_history[end] <= filter_mass:
+        while end > 0 and empty[end]:
             if self.tracker and self.frames_since_target_seen > 0:
                 self.tracker._frames_since_target_seen -= 1
                 self.tracker._blank_frames -= 1
