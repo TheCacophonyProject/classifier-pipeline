@@ -178,7 +178,12 @@ class HyperParams(dict):
 
     @property
     def learning_rate(self):
-        return self.get("learning_rate", 0.0002)
+        # 0.0002 suits fine tuning imagenet weights, models trained from scratch need higher
+        if self.model_name in ["wideresnet", "wr-resnet"]:
+            default = 0.001
+        else:
+            default = 0.0002
+        return self.get("learning_rate", default)
 
     @property
     def learning_rate_decay(self):
