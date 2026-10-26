@@ -77,7 +77,7 @@ class KerasModel(Interpreter):
         self.epochs = None
         self.run_over_network = run_over_network
         # dictionary containing current hyper parameters
-        self.params = HyperParams()
+        self.params = HyperParams(train_config.hyper_params if train_config else {})
         self.data_type = None
         # set by load_training_meta
         self.thermal_format = THERMAL_FORMAT_CENTIKELVIN
@@ -86,7 +86,6 @@ class KerasModel(Interpreter):
             self.log_base = train_config.train_dir / "logs"
             self.log_dir = self.log_base
             self.checkpoint_folder = train_config.train_dir / "checkpoints"
-            self.params.update(train_config.hyper_params)
             self.data_type = train_config.type
         self.labels = labels
         self.preprocess_fn = None
@@ -673,7 +672,7 @@ class KerasModel(Interpreter):
         model_stats = {}
         model_stats["name"] = self.params.model_name
         model_stats["labels"] = self.labels
-        model_stats["enlarge"] = True
+        model_stats["enlarge"] = enlarge
 
         model_stats["multi_input"] = multi_input
 

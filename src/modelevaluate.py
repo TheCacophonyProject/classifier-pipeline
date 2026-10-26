@@ -26,7 +26,11 @@ import json
 #     get_dataset,
 #     get_excluded,
 # )
-from classify.trackprediction import TrackPrediction, DEFAULT_THRESHOLD
+from classify.trackprediction import (
+    TrackPrediction,
+    DEFAULT_THRESHOLD,
+    most_specific_tag,
+)
 
 from ml_tools import tools
 from ml_tools.rawdb import RawDatabase
@@ -1168,6 +1172,9 @@ def main():
                         val_dataset,
                         confusion_final,
                         tflite=tflite_model,
+                        parent_mappings=(
+                            model.parent_mappings if model.params.multi_label else None
+                        ),
                     )
                 else:
                     thresholds = best_threshold_for_ds(
@@ -1176,6 +1183,9 @@ def main():
                         val_dataset,
                         confusion_final,
                         tflite=tflite_model,
+                        parent_mappings=(
+                            model.parent_mappings if model.params.multi_label else None
+                        ),
                     )
 
                 threshold_out = (
@@ -1351,7 +1361,9 @@ class LabelGraph:
         plt.savefig(out_file.with_suffix(".png"), format="png")
 
 
-def best_threshold_for_ds(model, labels, dataset, filename, tflite=False):
+def best_threshold_for_ds(
+    model, labels, dataset, filename, tflite=False, parent_mappings=None
+):
     import tensorflow as tf
 
     if tflite:
@@ -1380,7 +1392,17 @@ def best_threshold_for_ds(model, labels, dataset, filename, tflite=False):
         # dataset_y[0]
         track_ids.extend(y[1].numpy())
     true_categories = np.array(true_categories)
-    true_categories = np.int64(tf.argmax(true_categories, axis=1))
+    if parent_mappings is not None:
+        # multi label i.e. chicken is also bird, argmax would always give bird (index 0)
+        # reduce to the most specific tag the same way confusion_tracks does
+        reduced = []
+        for y in true_categories:
+            tag = most_specific_tag(labels, np.nonzero(y)[0], parent_mappings)
+            # a common parent that isn't a model label falls back to argmax
+            reduced.append(labels.index(tag) if tag in labels else np.argmax(y))
+        true_categories = np.int64(reduced)
+    else:
+        true_categories = np.int64(tf.argmax(true_categories, axis=1))
 
     # make per track
     pred_per_track = {}
