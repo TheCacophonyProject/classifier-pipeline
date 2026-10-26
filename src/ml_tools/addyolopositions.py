@@ -13,6 +13,11 @@ YELLOW = (0, 255, 255)
 BLUE = (255, 0, 0)
 RED = (0, 0, 255)
 
+# thermal frame size, yolo boxes this big are usually the whole frame not an animal
+FRAME_WIDTH = 160
+FRAME_HEIGHT = 120
+FULL_FRAME_MARGIN = 4
+
 
 def parse_args():
     parser = argparse.ArgumentParser()
@@ -138,17 +143,27 @@ def draw_box(img, x, y, width, height, colour, scale, text=None, below=False):
         )
 
 
+def is_full_frame(width, height):
+    return (
+        abs(width - FRAME_WIDTH) <= FULL_FRAME_MARGIN
+        and abs(height - FRAME_HEIGHT) <= FULL_FRAME_MARGIN
+    )
+
+
 def get_yolo_positions(tracks, yolo_boxes):
     # for each track frame, the most confident merged yolo box overlapping it
     yolo_positions = {}
     for track in tracks:
         positions = []
         for frame_number, region in sorted(track.regions_by_frame.items()):
-            frame_yolo = [
-                bb
-                for bb in merge_yolo_boxes(yolo_boxes.get(frame_number, []))
-                if overlaps(region, bb)
-            ]
+            boxes = yolo_boxes.get(frame_number, [])
+            if not is_full_frame(region.width, region.height):
+                # a full frame box overlaps everything and would merge every other box
+                # into itself, only keep it when the track is also the full frame
+                boxes = [
+                    bb for bb in boxes if not is_full_frame(bb["width"], bb["height"])
+                ]
+            frame_yolo = [bb for bb in merge_yolo_boxes(boxes) if overlaps(region, bb)]
             if frame_yolo:
                 best = max(frame_yolo, key=lambda bb: bb.get("confidence", 0))
                 positions.append({**best, "frame_number": frame_number})
