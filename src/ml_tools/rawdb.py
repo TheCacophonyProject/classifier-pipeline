@@ -327,6 +327,7 @@ class RawDatabase:
                     source_file=self.file,
                     mega_missed_regions=track_meta.get("mega_missed_regions"),
                     station_id=clip_header.station_id,
+                    camera=clip_header.camera,
                     fp_frames=fp_frames,
                     start_time=(
                         clip_header.rec_time + timedelta(seconds=start / FPS)

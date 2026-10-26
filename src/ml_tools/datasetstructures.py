@@ -165,6 +165,7 @@ class TrackHeader:
         # regions that megadetector found nothing in
         self.mega_missed_regions = mega_missed_regions
         self.station_id = station_id
+        self.camera = camera
         self.clip_id = clip_id
         self.source_file = source_file
         self.human_tags = human_tags
@@ -428,6 +429,7 @@ class TrackHeader:
             segment_types=segment_types,
             max_segments=max_segments,
             station_id=self.station_id,
+            camera=self.camera,
             source_file=self.source_file,
             dont_filter=dont_filter,
             skip_ffc=skip_ffc,
@@ -831,7 +833,13 @@ class SegmentHeader(Sample):
         self.camera = camera
         self._source_file = source_file
         self._track_median_mass = track_median_mass
-        self._bin_id = self.station_id
+        # bin by station, otherwise every clip without a station shares one bin and
+        # ends up in the same dataset. camera is the device_id, prefixed so it can't
+        # clash with a station id
+        if self.station_id is None:
+            self._bin_id = f"device-{self.camera}"
+        else:
+            self._bin_id = self.station_id
         self.upsampled = False
 
     @property

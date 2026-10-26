@@ -1494,8 +1494,14 @@ def best_threshold(labels, y_true, y_pred, confidences, filename):
             # print("CHooisng all of this labl", lbl_pred)
 
         precision, recall, thresholds = precision_recall_curve(binary_true, lbl_pred)
-        fscore = (2 * precision * recall) / (precision + recall)
-        ix = np.argmax(fscore)
+        # precision and recall are both 0 where the highest scores are all false positives,
+        # treat these as an fscore of 0, otherwise argmax returns the first nan
+        denom = precision + recall
+        fscore = np.divide(
+            2 * precision * recall, denom, out=np.zeros_like(denom), where=denom > 0
+        )
+        # the last point (precision 1, recall 0) has no threshold
+        ix = min(np.argmax(fscore), len(thresholds) - 1)
 
         scatters = []
         for t_i, th in enumerate(thresholds):
