@@ -10,7 +10,7 @@ import json
 import time
 from collections import defaultdict
 
-VERSION = "0.2"
+VERSION = "0.3"
 # cumulative seconds spent in each stage of the main process
 timings = defaultdict(float)
 log_every = 20
@@ -186,8 +186,7 @@ def load_clip(cptv_file):
         clip_db = RawDatabase(cptv_file)
         # tracks = meta_data.get("Tracks", [])
         metadata = clip_db.meta_data
-        if "yolo_bb" in metadata:
-            # and metadata.get("yolo_version") == VERSION:
+        if "yolo_bb" in metadata and metadata.get("yolo_version") == VERSION:
             return
         clip = clip_db.get_clip_tracks(BuildConfig.DEFAULT_GROUPS)
         if clip is None:
@@ -343,7 +342,8 @@ class Yolo:
         for i, boxes in enumerate(frame_boxes):
             if self.tta or self.tiles:
                 boxes = merge_detections(boxes, self.iou)
-            frame_boxes[i] = suppress_inner(boxes, self.overlap)
+            frame_boxes[i] = boxes
+            # suppress_inner(boxes, self.overlap)
         timings["merge_suppress"] += time.perf_counter() - start_t
         return frame_boxes
 
