@@ -1124,7 +1124,9 @@ def prepare_cutmix_dataset(
     return cutmix_dataset
 
 
-def video_sequential_cutmix(data1, data2, current_epoch, multi_input=False):
+def video_sequential_cutmix(
+    data1, data2, current_epoch, heavy_end, medium_end, multi_input=False
+):
     # Read the current epoch value from the global variable graph pointer.
     # Doing this here (inside the traced map function) rather than once when
     # the dataset is built means it re-reads the variable's live value on
@@ -1143,7 +1145,8 @@ def video_sequential_cutmix(data1, data2, current_epoch, multi_input=False):
 
     # Graph-safe conditional selection based on epoch boundaries
     prob, alpha = tf.case(
-        [(epoch < 16, heavy_stage), (epoch < 25, medium_stage)], default=off_stage
+        [(epoch < heavy_end, heavy_stage), (epoch < medium_end, medium_stage)],
+        default=off_stage,
     )
 
     # # Sampled so it doesn't flood the logs - remove once you've confirmed
