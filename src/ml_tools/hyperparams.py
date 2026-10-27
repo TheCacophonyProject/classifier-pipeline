@@ -27,6 +27,7 @@ class HyperParams(dict):
 
         self["channels"] = self.channels
         self["image_modality_dropout"] = self.image_modality_dropout
+        self["expected_epochs"] = self.expected_epochs
 
     @property
     def channels(self):
@@ -167,6 +168,14 @@ class HyperParams(dict):
         # starvation of the lower-capacity metadata branch by the dominant
         # image branch. 0 disables it.
         return self.get("image_modality_dropout", 0.15)
+
+    @property
+    def expected_epochs(self):
+        # Number of epochs training is expected to take. The learning rate drops,
+        # cutmix stages and the start of early stopping are scaled to this rather
+        # than the max epochs, so a run that is still learning keeps going at the
+        # final stage. 33 is the length of the run these stages were tuned on.
+        return self.get("expected_epochs", 33)
 
     @property
     def phase2_freeze_epochs(self):

@@ -423,13 +423,13 @@ class Yolo:
         return 1, self.input["shape"]
 
 
-def merge_detections(boxes, threshold):
+def merge_detections(boxes, threshold, keep_differing_classes=False):
     """Class-aware NMS in original-image coordinates; retain actual model scores."""
     kept = []
     for box in sorted(boxes, key=lambda b: b["confidence"], reverse=True):
         suppress = False
         for other in kept:
-            if box["class_id"] != other["class_id"]:
+            if keep_differing_classes and box["class_id"] != other["class_id"]:
                 continue
             w = max(
                 0,

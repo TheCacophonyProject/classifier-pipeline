@@ -16,6 +16,11 @@ def parse_args():
         action="store_true",
         help="Generate a gradcam image for every label, not just the top prediction",
     )
+    parser.add_argument(
+        "--occlusion",
+        action="store_true",
+        help="Generate a per tile occlusion map instead of gradcam",
+    )
 
     parser.add_argument("model", type=Path, help="model file")
     parser.add_argument("source", type=Path, help="cptv file with txt")
@@ -152,6 +157,105 @@ def save_gradcam_for_label(
 
     plt.tight_layout()
     plt.savefig(out_path, dpi=150)
+    plt.close(fig)
+    print(f"Saved → {out_path}")
+
+
+def make_occlusion_map(model, img, square_width, pad_with=0):
+    """Replaces each tile with padding and records how much every class score drops.
+    Tiles that are already all padding are skipped and left with a drop of 0.
+    Returns (base scores (labels,), drops (square_width, square_width, labels))."""
+    tile = img.shape[0] // square_width
+    batch = [img]
+    tile_positions = []
+    for r in range(square_width):
+        for c in range(square_width):
+            tile_slice = (
+                slice(r * tile, (r + 1) * tile),
+                slice(c * tile, (c + 1) * tile),
+            )
+            if np.all(img[tile_slice] == pad_with):
+                continue
+            occluded = img.copy()
+            occluded[tile_slice] = pad_with
+            batch.append(occluded)
+            tile_positions.append((r, c))
+    scores = model.predict({"input_image": np.array(batch)}, verbose=0)
+    base = scores[0]
+    drops = np.zeros((square_width, square_width, scores.shape[1]), dtype=np.float32)
+    for (r, c), occluded_scores in zip(tile_positions, scores[1:]):
+        drops[r, c] = base - occluded_scores
+    return base, drops
+
+
+def save_occlusion_for_label(
+    pred_image,
+    base,
+    drops,
+    label,
+    pred_score,
+    out_path,
+    display_channel,
+    display_name,
+    square_width,
+):
+    """Whole tiles are occluded across all channels, so there is one map to draw.
+    It is shown over display_channel only."""
+    np.set_printoptions(precision=3, suppress=True)
+    print(f"Occlusion score drops for '{label}' (base score {base:.3f}):")
+    print(drops)
+
+    # only tiles that support the label are coloured, scaled to the biggest drop
+    heatmap = np.maximum(drops, 0) / (drops.max() + 1e-8)
+    heatmap = np.float32(heatmap)
+    tile = pred_image.shape[0] // square_width
+
+    fig, ax = plt.subplots(figsize=(6, 6))
+    fig.suptitle(
+        f"{label} ({pred_score*100:.1f}%) occlusion, base score {base:.2f}",
+        fontsize=12,
+    )
+    vis = overlay_heatmap_on_channel(
+        pred_image[..., display_channel],
+        np.kron(heatmap, np.ones((tile, tile), dtype=np.float32)),
+    )
+    ax.imshow(vis)
+    for r in range(square_width):
+        for c in range(square_width):
+            ax.text(
+                (c + 0.5) * tile,
+                (r + 0.5) * tile,
+                f"{drops[r, c]:.2f}",
+                ha="center",
+                va="center",
+                color="white",
+                fontsize=9,
+            )
+    ax.set_title(display_name, fontsize=9)
+    ax.axis("off")
+
+    plt.tight_layout()
+    plt.savefig(out_path, dpi=150)
+    plt.close(fig)
+    print(f"Saved → {out_path}")
+
+
+def save_raw_channels(pred_image, channel_names, out_path):
+    """Saves each input channel as its own greyscale panel, with no overlay."""
+    fig, axes = plt.subplots(
+        1, len(channel_names), figsize=(4 * len(channel_names), 4), squeeze=False
+    )
+    for ci, ch_name in enumerate(channel_names):
+        channel = pred_image[..., ci]
+        ax = axes[0][ci]
+        ax.imshow(channel, cmap="gray")
+        ax.set_title(
+            f"{ch_name} ({channel.min():.0f} - {channel.max():.0f})", fontsize=9
+        )
+        ax.axis("off")
+
+    plt.tight_layout()
+    plt.savefig(out_path, dpi=150, bbox_inches="tight")
     plt.close(fig)
     print(f"Saved → {out_path}")
 
@@ -345,6 +449,9 @@ def main():
 
     from modelevaluate import has_activation, add_sigmoid_output
 
+    # occlusion is measured on logits where possible, so confident predictions
+    # aren't flattened by a saturated sigmoid
+    score_model = model
     if not has_activation(model):
         print("Added sigmoid output")
         model = add_sigmoid_output(model)
@@ -362,33 +469,62 @@ def main():
         for i, label in enumerate(labels):
             print(f"  {label}: {pred[i]*100:.1f}%")
         top_i = int(np.argmax(pred))
-        top_label = labels[top_i]
+        save_raw_channels(
+            pred_image,
+            [str(ch) for ch in classifier.params.channels],
+            args.source.parent / f"{args.source.stem}-raw.png",
+        )
 
-        if args.all_labels:
-            for label_i, label in enumerate(labels):
-                out_path = (
-                    args.source.parent / f"{args.source.stem}-gradcam-{label}.png"
+        if args.occlusion:
+            suffix = "occlusion"
+            # the animal shows most clearly in the filtered channel
+            model_channels = [str(ch) for ch in classifier.params.channels]
+            display_channel = (
+                model_channels.index("filtered")
+                if "filtered" in model_channels
+                else len(model_channels) - 1
+            )
+            display_name = model_channels[display_channel]
+            # one set of predictions gives the drops for every label
+            base, drops = make_occlusion_map(
+                score_model, pred_image, classifier.params.square_width
+            )
+
+            def save_fn(label_i, out_path):
+                save_occlusion_for_label(
+                    pred_image,
+                    base[label_i],
+                    drops[..., label_i],
+                    labels[label_i],
+                    pred[label_i],
+                    out_path,
+                    display_channel,
+                    display_name,
+                    classifier.params.square_width,
                 )
+
+        else:
+            suffix = "gradcam"
+
+            def save_fn(label_i, out_path):
                 save_gradcam_for_label(
                     model,
                     pred_image,
                     label_i,
-                    label,
+                    labels[label_i],
                     pred[label_i],
                     out_path,
                     channel_names,
                 )
+
+        if args.all_labels:
+            for label_i, label in enumerate(labels):
+                save_fn(
+                    label_i,
+                    args.source.parent / f"{args.source.stem}-{suffix}-{label}.png",
+                )
         else:
-            out_path = args.source.parent / f"{args.source.stem}-gradcam.png"
-            save_gradcam_for_label(
-                model,
-                pred_image,
-                top_i,
-                top_label,
-                pred[top_i],
-                out_path,
-                channel_names,
-            )
+            save_fn(top_i, args.source.parent / f"{args.source.stem}-{suffix}.png")
         break
         # plt.show()
 

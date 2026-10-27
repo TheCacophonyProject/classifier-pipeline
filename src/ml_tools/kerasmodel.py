@@ -25,6 +25,11 @@ from classify.trackprediction import TrackPrediction
 from ml_tools.hyperparams import HyperParams
 from ml_tools.preprocess import THERMAL_FORMAT_CENTIKELVIN
 from ml_tools import thermaldataset
+from ml_tools.thermaldataset import (
+    STAGE_REFERENCE_EPOCHS,
+    cutmix_stage_epochs,
+    scale_stage_epoch,
+)
 from ml_tools.resnet.wr_resnet import WRResNet
 
 from ml_tools import irdataset
@@ -921,6 +926,7 @@ class KerasModel(Interpreter):
             use_jitter=use_jitter or None,
             epoch_size=100 if test else None,
             current_epoch=CURRENT_EPOCH,
+            expected_epochs=self.params.expected_epochs,
             enlarge=not dont_enlarge,
         )
 
@@ -960,10 +966,18 @@ class KerasModel(Interpreter):
             run_name, fine_tune=fine_tune, rebalance=rebalance, enlarge=not dont_enlarge
         )
 
+        # early stopping waits until cutmix has eased off to its medium stage
+        early_stop_start, _ = cutmix_stage_epochs(self.params.expected_epochs)
+        logging.info(
+            "Expected epochs %s, early stopping starts from epoch %s",
+            self.params.expected_epochs,
+            early_stop_start,
+        )
         checkpoints = self.checkpoints(
             run_name,
             warmup_epochs=2,
             fine_tuning=warm_down,
+            early_stop_start=early_stop_start,
         )
 
         if warm_down:
@@ -977,10 +991,16 @@ class KerasModel(Interpreter):
             )
         else:
 
-            logging.info("Adding layer stepwarmup callback")
-            from ml_tools.thermaldataset import (
-                JITTER_HEAVY_STAGE_EPOCH,
-                JITTER_MEDIUM_STAGE_EPOCH,
+            first_drop_epoch = scale_stage_epoch(
+                LR_FIRST_DROP_FRACTION, self.params.expected_epochs
+            )
+            second_drop_epoch = scale_stage_epoch(
+                LR_SECOND_DROP_FRACTION, self.params.expected_epochs
+            )
+            logging.info(
+                "Adding layer stepwarmup callback, learning rate drops at epoch %s and %s",
+                first_drop_epoch,
+                second_drop_epoch,
             )
 
             optimizer_fn = optimizer(
@@ -994,8 +1014,8 @@ class KerasModel(Interpreter):
                 ),
                 warmup_epochs=2,
                 steps_per_epoch=steps,
-                medium_epoch=JITTER_MEDIUM_STAGE_EPOCH,
-                heavy_epoch=JITTER_HEAVY_STAGE_EPOCH,
+                first_drop_epoch=first_drop_epoch,
+                second_drop_epoch=second_drop_epoch,
             )
             checkpoints.append(warmup_callback)
 
@@ -1271,6 +1291,7 @@ class KerasModel(Interpreter):
         fine_tuning=False,
         stop_on=("val_loss", "min"),
         warmup_epochs=2,
+        early_stop_start=5,
     ):
         checkpoint_file = self.checkpoint_folder / run_name / "cp.weights.h5"
 
@@ -1333,7 +1354,7 @@ class KerasModel(Interpreter):
         ]
         if not fine_tuning:
             earlyStopping = tf.keras.callbacks.EarlyStopping(
-                start_from_epoch=5,
+                start_from_epoch=early_stop_start,
                 patience=11,
                 monitor=stop_on[0],
                 # monitor=(
@@ -2106,10 +2127,20 @@ def metrics(multi_label=True, from_logits=True):
 
 from tensorflow.keras.callbacks import Callback
 
+# Learning rate drops to 0.1x at epoch 6 and 0.01x at epoch 16 of the reference
+# run, scaled to the expected epochs of each run (see StepWarmupCallback)
+LR_FIRST_DROP_FRACTION = 6 / STAGE_REFERENCE_EPOCHS
+LR_SECOND_DROP_FRACTION = 16 / STAGE_REFERENCE_EPOCHS
+
 
 class StepWarmupCallback(Callback):
     def __init__(
-        self, target_lr, warmup_epochs, steps_per_epoch, medium_epoch, heavy_epoch
+        self,
+        target_lr,
+        warmup_epochs,
+        steps_per_epoch,
+        first_drop_epoch,
+        second_drop_epoch,
     ):
         super(StepWarmupCallback, self).__init__()
         self.target_lr = target_lr
@@ -2119,8 +2150,8 @@ class StepWarmupCallback(Callback):
         self.total_warmup_steps = warmup_epochs * steps_per_epoch
         self.global_step = 0
         self.last_lr = None
-        self.medium_epoch = medium_epoch
-        self.heavy_epoch = heavy_epoch
+        self.first_drop_epoch = first_drop_epoch
+        self.second_drop_epoch = second_drop_epoch
 
     def on_train_batch_begin(self, batch, logs=None):
 
@@ -2128,9 +2159,9 @@ class StepWarmupCallback(Callback):
         if self.global_step < self.total_warmup_steps:
             # Linear scaling formula2
             lr = (self.global_step / self.total_warmup_steps) * self.target_lr
-        elif self.global_step <= (self.medium_epoch + 1) * self.steps_per_epoch:
+        elif self.global_step <= self.first_drop_epoch * self.steps_per_epoch:
             lr = self.target_lr
-        elif self.global_step <= (self.heavy_epoch + 1) * self.steps_per_epoch:
+        elif self.global_step <= self.second_drop_epoch * self.steps_per_epoch:
             lr = self.target_lr * 0.1
         else:
             lr = self.target_lr * 0.01

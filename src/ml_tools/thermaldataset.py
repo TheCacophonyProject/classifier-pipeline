@@ -41,6 +41,31 @@ JITTER_LIGHT_STAGE_PROB = tf.constant(0.1, dtype=tf.float32)
 JITTER_MEDIUM_STAGE_PROB = tf.constant(0.25, dtype=tf.float32)
 JITTER_HEAVY_STAGE_PROB = tf.constant(0.4, dtype=tf.float32)
 
+# Epoch based training stages were tuned on a 33 epoch efficientnetv2b3 run
+# from imagenet weights, so they are kept as fractions of that run's length
+# and scaled to the expected epochs of each run (HyperParams.expected_epochs)
+STAGE_REFERENCE_EPOCHS = 33
+# Cutmix (see video_sequential_cutmix): heavy until epoch 16, medium until 25
+CUTMIX_HEAVY_STAGE_FRACTION = 16 / STAGE_REFERENCE_EPOCHS
+CUTMIX_MEDIUM_STAGE_FRACTION = 25 / STAGE_REFERENCE_EPOCHS
+
+
+def scale_stage_epoch(fraction, expected_epochs=None):
+    """Epoch a stage boundary falls on for a run expected to take expected_epochs,
+    defaults to the reference run length."""
+    if expected_epochs is None:
+        expected_epochs = STAGE_REFERENCE_EPOCHS
+    return int(round(expected_epochs * fraction))
+
+
+def cutmix_stage_epochs(expected_epochs=None):
+    """Returns (heavy stage end, medium stage end) epochs for cutmix."""
+    return (
+        scale_stage_epoch(CUTMIX_HEAVY_STAGE_FRACTION, expected_epochs),
+        scale_stage_epoch(CUTMIX_MEDIUM_STAGE_FRACTION, expected_epochs),
+    )
+
+
 # Tracks which jitter stage (0=light, 1=medium, 2=heavy) was last announced,
 # so jitter_dataset only tf.prints on the call where the stage actually changes.
 LAST_JITTER_STAGE = tf.Variable(
@@ -369,6 +394,7 @@ def load_dataset(filenames, remap_lookup, labels, args):
                 prob=args.get("cutmix_prob", 0.4),
                 current_epoch=args.get("current_epoch"),
                 multi_input=multi_input,
+                expected_epochs=args.get("expected_epochs"),
             )
 
     else:
@@ -1061,8 +1087,23 @@ def jitter_dataset(x, y, current_epoch, multi_input=False):
 
 
 def prepare_cutmix_dataset(
-    dataset_original, img_size, prob, current_epoch, multi_input=False
+    dataset_original,
+    img_size,
+    prob,
+    current_epoch,
+    multi_input=False,
+    expected_epochs=None,
 ):
+    # Scale the stage boundaries to the length of this run, if unknown use the
+    # reference run length which gives the original boundaries of 16 and 25
+    heavy_end, medium_end = cutmix_stage_epochs(expected_epochs)
+    logging.info(
+        "Cutmix stages for %s expected epochs: heavy until epoch %s, medium until epoch %s, then off",
+        expected_epochs or STAGE_REFERENCE_EPOCHS,
+        heavy_end,
+        medium_end,
+    )
+
     # 1. Create a second dataset and shuffle it to mix different images together
     dataset_shuffled = dataset_original.shuffle(buffer_size=4096)
 
@@ -1074,7 +1115,9 @@ def prepare_cutmix_dataset(
     # EpochTrackerCallback across epochs, rather than baking in a constant
     # captured at dataset-construction time.
     cutmix_dataset = zipped_dataset.map(
-        lambda d1, d2: video_sequential_cutmix(d1, d2, current_epoch, multi_input),
+        lambda d1, d2: video_sequential_cutmix(
+            d1, d2, current_epoch, heavy_end, medium_end, multi_input
+        ),
         num_parallel_calls=tf.data.AUTOTUNE,
     )
 
