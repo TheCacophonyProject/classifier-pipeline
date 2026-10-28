@@ -1101,6 +1101,9 @@ def get_segment_indices(
     frame_num = 0
     region_index = None
     start = window_start
+    # highest unused frame, used frames are -1. Only changes when that frame is
+    # chosen, which is always the last chunk, so it is safe to calculate once
+    last_frame = max(frame_indices)
     # pass in velocities and for short clips can dynamically set chink size such that velocity meets the threshold or is chunk_size apart
     for chunk in range(chunks):
         if short_track and chunk > 0 and region_index is not None:
@@ -1132,6 +1135,7 @@ def get_segment_indices(
                 # logging.info("previous end was %s Diff from %s to %s ",end, start, frame_num)
                 # start = max(start, frame_num + 2)
         end = start + int(chunk_size) - 1
+        print("Checking ", start, " to ", end)
         valid_frames = []
         prev_f = None
         if start in frame_to_closest_valid:
@@ -1157,17 +1161,15 @@ def get_segment_indices(
                 prev_f = f
             if f >= end:
                 break
-        if start not in frame_to_closest_valid:
-            last_chunk = True
-        else:
-            reamining_frames = len(frame_indices) - frame_to_closest_valid[start]
-            last_chunk = (
-                reamining_frames <= chunk_size
-                and len(valid_frames) + skipped == reamining_frames
-            )
+        # last chunk if no unused frames remain after this window, used frames are -1.
+        # Doesn't rely on start being in frame_to_closest_valid, which it may not be
+        # if start falls in a gap or on frames already used
+        last_chunk = last_frame <= end
 
         if len(valid_frames) == 0:
+            print("NO valid frames for ", start,end, " last chunk??", last_chunk)
             if last_chunk:
+                print("Breaking last chunk")
                 break
 
             continue
@@ -1254,7 +1256,7 @@ def random_sections(
     # chunk_size = window_frames / chunks
     # try to get an extra sample if its short
     num_frames_sampled = max(1, window_frames / chunk_size)
-
+    logging.info("Windows are %s",windows)
     if (
         inference
         and num_frames_sampled < 2
@@ -1355,6 +1357,7 @@ def random_sections(
             rec_time=rec_time,
             source_file=source_file,
         )
+        print(segment_frames)
         if upsampled and len(segments) > 1:
             segment.upsampled = True
             # these are all segments that would normally not be sampled but have been chosen
