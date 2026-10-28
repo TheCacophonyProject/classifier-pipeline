@@ -48,6 +48,9 @@ STAGE_REFERENCE_EPOCHS = 33
 # Cutmix (see video_sequential_cutmix): heavy until epoch 16, medium until 25
 CUTMIX_HEAVY_STAGE_FRACTION = 16 / STAGE_REFERENCE_EPOCHS
 CUTMIX_MEDIUM_STAGE_FRACTION = 25 / STAGE_REFERENCE_EPOCHS
+# Random frame mask (see read_tfrecord): heavy until epoch 15, medium until 25
+FRAME_MASK_HEAVY_STAGE_FRACTION = 15 / STAGE_REFERENCE_EPOCHS
+FRAME_MASK_MEDIUM_STAGE_FRACTION = 25 / STAGE_REFERENCE_EPOCHS
 
 
 def scale_stage_epoch(fraction, expected_epochs=None):
@@ -63,6 +66,14 @@ def cutmix_stage_epochs(expected_epochs=None):
     return (
         scale_stage_epoch(CUTMIX_HEAVY_STAGE_FRACTION, expected_epochs),
         scale_stage_epoch(CUTMIX_MEDIUM_STAGE_FRACTION, expected_epochs),
+    )
+
+
+def frame_mask_stage_epochs(expected_epochs=None):
+    """Returns (heavy stage end, medium stage end) epochs for random frame masking."""
+    return (
+        scale_stage_epoch(FRAME_MASK_HEAVY_STAGE_FRACTION, expected_epochs),
+        scale_stage_epoch(FRAME_MASK_MEDIUM_STAGE_FRACTION, expected_epochs),
     )
 
 
@@ -305,6 +316,7 @@ def load_dataset(filenames, remap_lookup, labels, args):
             repeat_frames=False,
             # args.get("single_input", False),
             current_epoch=args.get("current_epoch"),
+            expected_epochs=args.get("expected_epochs"),
             use_velocity=USE_VELOCITY,
             multi_input=args.get("multi_input", False),
             enlarge=args.get("enlarge", True),
@@ -641,6 +653,7 @@ def read_tfrecord(
     ],
     repeat_frames=False,
     current_epoch=None,
+    expected_epochs=None,
     use_velocity=False,
     multi_input=False,
     enlarge=True,
@@ -814,7 +827,12 @@ def read_tfrecord(
                 rgb_image, crop_offset[0], crop_offset[1], mosaic_size, mosaic_size
             )
 
-            logging.info("Applying random frame mask")
+            mask_heavy_end, mask_medium_end = frame_mask_stage_epochs(expected_epochs)
+            logging.info(
+                "Applying random frame mask, heavy until epoch %s, medium until epoch %s, then off",
+                mask_heavy_end,
+                mask_medium_end,
+            )
             # Stage the frame-masking probability by epoch, same boundaries as
             # the cutmix staging above: heavy early on, tapering to off, read
             # live off current_epoch so it tracks training progress. Applied
@@ -833,7 +851,10 @@ def read_tfrecord(
                 return tf.constant(0.0, dtype=tf.float32)
 
             mask_frames_prob = tf.case(
-                [(epoch < 15, heavy_mask_prob), (epoch < 25, medium_mask_prob)],
+                [
+                    (epoch < mask_heavy_end, heavy_mask_prob),
+                    (epoch < mask_medium_end, medium_mask_prob),
+                ],
                 default=off_mask_prob,
             )
 

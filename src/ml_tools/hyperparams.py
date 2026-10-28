@@ -28,6 +28,7 @@ class HyperParams(dict):
         self["channels"] = self.channels
         self["image_modality_dropout"] = self.image_modality_dropout
         self["expected_epochs"] = self.expected_epochs
+        self["lr_schedule"] = self.lr_schedule
 
     @property
     def channels(self):
@@ -193,6 +194,15 @@ class HyperParams(dict):
         else:
             default = 0.0002
         return self.get("learning_rate", default)
+
+    @property
+    def lr_schedule(self):
+        # "step" drops the learning rate 10x at two points scaled to expected_epochs,
+        # "cosine" decays it smoothly to 1% over expected_epochs. Both warm up first
+        schedule = self.get("lr_schedule", "step")
+        if schedule not in ("step", "cosine"):
+            raise ValueError(f"Unknown lr_schedule {schedule}, expected step or cosine")
+        return schedule
 
     @property
     def learning_rate_decay(self):

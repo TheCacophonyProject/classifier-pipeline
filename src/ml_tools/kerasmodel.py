@@ -997,27 +997,34 @@ class KerasModel(Interpreter):
             second_drop_epoch = scale_stage_epoch(
                 LR_SECOND_DROP_FRACTION, self.params.expected_epochs
             )
-            logging.info(
-                "Adding layer stepwarmup callback, learning rate drops at epoch %s and %s",
-                first_drop_epoch,
-                second_drop_epoch,
+            target_lr = (
+                self.params.fine_tune_learning_rate
+                if use_jitter or qat
+                else self.params.learning_rate
             )
-
             optimizer_fn = optimizer(
-                self.params, steps, self.epochs, fine_tune=fine_tune is not None
+                self.params,
+                steps,
+                self.epochs,
+                fine_tune=fine_tune is not None,
+                target_lr=target_lr,
             )
-            warmup_callback = StepWarmupCallback(
-                target_lr=(
-                    self.params.fine_tune_learning_rate
-                    if use_jitter or qat
-                    else self.params.learning_rate
-                ),
-                warmup_epochs=2,
-                steps_per_epoch=steps,
-                first_drop_epoch=first_drop_epoch,
-                second_drop_epoch=second_drop_epoch,
-            )
-            checkpoints.append(warmup_callback)
+            # cosine is a keras schedule on the optimizer, the step callback sets
+            # the learning rate every batch so would override it
+            if self.params.lr_schedule == "step":
+                logging.info(
+                    "Adding layer stepwarmup callback, learning rate drops at epoch %s and %s",
+                    first_drop_epoch,
+                    second_drop_epoch,
+                )
+                warmup_callback = StepWarmupCallback(
+                    target_lr=target_lr,
+                    warmup_epochs=2,
+                    steps_per_epoch=steps,
+                    first_drop_epoch=first_drop_epoch,
+                    second_drop_epoch=second_drop_epoch,
+                )
+                checkpoints.append(warmup_callback)
 
         if phase2:
             # not used but kept incase revisited
@@ -1767,7 +1774,7 @@ def loss(params, from_logits=True):
     )
 
 
-def optimizer(params, steps_per_epoch, epochs, fine_tune=False):
+def optimizer(params, steps_per_epoch, epochs, fine_tune=False, target_lr=None):
     if fine_tune:
         logging.info(
             "Using fine tune cosine optimizer with warm of 2 epochs and final rate %s",
@@ -1781,6 +1788,24 @@ def optimizer(params, steps_per_epoch, epochs, fine_tune=False):
             decay_steps=epochs * int(steps_per_epoch),  # Point where decay finishes
             warmup_target=params.fine_tune_learning_rate,  # Peak fine-tuning learning rate
             warmup_steps=warmup_steps,  # Steps to transition from initial to target
+        )
+    elif params.lr_schedule == "cosine":
+        if target_lr is None:
+            target_lr = params.learning_rate
+        warmup_steps = steps_per_epoch * 2
+        logging.info(
+            "Using cosine optimizer with warm up of 2 epochs to %s decaying over %s epochs",
+            target_lr,
+            params.expected_epochs,
+        )
+        lr_schedule = tf.keras.optimizers.schedules.CosineDecay(
+            initial_learning_rate=0.0,
+            # steps decayed over after the warmup finishes
+            decay_steps=max(params.expected_epochs - 2, 1) * int(steps_per_epoch),
+            # holds at 1% of target_lr once decayed, same as the step schedules final rate
+            alpha=0.01,
+            warmup_target=target_lr,
+            warmup_steps=warmup_steps,
         )
     else:
 
