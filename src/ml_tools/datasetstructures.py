@@ -1082,10 +1082,9 @@ def get_segment_indices(
     chunks,
     chunk_size,
     frame_indices,
+    frame_numbers,
     rng,
     regions,
-    last_index,
-    frame_to_closest_valid,
     short_track,
     vel_x,
     vel_y,
@@ -1135,41 +1134,20 @@ def get_segment_indices(
                 # logging.info("previous end was %s Diff from %s to %s ",end, start, frame_num)
                 # start = max(start, frame_num + 2)
         end = start + int(chunk_size) - 1
-        print("Checking ", start, " to ", end)
-        valid_frames = []
-        prev_f = None
-        if start in frame_to_closest_valid:
-            start_index = frame_to_closest_valid[start]
-        elif last_index is not None:
-            start_index = last_index
-        else:
-            start_index = 0
+        # frame_numbers is sorted and never changes, so the regions in this window
+        # are the index range [start_index, end_index), minus any already used
+        start_index = np.searchsorted(frame_numbers, start, side="left")
         if start_index >= len(frame_indices):
             break
-        skipped = 0
-        for i, f in enumerate(frame_indices[start_index:]):
-            last_index = i + start_index
-            while prev_f is not None and f - prev_f > 1:
-                prev_f += 1
-                frame_to_closest_valid[prev_f] = last_index
-            frame_to_closest_valid[f] = last_index
-
-            if f == -1:
-                skipped += 1
-            elif f >= start and f <= end:
-                valid_frames.append(f)
-                prev_f = f
-            if f >= end:
-                break
-        # last chunk if no unused frames remain after this window, used frames are -1.
-        # Doesn't rely on start being in frame_to_closest_valid, which it may not be
-        # if start falls in a gap or on frames already used
+        end_index = np.searchsorted(frame_numbers, end, side="right")
+        valid_indices = [
+            i for i in range(start_index, end_index) if frame_indices[i] != -1
+        ]
+        # last chunk if no unused frames remain after this window, used frames are -1
         last_chunk = last_frame <= end
 
-        if len(valid_frames) == 0:
-            print("NO valid frames for ", start,end, " last chunk??", last_chunk)
+        if len(valid_indices) == 0:
             if last_chunk:
-                print("Breaking last chunk")
                 break
 
             continue
@@ -1180,24 +1158,24 @@ def get_segment_indices(
 
         else:
             if last_chunk:
-                offset = len(valid_frames) - 1
+                offset = len(valid_indices) - 1
             elif inference:
                 # no augmentation at inference, pick a fixed frame so results are repeatable
-                offset = len(valid_frames) // 2
+                offset = len(valid_indices) // 2
             else:
-                offset = rng.integers(low=0, high=len(valid_frames))
-        frame_num = valid_frames[offset]
-        frame_indices[frame_to_closest_valid[frame_num]] = -1
+                offset = rng.integers(low=0, high=len(valid_indices))
+        # regions line up with frame_indices
+        region_index = valid_indices[offset]
+        frame_num = frame_indices[region_index]
+        frame_indices[region_index] = -1
         assert frame_num not in frame_indices
         segment_frames.append(frame_num)
-        # regions line up with frame_indices
-        region_index = frame_to_closest_valid[frame_num]
         seg_regions.append(regions[region_index])
         assert seg_regions[-1].frame_number == frame_num
         mass += regions[region_index].mass
         if last_chunk:
             break
-    return segment_frames, seg_regions, mass, last_index, stopped_early
+    return segment_frames, seg_regions, mass, stopped_early
 
 
 def random_sections(
@@ -1256,7 +1234,7 @@ def random_sections(
     # chunk_size = window_frames / chunks
     # try to get an extra sample if its short
     num_frames_sampled = max(1, window_frames / chunk_size)
-    logging.info("Windows are %s",windows)
+    logging.info("Windows are %s", windows)
     if (
         inference
         and num_frames_sampled < 2
@@ -1306,8 +1284,9 @@ def random_sections(
         chosen_windows = np.asarray(windows)
 
     segments = []
-    frame_to_closest_valid = {}
-    last_index = None
+    # sorted frame numbers to search for each window's regions, unlike
+    # frame_indices this is never changed
+    frame_numbers = np.array(frame_indices)
     centre_x = np.float32([r.centroid[0] for r in regions])
     centre_y = np.float32([r.centroid[1] for r in regions])
 
@@ -1319,21 +1298,18 @@ def random_sections(
     # probably having the extra windows in here is redundant now as we dont care if we skip a bunch of frames
     # and accept segmetns with a small number of frames
     for window_start in chosen_windows:
-        segment_frames, seg_regions, mass, last_index, stopped_early = (
-            get_segment_indices(
-                window_start,
-                chunks,
-                chunk_size,
-                frame_indices,
-                rng,
-                regions,
-                last_index,
-                frame_to_closest_valid,
-                num_frames < max_window_frames,
-                vel_x,
-                vel_y,
-                inference=inference,
-            )
+        segment_frames, seg_regions, mass, stopped_early = get_segment_indices(
+            window_start,
+            chunks,
+            chunk_size,
+            frame_indices,
+            frame_numbers,
+            rng,
+            regions,
+            num_frames < max_window_frames,
+            vel_x,
+            vel_y,
+            inference=inference,
         )
         if (
             min_segments is not None
@@ -1357,7 +1333,6 @@ def random_sections(
             rec_time=rec_time,
             source_file=source_file,
         )
-        print(segment_frames)
         if upsampled and len(segments) > 1:
             segment.upsampled = True
             # these are all segments that would normally not be sampled but have been chosen
