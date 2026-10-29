@@ -294,7 +294,6 @@ class RawDatabase:
                             else:
                                 region.frame_number = prev_frame + 1
                     prev_frame = region.frame_number
-                    region.frame_number = region.frame_number
                     assert region.frame_number >= 0
                     regions[region.frame_number] = region
                     if start is None:

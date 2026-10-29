@@ -547,13 +547,13 @@ class Track:
                 if region.frame_number is None:
                     if "frameTime" in position:
                         if i == 0:
-                            region.frame_number = position["frameTime"] * 9
+                            region.frame_number = round(r["frameTime"] * 9)
                         else:
-                            region.frame_number = (
-                                self.bounds_history[0].frame_number + i
-                            )
+                            region.frame_number = prev_frame + 1
                     else:
                         raise Exception("No frame number info for track")
+            prev_frame = region.frame_number
+
             if self.start_frame is None:
                 self.start_frame = region.frame_number
             # self.end_frame = region.frame_number
