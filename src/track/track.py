@@ -547,7 +547,7 @@ class Track:
                 if region.frame_number is None:
                     if "frameTime" in position:
                         if i == 0:
-                            region.frame_number = round(r["frameTime"] * 9)
+                            region.frame_number = round(position["frameTime"] * 9)
                         else:
                             region.frame_number = prev_frame + 1
                     else:
