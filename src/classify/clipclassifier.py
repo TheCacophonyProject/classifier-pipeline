@@ -118,7 +118,7 @@ class ClipClassifier:
         split_dataset="test",
     ):
         # IF passed a dir extract all cptv files, if a cptv just extract this cptv file
-        if not os.path.exists(source):
+        if not os.path.exists(source) and split_file is None:
             logging.error("Could not find file or directory %s", source)
             return
 
