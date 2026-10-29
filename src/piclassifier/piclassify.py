@@ -144,7 +144,6 @@ def main(thermal_config=None, parse_file=None):
         if os.path.exists(SOCKET_NAME):
             raise
     logging.info("running as thermal")
-
     # In postprocess mode only, could possibly start up the classifier only when a file for postprocessing
     if (
         thermal_config.base_motion.run_classifier

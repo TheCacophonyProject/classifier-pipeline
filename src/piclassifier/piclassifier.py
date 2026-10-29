@@ -135,6 +135,7 @@ class PiClassifier(Processor):
         super().__init__(thumbnail_dir, False or not self.classify)
         self.recorder = None
         self.snapshot_recorder = None
+        self.snapshot_pending = False
         self.processing_frame = False
         self._output_dir = thermal_config.recorder.output_dir
         self.classifier_initialised = False
@@ -1003,6 +1004,11 @@ class PiClassifier(Processor):
         pass
 
     def take_snapshot(self):
+        if self.snapshot_recorder is None:
+            logging.info("Snapshot recorder not ready, snapshot pending")
+            self.snapshot_pending = True
+            return False
+        self.snapshot_pending = False
         started = self.snapshot_recorder.start_recording(
             None,
             [],
@@ -1035,6 +1041,12 @@ class PiClassifier(Processor):
             self.startup_classifier()
         self.motion_detector.process_frame(lepton_frame)
         self.process_time += time.time() - start
+        if (
+            self.snapshot_pending
+            and self.snapshot_recorder is not None
+            and not self.snapshot_recorder.recording
+        ):
+            self.take_snapshot()
         if self.snapshot_recorder.recording:
             self.snapshot_recorder.process_frame(False, lepton_frame, received_at)
         if self.constant_recorder is not None and self.motion_detector.can_record():
