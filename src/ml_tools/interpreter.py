@@ -870,13 +870,17 @@ class Interpreter(ABC):
         for segment in segments:
             segment_data = []
             for region in segment.regions:
-
                 if region.frame_number in track_data:
                     cropped_frame = track_data[region.frame_number]
                     if cropped_frame is None:
                         continue
                 else:
+
                     frame = clip.get_frame(region.frame_number)
+                    if frame is None:
+                        logging.warning("Couldnt find frame %s", region.frame_number)
+                        track_data[region.frame_number] = None
+                        continue
                     result = preprocess_frame_v2(
                         frame,
                         self.params.frame_size,
@@ -892,6 +896,9 @@ class Interpreter(ABC):
                     cropped_frame, _, _ = result
                     track_data[region.frame_number] = cropped_frame
                 segment_data.append(cropped_frame)
+            if len(segment_data) == 0:
+                logging.warn("No frames to predict on")
+                continue
             input_image = preprocess_movement(
                 segment_data,
                 self.params.square_width,

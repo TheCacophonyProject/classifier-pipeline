@@ -75,6 +75,7 @@ class ClipTrackExtractor(ClipTracker):
         self.update_background = update_background
         self.calculate_filtered = calculate_filtered
         self.weighting_percent = 1
+        self.inpaint_yolo = False
         # self.cache_to_disk = cache_to_disk
         # self.max_tracks = config.max_tracks
         # # frame_padding < 3 causes problems when we get small areas...
@@ -88,7 +89,7 @@ class ClipTrackExtractor(ClipTracker):
         #     size = self.config.dilation_pixels * 2 + 1
         #     self.dilate_kernel = np.ones((size, size), np.uint8)
         self.model = model
-        if self.config.model and model is None and do_tracking:
+        if self.config.model and model is None:
             logging.info("Using yolo model for object detection")
             from ml_tools.interpreter import Yolo
 
@@ -131,8 +132,8 @@ class ClipTrackExtractor(ClipTracker):
 
         frame = reader.next_frame()
         background = frame.pix
-        if self.model:
-            background = self.inpaint_yolo(clip, frame.pix)
+        if self.model and self.inpaint_yolo:
+            background = self.inpaint_yolo(clip, background)
         clip.update_background(background)
         clip._background_calculated()
         self.background_alg = WeightedBackground(
@@ -194,7 +195,7 @@ class ClipTrackExtractor(ClipTracker):
                 comparison, None, fx=4, fy=4, interpolation=cv2.INTER_NEAREST
             )
             cv2.imshow("i", comparison)
-            cv2.moveWindow("i", x, 300)
+            cv2.moveWindow("i", 0, 300)
 
             cv2.waitKey(0)
             cv2.destroyAllWindows()
@@ -237,6 +238,11 @@ class ClipTrackExtractor(ClipTracker):
                     [f.thermal for f in clip.frame_buffer.get_last_x(x=45)], axis=0
                 )
                 self.background_alg.process_frame(last_avg)
+            if self.inpaint_yolo and clip.current_frame % 100 == 0:
+                # GP TODO needs testing
+                self.background_alg.update_background(
+                    self.inpaint_yolo(clip, self.background_alg.background)
+                )
         if not clip.from_metadata and self.do_tracking:
             self.apply_track_filtering(clip)
 
@@ -308,6 +314,19 @@ class ClipTrackExtractor(ClipTracker):
                     # TODO keep confidence and class info
         clip_frame = clip.add_frame(thermal, filtered, mask, ffc_affected)
         if not self.do_tracking:
+            regions = []
+            for t in clip.tracks:
+                matches = [
+                    r
+                    for r in t.bounds_history
+                    if r.frame_number == clip_frame.frame_number
+                ]
+                if len(matches) == 1:
+                    regions.append(matches[0])
+            debug = False
+            if debug:
+                print(clip_frame.frame_number)
+                debug_frame(self.background_alg.background, clip_frame, regions)
             return [], []
 
         new_tracks = []
@@ -332,11 +351,12 @@ class ClipTrackExtractor(ClipTracker):
                 clip.region_history.append(regions)
         debug = False
         if debug:
-            debug_frame(clip_frame, regions)
+            print(clip_frame.frame_number)
+            debug_frame(self.background_alg.background, clip_frame, regions)
         return new_tracks, stale_tracks
 
 
-def debug_frame(frame, regions):
+def debug_frame(background, frame, regions):
     if frame.filtered is None or frame.thermal is None:
         return
     from ml_tools.imageprocessing import normalize
@@ -347,14 +367,17 @@ def debug_frame(frame, regions):
 
     thermal = cv2.cvtColor(np.uint8(thermal), cv2.COLOR_GRAY2BGR)
     filtered = cv2.cvtColor(np.uint8(filtered), cv2.COLOR_GRAY2BGR)
+    images = [thermal, filtered]
+    if background is not None:
+        background, _ = normalize(background, new_max=255)
+        background = cv2.cvtColor(np.uint8(background), cv2.COLOR_GRAY2BGR)
+        images.insert(0, background)
     for region in regions:
         start = (int(region.left), int(region.top))
         end = (int(region.right), int(region.bottom))
-        cv2.rectangle(thermal, start, end, (0, 0, 255), 1)
-        cv2.rectangle(filtered, start, end, (0, 0, 255), 1)
+        for image in images:
+            cv2.rectangle(image, start, end, (0, 0, 255), 1)
 
-    cv2.imshow("t", thermal)
-
-    cv2.imshow("f", filtered)
-    cv2.moveWindow("f", 300, 300)
+    # background, thermal, filtered side by side in one window
+    cv2.imshow("debug", np.hstack(images))
     cv2.waitKey()

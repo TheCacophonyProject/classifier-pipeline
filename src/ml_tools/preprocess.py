@@ -361,7 +361,6 @@ def preprocess_frame_v2(
         cropped_frame.thermal_norm *= new_max
         cropped_frame.filtered *= new_max
     cropped_frame.preprocessed = True
-
     return cropped_frame, mean_value, data_region
 
 

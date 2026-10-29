@@ -81,6 +81,19 @@ def main(cmd_args=None):
         help="Use supplied prediction frames from metadata.txt",
     )
     parser.add_argument(
+        "--output-dir",
+        help="Write metadata to this folder (mirroring source subfolders) instead of overwriting the source metadata",
+    )
+    parser.add_argument(
+        "--split-file",
+        help="Classify the files listed in this dataset split json, source is then the folder containing the files",
+    )
+    parser.add_argument(
+        "--split-dataset",
+        default="test",
+        help="Which dataset of the split file to classify",
+    )
+    parser.add_argument(
         "--cache",
         type=str2bool,
         nargs="?",
@@ -131,6 +144,9 @@ def main(cmd_args=None):
         reuse_frames=args.reuse_prediction_frames,
         track=args.track,
         calculate_thumbnails=args.calculate_thumbnails,
+        output_dir=args.output_dir,
+        split_file=args.split_file,
+        split_dataset=args.split_dataset,
     )
     # clip_classifier.post_process_file(
     #     args.source,None

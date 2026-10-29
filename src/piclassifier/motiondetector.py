@@ -202,6 +202,10 @@ class WeightedBackground:
     def get_average(self):
         return self.average
 
+    def update_background(self, background):
+        self._background = background
+        self.background_weight.fill(0)
+
     def process_frame(self, frame):
         frame = np.uint16(self.crop_rectangle.subimage(frame))
         if self._background is None:

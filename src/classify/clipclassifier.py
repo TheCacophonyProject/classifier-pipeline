@@ -113,31 +113,72 @@ class ClipClassifier:
         reuse_frames=None,
         track=False,
         calculate_thumbnails=False,
+        output_dir=None,
+        split_file=None,
+        split_dataset="test",
     ):
         # IF passed a dir extract all cptv files, if a cptv just extract this cptv file
         if not os.path.exists(source):
             logging.error("Could not find file or directory %s", source)
             return
-        if os.path.isfile(source):
-            self.process_file(
-                source,
-                cache=cache,
-                reuse_frames=reuse_frames,
-                track=track,
-                calculate_thumbnails=calculate_thumbnails,
-            )
-            return
-        for folder_path, _, files in os.walk(source):
-            for name in files:
-                if os.path.splitext(name)[1] in [".mp4", ".cptv", ".avi"]:
-                    full_path = os.path.join(folder_path, name)
+
+        def output_file(full_path):
+            # mirror the file's location under source so metadata names don't collide
+            if output_dir is None:
+                return None
+            if os.path.isfile(source):
+                rel_path = os.path.basename(full_path)
+            else:
+                rel_path = os.path.relpath(full_path, source)
+            return os.path.join(output_dir, os.path.splitext(rel_path)[0] + ".txt")
+
+        if split_file is not None:
+            with open(split_file, "r") as f:
+                split = json.load(f)
+            # split sources are absolute paths on the machine the split was made on,
+            # keep only <subfolder>/<file> and look for them under source
+            files = [
+                os.path.join(source, *Path(rec["source"]).parts[-2:])
+                for rec in split[split_dataset]
+            ]
+        elif os.path.isfile(source):
+            files = [source]
+        else:
+            files = [
+                os.path.join(folder_path, name)
+                for folder_path, _, names in os.walk(source)
+                for name in names
+                if os.path.splitext(name)[1] in [".mp4", ".cptv", ".avi"]
+            ]
+        logging.info("Processing %s files", len(files))
+        for i, full_path in enumerate(files):
+            out_file = output_file(full_path)
+            if out_file is not None and os.path.exists(out_file):
+                logging.info("Skipping %s already have %s", full_path, out_file)
+                continue
+            if split_file is not None:
+                logging.info("Processing %s/%s %s", i + 1, len(files), full_path)
+                # dont let one bad file stop a long run
+                try:
                     self.process_file(
                         full_path,
                         cache=cache,
                         reuse_frames=reuse_frames,
                         track=track,
                         calculate_thumbnails=calculate_thumbnails,
+                        output_file=out_file,
                     )
+                except Exception:
+                    logging.error("Error processing %s", full_path, exc_info=True)
+                continue
+            self.process_file(
+                full_path,
+                cache=cache,
+                reuse_frames=reuse_frames,
+                track=track,
+                calculate_thumbnails=calculate_thumbnails,
+                output_file=out_file,
+            )
 
     def process_file(
         self,
@@ -146,11 +187,13 @@ class ClipClassifier:
         reuse_frames=None,
         track=False,
         calculate_thumbnails=False,
+        output_file=None,
     ):
         """
         Process a file extracting tracks and identifying them.
         :param filename: filename to process
         :param enable_preview: if true an MPEG preview file is created.
+        :param output_file: save metadata here instead of overwriting the source metadata
         """
         _, ext = os.path.splitext(filename)
         cache_to_disk = (
@@ -182,6 +225,14 @@ class ClipClassifier:
         elif ext == ".cptv":
             from track.cliptrackextractor import ClipTrackExtractor
 
+            if self.config.tracking.model is not None and track:
+                if "tracking-model" in self.models:
+                    model = self.models["tracking-model"]
+                else:
+                    from ml_tools.interpreter import Yolo
+
+                    model = Yolo(self.config.tracking.model)
+                    self.models["tracking-model"] = model
             track_extractor = ClipTrackExtractor(
                 self.config.tracking,
                 cache_to_disk,
@@ -250,9 +301,11 @@ class ClipClassifier:
                 mpeg_filename, clip, predictions_per_model
             )
         models = [self.model] if self.model else self.config.classify.models
+        if output_file is not None:
+            os.makedirs(os.path.dirname(output_file), exist_ok=True)
         meta_data = self.save_metadata(
             meta_data,
-            meta_file,
+            meta_file if output_file is None else output_file,
             clip,
             predictions_per_model,
             models,
@@ -303,6 +356,17 @@ class ClipClassifier:
                 clip, track, segment_frames=segment_frames, min_segments=1
             )
             if prediction is not None:
+                # for pred in prediction.predictions:
+                #     max_i = np.argmax(pred.prediction)
+                #     logging.info(
+                #         "%s - %s is predicted as %s: %s%% frames %s ( %s )",
+                #         pred.frames[0] / 9,
+                #         pred.frames[-1] / 9,
+                #         prediction.labels[max_i],
+                #         round(100 * pred.prediction[max_i]),
+                #         pred.frames,
+                #         len(pred.frames),
+                #     )
                 predictions.prediction_per_track[track.id] = prediction
                 description = prediction.description()
                 logging.info(

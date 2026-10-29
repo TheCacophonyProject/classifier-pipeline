@@ -1234,7 +1234,6 @@ def random_sections(
     # chunk_size = window_frames / chunks
     # try to get an extra sample if its short
     num_frames_sampled = max(1, window_frames / chunk_size)
-    logging.info("Windows are %s", windows)
     if (
         inference
         and num_frames_sampled < 2
@@ -1323,7 +1322,7 @@ def random_sections(
             clip_id,
             track_id,
             start_frame=start_frame,
-            mass=mass / len(segment_frames),
+            mass=mass,
             label=label,
             regions=seg_regions,
             frame_indices=segment_frames,
