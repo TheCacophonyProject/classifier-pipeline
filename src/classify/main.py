@@ -94,6 +94,12 @@ def main(cmd_args=None):
         help="Which dataset of the split file to classify",
     )
     parser.add_argument(
+        "--workers",
+        type=int,
+        default=1,
+        help="Classify this many files at once in separate processes, each loads its own model",
+    )
+    parser.add_argument(
         "--cache",
         type=str2bool,
         nargs="?",
@@ -147,6 +153,7 @@ def main(cmd_args=None):
         output_dir=args.output_dir,
         split_file=args.split_file,
         split_dataset=args.split_dataset,
+        workers=args.workers,
     )
     # clip_classifier.post_process_file(
     #     args.source,None

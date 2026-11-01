@@ -4,6 +4,7 @@ import logging
 import os.path
 import time
 import math
+import multiprocessing
 import numpy as np
 
 from ml_tools.tools import load_clip_metadata, CustomJSONEncoder
@@ -116,6 +117,7 @@ class ClipClassifier:
         output_dir=None,
         split_file=None,
         split_dataset="test",
+        workers=1,
     ):
         # IF passed a dir extract all cptv files, if a cptv just extract this cptv file
         if not os.path.exists(source):
@@ -150,7 +152,32 @@ class ClipClassifier:
                 for name in names
                 if os.path.splitext(name)[1] in [".mp4", ".cptv", ".avi"]
             ]
+        files.sort()
         logging.info("Processing %s files", len(files))
+        file_kwargs = dict(
+            cache=cache,
+            reuse_frames=reuse_frames,
+            track=track,
+            calculate_thumbnails=calculate_thumbnails,
+        )
+        if workers > 1:
+            todo = []
+            for full_path in files:
+                out_file = output_file(full_path)
+                if out_file is not None and os.path.exists(out_file):
+                    logging.info("Skipping %s already have %s", full_path, out_file)
+                    continue
+                todo.append((full_path, out_file))
+            # fork so each worker gets a copy of this classifier and loads its own
+            # model on first use, spawn would rerun classify.py which has no main guard
+            with multiprocessing.get_context("fork").Pool(
+                workers, init_classify_worker, (self, file_kwargs)
+            ) as pool:
+                for i, full_path in enumerate(
+                    pool.imap_unordered(classify_worker, todo)
+                ):
+                    logging.info("Processed %s/%s %s", i + 1, len(todo), full_path)
+            return
         for i, full_path in enumerate(files):
             out_file = output_file(full_path)
             if out_file is not None and os.path.exists(out_file):
@@ -860,6 +887,27 @@ class ClipClassifier:
             models,
             calculate_thumbnails=False,
         )
+
+
+worker_classifier = None
+worker_kwargs = None
+
+
+def init_classify_worker(clip_classifier, kwargs):
+    global worker_classifier
+    global worker_kwargs
+    worker_classifier = clip_classifier
+    worker_kwargs = kwargs
+
+
+def classify_worker(job):
+    full_path, out_file = job
+    # dont let one bad file stop a long run
+    try:
+        worker_classifier.process_file(full_path, output_file=out_file, **worker_kwargs)
+    except Exception:
+        logging.error("Error processing %s", full_path, exc_info=True)
+    return full_path
 
 
 def country_by_location(lat, lng):
