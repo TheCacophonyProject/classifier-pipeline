@@ -135,21 +135,18 @@ def convert_model(args):
     if meta_file.exists():
         print("Copying", meta_file, " to ", frozen_meta)
         shutil.copy(meta_file, frozen_meta)
+        with open(frozen_meta) as f:
+            meta = json.load(f)
+        original_thresholds = meta["original_thresholds"]
+        clipped_thresholds = {
+            label: 0.8 if value == 0.0 else min(max(value, 0.5), 0.8)
+            for label, value in original_thresholds.items()
+        }
 
-        if args.thresholds:
-            thresholds = Path(args.thresholds).expanduser()
-            with open(thresholds) as f:
-                original_thresholds = json.load(f)
-            clipped_thresholds = {
-                label: 0.8 if value == 0.0 else min(max(value, 0.5), 0.8)
-                for label, value in original_thresholds.items()
-            }
-            with open(frozen_meta) as f:
-                meta = json.load(f)
-            meta["thresholds"] = clipped_thresholds
-            meta["original_thresholds"] = original_thresholds
-            with open(frozen_meta, "w") as f:
-                json.dump(meta, f, indent=4)
+        meta["thresholds"] = clipped_thresholds
+        meta["original_thresholds"] = original_thresholds
+        with open(frozen_meta, "w") as f:
+            json.dump(meta, f, indent=4)
 
 
 def get_input_sig(model):

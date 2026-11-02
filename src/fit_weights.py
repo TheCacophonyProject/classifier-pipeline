@@ -81,7 +81,9 @@ def human_tags(path):
     tags = {}
     for t in d.get("Tracks") or d.get("tracks", []):
         # same choice of human tag as Track.load_track_meta
-        tag = Track.get_best_human_tag(t.get("tags"), tag_precedence, min_confidence=0.8)
+        tag = Track.get_best_human_tag(
+            t.get("tags"), tag_precedence, min_confidence=0.8
+        )
         if tag:
             tags[t["id"]] = tag["what"]
     return tags
@@ -127,8 +129,12 @@ for f in sorted(glob.glob(os.path.join(args.run_dir, "**/*.txt"), recursive=True
         for s in p["predictions"]:
             fr = s["frames"]
             lo, hi = min(fr), max(fr)
-            rng = [pos[o] for o in range(lo, hi + 1) if o in pos and not pos[o].get("blank",False)]
-            used = [pos[o] for o in fr if o in pos and not pos[o].get("blank",False)]
+            rng = [
+                pos[o]
+                for o in range(lo, hi + 1)
+                if o in pos and not pos[o].get("blank", False)
+            ]
+            used = [pos[o] for o in fr if o in pos and not pos[o].get("blank", False)]
             if len(rng) == 0:
                 continue
             pts = np.array([centre(q) for q in rng])
@@ -203,7 +209,9 @@ ALL = np.ones(len(tracks), dtype=bool)
 
 # grouped k-fold, all tracks from one recording land in the same fold
 files = sorted({t["file"] for t in tracks})
-file_fold = dict(zip(np.random.default_rng(0).permutation(files), np.arange(len(files)) % args.folds))
+file_fold = dict(
+    zip(np.random.default_rng(0).permutation(files), np.arange(len(files)) % args.folds)
+)
 fold = np.array([file_fold[t["file"]] for t in tracks])
 
 PHI = {form: f(F_all) for form, f in FORMS.items()}
@@ -213,7 +221,10 @@ def pooled(theta, form):
     # pooled probabilities for every track, shape (tracks, labels)
     z = PHI[form] @ theta
     w = np.exp(z - np.maximum.reduceat(z, starts)[seg])
-    return np.add.reduceat(w[:, None] * P_all, starts) / np.add.reduceat(w, starts)[:, None]
+    return (
+        np.add.reduceat(w[:, None] * P_all, starts)
+        / np.add.reduceat(w, starts)[:, None]
+    )
 
 
 def weighted_nll(p, train):
@@ -402,12 +413,128 @@ cal_row("none (current)", "–", base)
 cal_probs = {}
 for form in CAL_FORMS:
     probs = cross_validate(
-        lambda train: cal_fit(train & SHORT, form), lambda theta: calibrated(theta, form)
+        lambda train: cal_fit(train & SHORT, form),
+        lambda theta: calibrated(theta, form),
     )
     cal_probs[form] = probs
     theta = cal_fit(SHORT, form)
     formula = "T = " + " · ".join(n.format(v) for n, v in zip(CAL_NAMES[form], theta))
     cal_row(form, formula, probs)
+
+
+def missing_threshold(t, label_index, c, k=2, max_threshold=0.96):
+    # get_scaled_thresh with a strength c and power k, c=1 k=2 is the current scaling
+    threshold = label_thresholds.get(labels[label_index], DEFAULT_THRESHOLD)
+    missing = max(0, SEGMENT_FRAMES - t["num_frames"]) / (SEGMENT_FRAMES - 1)
+    return threshold + c * missing**k * max(0, max_threshold - threshold)
+
+
+def threshold_curve(probs, thresh_fn):
+    # confident means p.max() >= m * threshold, so sorting by p.max() / threshold gives
+    # confident right / wrong for every threshold multiplier m at once
+    ratio, correct = [], []
+    for i in short_tracks:
+        t, p = tracks[i], probs[i]
+        ratio.append(p.max() / thresh_fn(t, p.argmax()))
+        correct.append(p.argmax() == t["y"])
+    order = np.argsort(ratio)[::-1]
+    correct = np.array(correct)[order]
+    return np.array(ratio)[order], np.cumsum(correct), np.cumsum(~correct)
+
+
+def wrong_at(curve, target):
+    # fewest confident wrong while keeping at least target confident right
+    ratio, right, wrong = curve
+    k = np.searchsorted(right, target)
+    if k >= len(right):
+        return "–"
+    return f"{wrong[k]} (×{ratio[k]:.2f})"
+
+
+current_right = summarise(base, short_tracks, scaled=True)[1]
+targets = [round(current_right * f) for f in (1.0, 0.9, 0.8, 0.6)]
+print()
+print(
+    "short tracks, confident wrong at matched confident right "
+    "(all thresholds multiplied by ×m to hit the target):"
+)
+print("| Method | " + " | ".join(f"Wrong @ {r} right" for r in targets) + " |")
+print("|---|" + "---|" * len(targets))
+scaled_fn = lambda t, i: threshold_for(t, i, True)
+plain_fn = lambda t, i: threshold_for(t, i, False)
+curves = {"none (current), scaled": threshold_curve(base, scaled_fn)}
+curves["none, plain"] = threshold_curve(base, plain_fn)
+for form in CAL_FORMS:
+    curves[f"{form}, plain"] = threshold_curve(cal_probs[form], plain_fn)
+# global T with thresholds raised by missing frames, c=1 k=2 is get_scaled_thresh
+for k in (1, 2):
+    for c in (0.25, 0.5, 1.0):
+        curves[f"global T, missing^{k} c={c}"] = threshold_curve(
+            cal_probs["global T"], lambda t, i: missing_threshold(t, i, c, k)
+        )
+for name, curve in curves.items():
+    print(f"| {name} | " + " | ".join(wrong_at(curve, r) for r in targets) + " |")
+
+# per label at matched totals, the calibrated setups use the m that hits 90% of
+# current confident right
+label_target = targets[1]
+linear_fn = lambda t, i: missing_threshold(t, i, 0.25, 1)
+setups = {"current": (base, scaled_fn, 1.0)}
+for name, probs, fn in (
+    ("global T", cal_probs["global T"], plain_fn),
+    ("global T linear c=0.25", cal_probs["global T"], linear_fn),
+):
+    ratio, right, _ = threshold_curve(probs, fn)
+    setups[name] = (
+        probs,
+        fn,
+        ratio[min(np.searchsorted(right, label_target), len(ratio) - 1)],
+    )
+
+# right is counted by true label, wrong by the label it was confidently called
+right_by = {name: collections.Counter() for name in setups}
+wrong_by = {name: collections.Counter() for name in setups}
+for name, (probs, fn, m) in setups.items():
+    for i in short_tracks:
+        t, p = tracks[i], probs[i]
+        if p.max() >= m * fn(t, p.argmax()):
+            if p.argmax() == t["y"]:
+                right_by[name][t["y"]] += 1
+            else:
+                wrong_by[name][p.argmax()] += 1
+short_counts = collections.Counter(tracks[i]["y"] for i in short_tracks)
+
+print()
+print(
+    f"short tracks per label, calibrated setups matched to {label_target} confident right "
+    "(right by true label, wrong by the label it was called):"
+)
+print(
+    "| Label | Tracks | "
+    + " | ".join(f"Right {n} (×{m:.2f})" for n, (_, _, m) in setups.items())
+    + " | "
+    + " | ".join(f"Wrong {n}" for n in setups)
+    + " |"
+)
+print("|---|---|" + "---|" * (2 * len(setups)))
+for y in sorted(range(len(labels)), key=lambda y: -short_counts[y]):
+    n = short_counts[y]
+    if not n and not any(wrong_by[s][y] for s in setups):
+        continue
+    print(
+        f"| {labels[y]} | {n} | "
+        + " | ".join(str(right_by[s][y]) for s in setups)
+        + " | "
+        + " | ".join(str(wrong_by[s][y]) for s in setups)
+        + " |"
+    )
+print(
+    f"| total | {len(short_tracks)} | "
+    + " | ".join(str(sum(right_by[s].values())) for s in setups)
+    + " | "
+    + " | ".join(str(sum(wrong_by[s].values())) for s in setups)
+    + " |"
+)
 
 print()
 print(f"wrong short tracks, before / after T(disp, mass) ({cv_name}):")
