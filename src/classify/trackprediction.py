@@ -85,9 +85,13 @@ class Prediction:
     def __post_init__(self):
         self.predicted_time = time.time()
 
-    def get_metadata(self):
+    def get_metadata(self, round_predictions=True):
         meta = asdict(self)
-        meta["prediction"] = np.uint8(np.round(100 * self.prediction))
+        if round_predictions:
+            meta["prediction"] = np.uint8(np.round(100 * self.prediction))
+        else:
+            # same percent scale, kept precise enough to calibrate from
+            meta["prediction"] = np.round(100 * self.prediction.astype(float), 4)
         return meta
 
     def clarity(self):
@@ -479,7 +483,7 @@ class TrackPrediction:
             confidence = float(score[index])
         return tag, confidence, threshold
 
-    def get_metadata(self):
+    def get_metadata(self, round_predictions=True):
         prediction_meta = {}
         if self.classify_time is not None:
             prediction_meta["classify_time"] = round(self.classify_time, 1)
@@ -524,7 +528,7 @@ class TrackPrediction:
         prediction_meta["all_class_confidences"] = {}
         preds = []
         for p in self.predictions:
-            preds.append(p.get_metadata())
+            preds.append(p.get_metadata(round_predictions))
         prediction_meta["predictions"] = preds
         if self.class_best_score is not None:
             for i, value in enumerate(self.class_best_score):

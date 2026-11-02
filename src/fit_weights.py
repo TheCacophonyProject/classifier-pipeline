@@ -283,24 +283,29 @@ def table(name, title, header, rows):
         print("| " + " | ".join(str(v) for v in row) + " |")
     if args.csv_dir:
         os.makedirs(args.csv_dir, exist_ok=True)
-        with open(os.path.join(args.csv_dir, f"{name}.csv"), "w", newline="") as f:
+        path = os.path.join(args.csv_dir, f"{name}.csv")
+        with open(path, "w", newline="") as f:
             writer = csv.writer(f)
             writer.writerow(header)
             writer.writerows(rows)
+        print("saved", os.path.abspath(path))
 
 
 all_tracks = list(range(len(tracks)))
 cv_name = f"{args.folds} fold cross validation by recording"
 base = pooled(np.zeros(0), "mean (current)")
+# weighting can't change a single prediction track, so fit and score on the rest
+MULTI = n_preds > 1
+multi_tracks = list(np.flatnonzero(MULTI))
 if not args.skip_weighting:
     rows = []
     for form in FORMS:
         probs = cross_validate(
-            lambda train: fit(train, form), lambda theta: pooled(theta, form)
+            lambda train: fit(train & MULTI, form), lambda theta: pooled(theta, form)
         )
-        acc, cr, cw, ll = summarise(probs, all_tracks)
+        acc, cr, cw, ll = summarise(probs, multi_tracks)
         lacc, lcr, lcw, lll = summarise(probs, long_tracks)
-        theta = fit(ALL, form)
+        theta = fit(MULTI, form)
         names = {
             "disp power": ["(d+1)^{:.2f}"],
             "disp power + exp": ["(d+1)^{:.2f}", "exp({:.3f}·d/10)"],
@@ -316,15 +321,16 @@ if not args.skip_weighting:
         )
     table(
         "weighting",
-        f"weighting ({cv_name}, confident uses scaled per label thresholds):",
-        ["Weighting", "Formula (fit on all)", "Accuracy %", "Confident right"]
+        f"weighting on {len(multi_tracks)} tracks with > 1 prediction "
+        f"({cv_name}, confident uses scaled per label thresholds):",
+        ["Weighting", "Formula (fit on multi)", "Accuracy %", "Confident right"]
         + ["Confident wrong", "Log loss", "Long accuracy %", "Long confident right"]
         + ["Long confident wrong", "Long log loss"],
         rows,
     )
 
     probs = cross_validate(
-        lambda train: fit(train, "disp + mass power"),
+        lambda train: fit(train & MULTI, "disp + mass power"),
         lambda theta: pooled(theta, "disp + mass power"),
     )
     rows = []
@@ -349,7 +355,8 @@ if not args.calibrate:
     sys.exit(0)
 
 # --- calibration: per-prediction temperature from movement / mass ---
-# p' = softmax(log p / T), T = exp(theta . [1, phi]); changes the confidence of each
+# the model is multi label with sigmoid outputs, so each label is scaled on its own
+# p' = sigmoid(logit p / T), T = exp(theta . [1, phi]); changes the confidence of each
 # prediction but not its argmax, the track argmax can still change once averaged
 SEGMENT_FRAMES = 25
 
@@ -392,21 +399,33 @@ CAL_NAMES = {
     ],
 }
 CAL_PHI = {form: f(F_all) for form, f in CAL_FORMS.items()}
-LOG_P_all = np.log(P_all + 1e-4)
+# predictions are saved as whole percents, so 0 means < 0.5% and 100 means > 99.5%,
+# clip to the middle of those buckets so the logit is finite. classify
+# --dont-round-predictions keeps 4 decimals of a percent instead
+rounded = np.allclose(P_all * 100, np.round(P_all * 100))
+ROUNDING_EPS = 0.0025 if rounded else 1e-6
+print("predictions rounded to whole percents:", rounded)
+clipped = np.clip(P_all, ROUNDING_EPS, 1 - ROUNDING_EPS)
+LOGIT_P_all = np.log(clipped) - np.log(1 - clipped)
+Y_onehot = np.eye(len(labels))[Y]
 
 
 def calibrated(theta, form):
     # mean of temperature scaled predictions for every track, shape (tracks, labels)
     T = np.exp(CAL_PHI[form] @ theta)[:, None]
-    z = LOG_P_all / T
-    z -= z.max(1, keepdims=True)
-    p = np.exp(z)
-    p /= p.sum(1, keepdims=True)
+    p = 1 / (1 + np.exp(-LOGIT_P_all / T))
     return np.add.reduceat(p, starts) / n_preds[:, None]
 
 
+def bce(p):
+    # binary cross entropy summed over labels for every track, as the model was trained
+    p = np.clip(p, 1e-6, 1 - 1e-6)
+    return -(Y_onehot * np.log(p) + (1 - Y_onehot) * np.log(1 - p)).sum(1)
+
+
 def cal_loss(theta, train, form, l2=0.01):
-    return weighted_nll(calibrated(theta, form), train) + l2 * np.sum(theta[1:] ** 2)
+    loss = (CW * bce(calibrated(theta, form)))[train].sum() / train.sum()
+    return loss + l2 * np.sum(theta[1:] ** 2)
 
 
 def cal_fit(train, form):
@@ -426,9 +445,9 @@ if not short_tracks:
 
 
 def cal_row(name, formula, probs):
-    _, cr, cw, ll = summarise(probs, short_tracks, scaled=True)
+    _, cr, cw, _ = summarise(probs, short_tracks, scaled=True)
     _, lcr, lcw, _ = summarise(probs, short_tracks, scaled=False)
-    return [name, formula, cr, cw, lcr, lcw, round(ll, 3)]
+    return [name, formula, cr, cw, lcr, lcw, round(bce(probs)[short_tracks].mean(), 3)]
 
 
 rows = [cal_row("none (current)", "–", base)]
@@ -447,7 +466,7 @@ table(
     f"calibration on short tracks ({cv_name}, scaled vs plain per label thresholds):",
     ["Calibration", "Formula (fit on short)", "Scaled confident right"]
     + ["Scaled confident wrong", "Label confident right", "Label confident wrong"]
-    + ["Log loss"],
+    + ["BCE"],
     rows,
 )
 
@@ -566,16 +585,21 @@ rows = []
 for i in short_tracks:
     t, b = tracks[i], base[i]
     if b.argmax() != t["y"]:
-        a = cal_probs["T(disp, mass)"][i]
+        # before is current (scaled thresholds), after is global T with plain thresholds
+        a = cal_probs["global T"][i]
         rows.append(
             [t["file"], t["id"], labels[t["y"]], labels[b.argmax()]]
-            + [round(threshold_for(t, b.argmax()), 2), round(b.max(), 2), round(a.max(), 2)]
+            + [round(threshold_for(t, b.argmax(), True), 2), round(b.max(), 2)]
+            + [is_confident(t, b, True)]
+            + [round(threshold_for(t, a.argmax(), False), 2), round(a.max(), 2)]
+            + [is_confident(t, a, False)]
             + [round(t["F"][:, 0].max(), 1), round(t["F"][:, 2].mean()), t["num_frames"]]
         )
 table(
     "wrong_short_tracks",
-    f"wrong short tracks, before / after T(disp, mass) ({cv_name}):",
-    ["File", "Track", "Truth", "Predicted", "Threshold", "Conf before", "Conf after"]
+    f"wrong short tracks, current vs global T with plain thresholds ({cv_name}):",
+    ["File", "Track", "Truth", "Predicted", "Threshold before", "Conf before"]
+    + ["Confident before", "Threshold after", "Conf after", "Confident after"]
     + ["Max disp", "Mean mass", "Frames"],
     rows,
 )

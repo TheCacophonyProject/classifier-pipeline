@@ -94,6 +94,11 @@ def main(cmd_args=None):
         help="Which dataset of the split file to classify",
     )
     parser.add_argument(
+        "--dont-round-predictions",
+        action="store_true",
+        help="Save each segment prediction as a precise percent instead of rounding to a whole percent",
+    )
+    parser.add_argument(
         "--workers",
         type=int,
         default=1,
@@ -140,6 +145,7 @@ def main(cmd_args=None):
     clip_classifier = ClipClassifier(
         config,
         model,
+        round_predictions=not args.dont_round_predictions,
     )
     import time
 

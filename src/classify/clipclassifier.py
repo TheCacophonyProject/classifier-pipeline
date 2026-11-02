@@ -26,9 +26,11 @@ class ClipClassifier:
         keep_original_predictions=False,
         tracking_events=False,
         model_by_country=True,
+        round_predictions=True,
     ):
         """Create an instance of a clip classifier"""
         self.keep_original_predictions = keep_original_predictions
+        self.round_predictions = round_predictions
         self.config = config
         # super(ClipClassifier, self).__init__(config, tracking_config)
         self.model = model
@@ -439,7 +441,7 @@ class ClipClassifier:
                 prediction = predictions.prediction_for(track.id)
                 if prediction is None:
                     continue
-                prediction_meta = prediction.get_metadata()
+                prediction_meta = prediction.get_metadata(self.round_predictions)
                 prediction_meta["model_id"] = model_id
                 if self.keep_original_predictions:
                     prediction_meta["reprocessed"] = True
