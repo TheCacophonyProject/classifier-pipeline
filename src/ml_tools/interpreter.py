@@ -54,35 +54,7 @@ class Interpreter(ABC):
         self.multi_input = metadata.get("multi_input", False)
         self.scale_thresholds = metadata.get("scale_thresholds", False)
         self.enlarge = metadata.get("enlarge", True)
-        from ml_tools.interpreter import get_mappings
-
-        parent_mappings = {}
-        mappings = get_mappings()
-        for l in self.labels:
-            path = mappings.get(l)
-            if path is None:
-                parent_mappings[l] = ("all", 0)
-            else:
-                parents = path.split(".")
-                if len(parents) == 1:
-                    parent_mappings[l] = l
-                    continue
-                # all.mammal.bird  makes mappings for parents up to alld
-                depth = 0
-                prev_parent = parents[0]
-
-                for parent in parents[1:]:
-                    # print("Depth ",depth,len(parents))
-                    if depth == len(parents) - 2:
-                        # print("Final depth ", parent,l)
-                        # choose label as it can change
-                        parent_mappings[l] = (prev_parent, depth)
-                    else:
-                        parent_mappings[parent] = (prev_parent, depth)
-                    prev_parent = parent
-                    depth += 1
-
-        self.parent_mappings = parent_mappings
+        self.parent_mappings = get_parent_mappings(self.labels)
 
     def load_training_meta(self, base_dir):
         from ml_tools.thermalwriter import MeanData
@@ -1269,6 +1241,36 @@ def dl_mappings():
     with open("label_paths.json", "w") as f:
         f.write(mapping_content)
     return mapping_content
+
+
+def get_parent_mappings(labels):
+    # label -> (parent, depth) from the label paths, used by most_specific_tag
+    parent_mappings = {}
+    mappings = get_mappings()
+    for l in labels:
+        path = mappings.get(l)
+        if path is None:
+            parent_mappings[l] = ("all", 0)
+        else:
+            parents = path.split(".")
+            if len(parents) == 1:
+                parent_mappings[l] = l
+                continue
+            # all.mammal.bird  makes mappings for parents up to alld
+            depth = 0
+            prev_parent = parents[0]
+
+            for parent in parents[1:]:
+                # print("Depth ",depth,len(parents))
+                if depth == len(parents) - 2:
+                    # print("Final depth ", parent,l)
+                    # choose label as it can change
+                    parent_mappings[l] = (prev_parent, depth)
+                else:
+                    parent_mappings[parent] = (prev_parent, depth)
+                prev_parent = parent
+                depth += 1
+    return parent_mappings
 
 
 def get_mappings():

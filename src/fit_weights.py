@@ -21,7 +21,8 @@ import csv
 import numpy as np
 from scipy.optimize import minimize
 
-from classify.trackprediction import get_scaled_thresh, DEFAULT_THRESHOLD
+from classify.trackprediction import most_specific_tag, DEFAULT_THRESHOLD
+from ml_tools.interpreter import get_parent_mappings
 from config.config import Config
 from track.track import Track
 
@@ -71,6 +72,8 @@ args = parser.parse_args()
 model_meta = json.load(open(args.model_json))
 label_thresholds = model_meta.get("thresholds", {})
 scale_thresholds = model_meta.get("scale_thresholds", False)
+multi_label = model_meta.get("hyperparams", {}).get("multi_label", False)
+SEGMENT_FRAMES = 25
 tag_precedence = Config.load_from_file(args.config_file).build.tag_precedence
 
 
@@ -165,18 +168,6 @@ for f in sorted(glob.glob(os.path.join(args.run_dir, "**/*.txt"), recursive=True
             )
 
 
-def threshold_for(t, label_index, scaled=scale_thresholds):
-    # same as TrackPrediction: per label threshold, raised for tracks with few frames
-    threshold = label_thresholds.get(labels[label_index], DEFAULT_THRESHOLD)
-    if scaled:
-        threshold = get_scaled_thresh(threshold, t["num_frames"])
-    return threshold
-
-
-def is_confident(t, p, scaled=scale_thresholds):
-    return p.max() >= threshold_for(t, p.argmax(), scaled)
-
-
 long_tracks = [i for i, t in enumerate(tracks) if len(t["P"]) >= args.long]
 print(f"{len(tracks)} labelled tracks, {sum(len(t['P']) for t in tracks)} predictions")
 print("skipped tracks with no mass:", no_mass)
@@ -211,6 +202,55 @@ seg = np.repeat(np.arange(len(tracks)), n_preds)
 Y = np.array([t["y"] for t in tracks])
 CW = np.array([class_w[y] for y in Y])
 ALL = np.ones(len(tracks), dtype=bool)
+NUM_FRAMES = np.array([t["num_frames"] for t in tracks])
+PLAIN = np.array([label_thresholds.get(l, DEFAULT_THRESHOLD) for l in labels])
+parent_mappings = get_parent_mappings(labels) if multi_label else None
+# a predicted tag can be a common parent such as mammal, these get indices after labels
+tag_names = list(labels)
+pattern_tags = {}
+
+
+def tag_for(pattern, above):
+    # most specific label over its threshold, cached as the same few patterns repeat
+    if pattern not in pattern_tags:
+        tag = most_specific_tag(labels, np.flatnonzero(above), parent_mappings)
+        if tag not in tag_names:
+            tag_names.append(tag)
+        pattern_tags[pattern] = tag_names.index(tag)
+    return pattern_tags[pattern]
+
+
+def decide(probs, subset, c=0.0, k=2, m=1.0):
+    # same as TrackPrediction: the predicted tag is the most specific label over m times
+    # its threshold, else the most confident label, and it is confident if over m times
+    # the threshold raised for missing frames (c=0 plain, c=1 k=2 is get_scaled_thresh)
+    subset = np.asarray(subset, dtype=int)
+    p = probs[subset]
+    tag = p.argmax(1)
+    above = p >= m * PLAIN
+    has = above.any(1)
+    if parent_mappings is not None and has.any():
+        above_has = above[has]
+        patterns = above_has @ (1 << np.arange(len(labels)))
+        uniq, first, inv = np.unique(patterns, return_index=True, return_inverse=True)
+        lookup = np.array(
+            [tag_for(int(u), above_has[f]) for u, f in zip(uniq, first)], dtype=int
+        )
+        tag[has] = lookup[inv]
+    missing = np.clip(SEGMENT_FRAMES - NUM_FRAMES[subset], 0, None) / (
+        SEGMENT_FRAMES - 1
+    )
+    thresh = PLAIN + c * (missing**k)[:, None] * np.maximum(0, 0.96 - PLAIN)
+    # a common parent is not a label so classify gives it no confidence
+    is_label = tag < len(labels)
+    idx = np.where(is_label, tag, 0)
+    rows = np.arange(len(subset))
+    confident = is_label & (p[rows, idx] >= m * thresh[rows, idx])
+    return tag, confident, tag == Y[subset]
+
+
+def tag_conf(p, tag):
+    return round(p[tag], 2) if tag < len(labels) else 0
 
 # grouped k-fold, all tracks from one recording land in the same fold
 files = sorted({t["file"] for t in tracks})
@@ -259,18 +299,13 @@ def cross_validate(fit_fn, predict_fn):
 
 def summarise(probs, subset, scaled=scale_thresholds):
     # accuracy, confident right, confident wrong, log loss over the subset of tracks
-    right = conf_right = conf_wrong = 0
-    ll = 0
-    for i in subset:
-        t, p = tracks[i], probs[i]
-        correct = p.argmax() == t["y"]
-        right += correct
-        if is_confident(t, p, scaled):
-            conf_right += correct
-            conf_wrong += not correct
-        ll -= np.log(p[t["y"]] + 1e-6)
-    n = max(len(subset), 1)
-    return right / n, conf_right, conf_wrong, ll / n
+    subset = np.asarray(subset, dtype=int)
+    if len(subset) == 0:
+        return 0, 0, 0, 0
+    _, confident, correct = decide(probs, subset, 1.0 if scaled else 0.0)
+    ll = -np.log(probs[subset, Y[subset]] + 1e-6).mean()
+    right, wrong = (confident & correct).sum(), (confident & ~correct).sum()
+    return correct.mean(), int(right), int(wrong), ll
 
 
 def table(name, title, header, rows):
@@ -333,14 +368,17 @@ if not args.skip_weighting:
         lambda train: fit(train & MULTI, "disp + mass power"),
         lambda theta: pooled(theta, "disp + mass power"),
     )
+    scaled_c = 1.0 if scale_thresholds else 0.0
+    tag_a, conf_a, _ = decide(base, long_tracks, scaled_c)
+    tag_b, conf_b, _ = decide(probs, long_tracks, scaled_c)
     rows = []
-    for i in long_tracks:
-        t, a, b = tracks[i], base[i], probs[i]
+    for j, i in enumerate(long_tracks):
+        t = tracks[i]
         rows.append(
             [t["file"], t["id"], labels[t["y"]], len(t["P"])]
-            + [labels[a.argmax()], round(a.max(), 2), is_confident(t, a)]
-            + [labels[b.argmax()], round(b.max(), 2), is_confident(t, b)]
-            + [a.argmax() != b.argmax()]
+            + [tag_names[tag_a[j]], tag_conf(base[i], tag_a[j]), conf_a[j]]
+            + [tag_names[tag_b[j]], tag_conf(probs[i], tag_b[j]), conf_b[j]]
+            + [tag_a[j] != tag_b[j]]
         )
     table(
         "long_tracks",
@@ -358,7 +396,6 @@ if not args.calibrate:
 # the model is multi label with sigmoid outputs, so each label is scaled on its own
 # p' = sigmoid(logit p / T), T = exp(theta . [1, phi]); changes the confidence of each
 # prediction but not its argmax, the track argmax can still change once averaged
-SEGMENT_FRAMES = 25
 
 
 def missing(F):
@@ -406,8 +443,14 @@ rounded = np.allclose(P_all * 100, np.round(P_all * 100))
 ROUNDING_EPS = 0.0025 if rounded else 1e-6
 print("predictions rounded to whole percents:", rounded)
 clipped = np.clip(P_all, ROUNDING_EPS, 1 - ROUNDING_EPS)
+# reverse sigmoid
 LOGIT_P_all = np.log(clipped) - np.log(1 - clipped)
 Y_onehot = np.eye(len(labels))[Y]
+# multi label training also sets bird for chicken and weka, see get_extra_mappings
+if multi_label and "bird" in labels:
+    for land_bird in ("chicken", "weka"):
+        if land_bird in labels:
+            Y_onehot[Y == labels.index(land_bird), labels.index("bird")] = 1
 
 
 def calibrated(theta, form):
@@ -471,98 +514,89 @@ table(
 )
 
 
-def missing_threshold(t, label_index, c, k=2, max_threshold=0.96):
-    # get_scaled_thresh with a strength c and power k, c=1 k=2 is the current scaling
-    threshold = label_thresholds.get(labels[label_index], DEFAULT_THRESHOLD)
-    missing = max(0, SEGMENT_FRAMES - t["num_frames"]) / (SEGMENT_FRAMES - 1)
-    return threshold + c * missing**k * max(0, max_threshold - threshold)
+# the predicted tag can change with m (a chicken with only bird over the bar is called
+# bird), so evaluate a grid of m rather than sorting tracks once
+M_GRID = np.exp(np.linspace(np.log(0.3), np.log(3.0), 600))
 
 
-def threshold_curve(probs, thresh_fn):
-    # confident means p.max() >= m * threshold, so sorting by p.max() / threshold gives
-    # confident right / wrong for every threshold multiplier m at once
-    ratio, correct = [], []
-    for i in short_tracks:
-        t, p = tracks[i], probs[i]
-        ratio.append(p.max() / thresh_fn(t, p.argmax()))
-        correct.append(p.argmax() == t["y"])
-    order = np.argsort(ratio)[::-1]
-    correct = np.array(correct)[order]
-    return np.array(ratio)[order], np.cumsum(correct), np.cumsum(~correct)
+def threshold_curve(probs, c=0.0, k=2):
+    right, wrong = [], []
+    for m in M_GRID:
+        _, confident, correct = decide(probs, short_tracks, c, k, m)
+        right.append((confident & correct).sum())
+        wrong.append((confident & ~correct).sum())
+    return np.array(right), np.array(wrong)
+
+
+def best_m(curve, target):
+    # grid index with the fewest confident wrong while keeping at least target right
+    right, wrong = curve
+    ok = np.flatnonzero(right >= target)
+    return ok[np.argmin(wrong[ok])] if len(ok) else None
 
 
 def wrong_at(curve, target):
-    # fewest confident wrong while keeping at least target confident right, and the m
-    ratio, right, wrong = curve
-    k = np.searchsorted(right, target)
-    if k >= len(right):
+    best = best_m(curve, target)
+    if best is None:
         return ["", ""]
-    return [wrong[k], round(ratio[k], 2)]
+    return [int(curve[1][best]), round(M_GRID[best], 2)]
 
 
 current_right = summarise(base, short_tracks, scaled=True)[1]
 targets = [round(current_right * f) for f in (1.0, 0.9, 0.8, 0.6)]
-scaled_fn = lambda t, i: threshold_for(t, i, True)
-plain_fn = lambda t, i: threshold_for(t, i, False)
-curves = {"none (current), scaled": threshold_curve(base, scaled_fn)}
-curves["none, plain"] = threshold_curve(base, plain_fn)
+# c=1 k=2 is get_scaled_thresh, c=0 plain thresholds
+curves = {"none (current), scaled": threshold_curve(base, 1.0)}
+curves["none, plain"] = threshold_curve(base)
+for c in (0.25, 0.5):
+    curves[f"none, missing^1 c={c}"] = threshold_curve(base, c, 1)
 for form in CAL_FORMS:
-    curves[f"{form}, plain"] = threshold_curve(cal_probs[form], plain_fn)
-# global T with thresholds raised by missing frames, c=1 k=2 is get_scaled_thresh
+    curves[f"{form}, plain"] = threshold_curve(cal_probs[form])
 for k in (1, 2):
     for c in (0.25, 0.5, 1.0):
         curves[f"global T, missing^{k} c={c}"] = threshold_curve(
-            cal_probs["global T"], lambda t, i: missing_threshold(t, i, c, k)
+            cal_probs["global T"], c, k
         )
 # displacement in the temperature and missing frames in the threshold
 for form in ("T(disp)", "T(disp, mass)"):
     for c in (0.25, 0.5, 1.0):
-        curves[f"{form}, missing^1 c={c}"] = threshold_curve(
-            cal_probs[form], lambda t, i: missing_threshold(t, i, c, 1)
-        )
+        curves[f"{form}, missing^1 c={c}"] = threshold_curve(cal_probs[form], c, 1)
 table(
     "sweep",
     "short tracks, confident wrong at matched confident right "
     "(all thresholds multiplied by m to hit the target):",
     ["Method"] + [h for r in targets for h in (f"Wrong @ {r} right", f"m @ {r} right")],
-    [[name] + [v for r in targets for v in wrong_at(curve, r)] for name, curve in curves.items()],
+    [
+        [name] + [v for r in targets for v in wrong_at(curve, r)]
+        for name, curve in curves.items()
+    ],
 )
 
 # per label at matched totals, the calibrated setups use the m that hits 90% of
 # current confident right
 label_target = targets[1]
-linear_fn = lambda t, i: missing_threshold(t, i, 0.5, 1)
-setups = {"current": (base, scaled_fn, 1.0)}
-for name, probs, fn in (
-    ("global T", cal_probs["global T"], plain_fn),
-    ("global T linear c=0.5", cal_probs["global T"], linear_fn),
-    ("T(disp) linear c=0.5", cal_probs["T(disp)"], linear_fn),
+setups = {"current": (base, 1.0, 2, 1.0)}
+for name, curve_name, probs, c in (
+    ("global T", "global T, plain", cal_probs["global T"], 0.0),
+    ("global T linear c=0.5", "global T, missing^1 c=0.5", cal_probs["global T"], 0.5),
+    ("T(disp) linear c=0.5", "T(disp), missing^1 c=0.5", cal_probs["T(disp)"], 0.5),
 ):
-    ratio, right, _ = threshold_curve(probs, fn)
-    setups[name] = (
-        probs,
-        fn,
-        ratio[min(np.searchsorted(right, label_target), len(ratio) - 1)],
-    )
+    best = best_m(curves[curve_name], label_target)
+    setups[name] = (probs, c, 1, M_GRID[best] if best is not None else 1.0)
 
-# right is counted by true label, wrong by the label it was confidently called
+# right is counted by true label, wrong by the tag it was confidently called
 right_by = {name: collections.Counter() for name in setups}
 wrong_by = {name: collections.Counter() for name in setups}
-for name, (probs, fn, m) in setups.items():
-    for i in short_tracks:
-        t, p = tracks[i], probs[i]
-        if p.max() >= m * fn(t, p.argmax()):
-            if p.argmax() == t["y"]:
-                right_by[name][t["y"]] += 1
-            else:
-                wrong_by[name][p.argmax()] += 1
-short_counts = collections.Counter(tracks[i]["y"] for i in short_tracks)
+for name, (probs, c, k, m) in setups.items():
+    tag, confident, correct = decide(probs, short_tracks, c, k, m)
+    right_by[name].update(Y[short_tracks][confident & correct])
+    wrong_by[name].update(tag[confident & ~correct])
+short_counts = collections.Counter(Y[short_tracks])
 
 rows = []
-for y in sorted(range(len(labels)), key=lambda y: -short_counts[y]):
+for y in sorted(range(len(tag_names)), key=lambda y: -short_counts[y]):
     if short_counts[y] or any(wrong_by[s][y] for s in setups):
         rows.append(
-            [labels[y], short_counts[y]]
+            [tag_names[y], short_counts[y]]
             + [right_by[s][y] for s in setups]
             + [wrong_by[s][y] for s in setups]
         )
@@ -576,30 +610,29 @@ table(
     f"short tracks per label, calibrated setups matched to {label_target} confident right "
     "(right by true label, wrong by the label it was called):",
     ["Label", "Tracks"]
-    + [f"Right {n} (m={m:.2f})" for n, (_, _, m) in setups.items()]
+    + [f"Right {n} (m={m:.2f})" for n, (_, _, _, m) in setups.items()]
     + [f"Wrong {n}" for n in setups],
     rows,
 )
 
+# before is current (scaled thresholds), after is global T with plain thresholds
+tag_b, conf_b, right_b = decide(base, short_tracks, 1.0)
+tag_a, conf_a, _ = decide(cal_probs["global T"], short_tracks)
 rows = []
-for i in short_tracks:
-    t, b = tracks[i], base[i]
-    if b.argmax() != t["y"]:
-        # before is current (scaled thresholds), after is global T with plain thresholds
-        a = cal_probs["global T"][i]
+for j, i in enumerate(short_tracks):
+    if not right_b[j]:
+        t = tracks[i]
         rows.append(
-            [t["file"], t["id"], labels[t["y"]], labels[b.argmax()]]
-            + [round(threshold_for(t, b.argmax(), True), 2), round(b.max(), 2)]
-            + [is_confident(t, b, True)]
-            + [round(threshold_for(t, a.argmax(), False), 2), round(a.max(), 2)]
-            + [is_confident(t, a, False)]
+            [t["file"], t["id"], labels[t["y"]], tag_names[tag_b[j]]]
+            + [tag_conf(base[i], tag_b[j]), conf_b[j], tag_names[tag_a[j]]]
+            + [tag_conf(cal_probs["global T"][i], tag_a[j]), conf_a[j]]
             + [round(t["F"][:, 0].max(), 1), round(t["F"][:, 2].mean()), t["num_frames"]]
         )
 table(
     "wrong_short_tracks",
     f"wrong short tracks, current vs global T with plain thresholds ({cv_name}):",
-    ["File", "Track", "Truth", "Predicted", "Threshold before", "Conf before"]
-    + ["Confident before", "Threshold after", "Conf after", "Confident after"]
+    ["File", "Track", "Truth", "Predicted before", "Conf before", "Confident before"]
+    + ["Predicted after", "Conf after", "Confident after"]
     + ["Max disp", "Mean mass", "Frames"],
     rows,
 )
