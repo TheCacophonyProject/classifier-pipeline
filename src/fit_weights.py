@@ -17,6 +17,7 @@ import json
 import glob
 import os
 import collections
+import csv
 import numpy as np
 from scipy.optimize import minimize
 
@@ -55,6 +56,10 @@ parser.add_argument(
     type=int,
     default=5,
     help="cross validation folds, tracks from one recording stay in the same fold",
+)
+parser.add_argument(
+    "--csv-dir",
+    help="also save every table as <name>.csv in this folder",
 )
 parser.add_argument(
     "--skip-weighting",
@@ -268,17 +273,27 @@ def summarise(probs, subset, scaled=scale_thresholds):
     return right / n, conf_right, conf_wrong, ll / n
 
 
+def table(name, title, header, rows):
+    # print as markdown and, with --csv-dir, save the same rows as <name>.csv
+    print()
+    print(title)
+    print("| " + " | ".join(header) + " |")
+    print("|" + "---|" * len(header))
+    for row in rows:
+        print("| " + " | ".join(str(v) for v in row) + " |")
+    if args.csv_dir:
+        os.makedirs(args.csv_dir, exist_ok=True)
+        with open(os.path.join(args.csv_dir, f"{name}.csv"), "w", newline="") as f:
+            writer = csv.writer(f)
+            writer.writerow(header)
+            writer.writerows(rows)
+
+
 all_tracks = list(range(len(tracks)))
 cv_name = f"{args.folds} fold cross validation by recording"
 base = pooled(np.zeros(0), "mean (current)")
 if not args.skip_weighting:
-    print()
-    print(f"weighting ({cv_name}, confident uses scaled per label thresholds):")
-    print(
-        "| Weighting | Formula (fit on all) | Accuracy | Confident right | Confident wrong | Log loss "
-        f"| Long accuracy | Long confident right | Long confident wrong | Long log loss |"
-    )
-    print("|---|---|---|---|---|---|---|---|---|---|")
+    rows = []
     for form in FORMS:
         probs = cross_validate(
             lambda train: fit(train, form), lambda theta: pooled(theta, form)
@@ -295,27 +310,40 @@ if not args.skip_weighting:
             "used disp + mass power": ["(u+1)^{:.2f}", "(m+1)^{:.2f}"],
         }.get(form, [])
         formula = " · ".join(n.format(v) for n, v in zip(names, theta)) or "1"
-        print(
-            f"| {form} | {formula} | {acc:.1%} | {cr} | {cw} | {ll:.3f} "
-            f"| {lacc:.1%} | {lcr} | {lcw} | {lll:.3f} |"
+        rows.append(
+            [form, formula, round(acc * 100, 1), cr, cw, round(ll, 3)]
+            + [round(lacc * 100, 1), lcr, lcw, round(lll, 3)]
         )
+    table(
+        "weighting",
+        f"weighting ({cv_name}, confident uses scaled per label thresholds):",
+        ["Weighting", "Formula (fit on all)", "Accuracy %", "Confident right"]
+        + ["Confident wrong", "Log loss", "Long accuracy %", "Long confident right"]
+        + ["Long confident wrong", "Long log loss"],
+        rows,
+    )
 
-    print()
-    print(f"long tracks (current mean vs disp + mass power, {cv_name}):")
     probs = cross_validate(
         lambda train: fit(train, "disp + mass power"),
         lambda theta: pooled(theta, "disp + mass power"),
     )
+    rows = []
     for i in long_tracks:
-        t = tracks[i]
-        a = base[i]
-        b = probs[i]
-        flag = "" if a.argmax() == b.argmax() else "  <-- changed"
-        print(
-            f"  {t['file']:55s} {t['id']:>9} truth={labels[t['y']]:14s} n={len(t['P']):3d} "
-            f"mean={labels[a.argmax()]}({a.max():.2f}{'' if is_confident(t, a) else ' unconf'}) "
-            f"weighted={labels[b.argmax()]}({b.max():.2f}{'' if is_confident(t, b) else ' unconf'}){flag}"
+        t, a, b = tracks[i], base[i], probs[i]
+        rows.append(
+            [t["file"], t["id"], labels[t["y"]], len(t["P"])]
+            + [labels[a.argmax()], round(a.max(), 2), is_confident(t, a)]
+            + [labels[b.argmax()], round(b.max(), 2), is_confident(t, b)]
+            + [a.argmax() != b.argmax()]
         )
+    table(
+        "long_tracks",
+        f"long tracks (current mean vs disp + mass power, {cv_name}):",
+        ["File", "Track", "Truth", "Predictions", "Mean label", "Mean conf"]
+        + ["Mean confident", "Weighted label", "Weighted conf", "Weighted confident"]
+        + ["Changed"],
+        rows,
+    )
 
 if not args.calibrate:
     sys.exit(0)
@@ -395,21 +423,15 @@ print()
 print(f"short tracks (1 prediction, < {SEGMENT_FRAMES} frames):", len(short_tracks))
 if not short_tracks:
     sys.exit(0)
-print(f"calibration on short tracks ({cv_name}, scaled vs plain per label thresholds):")
-print(
-    "| Calibration | Formula (fit on short) | Scaled confident right | Scaled confident wrong "
-    "| Label confident right | Label confident wrong | Log loss |"
-)
-print("|---|---|---|---|---|---|---|")
 
 
 def cal_row(name, formula, probs):
     _, cr, cw, ll = summarise(probs, short_tracks, scaled=True)
     _, lcr, lcw, _ = summarise(probs, short_tracks, scaled=False)
-    print(f"| {name} | {formula} | {cr} | {cw} | {lcr} | {lcw} | {ll:.3f} |")
+    return [name, formula, cr, cw, lcr, lcw, round(ll, 3)]
 
 
-cal_row("none (current)", "–", base)
+rows = [cal_row("none (current)", "–", base)]
 cal_probs = {}
 for form in CAL_FORMS:
     probs = cross_validate(
@@ -419,7 +441,15 @@ for form in CAL_FORMS:
     cal_probs[form] = probs
     theta = cal_fit(SHORT, form)
     formula = "T = " + " · ".join(n.format(v) for n, v in zip(CAL_NAMES[form], theta))
-    cal_row(form, formula, probs)
+    rows.append(cal_row(form, formula, probs))
+table(
+    "calibration",
+    f"calibration on short tracks ({cv_name}, scaled vs plain per label thresholds):",
+    ["Calibration", "Formula (fit on short)", "Scaled confident right"]
+    + ["Scaled confident wrong", "Label confident right", "Label confident wrong"]
+    + ["Log loss"],
+    rows,
+)
 
 
 def missing_threshold(t, label_index, c, k=2, max_threshold=0.96):
@@ -443,23 +473,16 @@ def threshold_curve(probs, thresh_fn):
 
 
 def wrong_at(curve, target):
-    # fewest confident wrong while keeping at least target confident right
+    # fewest confident wrong while keeping at least target confident right, and the m
     ratio, right, wrong = curve
     k = np.searchsorted(right, target)
     if k >= len(right):
-        return "–"
-    return f"{wrong[k]} (×{ratio[k]:.2f})"
+        return ["", ""]
+    return [wrong[k], round(ratio[k], 2)]
 
 
 current_right = summarise(base, short_tracks, scaled=True)[1]
 targets = [round(current_right * f) for f in (1.0, 0.9, 0.8, 0.6)]
-print()
-print(
-    "short tracks, confident wrong at matched confident right "
-    "(all thresholds multiplied by ×m to hit the target):"
-)
-print("| Method | " + " | ".join(f"Wrong @ {r} right" for r in targets) + " |")
-print("|---|" + "---|" * len(targets))
 scaled_fn = lambda t, i: threshold_for(t, i, True)
 plain_fn = lambda t, i: threshold_for(t, i, False)
 curves = {"none (current), scaled": threshold_curve(base, scaled_fn)}
@@ -472,17 +495,29 @@ for k in (1, 2):
         curves[f"global T, missing^{k} c={c}"] = threshold_curve(
             cal_probs["global T"], lambda t, i: missing_threshold(t, i, c, k)
         )
-for name, curve in curves.items():
-    print(f"| {name} | " + " | ".join(wrong_at(curve, r) for r in targets) + " |")
+# displacement in the temperature and missing frames in the threshold
+for form in ("T(disp)", "T(disp, mass)"):
+    for c in (0.25, 0.5, 1.0):
+        curves[f"{form}, missing^1 c={c}"] = threshold_curve(
+            cal_probs[form], lambda t, i: missing_threshold(t, i, c, 1)
+        )
+table(
+    "sweep",
+    "short tracks, confident wrong at matched confident right "
+    "(all thresholds multiplied by m to hit the target):",
+    ["Method"] + [h for r in targets for h in (f"Wrong @ {r} right", f"m @ {r} right")],
+    [[name] + [v for r in targets for v in wrong_at(curve, r)] for name, curve in curves.items()],
+)
 
 # per label at matched totals, the calibrated setups use the m that hits 90% of
 # current confident right
 label_target = targets[1]
-linear_fn = lambda t, i: missing_threshold(t, i, 0.25, 1)
+linear_fn = lambda t, i: missing_threshold(t, i, 0.5, 1)
 setups = {"current": (base, scaled_fn, 1.0)}
 for name, probs, fn in (
     ("global T", cal_probs["global T"], plain_fn),
-    ("global T linear c=0.25", cal_probs["global T"], linear_fn),
+    ("global T linear c=0.5", cal_probs["global T"], linear_fn),
+    ("T(disp) linear c=0.5", cal_probs["T(disp)"], linear_fn),
 ):
     ratio, right, _ = threshold_curve(probs, fn)
     setups[name] = (
@@ -504,46 +539,43 @@ for name, (probs, fn, m) in setups.items():
                 wrong_by[name][p.argmax()] += 1
 short_counts = collections.Counter(tracks[i]["y"] for i in short_tracks)
 
-print()
-print(
-    f"short tracks per label, calibrated setups matched to {label_target} confident right "
-    "(right by true label, wrong by the label it was called):"
-)
-print(
-    "| Label | Tracks | "
-    + " | ".join(f"Right {n} (×{m:.2f})" for n, (_, _, m) in setups.items())
-    + " | "
-    + " | ".join(f"Wrong {n}" for n in setups)
-    + " |"
-)
-print("|---|---|" + "---|" * (2 * len(setups)))
+rows = []
 for y in sorted(range(len(labels)), key=lambda y: -short_counts[y]):
-    n = short_counts[y]
-    if not n and not any(wrong_by[s][y] for s in setups):
-        continue
-    print(
-        f"| {labels[y]} | {n} | "
-        + " | ".join(str(right_by[s][y]) for s in setups)
-        + " | "
-        + " | ".join(str(wrong_by[s][y]) for s in setups)
-        + " |"
-    )
-print(
-    f"| total | {len(short_tracks)} | "
-    + " | ".join(str(sum(right_by[s].values())) for s in setups)
-    + " | "
-    + " | ".join(str(sum(wrong_by[s].values())) for s in setups)
-    + " |"
+    if short_counts[y] or any(wrong_by[s][y] for s in setups):
+        rows.append(
+            [labels[y], short_counts[y]]
+            + [right_by[s][y] for s in setups]
+            + [wrong_by[s][y] for s in setups]
+        )
+rows.append(
+    ["total", len(short_tracks)]
+    + [sum(right_by[s].values()) for s in setups]
+    + [sum(wrong_by[s].values()) for s in setups]
+)
+table(
+    "per_label",
+    f"short tracks per label, calibrated setups matched to {label_target} confident right "
+    "(right by true label, wrong by the label it was called):",
+    ["Label", "Tracks"]
+    + [f"Right {n} (m={m:.2f})" for n, (_, _, m) in setups.items()]
+    + [f"Wrong {n}" for n in setups],
+    rows,
 )
 
-print()
-print(f"wrong short tracks, before / after T(disp, mass) ({cv_name}):")
+rows = []
 for i in short_tracks:
     t, b = tracks[i], base[i]
     if b.argmax() != t["y"]:
         a = cal_probs["T(disp, mass)"][i]
-        print(
-            f"  {t['file']:50s} truth={labels[t['y']]:14s} pred={labels[b.argmax()]:14s} "
-            f"thresh={threshold_for(t, b.argmax()):.2f} {b.max():.2f} -> {a.max():.2f} "
-            f"disp={t['F'][:, 0].max():.1f} mass={t['F'][:, 2].mean():.0f} frames={t['num_frames']}"
+        rows.append(
+            [t["file"], t["id"], labels[t["y"]], labels[b.argmax()]]
+            + [round(threshold_for(t, b.argmax()), 2), round(b.max(), 2), round(a.max(), 2)]
+            + [round(t["F"][:, 0].max(), 1), round(t["F"][:, 2].mean()), t["num_frames"]]
         )
+table(
+    "wrong_short_tracks",
+    f"wrong short tracks, before / after T(disp, mass) ({cv_name}):",
+    ["File", "Track", "Truth", "Predicted", "Threshold", "Conf before", "Conf after"]
+    + ["Max disp", "Mean mass", "Frames"],
+    rows,
+)
