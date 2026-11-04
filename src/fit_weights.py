@@ -20,6 +20,7 @@ import collections
 import csv
 import numpy as np
 from scipy.optimize import minimize
+from scipy.special import expit
 
 from classify.trackprediction import most_specific_tag, DEFAULT_THRESHOLD
 from ml_tools.interpreter import get_parent_mappings
@@ -57,6 +58,37 @@ parser.add_argument(
     type=int,
     default=5,
     help="cross validation folds, tracks from one recording stay in the same fold",
+)
+parser.add_argument(
+    "--score",
+    choices=["sigmoid", "softmax", "family-softmax"],
+    default="sigmoid",
+    help="how --calibrate rescales each prediction: sigmoid(logit p / T) per label, "
+    "softmax(log p / T) over all labels, or softmax leaving out each label's parents "
+    "and children (e.g. bird for chicken)",
+)
+parser.add_argument(
+    "--label-keep",
+    type=float,
+    default=0.9,
+    help="per label threshold tuning keeps at least this fraction of each label's "
+    "current confident right on short tracks",
+)
+parser.add_argument(
+    "--tune-dir",
+    help="classified metadata (e.g. the validation split) to fit and tune everything on, "
+    "run_dir is then only scored, instead of cross validating within run_dir",
+)
+parser.add_argument(
+    "--save-thresholds",
+    help="save the tuned short track thresholds to this json file",
+)
+parser.add_argument(
+    "--fold-by",
+    choices=["device", "recording"],
+    default="device",
+    help="cross validation groups, device keeps every recording from one device and "
+    "station (deviceId + stationId, else device name) in the same fold",
 )
 parser.add_argument(
     "--csv-dir",
@@ -97,16 +129,35 @@ def human_tags(path):
     return tags
 
 
+def device_group(d, rel):
+    # deviceId + stationId when the metadata has them, else the device name from the
+    # file name, e.g. 1724532-20240316-121651-Tawh114.txt
+    device = d.get("deviceId") or d.get("deviceName")
+    if device is None:
+        parts = os.path.splitext(os.path.basename(rel))[0].split("-", 3)
+        device = parts[3] if len(parts) == 4 else rel
+    station = d.get("stationId")
+    return f"{device}/{station}" if station is not None else str(device)
+
+
 tracks = []
 labels = None
 no_mass = 0
-for f in sorted(glob.glob(os.path.join(args.run_dir, "**/*.txt"), recursive=True)):
-    rel = os.path.relpath(f, args.run_dir)
-    truth = human_tags(os.path.join(args.orig_dir or args.run_dir, rel))
+
+
+def load_dir(run_dir, orig_dir, tune):
+    global labels, no_mass
+    for f in sorted(glob.glob(os.path.join(run_dir, "**/*.txt"), recursive=True)):
+        load_file(f, os.path.relpath(f, run_dir), orig_dir or run_dir, tune)
+
+
+def load_file(f, rel, orig_dir, tune):
+    global labels, no_mass
+    truth = human_tags(os.path.join(orig_dir, rel))
     try:
         d = json.load(open(f))
     except Exception:
-        continue
+        return
     # prefer "Tracks" for positions, classify writes predictions into "tracks" but
     # files may only have one of the keys (e.g. after audio-training fixtracks.py)
     upper = {x["id"]: x for x in d.get("Tracks") or []}
@@ -158,6 +209,8 @@ for f in sorted(glob.glob(os.path.join(args.run_dir, "**/*.txt"), recursive=True
         if P:
             tracks.append(
                 dict(
+                    tune=tune,
+                    group=device_group(d, rel),
                     file=rel,
                     id=t["id"],
                     y=labels.index(truth[t["id"]]),
@@ -168,7 +221,34 @@ for f in sorted(glob.glob(os.path.join(args.run_dir, "**/*.txt"), recursive=True
             )
 
 
-long_tracks = [i for i, t in enumerate(tracks) if len(t["P"]) >= args.long]
+load_dir(args.run_dir, args.orig_dir, False)
+if args.tune_dir:
+    load_dir(args.tune_dir, None, True)
+# fit and tune on the tune dir when given, everything is scored on run_dir only
+TUNE = np.array([t["tune"] for t in tracks])
+EVAL = ~TUNE
+FIT = TUNE if args.tune_dir else ~TUNE
+
+
+def is_rounded(P):
+    return np.allclose(P * 100, np.round(P * 100))
+
+
+if args.tune_dir and all(is_rounded(t["P"]) for t in tracks if not t["tune"]):
+    # run_dir has whole percent predictions, round the tune dir the same way so the
+    # thresholds and temperatures are tuned on what they are scored on
+    print("run dir predictions are whole percents, rounding the tune dir to match")
+    for t in tracks:
+        if t["tune"]:
+            t["P"] = np.round(t["P"] * 100) / 100
+            t["F"][:, 3] = t["P"].max(1)
+
+long_tracks = [
+    i for i, t in enumerate(tracks) if len(t["P"]) >= args.long and not t["tune"]
+]
+if args.tune_dir:
+    print(f"tune dir {args.tune_dir}: {TUNE.sum()} labelled tracks to fit and tune on")
+    print(f"run dir {args.run_dir}: {EVAL.sum()} labelled tracks to score")
 print(f"{len(tracks)} labelled tracks, {sum(len(t['P']) for t in tracks)} predictions")
 print("skipped tracks with no mass:", no_mass)
 print("labels:", collections.Counter(labels[t["y"]] for t in tracks).most_common())
@@ -189,8 +269,9 @@ FORMS = {
     "used disp + mass power": lambda F: np.c_[np.log1p(F[:, 1]), np.log1p(F[:, 2])],
 }
 
-counts = collections.Counter(t["y"] for t in tracks)
-class_w = {k: len(tracks) / (len(counts) * v) for k, v in counts.items()}
+# class weights from the tracks that are fit on
+counts = collections.Counter(t["y"] for t, f in zip(tracks, FIT) if f)
+class_w = {k: sum(counts.values()) / (len(counts) * v) for k, v in counts.items()}
 
 # every prediction stacked into flat arrays, each track is a contiguous block
 # starting at starts[i], so pooling is a reduceat rather than a loop over tracks
@@ -200,7 +281,7 @@ n_preds = np.array([len(t["P"]) for t in tracks])
 starts = np.r_[0, np.cumsum(n_preds)[:-1]]
 seg = np.repeat(np.arange(len(tracks)), n_preds)
 Y = np.array([t["y"] for t in tracks])
-CW = np.array([class_w[y] for y in Y])
+CW = np.array([class_w.get(y, 1.0) for y in Y])
 ALL = np.ones(len(tracks), dtype=bool)
 NUM_FRAMES = np.array([t["num_frames"] for t in tracks])
 PLAIN = np.array([label_thresholds.get(l, DEFAULT_THRESHOLD) for l in labels])
@@ -220,14 +301,15 @@ def tag_for(pattern, above):
     return pattern_tags[pattern]
 
 
-def decide(probs, subset, c=0.0, k=2, m=1.0):
+def decide(probs, subset, c=0.0, k=2, m=1.0, thresholds=None):
     # same as TrackPrediction: the predicted tag is the most specific label over m times
     # its threshold, else the most confident label, and it is confident if over m times
     # the threshold raised for missing frames (c=0 plain, c=1 k=2 is get_scaled_thresh)
+    plain = PLAIN if thresholds is None else thresholds
     subset = np.asarray(subset, dtype=int)
     p = probs[subset]
     tag = p.argmax(1)
-    above = p >= m * PLAIN
+    above = p >= m * plain
     has = above.any(1)
     if parent_mappings is not None and has.any():
         above_has = above[has]
@@ -240,7 +322,7 @@ def decide(probs, subset, c=0.0, k=2, m=1.0):
     missing = np.clip(SEGMENT_FRAMES - NUM_FRAMES[subset], 0, None) / (
         SEGMENT_FRAMES - 1
     )
-    thresh = PLAIN + c * (missing**k)[:, None] * np.maximum(0, 0.96 - PLAIN)
+    thresh = plain + c * (missing**k)[:, None] * np.maximum(0, 0.96 - plain)
     # a common parent is not a label so classify gives it no confidence
     is_label = tag < len(labels)
     idx = np.where(is_label, tag, 0)
@@ -252,12 +334,27 @@ def decide(probs, subset, c=0.0, k=2, m=1.0):
 def tag_conf(p, tag):
     return round(p[tag], 2) if tag < len(labels) else 0
 
-# grouped k-fold, all tracks from one recording land in the same fold
-files = sorted({t["file"] for t in tracks})
-file_fold = dict(
-    zip(np.random.default_rng(0).permutation(files), np.arange(len(files)) % args.folds)
-)
-fold = np.array([file_fold[t["file"]] for t in tracks])
+
+if args.tune_dir:
+    # one split, fit on the tune dir (fold 1) and score run_dir (fold 0)
+    fold = np.where(TUNE, 1, 0)
+    EVAL_FOLDS = [0]
+else:
+    # grouped k-fold, all tracks from one device + station (or one recording) share a
+    # fold, largest groups first into the emptiest fold so folds stay a similar size
+    group_key = "group" if args.fold_by == "device" else "file"
+    group_sizes = collections.Counter(t[group_key] for t in tracks)
+    fold_sizes = np.zeros(args.folds)
+    group_fold = {}
+    for g, n in sorted(group_sizes.items(), key=lambda x: (-x[1], x[0])):
+        group_fold[g] = int(fold_sizes.argmin())
+        fold_sizes[group_fold[g]] += n
+    fold = np.array([group_fold[t[group_key]] for t in tracks])
+    EVAL_FOLDS = range(args.folds)
+    print(
+        f"folds by {args.fold_by}: {len(group_sizes)} groups, "
+        f"tracks per fold {fold_sizes.astype(int).tolist()}"
+    )
 
 PHI = {form: f(F_all) for form, f in FORMS.items()}
 
@@ -291,9 +388,13 @@ def fit(train, form):
 def cross_validate(fit_fn, predict_fn):
     # fit on the other folds and predict this one, so every track is scored unseen
     probs = np.zeros((len(tracks), len(labels)))
-    for k in range(args.folds):
+    for k in EVAL_FOLDS:
         test = fold == k
-        probs[test] = predict_fn(fit_fn(~test))[test]
+        predicted = predict_fn(fit_fn(~test))
+        probs[test] = predicted[test]
+        if args.tune_dir:
+            # the tune tracks too, thresholds are tuned on them after this fit
+            probs[FIT] = predicted[FIT]
     return probs
 
 
@@ -326,12 +427,14 @@ def table(name, title, header, rows):
         print("saved", os.path.abspath(path))
 
 
-all_tracks = list(range(len(tracks)))
-cv_name = f"{args.folds} fold cross validation by recording"
+if args.tune_dir:
+    cv_name = f"fit on {args.tune_dir}, scored on {args.run_dir}"
+else:
+    cv_name = f"{args.folds} fold cross validation by {args.fold_by}"
 base = pooled(np.zeros(0), "mean (current)")
 # weighting can't change a single prediction track, so fit and score on the rest
 MULTI = n_preds > 1
-multi_tracks = list(np.flatnonzero(MULTI))
+multi_tracks = list(np.flatnonzero(MULTI & EVAL))
 if not args.skip_weighting:
     rows = []
     for form in FORMS:
@@ -340,7 +443,7 @@ if not args.skip_weighting:
         )
         acc, cr, cw, ll = summarise(probs, multi_tracks)
         lacc, lcr, lcw, lll = summarise(probs, long_tracks)
-        theta = fit(MULTI, form)
+        theta = fit(MULTI & FIT, form)
         names = {
             "disp power": ["(d+1)^{:.2f}"],
             "disp power + exp": ["(d+1)^{:.2f}", "exp({:.3f}·d/10)"],
@@ -445,6 +548,24 @@ print("predictions rounded to whole percents:", rounded)
 clipped = np.clip(P_all, ROUNDING_EPS, 1 - ROUNDING_EPS)
 # reverse sigmoid
 LOGIT_P_all = np.log(clipped) - np.log(1 - clipped)
+LOG_P_all = np.log(clipped)
+
+
+def ancestors(label):
+    found = []
+    while parent_mappings and isinstance(parent_mappings.get(label), tuple):
+        label = parent_mappings[label][0]
+        found.append(label)
+    return found
+
+
+# OUTSIDE[j, l] is 1 when label j counts against label l in family-softmax, so every
+# label except l's parents and children (a chicken's bird is not competition)
+OUTSIDE = np.ones((len(labels), len(labels)))
+for l, name in enumerate(labels):
+    for j, other in enumerate(labels):
+        if j != l and (other in ancestors(name) or name in ancestors(other)):
+            OUTSIDE[j, l] = 0
 Y_onehot = np.eye(len(labels))[Y]
 # multi label training also sets bird for chicken and weka, see get_extra_mappings
 if multi_label and "bird" in labels:
@@ -456,7 +577,15 @@ if multi_label and "bird" in labels:
 def calibrated(theta, form):
     # mean of temperature scaled predictions for every track, shape (tracks, labels)
     T = np.exp(CAL_PHI[form] @ theta)[:, None]
-    p = 1 / (1 + np.exp(-LOGIT_P_all / T))
+    if args.score == "sigmoid":
+        p = expit(LOGIT_P_all / T)
+    else:
+        z = LOG_P_all / T
+        e = np.exp(z - z.max(1, keepdims=True))
+        if args.score == "softmax":
+            p = e / e.sum(1, keepdims=True)
+        else:
+            p = e / (e @ OUTSIDE)
     return np.add.reduceat(p, starts) / n_preds[:, None]
 
 
@@ -467,7 +596,12 @@ def bce(p):
 
 
 def cal_loss(theta, train, form, l2=0.01):
-    loss = (CW * bce(calibrated(theta, form)))[train].sum() / train.sum()
+    p = calibrated(theta, form)
+    if args.score == "softmax":
+        # a distribution over labels, so the log loss of the true label
+        loss = weighted_nll(p, train)
+    else:
+        loss = (CW * bce(p))[train].sum() / train.sum()
     return loss + l2 * np.sum(theta[1:] ** 2)
 
 
@@ -480,9 +614,13 @@ def cal_fit(train, form):
 SHORT = np.array(
     [len(t["P"]) == 1 and t["num_frames"] < SEGMENT_FRAMES for t in tracks]
 )
-short_tracks = list(np.flatnonzero(SHORT))
+# short_tracks are scored, short_fit are fit and tuned on (the same without --tune-dir)
+short_tracks = list(np.flatnonzero(SHORT & EVAL))
+short_fit = list(np.flatnonzero(SHORT & FIT))
 print()
 print(f"short tracks (1 prediction, < {SEGMENT_FRAMES} frames):", len(short_tracks))
+if args.tune_dir:
+    print("short tracks to tune on:", len(short_fit))
 if not short_tracks:
     sys.exit(0)
 
@@ -501,12 +639,13 @@ for form in CAL_FORMS:
         lambda theta: calibrated(theta, form),
     )
     cal_probs[form] = probs
-    theta = cal_fit(SHORT, form)
+    theta = cal_fit(SHORT & FIT, form)
     formula = "T = " + " · ".join(n.format(v) for n, v in zip(CAL_NAMES[form], theta))
     rows.append(cal_row(form, formula, probs))
 table(
     "calibration",
-    f"calibration on short tracks ({cv_name}, scaled vs plain per label thresholds):",
+    f"calibration on short tracks, {args.score} score "
+    f"({cv_name}, scaled vs plain per label thresholds):",
     ["Calibration", "Formula (fit on short)", "Scaled confident right"]
     + ["Scaled confident wrong", "Label confident right", "Label confident wrong"]
     + ["BCE"],
@@ -615,6 +754,203 @@ table(
     rows,
 )
 
+# per label thresholds tuned for short tracks, so a method is judged only on how it
+# orders tracks within each label and not on how a single m treats each threshold
+CANDIDATES = np.r_[np.linspace(0.02, 0.99, 98), 1.01]
+
+
+def targets_for(subset):
+    # label_keep of each label's current confident right within subset
+    _, confident, correct = decide(base, subset, 1.0)
+    right = np.bincount(
+        Y[np.asarray(subset)][confident & correct], minlength=len(labels)
+    )
+    return right * args.label_keep
+
+
+# children first, so bird is tuned knowing which chickens are already called chicken
+tune_order = sorted(range(len(labels)), key=lambda l: -len(ancestors(labels[l])))
+
+
+def label_counts(probs, thresholds, c=0.0, subset=None):
+    # c raises each tuned threshold for missing frames, linearly as missing^1
+    subset = np.asarray(short_tracks if subset is None else subset)
+    tag, confident, correct = decide(probs, subset, c, 1, thresholds=thresholds)
+    right = np.bincount(Y[subset][confident & correct], minlength=len(labels))
+    wrong = np.bincount(tag[confident & ~correct], minlength=len(tag_names))
+    return right, wrong[: len(labels)]
+
+
+def tune_thresholds(probs, c=0.0, subset=None, passes=2):
+    # each label keeps at least label_keep of its current confident right with the fewest
+    # confident wrong called as it, or as many right as it can if that is out of reach
+    subset = short_tracks if subset is None else subset
+    label_targets = targets_for(subset)
+    thresholds = PLAIN.copy()
+    for _ in range(passes):
+        for l in tune_order:
+            best = None
+            for cand in CANDIDATES:
+                thresholds[l] = cand
+                right, wrong = label_counts(probs, thresholds, c, subset)
+                short = right[l] < label_targets[l]
+                key = (short, -right[l] if short else wrong[l], -right[l])
+                if best is None or key < best[0]:
+                    best = (key, cand)
+            thresholds[l] = best[1]
+    return thresholds
+
+
+# per label thresholds alone, then also raised by missing frames on top of them
+tune_setups = {"none": (base, 0.0)}
+for c in (0.25, 0.5):
+    tune_setups[f"none, missing^1 c={c}"] = (base, c)
+for form in CAL_FORMS:
+    tune_setups[form] = (cal_probs[form], 0.0)
+for c in (0.25, 0.5):
+    tune_setups[f"global T, missing^1 c={c}"] = (cal_probs["global T"], c)
+tuned = {
+    name: tune_thresholds(probs, c, short_fit)
+    for name, (probs, c) in tune_setups.items()
+}
+_, cr_now, cw_now, _ = summarise(base, short_tracks, scaled=True)
+rows = [["current (scaled)", cr_now, cw_now, ""]]
+for name, thresholds in tuned.items():
+    probs, c = tune_setups[name]
+    right, wrong = label_counts(probs, thresholds, c)
+    rows.append(
+        [
+            name,
+            int(right.sum()),
+            int(wrong.sum()),
+            round(100 * (wrong.sum() / cw_now - 1), 1),
+        ]
+    )
+table(
+    "per_label_tuned",
+    f"short tracks with per label thresholds tuned to keep {args.label_keep:.0%} of each "
+    f"label's current confident right, {args.score} score ({cv_name}):",
+    ["Method", "Confident right", "Confident wrong", "Wrong change % vs current"],
+    rows,
+)
+table(
+    "tuned_thresholds",
+    f"tuned short track thresholds per label, {args.score} score:",
+    ["Label", "Current"] + list(tuned),
+    [
+        [labels[l], round(PLAIN[l], 2)] + [round(t[l], 2) for t in tuned.values()]
+        for l in range(len(labels))
+    ],
+)
+
+OFFSETS = np.linspace(-0.3, 0.5, 81)
+
+
+def tune_offset(probs, subset):
+    # one amount added to every label's threshold, keeping label_keep of the total right
+    target = targets_for(subset).sum()
+    best = None
+    for offset in OFFSETS:
+        right, wrong = label_counts(
+            probs, np.clip(PLAIN + offset, 0, 1.01), 0.0, subset
+        )
+        short = right.sum() < target
+        key = (short, -right.sum() if short else wrong.sum(), -right.sum())
+        if best is None or key < best[0]:
+            best = (key, offset)
+    return np.clip(PLAIN + best[1], 0, 1.01)
+
+
+# tune on the other folds and score the held out devices, so the thresholds are judged
+# on cameras and stations they were not tuned on
+cv_setups = {
+    "per label, none": (base, 0.0),
+    "per label, none, missing^1 c=0.5": (base, 0.5),
+    "per label, global T": (cal_probs["global T"], 0.0),
+    "shared offset, none": (base, None),
+}
+short_arr = np.flatnonzero(SHORT)
+held = {name: np.zeros(2, dtype=int) for name in cv_setups}
+fold_thresholds = {name: [] for name in cv_setups}
+for k in EVAL_FOLDS:
+    train, test = short_arr[fold[short_arr] != k], short_arr[fold[short_arr] == k]
+    if len(train) == 0 or len(test) == 0:
+        continue
+    for name, (probs, c) in cv_setups.items():
+        if c is None:
+            thresholds, c = tune_offset(probs, train), 0.0
+        else:
+            thresholds = tune_thresholds(probs, c, train)
+        right, wrong = label_counts(probs, thresholds, c, test)
+        held[name] += [right.sum(), wrong.sum()]
+        fold_thresholds[name].append(thresholds)
+    print(f"tuned fold {k + 1}/{len(EVAL_FOLDS)}")
+
+in_sample = {
+    "per label, none": tuned["none"],
+    "per label, none, missing^1 c=0.5": tuned["none, missing^1 c=0.5"],
+    "per label, global T": tuned["global T"],
+    "shared offset, none": tune_offset(base, short_fit),
+}
+rows = [["current (scaled)", cr_now, cw_now, "", "", "", ""]]
+for name, (probs, c) in cv_setups.items():
+    # scored on the tracks they were tuned on, the tune dir or in sample
+    right, wrong = label_counts(probs, in_sample[name], c or 0.0, short_fit)
+    rows.append(
+        [name, int(held[name][0]), int(held[name][1])]
+        + [round(100 * (held[name][0] / cr_now - 1), 1)]
+        + [
+            round(100 * (held[name][1] / cw_now - 1), 1),
+            int(right.sum()),
+            int(wrong.sum()),
+        ]
+    )
+table(
+    "tuned_cv",
+    f"short tracks, thresholds tuned on {'the tune dir' if args.tune_dir else 'the other folds'} "
+    f"and scored on held out tracks ({cv_name}, keep {args.label_keep:.0%}, "
+    f"{args.score} score):",
+    ["Method", "Held out confident right", "Held out confident wrong"]
+    + ["Right change % vs current", "Wrong change % vs current"]
+    + ["Tune set right", "Tune set wrong"],
+    rows,
+)
+spread = np.array(fold_thresholds["per label, none"])
+table(
+    "tuned_thresholds_cv",
+    "per label short track thresholds (none), tuned on the tune set and the range "
+    "across folds:",
+    ["Label", "Short tracks to tune on", "Current", "Tuned", "Fold min", "Fold max"],
+    [
+        [labels[l], int((Y[short_fit] == l).sum()), round(PLAIN[l], 2)]
+        + [round(in_sample["per label, none"][l], 2)]
+        + (
+            [round(spread[:, l].min(), 2), round(spread[:, l].max(), 2)]
+            if len(spread)
+            else ["", ""]
+        )
+        for l in range(len(labels))
+    ],
+)
+
+if args.save_thresholds:
+    # thresholds for tracks with 1 prediction and fewer than short_max_frames frames
+    saved = {
+        "short_max_frames": SEGMENT_FRAMES,
+        "label_keep": args.label_keep,
+        "tuned_on": args.tune_dir or args.run_dir,
+        "short_thresholds": {
+            l: round(float(v), 3) for l, v in zip(labels, in_sample["per label, none"])
+        },
+        "methods": {
+            name: {l: round(float(v), 3) for l, v in zip(labels, thresholds)}
+            for name, thresholds in in_sample.items()
+        },
+    }
+    with open(args.save_thresholds, "w") as f:
+        json.dump(saved, f, indent=4)
+    print("saved", os.path.abspath(args.save_thresholds))
+
 # before is current (scaled thresholds), after is global T with plain thresholds
 tag_b, conf_b, right_b = decide(base, short_tracks, 1.0)
 tag_a, conf_a, _ = decide(cal_probs["global T"], short_tracks)
@@ -626,7 +962,11 @@ for j, i in enumerate(short_tracks):
             [t["file"], t["id"], labels[t["y"]], tag_names[tag_b[j]]]
             + [tag_conf(base[i], tag_b[j]), conf_b[j], tag_names[tag_a[j]]]
             + [tag_conf(cal_probs["global T"][i], tag_a[j]), conf_a[j]]
-            + [round(t["F"][:, 0].max(), 1), round(t["F"][:, 2].mean()), t["num_frames"]]
+            + [
+                round(t["F"][:, 0].max(), 1),
+                round(t["F"][:, 2].mean()),
+                t["num_frames"],
+            ]
         )
 table(
     "wrong_short_tracks",
