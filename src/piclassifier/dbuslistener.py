@@ -12,8 +12,9 @@ import numpy as np
 import logging
 from datetime import datetime
 from pathlib import Path
-from ml_tools.logs import init_logging
+import sys
 
+logging.basicConfig(stream=sys.stderr, level=logging.INFO, datefmt="%Y-%m-%d %H:%M:%S")
 DBUS_NAME = "org.cacophony.thermalrecorder"
 DBUS_PATH = "/org/cacophony/thermalrecorder"
 
@@ -187,7 +188,6 @@ class TrackingService:
 
 
 def main():
-    init_logging()
     thumb_dir = Path("./thumbnails")
     thumb_dir.mkdir(exist_ok=True)
     service = TrackingService()

@@ -467,14 +467,18 @@ class ClipClassifier:
             process_mem(),
             psutil.virtual_memory()[2],
         )
-        logging.info("Just running on first model")
         start = time.time()
-        model = self.config.classify.models[0]
-        classifier = self.get_classifier(model)
+        if self.model:
+            classifier = self.get_classifier(self.model)
+        else:
+            logging.info("Just running on first model")
+
+            model_config = self.config.classify.models[0]
+        classifier = self.get_classifier(model_config)
         classifier_is_ready = not classifier.run_over_network
         predictions = Predictions(
             classifier.labels,
-            model,
+            model_config,
             classifier.thresholds_per_label,
             scale_thresholds=classifier.scale_thresholds,
         )
@@ -760,7 +764,7 @@ class ClipClassifier:
                         region.blank,
                         True,
                         last_frame_num,
-                        model.id,
+                        classifier.id,
                         dbus.Int64(int(1000 * rec_end.timestamp())),
                         confident,
                     )
@@ -770,8 +774,8 @@ class ClipClassifier:
                         exc_info=True,
                     )
 
-        models = [model]
-        predictions_per_model = {model.id: predictions}
+        models = [model_config]
+        predictions_per_model = {classifier.id: predictions}
         if cache:
             frame_cache.delete()
         meta_data = self.save_metadata(

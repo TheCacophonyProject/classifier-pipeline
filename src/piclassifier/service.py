@@ -421,7 +421,7 @@ class DbusService:
                 region.blank,
                 tracking,
                 0,
-                "0",
+                str(model_id),
                 int(track_start_time * 1000),  # convert to ms
                 False,
             )
