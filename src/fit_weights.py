@@ -80,6 +80,15 @@ parser.add_argument(
     "run_dir is then only scored, instead of cross validating within run_dir",
 )
 parser.add_argument(
+    "--save-fit",
+    help="save everything fitted and tuned (weighting, calibration and short track "
+    "thresholds) to this json file",
+)
+parser.add_argument(
+    "--load-fit",
+    help="use the values saved by --save-fit instead of fitting, run_dir is only scored",
+)
+parser.add_argument(
     "--save-thresholds",
     help="save the tuned short track thresholds to this json file",
 )
@@ -106,11 +115,23 @@ label_thresholds = model_meta.get("thresholds", {})
 scale_thresholds = model_meta.get("scale_thresholds", False)
 multi_label = model_meta.get("hyperparams", {}).get("multi_label", False)
 SEGMENT_FRAMES = 25
+# thermal frames, the tracker ignores a 1 pixel border (edge-pixels)
+FRAME_WIDTH, FRAME_HEIGHT, EDGE_PIXELS = 160, 120, 1
 tag_precedence = Config.load_from_file(args.config_file).build.tag_precedence
 
 
 def centre(q):
     return np.array([q["x"] + q["width"] / 2, q["y"] + q["height"] / 2])
+
+
+def on_edge(q):
+    # box touches the edge of the usable frame, so the animal may be partly out of view
+    return (
+        q["x"] <= EDGE_PIXELS
+        or q["y"] <= EDGE_PIXELS
+        or q["x"] + q["width"] >= FRAME_WIDTH - EDGE_PIXELS
+        or q["y"] + q["height"] >= FRAME_HEIGHT - EDGE_PIXELS
+    )
 
 
 def human_tags(path):
@@ -198,13 +219,24 @@ def load_file(f, rel, orig_dir, tune):
                 continue
             pts = np.array([centre(q) for q in rng])
             upts = np.array([centre(q) for q in used]) if used else pts[:1]
+            # eucl distances
             max_disp = np.linalg.norm(pts - pts[0], axis=1).max()
             used_disp = np.linalg.norm(np.diff(upts, axis=0), axis=1).sum()
             # mean mass over used frames, independent of how many frames the segment got
             mean_mass = np.mean([q["mass"] for q in used]) if used else 0
+            # movement in box lengths rather than pixels, so distance to the camera matters less
+            rel_disp = max_disp / np.sqrt(np.mean([q["width"] * q["height"] for q in rng]))
+            edge_frac = np.mean([on_edge(q) for q in used or rng])
+            # frames in the segment's range the tracker lost (blank or missing)
+            blank_frac = 1 - len(rng) / (hi - lo + 1)
+            masses = np.array([q["mass"] for q in used or rng], dtype=float)
+            mass_cv = masses.std() / masses.mean() if masses.mean() > 0 else 0
             pr = np.array(s["prediction"], dtype=float) / 100
             P.append(pr)
-            feats.append((max_disp, used_disp, mean_mass, pr.max(), len(fr)))
+            feats.append(
+                (max_disp, used_disp, mean_mass, pr.max(), len(fr))
+                + (rel_disp, edge_frac, blank_frac, mass_cv)
+            )
             num_frames += len(fr)
         if P:
             tracks.append(
@@ -227,7 +259,33 @@ if args.tune_dir:
 # fit and tune on the tune dir when given, everything is scored on run_dir only
 TUNE = np.array([t["tune"] for t in tracks])
 EVAL = ~TUNE
-FIT = TUNE if args.tune_dir else ~TUNE
+if args.load_fit and args.tune_dir:
+    sys.exit("--load-fit already has the fitted values, don't also pass --tune-dir")
+# with --load-fit nothing is fit, so no tracks are fit on
+FIT = TUNE if args.tune_dir or args.load_fit else ~TUNE
+LOADED = json.load(open(args.load_fit)) if args.load_fit else None
+SAVED = {"weighting": {}, "calibration": {}, "thresholds": {}}
+
+
+def fitted(kind, name, fit_fn):
+    # fit on the tune set (or run_dir), or with --load-fit return the saved value
+    if LOADED is not None:
+        if name not in LOADED.get(kind, {}):
+            sys.exit(f"{args.load_fit} has no saved {kind} for {name}, refit with --save-fit")
+        value = np.array(LOADED[kind][name], dtype=float)
+    else:
+        value = fit_fn()
+    SAVED[kind][name] = np.asarray(value, dtype=float).tolist()
+    return value
+
+
+def finish():
+    if args.save_fit:
+        SAVED["settings"] = settings()
+        with open(args.save_fit, "w") as f:
+            json.dump(SAVED, f, indent=4)
+        print("saved", os.path.abspath(args.save_fit))
+    sys.exit(0)
 
 
 def is_rounded(P):
@@ -256,6 +314,34 @@ print("tracks with >1 prediction:", sum(len(t["P"]) > 1 for t in tracks))
 print(f"long tracks (>= {args.long} predictions):", len(long_tracks))
 print("scale thresholds:", scale_thresholds)
 
+
+def settings():
+    # what the fitted values depend on, checked when they are loaded
+    return {
+        "labels": labels,
+        "multi_label": multi_label,
+        "score": args.score,
+        "label_keep": args.label_keep,
+        "segment_frames": SEGMENT_FRAMES,
+        "model_json": args.model_json,
+        "model_thresholds": label_thresholds,
+        "fit_on": args.tune_dir or args.run_dir,
+    }
+
+
+if LOADED is not None:
+    saved, now = LOADED.get("settings", {}), settings()
+    for key in ("labels", "multi_label", "score"):
+        if saved.get(key) != now[key]:
+            sys.exit(
+                f"{args.load_fit} was fit with {key}={saved.get(key)} but this run has "
+                f"{now[key]}, refit with --save-fit"
+            )
+    for key in ("label_keep", "segment_frames", "model_thresholds"):
+        if saved.get(key) != now[key]:
+            print(f"warning: {args.load_fit} was fit with a different {key}")
+    print(f"loaded fitted values from {args.load_fit}, fit on {saved.get('fit_on')}")
+
 # candidate weighting forms, each a function of the raw features
 FORMS = {
     "mean (current)": lambda F: np.zeros((len(F), 0)),
@@ -267,6 +353,16 @@ FORMS = {
         np.log1p(F[:, 0]), np.log1p(F[:, 2]), np.log(F[:, 3] + 1e-3)
     ],
     "used disp + mass power": lambda F: np.c_[np.log1p(F[:, 1]), np.log1p(F[:, 2])],
+    # r = displacement in box lengths, e = share of frames on the frame edge,
+    # b = share of frames lost by the tracker, v = mass std / mean
+    "rel disp + mass power": lambda F: np.c_[np.log1p(F[:, 5]), np.log1p(F[:, 2])],
+    "disp + mass + edge": lambda F: np.c_[np.log1p(F[:, 0]), np.log1p(F[:, 2]), F[:, 6]],
+    "disp + mass + tracking": lambda F: np.c_[
+        np.log1p(F[:, 0]), np.log1p(F[:, 2]), F[:, 7], F[:, 8]
+    ],
+    "disp + mass + edge + tracking": lambda F: np.c_[
+        np.log1p(F[:, 0]), np.log1p(F[:, 2]), F[:, 6], F[:, 7], F[:, 8]
+    ],
 }
 
 # class weights from the tracks that are fit on
@@ -385,7 +481,10 @@ def fit(train, form):
     return minimize(loss, np.zeros(n), args=(train, form), method="L-BFGS-B").x
 
 
-def cross_validate(fit_fn, predict_fn):
+def cross_validate(fit_fn, predict_fn, kind=None, name=None):
+    if LOADED is not None:
+        # nothing to fit, predict every track with the saved values
+        return predict_fn(np.array(LOADED[kind][name], dtype=float))
     # fit on the other folds and predict this one, so every track is scored unseen
     probs = np.zeros((len(tracks), len(labels)))
     for k in EVAL_FOLDS:
@@ -439,11 +538,14 @@ if not args.skip_weighting:
     rows = []
     for form in FORMS:
         probs = cross_validate(
-            lambda train: fit(train & MULTI, form), lambda theta: pooled(theta, form)
+            lambda train: fit(train & MULTI, form),
+            lambda theta: pooled(theta, form),
+            "weighting",
+            form,
         )
         acc, cr, cw, ll = summarise(probs, multi_tracks)
         lacc, lcr, lcw, lll = summarise(probs, long_tracks)
-        theta = fit(MULTI & FIT, form)
+        theta = fitted("weighting", form, lambda: fit(MULTI & FIT, form))
         names = {
             "disp power": ["(d+1)^{:.2f}"],
             "disp power + exp": ["(d+1)^{:.2f}", "exp({:.3f}·d/10)"],
@@ -451,6 +553,12 @@ if not args.skip_weighting:
             "disp + mass power": ["(d+1)^{:.2f}", "(m+1)^{:.2f}"],
             "disp + mass + conf": ["(d+1)^{:.2f}", "(m+1)^{:.2f}", "conf^{:.2f}"],
             "used disp + mass power": ["(u+1)^{:.2f}", "(m+1)^{:.2f}"],
+            "rel disp + mass power": ["(r+1)^{:.2f}", "(m+1)^{:.2f}"],
+            "disp + mass + edge": ["(d+1)^{:.2f}", "(m+1)^{:.2f}", "e^({:.2f}·e)"],
+            "disp + mass + tracking": ["(d+1)^{:.2f}", "(m+1)^{:.2f}"]
+            + ["e^({:.2f}·b)", "e^({:.2f}·v)"],
+            "disp + mass + edge + tracking": ["(d+1)^{:.2f}", "(m+1)^{:.2f}"]
+            + ["e^({:.2f}·e)", "e^({:.2f}·b)", "e^({:.2f}·v)"],
         }.get(form, [])
         formula = " · ".join(n.format(v) for n, v in zip(names, theta)) or "1"
         rows.append(
@@ -470,6 +578,8 @@ if not args.skip_weighting:
     probs = cross_validate(
         lambda train: fit(train & MULTI, "disp + mass power"),
         lambda theta: pooled(theta, "disp + mass power"),
+        "weighting",
+        "disp + mass power",
     )
     scaled_c = 1.0 if scale_thresholds else 0.0
     tag_a, conf_a, _ = decide(base, long_tracks, scaled_c)
@@ -493,7 +603,7 @@ if not args.skip_weighting:
     )
 
 if not args.calibrate:
-    sys.exit(0)
+    finish()
 
 # --- calibration: per-prediction temperature from movement / mass ---
 # the model is multi label with sigmoid outputs, so each label is scaled on its own
@@ -523,6 +633,10 @@ CAL_FORMS = {
     "T(disp, mass, missing)": lambda F: np.c_[
         np.ones(len(F)), np.log1p(F[:, 0]), np.log1p(F[:, 2]), missing(F)
     ],
+    "T(rel disp)": lambda F: np.c_[np.ones(len(F)), np.log1p(F[:, 5])],
+    "T(edge)": lambda F: np.c_[np.ones(len(F)), F[:, 6]],
+    "T(tracking)": lambda F: np.c_[np.ones(len(F)), F[:, 7], F[:, 8]],
+    "T(edge, tracking)": lambda F: np.c_[np.ones(len(F)), F[:, 6], F[:, 7], F[:, 8]],
 }
 CAL_NAMES = {
     "global T": ["e^{:.2f}"],
@@ -537,6 +651,10 @@ CAL_NAMES = {
         "(m+1)^{:.2f}",
         "e^({:.2f}·missing)",
     ],
+    "T(rel disp)": ["e^{:.2f}", "(r+1)^{:.2f}"],
+    "T(edge)": ["e^{:.2f}", "e^({:.2f}·e)"],
+    "T(tracking)": ["e^{:.2f}", "e^({:.2f}·b)", "e^({:.2f}·v)"],
+    "T(edge, tracking)": ["e^{:.2f}", "e^({:.2f}·e)", "e^({:.2f}·b)", "e^({:.2f}·v)"],
 }
 CAL_PHI = {form: f(F_all) for form, f in CAL_FORMS.items()}
 # predictions are saved as whole percents, so 0 means < 0.5% and 100 means > 99.5%,
@@ -622,7 +740,7 @@ print(f"short tracks (1 prediction, < {SEGMENT_FRAMES} frames):", len(short_trac
 if args.tune_dir:
     print("short tracks to tune on:", len(short_fit))
 if not short_tracks:
-    sys.exit(0)
+    finish()
 
 
 def cal_row(name, formula, probs):
@@ -637,9 +755,11 @@ for form in CAL_FORMS:
     probs = cross_validate(
         lambda train: cal_fit(train & SHORT, form),
         lambda theta: calibrated(theta, form),
+        "calibration",
+        form,
     )
     cal_probs[form] = probs
-    theta = cal_fit(SHORT & FIT, form)
+    theta = fitted("calibration", form, lambda: cal_fit(SHORT & FIT, form))
     formula = "T = " + " · ".join(n.format(v) for n, v in zip(CAL_NAMES[form], theta))
     rows.append(cal_row(form, formula, probs))
 table(
@@ -774,7 +894,7 @@ tune_order = sorted(range(len(labels)), key=lambda l: -len(ancestors(labels[l]))
 
 def label_counts(probs, thresholds, c=0.0, subset=None):
     # c raises each tuned threshold for missing frames, linearly as missing^1
-    subset = np.asarray(short_tracks if subset is None else subset)
+    subset = np.asarray(short_tracks if subset is None else subset, dtype=int)
     tag, confident, correct = decide(probs, subset, c, 1, thresholds=thresholds)
     right = np.bincount(Y[subset][confident & correct], minlength=len(labels))
     wrong = np.bincount(tag[confident & ~correct], minlength=len(tag_names))
@@ -810,7 +930,7 @@ for form in CAL_FORMS:
 for c in (0.25, 0.5):
     tune_setups[f"global T, missing^1 c={c}"] = (cal_probs["global T"], c)
 tuned = {
-    name: tune_thresholds(probs, c, short_fit)
+    name: fitted("thresholds", name, lambda: tune_thresholds(probs, c, short_fit))
     for name, (probs, c) in tune_setups.items()
 }
 _, cr_now, cw_now, _ = summarise(base, short_tracks, scaled=True)
@@ -869,41 +989,53 @@ cv_setups = {
     "per label, global T": (cal_probs["global T"], 0.0),
     "shared offset, none": (base, None),
 }
-short_arr = np.flatnonzero(SHORT)
-held = {name: np.zeros(2, dtype=int) for name in cv_setups}
-fold_thresholds = {name: [] for name in cv_setups}
-for k in EVAL_FOLDS:
-    train, test = short_arr[fold[short_arr] != k], short_arr[fold[short_arr] == k]
-    if len(train) == 0 or len(test) == 0:
-        continue
-    for name, (probs, c) in cv_setups.items():
-        if c is None:
-            thresholds, c = tune_offset(probs, train), 0.0
-        else:
-            thresholds = tune_thresholds(probs, c, train)
-        right, wrong = label_counts(probs, thresholds, c, test)
-        held[name] += [right.sum(), wrong.sum()]
-        fold_thresholds[name].append(thresholds)
-    print(f"tuned fold {k + 1}/{len(EVAL_FOLDS)}")
-
 in_sample = {
     "per label, none": tuned["none"],
     "per label, none, missing^1 c=0.5": tuned["none, missing^1 c=0.5"],
     "per label, global T": tuned["global T"],
-    "shared offset, none": tune_offset(base, short_fit),
+    "shared offset, none": fitted(
+        "thresholds", "shared offset", lambda: tune_offset(base, short_fit)
+    ),
 }
-rows = [["current (scaled)", cr_now, cw_now, "", "", "", ""]]
+short_arr = np.flatnonzero(SHORT)
+held = {name: np.zeros(2, dtype=int) for name in cv_setups}
+fold_thresholds = {name: [] for name in cv_setups}
+if args.tune_dir or LOADED is not None:
+    # one set of thresholds from the tune dir (or loaded), scored on run_dir
+    for name, (probs, c) in cv_setups.items():
+        right, wrong = label_counts(probs, in_sample[name], c or 0.0, short_tracks)
+        held[name] += [right.sum(), wrong.sum()]
+        fold_thresholds[name].append(in_sample[name])
+else:
+    for k in EVAL_FOLDS:
+        train, test = short_arr[fold[short_arr] != k], short_arr[fold[short_arr] == k]
+        if len(train) == 0 or len(test) == 0:
+            continue
+        for name, (probs, c) in cv_setups.items():
+            if c is None:
+                thresholds, c = tune_offset(probs, train), 0.0
+            else:
+                thresholds = tune_thresholds(probs, c, train)
+            right, wrong = label_counts(probs, thresholds, c, test)
+            held[name] += [right.sum(), wrong.sum()]
+            fold_thresholds[name].append(thresholds)
+        print(f"tuned fold {k + 1}/{len(EVAL_FOLDS)}")
+
+def tune_set(right, wrong):
+    # with --load-fit there is no tune set to score
+    return ["", ""] if LOADED is not None else [int(right), int(wrong)]
+
+
+_, cr_fit, cw_fit, _ = summarise(base, short_fit, scaled=True)
+rows = [["current (scaled)", cr_now, cw_now, "", ""] + tune_set(cr_fit, cw_fit)]
 for name, (probs, c) in cv_setups.items():
     # scored on the tracks they were tuned on, the tune dir or in sample
     right, wrong = label_counts(probs, in_sample[name], c or 0.0, short_fit)
     rows.append(
         [name, int(held[name][0]), int(held[name][1])]
         + [round(100 * (held[name][0] / cr_now - 1), 1)]
-        + [
-            round(100 * (held[name][1] / cw_now - 1), 1),
-            int(right.sum()),
-            int(wrong.sum()),
-        ]
+        + [round(100 * (held[name][1] / cw_now - 1), 1)]
+        + tune_set(right.sum(), wrong.sum())
     )
 table(
     "tuned_cv",
@@ -922,7 +1054,8 @@ table(
     "across folds:",
     ["Label", "Short tracks to tune on", "Current", "Tuned", "Fold min", "Fold max"],
     [
-        [labels[l], int((Y[short_fit] == l).sum()), round(PLAIN[l], 2)]
+        [labels[l], "" if LOADED is not None else int((Y[short_fit] == l).sum())]
+        + [round(PLAIN[l], 2)]
         + [round(in_sample["per label, none"][l], 2)]
         + (
             [round(spread[:, l].min(), 2), round(spread[:, l].max(), 2)]
@@ -931,6 +1064,47 @@ table(
         )
         for l in range(len(labels))
     ],
+)
+
+
+def pct_change(new, old):
+    return round(100 * (new / old - 1), 1) if old else ""
+
+
+# per label on the scored short tracks, right by true label, wrong by the label called
+tag_now, conf_now, ok_now = decide(base, short_tracks, 1.0)
+right_now = np.bincount(Y[short_tracks][conf_now & ok_now], minlength=len(labels))
+wrong_now = np.bincount(tag_now[conf_now & ~ok_now], minlength=len(tag_names))
+right_tuned, wrong_tuned = label_counts(base, in_sample["per label, none"])
+right_c, wrong_c = label_counts(
+    base, in_sample["per label, none, missing^1 c=0.5"], 0.5
+)
+scored_counts = np.bincount(Y[short_tracks], minlength=len(labels))
+rows = []
+for l in sorted(range(len(labels)), key=lambda l: -scored_counts[l]):
+    rows.append(
+        [labels[l], int(scored_counts[l]), round(in_sample["per label, none"][l], 2)]
+        + [int(right_now[l]), int(right_tuned[l]), pct_change(right_tuned[l], right_now[l])]
+        + [int(wrong_now[l]), int(wrong_tuned[l]), pct_change(wrong_tuned[l], wrong_now[l])]
+        + [int(right_c[l]), int(wrong_c[l])]
+    )
+rows.append(
+    ["total", int(scored_counts.sum()), ""]
+    + [int(right_now.sum()), int(right_tuned.sum())]
+    + [pct_change(right_tuned.sum(), right_now.sum())]
+    + [int(wrong_now[: len(labels)].sum()), int(wrong_tuned.sum())]
+    + [pct_change(wrong_tuned.sum(), wrong_now[: len(labels)].sum())]
+    + [int(right_c.sum()), int(wrong_c.sum())]
+)
+table(
+    "tuned_per_label",
+    f"short tracks per label, current scaled thresholds vs per label thresholds tuned on "
+    f"{'the tune dir' if args.tune_dir else 'these tracks'} ({cv_name}, "
+    "right by true label, wrong by the label it was called):",
+    ["Label", "Short tracks", "Tuned threshold", "Right current", "Right tuned"]
+    + ["Right change %", "Wrong current", "Wrong tuned", "Wrong change %"]
+    + ["Right tuned c=0.5", "Wrong tuned c=0.5"],
+    rows,
 )
 
 if args.save_thresholds:
@@ -976,3 +1150,5 @@ table(
     + ["Max disp", "Mean mass", "Frames"],
     rows,
 )
+
+finish()
