@@ -989,6 +989,8 @@ class PiClassifier(Processor):
             self.service.recording(time.time(), False)
         self.recorder.force_stop()
         if self.snapshot_recorder:
+            if self.snapshot_recorder.recording:
+                self.snapshot_pending = True
             self.snapshot_recorder.force_stop()
         if self.constant_recorder is not None:
             self.constant_recorder.force_stop()
