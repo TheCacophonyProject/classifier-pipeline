@@ -186,7 +186,7 @@ def watch_config():
 
     new_config = ThermalConfig.load_from_file(config.config_file)
     if (
-        not thermal_config.recorder.use_low_power_mode
+        not new_config.recorder.use_low_power_mode
         or not new_config.recorder.instant_classify
         or not new_config.recorder.rec_window.inside_window()
         or new_config.base_motion.run_classifier != config.base_motion.run_classifier
@@ -314,6 +314,9 @@ def medium_power(connection, frame_queue, parse_recv):
                 # disconnected
                 return True
             extra_b = None
+            # may be we are receiving non recording data
+            if monitor_thread is None:
+                watch_config()
             continue
 
         reader = CptvStreamReader()
