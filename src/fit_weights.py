@@ -68,6 +68,14 @@ parser.add_argument(
     "and children (e.g. bird for chicken)",
 )
 parser.add_argument(
+    "--wrong-cost",
+    type=float,
+    nargs="+",
+    default=[1.0],
+    help="also tune short track thresholds per label to maximise "
+    "confident right - cost x confident wrong, one setup per cost",
+)
+parser.add_argument(
     "--label-keep",
     type=float,
     default=0.9,
@@ -104,6 +112,12 @@ parser.add_argument(
     help="also save every table as <name>.csv in this folder",
 )
 parser.add_argument(
+    "--short-stats",
+    action="store_true",
+    help="only print per label stats (mass, other tracks at the same time, short tracks "
+    "in the recording) for short tracks the model got right and wrong",
+)
+parser.add_argument(
     "--skip-weighting",
     action="store_true",
     help="skip the weighting comparison and long track listing",
@@ -115,6 +129,13 @@ label_thresholds = model_meta.get("thresholds", {})
 scale_thresholds = model_meta.get("scale_thresholds", False)
 multi_label = model_meta.get("hyperparams", {}).get("multi_label", False)
 SEGMENT_FRAMES = 25
+FPS = 9
+# a track shorter than this many seconds counts towards a recording's short tracks
+SHORT_SECONDS = 3
+# another track's box within this many pixels in the same frame, likely the same animal
+NEARBY_PIXELS = 10
+# mass under this share of the box area suggests something wrong with the background
+LOW_FILL = 0.1
 # thermal frames, the tracker ignores a 1 pixel border (edge-pixels)
 FRAME_WIDTH, FRAME_HEIGHT, EDGE_PIXELS = 160, 120, 1
 tag_precedence = Config.load_from_file(args.config_file).build.tag_precedence
@@ -124,14 +145,49 @@ def centre(q):
     return np.array([q["x"] + q["width"] / 2, q["y"] + q["height"] / 2])
 
 
-def on_edge(q):
+def track_span(t):
+    # start and end in seconds, from the metadata or else the frame numbers
+    if t.get("start") is not None and t.get("end") is not None:
+        return float(t["start"]), float(t["end"])
+    frames = [q.get("frame_number", q.get("order")) for q in t.get("positions") or []]
+    frames = [f for f in frames if f is not None]
+    if not frames:
+        return 0.0, 0.0
+    return min(frames) / FPS, (max(frames) + 1) / FPS
+
+
+def on_edge(q, margin=EDGE_PIXELS):
     # box touches the edge of the usable frame, so the animal may be partly out of view
     return (
-        q["x"] <= EDGE_PIXELS
-        or q["y"] <= EDGE_PIXELS
-        or q["x"] + q["width"] >= FRAME_WIDTH - EDGE_PIXELS
-        or q["y"] + q["height"] >= FRAME_HEIGHT - EDGE_PIXELS
+        q["x"] <= margin
+        or q["y"] <= margin
+        or q["x"] + q["width"] >= FRAME_WIDTH - margin
+        or q["y"] + q["height"] >= FRAME_HEIGHT - margin
     )
+
+
+def frame_of(q):
+    return q.get("frame_number", q.get("order"))
+
+
+def box_gap(a, b):
+    # pixels between two boxes, 0 when they touch or overlap
+    gap_x = max(a["x"], b["x"]) - min(a["x"] + a["width"], b["x"] + b["width"])
+    gap_y = max(a["y"], b["y"]) - min(a["y"] + a["height"], b["y"] + b["height"])
+    return max(gap_x, gap_y, 0)
+
+
+def max_jump(positions):
+    # largest move of the box centre between consecutive frames, in box lengths
+    seen = sorted(
+        (q for q in positions if not q.get("blank", False) and frame_of(q) is not None),
+        key=frame_of,
+    )
+    jumps = [
+        np.linalg.norm(centre(b) - centre(a)) / max(np.sqrt(a["width"] * a["height"]), 1)
+        for a, b in zip(seen, seen[1:])
+    ]
+    return max(jumps, default=0.0)
 
 
 def human_tags(path):
@@ -183,6 +239,18 @@ def load_file(f, rel, orig_dir, tune):
     # files may only have one of the keys (e.g. after audio-training fixtracks.py)
     upper = {x["id"]: x for x in d.get("Tracks") or []}
     lower = {x["id"]: x for x in d.get("tracks") or []}
+    # every track in the recording, labelled or not, for other tracks at the same time
+    spans = {i: track_span({**lower.get(i, {}), **upper.get(i, {})}) for i in {*upper, *lower}}
+    n_short = sum(end - start < SHORT_SECONDS for start, end in spans.values())
+    # boxes per frame for every track, to find another track right next to this one
+    boxes = {
+        i: {
+            frame_of(q): q
+            for q in ({**lower.get(i, {}), **upper.get(i, {})}.get("positions") or [])
+            if not q.get("blank", False) and frame_of(q) is not None
+        }
+        for i in spans
+    }
     for track_id in list(upper) + [i for i in lower if i not in upper]:
         if track_id not in truth:
             continue
@@ -249,6 +317,37 @@ def load_file(f, rel, orig_dir, tune):
                     P=np.array(P),
                     F=np.array(feats),
                     num_frames=num_frames,
+                    # recording context
+                    track_mass=np.mean(
+                        [q.get("mass") or 0 for q in positions if not q.get("blank", False)]
+                        or [0]
+                    ),
+                    seconds=spans[track_id][1] - spans[track_id][0],
+                    concurrent=sum(
+                        other != track_id
+                        and start < spans[track_id][1]
+                        and spans[track_id][0] < end
+                        for other, (start, end) in spans.items()
+                    ),
+                    recording_short=n_short,
+                    nearby=any(
+                        frame in other_boxes and box_gap(q, other_boxes[frame]) <= NEARBY_PIXELS
+                        for other, other_boxes in boxes.items()
+                        if other != track_id
+                        for frame, q in boxes[track_id].items()
+                    ),
+                    edge_1=any(on_edge(q, 1) for q in boxes[track_id].values()),
+                    edge_5=any(on_edge(q, 5) for q in boxes[track_id].values()),
+                    max_jump=max_jump(positions),
+                    blank_share=np.mean([q.get("blank", False) for q in positions]),
+                    # share of the box the mass fills, very low suggests a bad background
+                    fill=np.mean(
+                        [
+                            (q.get("mass") or 0) / max(q["width"] * q["height"], 1)
+                            for q in boxes[track_id].values()
+                        ]
+                        or [0]
+                    ),
                 )
             )
 
@@ -259,20 +358,30 @@ if args.tune_dir:
 # fit and tune on the tune dir when given, everything is scored on run_dir only
 TUNE = np.array([t["tune"] for t in tracks])
 EVAL = ~TUNE
-if args.load_fit and args.tune_dir:
-    sys.exit("--load-fit already has the fitted values, don't also pass --tune-dir")
-# with --load-fit nothing is fit, so no tracks are fit on
+# with --load-fit and no --tune-dir nothing is fit, so no tracks are fit on, with both the
+# saved values are used where present and anything missing is fit on the tune dir
 FIT = TUNE if args.tune_dir or args.load_fit else ~TUNE
 LOADED = json.load(open(args.load_fit)) if args.load_fit else None
-SAVED = {"weighting": {}, "calibration": {}, "thresholds": {}}
+# start from the loaded values so --save-fit keeps anything this run skips (e.g. weighting)
+SAVED = {
+    kind: dict((LOADED or {}).get(kind, {}))
+    for kind in ("weighting", "calibration", "thresholds")
+}
+
+
+def is_loaded(kind, name):
+    return LOADED is not None and name in LOADED.get(kind, {})
 
 
 def fitted(kind, name, fit_fn):
     # fit on the tune set (or run_dir), or with --load-fit return the saved value
-    if LOADED is not None:
-        if name not in LOADED.get(kind, {}):
-            sys.exit(f"{args.load_fit} has no saved {kind} for {name}, refit with --save-fit")
+    if is_loaded(kind, name):
         value = np.array(LOADED[kind][name], dtype=float)
+    elif LOADED is not None and not args.tune_dir:
+        sys.exit(
+            f"{args.load_fit} has no saved {kind} for {name}, pass --tune-dir to fit it "
+            "or refit with --save-fit"
+        )
     else:
         value = fit_fn()
     SAVED[kind][name] = np.asarray(value, dtype=float).tolist()
@@ -482,7 +591,7 @@ def fit(train, form):
 
 
 def cross_validate(fit_fn, predict_fn, kind=None, name=None):
-    if LOADED is not None:
+    if is_loaded(kind, name):
         # nothing to fit, predict every track with the saved values
         return predict_fn(np.array(LOADED[kind][name], dtype=float))
     # fit on the other folds and predict this one, so every track is scored unseen
@@ -531,6 +640,83 @@ if args.tune_dir:
 else:
     cv_name = f"{args.folds} fold cross validation by {args.fold_by}"
 base = pooled(np.zeros(0), "mean (current)")
+
+if args.short_stats:
+    # short tracks scored like classify with the current thresholds, then per true label
+    # compare the ones confidently right with the ones confidently wrong
+    short_eval = np.flatnonzero(
+        (n_preds == 1) & (NUM_FRAMES < SEGMENT_FRAMES) & EVAL
+    )
+    tag, confident, correct = decide(base, short_eval, 1.0 if scale_thresholds else 0.0)
+    tag_score = [tag_conf(base[i], g) for i, g in zip(short_eval, tag)]
+    groups = {"right": confident & correct, "wrong": confident & ~correct}
+
+    def pct(values):
+        return round(100 * float(np.mean(values)), 1)
+
+    def stats(idx):
+        if len(idx) == 0:
+            return [0] + [""] * 14
+        ts = [tracks[short_eval[j]] for j in idx]
+        mass = np.array([t["track_mass"] for t in ts])
+        return [
+            len(ts),
+            round(float(np.median([tag_score[j] for j in idx])), 2),
+            round(float(np.median(mass)), 1),
+            pct(mass <= 5),
+            round(float(np.median([t["num_frames"] for t in ts])), 1),
+            round(float(np.median([t["seconds"] for t in ts])), 2),
+            pct([t["concurrent"] > 0 for t in ts]),
+            pct([t["nearby"] for t in ts]),
+            pct([t["recording_short"] > 2 for t in ts]),
+            pct([t["edge_1"] for t in ts]),
+            pct([t["edge_5"] for t in ts]),
+            pct([t["max_jump"] > 1 for t in ts]),
+            round(100 * float(np.mean([t["blank_share"] for t in ts])), 1),
+            round(100 * float(np.median([t["fill"] for t in ts])), 1),
+            pct([t["fill"] < LOW_FILL for t in ts]),
+        ]
+
+    y_short = Y[short_eval]
+    rows = []
+    for l in sorted(range(len(labels)), key=lambda l: -(y_short == l).sum()):
+        for name, mask in groups.items():
+            if (y_short == l).any():
+                rows.append([labels[l], name] + stats(np.flatnonzero(mask & (y_short == l))))
+    for name, mask in groups.items():
+        rows.append(["all", name] + stats(np.flatnonzero(mask)))
+    stat_header = (
+        ["Tracks", "Median confidence", "Median mass", "Mass <= 5 %"]
+        + ["Median frames", "Median seconds", "Other track at the same time %"]
+        + [f"Track within {NEARBY_PIXELS}px at the same time %"]
+        + [f"Recording has > 2 tracks under {SHORT_SECONDS}s %"]
+        + ["On edge (1px) %", "On edge (5px) %", "Jump > 1 box %", "Blank frames %"]
+        + ["Median fill %", f"Fill < {LOW_FILL:.0%} %"]
+    )
+    table(
+        "short_stats",
+        "short tracks (1 prediction, < 25 frames) confidently right vs confidently wrong "
+        "with the current thresholds, per true label:",
+        ["Label", "Group"] + stat_header,
+        rows,
+    )
+    # the same split by the label the model called, which is what a rule can use at
+    # run time, so right and wrong here share a prediction and differ only in the truth
+    rows = []
+    for l in sorted(range(len(labels)), key=lambda l: -(confident & (tag == l)).sum()):
+        if (confident & (tag == l)).any():
+            for name, mask in groups.items():
+                rows.append([labels[l], name] + stats(np.flatnonzero(mask & (tag == l))))
+    for name, mask in groups.items():
+        rows.append(["all", name] + stats(np.flatnonzero(mask)))
+    table(
+        "short_stats_called",
+        "short tracks confidently right vs confidently wrong with the current thresholds, "
+        "per label the model called:",
+        ["Called", "Group"] + stat_header,
+        rows,
+    )
+    finish()
 # weighting can't change a single prediction track, so fit and score on the rest
 MULTI = n_preds > 1
 multi_tracks = list(np.flatnonzero(MULTI & EVAL))
@@ -901,9 +1087,10 @@ def label_counts(probs, thresholds, c=0.0, subset=None):
     return right, wrong[: len(labels)]
 
 
-def tune_thresholds(probs, c=0.0, subset=None, passes=2):
+def tune_thresholds(probs, c=0.0, subset=None, passes=2, cost=None):
     # each label keeps at least label_keep of its current confident right with the fewest
-    # confident wrong called as it, or as many right as it can if that is out of reach
+    # confident wrong called as it, or as many right as it can if that is out of reach.
+    # with cost, each label instead maximises confident right - cost x confident wrong
     subset = short_tracks if subset is None else subset
     label_targets = targets_for(subset)
     thresholds = PLAIN.copy()
@@ -913,8 +1100,13 @@ def tune_thresholds(probs, c=0.0, subset=None, passes=2):
             for cand in CANDIDATES:
                 thresholds[l] = cand
                 right, wrong = label_counts(probs, thresholds, c, subset)
-                short = right[l] < label_targets[l]
-                key = (short, -right[l] if short else wrong[l], -right[l])
+                if cost is not None:
+                    # the total, a label's threshold also changes which tag other tracks
+                    # get (e.g. a common parent when two labels are over their thresholds)
+                    key = (-(right.sum() - cost * wrong.sum()), -right.sum())
+                else:
+                    short = right[l] < label_targets[l]
+                    key = (short, -right[l] if short else wrong[l], -right[l])
                 if best is None or key < best[0]:
                     best = (key, cand)
             thresholds[l] = best[1]
@@ -922,21 +1114,26 @@ def tune_thresholds(probs, c=0.0, subset=None, passes=2):
 
 
 # per label thresholds alone, then also raised by missing frames on top of them
-tune_setups = {"none": (base, 0.0)}
+# (probs, c, cost), cost None keeps label_keep of the rights, else right - cost x wrong
+tune_setups = {"none": (base, 0.0, None)}
+for cost in args.wrong_cost:
+    tune_setups[f"none, wrong cost {cost:g}"] = (base, 0.0, cost)
 for c in (0.25, 0.5):
-    tune_setups[f"none, missing^1 c={c}"] = (base, c)
+    tune_setups[f"none, missing^1 c={c}"] = (base, c, None)
 for form in CAL_FORMS:
-    tune_setups[form] = (cal_probs[form], 0.0)
+    tune_setups[form] = (cal_probs[form], 0.0, None)
 for c in (0.25, 0.5):
-    tune_setups[f"global T, missing^1 c={c}"] = (cal_probs["global T"], c)
+    tune_setups[f"global T, missing^1 c={c}"] = (cal_probs["global T"], c, None)
 tuned = {
-    name: fitted("thresholds", name, lambda: tune_thresholds(probs, c, short_fit))
-    for name, (probs, c) in tune_setups.items()
+    name: fitted(
+        "thresholds", name, lambda: tune_thresholds(probs, c, short_fit, cost=cost)
+    )
+    for name, (probs, c, cost) in tune_setups.items()
 }
 _, cr_now, cw_now, _ = summarise(base, short_tracks, scaled=True)
 rows = [["current (scaled)", cr_now, cw_now, ""]]
 for name, thresholds in tuned.items():
-    probs, c = tune_setups[name]
+    probs, c, _ = tune_setups[name]
     right, wrong = label_counts(probs, thresholds, c)
     rows.append(
         [
@@ -949,7 +1146,8 @@ for name, thresholds in tuned.items():
 table(
     "per_label_tuned",
     f"short tracks with per label thresholds tuned to keep {args.label_keep:.0%} of each "
-    f"label's current confident right, {args.score} score ({cv_name}):",
+    f"label's current confident right, or for wrong cost setups to maximise right - "
+    f"cost x wrong, {args.score} score ({cv_name}):",
     ["Method", "Confident right", "Confident wrong", "Wrong change % vs current"],
     rows,
 )
@@ -966,16 +1164,20 @@ table(
 OFFSETS = np.linspace(-0.3, 0.5, 81)
 
 
-def tune_offset(probs, subset):
-    # one amount added to every label's threshold, keeping label_keep of the total right
+def tune_offset(probs, subset, cost=None):
+    # one amount added to every label's threshold, keeping label_keep of the total right,
+    # or with cost maximising total right - cost x total wrong
     target = targets_for(subset).sum()
     best = None
     for offset in OFFSETS:
         right, wrong = label_counts(
             probs, np.clip(PLAIN + offset, 0, 1.01), 0.0, subset
         )
-        short = right.sum() < target
-        key = (short, -right.sum() if short else wrong.sum(), -right.sum())
+        if cost is not None:
+            key = (-(right.sum() - cost * wrong.sum()), -right.sum())
+        else:
+            short = right.sum() < target
+            key = (short, -right.sum() if short else wrong.sum(), -right.sum())
         if best is None or key < best[0]:
             best = (key, offset)
     return np.clip(PLAIN + best[1], 0, 1.01)
@@ -983,11 +1185,12 @@ def tune_offset(probs, subset):
 
 # tune on the other folds and score the held out devices, so the thresholds are judged
 # on cameras and stations they were not tuned on
+# (probs, c, cost), c None is the shared offset
 cv_setups = {
-    "per label, none": (base, 0.0),
-    "per label, none, missing^1 c=0.5": (base, 0.5),
-    "per label, global T": (cal_probs["global T"], 0.0),
-    "shared offset, none": (base, None),
+    "per label, none": (base, 0.0, None),
+    "per label, none, missing^1 c=0.5": (base, 0.5, None),
+    "per label, global T": (cal_probs["global T"], 0.0, None),
+    "shared offset, none": (base, None, None),
 }
 in_sample = {
     "per label, none": tuned["none"],
@@ -997,12 +1200,15 @@ in_sample = {
         "thresholds", "shared offset", lambda: tune_offset(base, short_fit)
     ),
 }
+for cost in args.wrong_cost:
+    cv_setups[f"per label, none, wrong cost {cost:g}"] = (base, 0.0, cost)
+    in_sample[f"per label, none, wrong cost {cost:g}"] = tuned[f"none, wrong cost {cost:g}"]
 short_arr = np.flatnonzero(SHORT)
 held = {name: np.zeros(2, dtype=int) for name in cv_setups}
 fold_thresholds = {name: [] for name in cv_setups}
 if args.tune_dir or LOADED is not None:
     # one set of thresholds from the tune dir (or loaded), scored on run_dir
-    for name, (probs, c) in cv_setups.items():
+    for name, (probs, c, _) in cv_setups.items():
         right, wrong = label_counts(probs, in_sample[name], c or 0.0, short_tracks)
         held[name] += [right.sum(), wrong.sum()]
         fold_thresholds[name].append(in_sample[name])
@@ -1011,24 +1217,27 @@ else:
         train, test = short_arr[fold[short_arr] != k], short_arr[fold[short_arr] == k]
         if len(train) == 0 or len(test) == 0:
             continue
-        for name, (probs, c) in cv_setups.items():
+        for name, (probs, c, cost) in cv_setups.items():
             if c is None:
-                thresholds, c = tune_offset(probs, train), 0.0
+                thresholds, c = tune_offset(probs, train, cost), 0.0
             else:
-                thresholds = tune_thresholds(probs, c, train)
+                thresholds = tune_thresholds(probs, c, train, cost=cost)
             right, wrong = label_counts(probs, thresholds, c, test)
             held[name] += [right.sum(), wrong.sum()]
             fold_thresholds[name].append(thresholds)
         print(f"tuned fold {k + 1}/{len(EVAL_FOLDS)}")
 
+NO_TUNE_SET = LOADED is not None and not args.tune_dir
+
+
 def tune_set(right, wrong):
-    # with --load-fit there is no tune set to score
-    return ["", ""] if LOADED is not None else [int(right), int(wrong)]
+    # with --load-fit and no --tune-dir there is no tune set to score
+    return ["", ""] if NO_TUNE_SET else [int(right), int(wrong)]
 
 
 _, cr_fit, cw_fit, _ = summarise(base, short_fit, scaled=True)
 rows = [["current (scaled)", cr_now, cw_now, "", ""] + tune_set(cr_fit, cw_fit)]
-for name, (probs, c) in cv_setups.items():
+for name, (probs, c, _) in cv_setups.items():
     # scored on the tracks they were tuned on, the tune dir or in sample
     right, wrong = label_counts(probs, in_sample[name], c or 0.0, short_fit)
     rows.append(
@@ -1054,7 +1263,7 @@ table(
     "across folds:",
     ["Label", "Short tracks to tune on", "Current", "Tuned", "Fold min", "Fold max"],
     [
-        [labels[l], "" if LOADED is not None else int((Y[short_fit] == l).sum())]
+        [labels[l], "" if NO_TUNE_SET else int((Y[short_fit] == l).sum())]
         + [round(PLAIN[l], 2)]
         + [round(in_sample["per label, none"][l], 2)]
         + (
@@ -1079,6 +1288,10 @@ right_tuned, wrong_tuned = label_counts(base, in_sample["per label, none"])
 right_c, wrong_c = label_counts(
     base, in_sample["per label, none, missing^1 c=0.5"], 0.5
 )
+cost_counts = {
+    cost: label_counts(base, in_sample[f"per label, none, wrong cost {cost:g}"])
+    for cost in args.wrong_cost
+}
 scored_counts = np.bincount(Y[short_tracks], minlength=len(labels))
 rows = []
 for l in sorted(range(len(labels)), key=lambda l: -scored_counts[l]):
@@ -1087,6 +1300,7 @@ for l in sorted(range(len(labels)), key=lambda l: -scored_counts[l]):
         + [int(right_now[l]), int(right_tuned[l]), pct_change(right_tuned[l], right_now[l])]
         + [int(wrong_now[l]), int(wrong_tuned[l]), pct_change(wrong_tuned[l], wrong_now[l])]
         + [int(right_c[l]), int(wrong_c[l])]
+        + [int(v[l]) for counts in cost_counts.values() for v in counts]
     )
 rows.append(
     ["total", int(scored_counts.sum()), ""]
@@ -1095,6 +1309,7 @@ rows.append(
     + [int(wrong_now[: len(labels)].sum()), int(wrong_tuned.sum())]
     + [pct_change(wrong_tuned.sum(), wrong_now[: len(labels)].sum())]
     + [int(right_c.sum()), int(wrong_c.sum())]
+    + [int(v.sum()) for counts in cost_counts.values() for v in counts]
 )
 table(
     "tuned_per_label",
@@ -1103,7 +1318,12 @@ table(
     "right by true label, wrong by the label it was called):",
     ["Label", "Short tracks", "Tuned threshold", "Right current", "Right tuned"]
     + ["Right change %", "Wrong current", "Wrong tuned", "Wrong change %"]
-    + ["Right tuned c=0.5", "Wrong tuned c=0.5"],
+    + ["Right tuned c=0.5", "Wrong tuned c=0.5"]
+    + [
+        f"{side} wrong cost {cost:g}"
+        for cost in args.wrong_cost
+        for side in ("Right", "Wrong")
+    ],
     rows,
 )
 
