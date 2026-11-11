@@ -469,10 +469,9 @@ class ClipClassifier:
         )
         start = time.time()
         if self.model:
-            classifier = self.get_classifier(self.model)
+            model_config = self.model
         else:
             logging.info("Just running on first model")
-
             model_config = self.config.classify.models[0]
         classifier = self.get_classifier(model_config)
         classifier_is_ready = not classifier.run_over_network
