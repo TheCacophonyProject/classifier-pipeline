@@ -120,6 +120,11 @@ parser.add_argument(
     help="also save every table as <name>.csv in this folder",
 )
 parser.add_argument(
+    "--score-thresholds",
+    help="only score short tracks with the short_thresholds in this json (e.g. "
+    "short_thresholds.json) against the current scaled thresholds, then exit",
+)
+parser.add_argument(
     "--short-stats",
     action="store_true",
     help="only print per label stats (mass, other tracks at the same time, short tracks "
@@ -663,6 +668,73 @@ else:
     cv_name = f"{args.folds} fold cross validation by {args.fold_by}"
 base = pooled(np.zeros(0), "mean (current)")
 
+if args.score_thresholds:
+    # score short tracks with a fixed set of thresholds, counting every mistake and, with
+    # --ignore-mistakes, also leaving those out
+    saved = json.load(open(args.score_thresholds)).get("short_thresholds", {})
+    missing = [l for l in labels if l not in saved]
+    if missing:
+        sys.exit(f"{args.score_thresholds} has no short_thresholds for {missing}")
+    fixed = np.array([saved[l] for l in labels], dtype=float)
+    short_eval = np.flatnonzero((n_preds == 1) & (NUM_FRAMES < SEGMENT_FRAMES) & EVAL)
+    scaled_c = 1.0 if scale_thresholds else 0.0
+    ignored = IGNORED
+
+    def short_counts(thresholds, c, ignore):
+        # right by true label, wrong by the label it was called
+        global IGNORED
+        IGNORED = ignore
+        tag, confident, correct = decide(base, short_eval, c, thresholds=thresholds)
+        IGNORED = ignored
+        right = np.bincount(Y[short_eval][confident & correct], minlength=len(labels))
+        wrong = np.bincount(tag[confident & ~correct], minlength=len(tag_names))
+        return right, wrong[: len(labels)]
+
+    def trade(d_right, d_wrong):
+        if d_wrong < 0:
+            if d_right <= 0:
+                return f"{-d_right / -d_wrong:.2f} right lost per wrong removed"
+            return "more right and fewer wrong"
+        if d_wrong > 0:
+            if d_right > 0:
+                return f"{d_right / d_wrong:.2f} right gained per wrong added"
+            return "fewer right and more wrong"
+        return "same wrong"
+
+    views = {"counting every mistake": []}
+    if ignored:
+        views[f"ignoring {', '.join(args.ignore_mistakes)}"] = ignored
+    total = len(short_eval)
+    for view, ignore in views.items():
+        right_now, wrong_now = short_counts(None, scaled_c, ignore)
+        right_new, wrong_new = short_counts(fixed, 0.0, ignore)
+        rows = [
+            [labels[l], round(PLAIN[l], 2), round(fixed[l], 2)]
+            + [int(right_now[l]), int(right_new[l]), int(wrong_now[l]), int(wrong_new[l])]
+            + [trade(right_new[l] - right_now[l], wrong_new[l] - wrong_now[l])]
+            for l in sorted(range(len(labels)), key=lambda l: -right_now[l])
+        ]
+        rows.append(
+            ["total", "", "", int(right_now.sum()), int(right_new.sum())]
+            + [int(wrong_now.sum()), int(wrong_new.sum())]
+            + [trade(right_new.sum() - right_now.sum(), wrong_new.sum() - wrong_now.sum())]
+        )
+        rows.append(
+            [f"% of {total} short tracks", "", ""]
+            + [round(100 * right_now.sum() / total, 1), round(100 * right_new.sum() / total, 1)]
+            + [round(100 * wrong_now.sum() / total, 1), round(100 * wrong_new.sum() / total, 1), ""]
+        )
+        table(
+            "scored_thresholds" + ("_ignoring" if ignore else ""),
+            f"short tracks (1 prediction, < {SEGMENT_FRAMES} frames) with "
+            f"{args.score_thresholds} vs the current scaled thresholds, {view} "
+            "(right by true label, wrong by the label it was called):",
+            ["Label", "Model threshold", "Short threshold", "Right current", "Right new"]
+            + ["Wrong current", "Wrong new", "Trade"],
+            rows,
+        )
+    finish()
+
 if args.short_stats:
     # short tracks scored like classify with the current thresholds, then per true label
     # compare the ones confidently right with the ones confidently wrong
@@ -1084,7 +1156,8 @@ table(
 
 # per label thresholds tuned for short tracks, so a method is judged only on how it
 # orders tracks within each label and not on how a single m treats each threshold
-CANDIDATES = np.r_[np.linspace(0.02, 0.99, 98), 1.01]
+# rounded so a tuned threshold behaves the same once saved, predictions are whole percents
+CANDIDATES = np.round(np.r_[np.linspace(0.02, 0.99, 98), 1.01], 2)
 
 
 def targets_for(subset):
@@ -1183,7 +1256,7 @@ table(
     ],
 )
 
-OFFSETS = np.linspace(-0.3, 0.5, 81)
+OFFSETS = np.round(np.linspace(-0.3, 0.5, 81), 2)
 
 
 def tune_offset(probs, subset, cost=None):
