@@ -428,6 +428,7 @@ def medium_power(connection, frame_queue, parse_recv):
             except:
                 # if this happens log it and then get the file from rp2040
                 logging.error("Error decompressing ", exc_info=True)
+                logging.debug("Sending FAI, decompress failed at frame %s", frame_i)
                 send_nonblocking(connection, FAIL_MESSAGE)
                 # classifier needs to end this clip before the next header arrives
                 if frame_queue is not None:
@@ -471,6 +472,7 @@ def medium_power(connection, frame_queue, parse_recv):
                         frame_queue.put((py_frame, time.time()))
                     frame_i += 1
                     if frame_i % ACK_EVERY_FRAMES == 0:
+                        logging.debug("Sending ACK at frame %s", frame_i)
                         send_nonblocking(connection, ACK_MESSAGE)
 
                 else:
@@ -482,6 +484,9 @@ def medium_power(connection, frame_queue, parse_recv):
                             frame_i,
                             len(u8_data),
                             MAX_FRAME_BYTES,
+                        )
+                        logging.debug(
+                            "Sending FAI, frame parse failed at frame %s", frame_i
                         )
                         send_nonblocking(connection, FAIL_MESSAGE)
                         if frame_queue is not None:
@@ -571,6 +576,7 @@ def send_nonblocking(connection, message):
                 "Only sent %s of %s bytes of %s", sent, len(message), message
             )
             return False
+        logging.debug("Sent %s", message)
         return True
     except (BlockingIOError, InterruptedError):
         logging.warning("Socket busy, couldn't send %s", message)
