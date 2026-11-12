@@ -278,9 +278,8 @@ def medium_power(connection, frame_queue, parse_recv):
     asked_to_stay_on = False
 
     # process postprocessing runs under
-    inital_header_length = (
-        8 + 4 + 4
-    )  # Timestamp, lepton serial and firmware in the first message
+    # Timestamp, lepton serial, firmware and file start block in the first message
+    inital_header_length = 8 + 4 + 4 + 2
     while not restart_pending:
         if not config.recorder.rec_window.inside_window():
             logging.info("No longer inside recorder window, leaving medium power")
@@ -320,10 +319,9 @@ def medium_power(connection, frame_queue, parse_recv):
             continue
 
         reader = CptvStreamReader()
-        decompressor = zlib.decompressobj(wbits=-zlib.MAX_WBITS)
+        gz_stream = GzipStream()
         u8_data = None
         frame_i = 0
-        read_header = False
         data = b""
         finished = False
         min_value = None
@@ -344,19 +342,21 @@ def medium_power(connection, frame_queue, parse_recv):
         timestamp = struct.unpack("<q", extra_b[:8])[0]
         lepton_serial = struct.unpack("<I", extra_b[8:12])[0]
         firmware = struct.unpack("<I", extra_b[12:16])[0]
+        file_start_block = struct.unpack("<H", extra_b[16:18])[0]
         headers.firmware = f"DOC-AI-v0.{firmware}"
         headers.serial = str(lepton_serial)
         logging.info(
-            "Timestamp received is %s serial %s firmware %s",
+            "Timestamp received is %s serial %s firmware %s file start block %s",
             timestamp,
             lepton_serial,
             firmware,
+            file_start_block,
         )
         formatted_time = datetime.fromtimestamp(timestamp / 1e6).strftime(
             "%Y%m%d-%H%M%S.%f"
         )
 
-        extra_b = extra_b[8 + 4 + 4 :]
+        extra_b = extra_b[inital_header_length:]
         from mediumpower.cptvwriter import CPTVWriter
 
         # write header and cptv file seperately and then concat later
@@ -420,20 +420,19 @@ def medium_power(connection, frame_queue, parse_recv):
             data = data + byte_data
 
             if len(data) == 0:
-                time.sleep(1)
                 continue
 
             try:
                 logging.debug("Decompressing %s", len(data))
-                data, decompressed_chunk, read_header = decompress(
-                    decompressor, data, read_header
-                )
+                data, decompressed_chunk = gz_stream.decompress(data)
             except:
                 # if this happens log it and then get the file from rp2040
                 logging.error("Error decompressing ", exc_info=True)
+                send_nonblocking(connection, FAIL_MESSAGE)
                 # classifier needs to end this clip before the next header arrives
                 if frame_queue is not None:
                     frame_queue.put(ABORT_SIGNAL)
+                writer.remove()
                 return True
                 # time.sleep(1)
                 # continue
@@ -471,8 +470,24 @@ def medium_power(connection, frame_queue, parse_recv):
                     if frame_queue is not None:
                         frame_queue.put((py_frame, time.time()))
                     frame_i += 1
+                    if frame_i % ACK_EVERY_FRAMES == 0:
+                        send_nonblocking(connection, ACK_MESSAGE)
 
                 else:
+                    # parser returns None for both "need more data" and "corrupt data"
+                    # if we already hold more than the largest possible frame it is corrupt
+                    if len(u8_data) >= MAX_FRAME_BYTES:
+                        logging.error(
+                            "Failed to parse frame %s with %s bytes, max frame is %s",
+                            frame_i,
+                            len(u8_data),
+                            MAX_FRAME_BYTES,
+                        )
+                        send_nonblocking(connection, FAIL_MESSAGE)
+                        if frame_queue is not None:
+                            frame_queue.put(ABORT_SIGNAL)
+                        writer.remove()
+                        return True
                     logging.debug(
                         "Have %s bytes but need more to decompress a frame",
                         len(u8_data),
@@ -538,47 +553,105 @@ def remove_file(file_name):
         logging.error("Failed to remove %s", file_name, exc_info=True)
 
 
-def decompress(decompressor, data, read_header=False):
+ACK_EVERY_FRAMES = 10
+ACK_MESSAGE = b"ACK"
+FAIL_MESSAGE = b"FAI"
 
-    fp = io.BytesIO(data)
-    if not read_header:
-        result = gzip._read_gzip_header(fp)
-        if result is None:
-            raise Exception("No gzip header found")
-            # logging.info("Couldn't read header")
-            # return data, b"", read_header
-        data = data[fp.tell() :]
-        read_header = True
+
+def send_nonblocking(connection, message):
+    """Send message without blocking the receive loop, returns True if fully sent"""
+    # with a timeout set python waits for the socket to be writable before sending,
+    # even with MSG_DONTWAIT, so make it non blocking for this send
+    timeout = connection.gettimeout()
     try:
-        decompressed = decompressor.decompress(data)
-    except:
-        logging.error("Error decompressing ", exc_info=True)
-        return data, b"", read_header
-    unused_data = decompressor.unused_data[8:].lstrip(b"\x00")
+        connection.settimeout(0)
+        sent = connection.send(message)
+        if sent != len(message):
+            logging.warning(
+                "Only sent %s of %s bytes of %s", sent, len(message), message
+            )
+            return False
+        return True
+    except (BlockingIOError, InterruptedError):
+        logging.warning("Socket busy, couldn't send %s", message)
+    except OSError:
+        logging.error("Failed sending %s", message, exc_info=True)
+    finally:
+        try:
+            connection.settimeout(timeout)
+        except OSError:
+            pass
+    return False
 
-    # print("Tell is no0w ", fp.tell()," Unused data is " , len(decompressor.unused_data), " decompressed is ",len(decompressed))
-    if not decompressor.eof or len(decompressor.unused_data) < 8:
-        # print("Reach eof")
-        # 1/0
-        return unused_data, decompressed, read_header
-        raise EOFError(
-            "Compressed file ended before the end-of-stream " "marker was reached"
-        )
-    crc, length = struct.unpack("<II", decompressor.unused_data[:8])
 
-    if crc != zlib.crc32(decompressed):
-        # not check this proparly so will always error
-        # logging.error("CRC error")
-        return unused_data, decompressed, read_header
+class GzipStream:
+    """Decompresses a gzip stream as it arrives, checking the CRC and length in the
+    trailer using running values so the whole stream doesn't need to be kept"""
 
-        raise Exception("CRC check failed")
-    if length != (len(decompressed) & 0xFFFFFFFF):
-        raise Exception("Incorrect length of data produced")
-    return unused_data, decompressed, read_header
+    def __init__(self):
+        self.decompressor = zlib.decompressobj(wbits=-zlib.MAX_WBITS)
+        self.read_header = False
+        self.crc = 0
+        self.length = 0
+        self.done = False
+
+    def decompress(self, data):
+        """Returns (unused data to pass back in with the next bytes, decompressed bytes)"""
+        if self.done:
+            # trailer already verified, anything else is padding
+            return b"", b""
+        if not self.read_header:
+            if len(data) < 10:
+                # gzip header is at least 10 bytes, wait for more
+                return data, b""
+            fp = io.BytesIO(data)
+            try:
+                result = gzip._read_gzip_header(fp)
+            except EOFError:
+                # dont have the full gzip header yet, wait for more bytes
+                return data, b""
+            if result is None:
+                raise Exception("No gzip header found")
+            data = data[fp.tell() :]
+            self.read_header = True
+
+        if not self.decompressor.eof:
+            # let zlib errors raise, the data is corrupt and the caller aborts the recording
+            decompressed = self.decompressor.decompress(data)
+            self.crc = zlib.crc32(decompressed, self.crc)
+            self.length += len(decompressed)
+            if not self.decompressor.eof:
+                return b"", decompressed
+            trailer = self.decompressor.unused_data
+        else:
+            # deflate stream finished on an earlier call, data is the rest of the trailer
+            decompressed = b""
+            trailer = data
+
+        if len(trailer) < 8:
+            # wait for the rest of the trailer
+            return trailer, decompressed
+
+        crc, length = struct.unpack("<II", trailer[:8])
+        if crc != self.crc:
+            raise Exception(f"CRC check failed got {self.crc} expected {crc}")
+        if length != (self.length & 0xFFFFFFFF):
+            raise Exception(
+                f"Incorrect length of data produced got {self.length} expected {length}"
+            )
+        self.done = True
+        logging.debug("Gzip stream complete, crc and length ok")
+        return b"", decompressed
 
 
 CLEAR_SIGNAL = "clear"
 ABORT_SIGNAL = "abort"
+
+# largest frame tc2-firmware streaming_cptv.rs can write: 'F' + field count + 6 header
+# fields (35 bytes) + 4 byte initial pixel + 19199 pixels at 16 bit deltas
+MAX_FRAME_HEADER_BYTES = 35
+# plus 100 bytes leeway
+MAX_FRAME_BYTES = MAX_FRAME_HEADER_BYTES + 4 + (160 * 120 - 1) * 2 + 100
 
 STOP_SIGNAL = "stop"
 SKIP_SIGNAL = "skip"
