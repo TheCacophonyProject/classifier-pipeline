@@ -68,6 +68,14 @@ parser.add_argument(
     "and children (e.g. bird for chicken)",
 )
 parser.add_argument(
+    "--ignore-mistakes",
+    nargs="*",
+    default=[],
+    metavar="TRUTH:CALLED",
+    help="mistakes that don't matter, e.g. chicken:bird, count as neither right nor wrong "
+    "when tuning and scoring",
+)
+parser.add_argument(
     "--wrong-cost",
     type=float,
     nargs="+",
@@ -491,6 +499,14 @@ ALL = np.ones(len(tracks), dtype=bool)
 NUM_FRAMES = np.array([t["num_frames"] for t in tracks])
 PLAIN = np.array([label_thresholds.get(l, DEFAULT_THRESHOLD) for l in labels])
 parent_mappings = get_parent_mappings(labels) if multi_label else None
+IGNORED = []
+for pair in args.ignore_mistakes:
+    truth, _, called = pair.partition(":")
+    if truth not in labels or called not in labels:
+        sys.exit(f"--ignore-mistakes {pair}: expected TRUTH:CALLED with labels from {labels}")
+    IGNORED.append((labels.index(truth), labels.index(called)))
+if IGNORED:
+    print("ignoring mistakes:", ", ".join(args.ignore_mistakes))
 # a predicted tag can be a common parent such as mammal, these get indices after labels
 tag_names = list(labels)
 pattern_tags = {}
@@ -533,6 +549,12 @@ def decide(probs, subset, c=0.0, k=2, m=1.0, thresholds=None):
     idx = np.where(is_label, tag, 0)
     rows = np.arange(len(subset))
     confident = is_label & (p[rows, idx] >= m * thresh[rows, idx])
+    if IGNORED:
+        # mistakes that don't matter (e.g. a chicken called bird) count as neither
+        skip = np.zeros(len(subset), dtype=bool)
+        for truth, called in IGNORED:
+            skip |= (Y[subset] == truth) & (tag == called)
+        confident = confident & ~skip
     return tag, confident, tag == Y[subset]
 
 
@@ -1324,6 +1346,47 @@ table(
         for cost in args.wrong_cost
         for side in ("Right", "Wrong")
     ],
+    rows,
+)
+
+
+
+def trade(d_right, d_wrong):
+    # how many right each wrong removed (or added) costs (or gains)
+    if d_wrong < 0:
+        if d_right <= 0:
+            return f"{-d_right / -d_wrong:.2f} right lost per wrong removed"
+        return "more right and fewer wrong"
+    if d_wrong > 0:
+        if d_right > 0:
+            return f"{d_right / d_wrong:.2f} right gained per wrong added"
+        return "fewer right and more wrong"
+    return "same wrong"
+
+
+# totals on the scored short tracks, as shares of all of them and the right per wrong
+total = len(short_tracks)
+summary_setups = {"current (scaled)": (int(right_now.sum()), int(wrong_now[: len(labels)].sum()))}
+summary_setups[f"keep {args.label_keep:.0%}"] = (int(right_tuned.sum()), int(wrong_tuned.sum()))
+for cost, (r, w) in cost_counts.items():
+    summary_setups[f"wrong cost {cost:g}"] = (int(r.sum()), int(w.sum()))
+base_right, base_wrong = summary_setups["current (scaled)"]
+rows = []
+for name, (r, w) in summary_setups.items():
+    rows.append(
+        [name, r, round(100 * r / total, 1), w, round(100 * w / total, 1)]
+        + [r - base_right, w - base_wrong]
+        + [trade(r - base_right, w - base_wrong) if name != "current (scaled)" else ""]
+        + [round(r - cost * w) for cost in args.wrong_cost]
+    )
+table(
+    "tuned_summary",
+    f"short tracks totals ({total} tracks"
+    + (f", ignoring {', '.join(args.ignore_mistakes)}" if IGNORED else "")
+    + f", {cv_name}):",
+    ["Setup", "Confident right", "Right % of short", "Confident wrong", "Wrong % of short"]
+    + ["Right change", "Wrong change", "Trade vs current"]
+    + [f"Right - {cost:g} x wrong" for cost in args.wrong_cost],
     rows,
 )
 
