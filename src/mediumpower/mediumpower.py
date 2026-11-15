@@ -371,6 +371,8 @@ def medium_power(connection, frame_queue, parse_recv):
             writer.write(extra_b)
         stream_i += 1
         file_completed = False
+        received_clear = False
+        saved = False
         reconnect = False
         while not finished:
             if parse_recv.poll():
@@ -380,6 +382,9 @@ def medium_power(connection, frame_queue, parse_recv):
                 writer.combine_file(
                     headers, config, timestamp, min_value, max_value, frame_i
                 )
+                # didn't get all of the recording, so the rp2040 must keep its copy
+                logging.debug("Sending FAI, stopped before the end of the recording")
+                send_nonblocking(connection, status_message(FAIL_MESSAGE, timestamp))
                 return False
             try:
                 byte_data = connection.recv(headers.frame_size)
@@ -393,6 +398,8 @@ def medium_power(connection, frame_queue, parse_recv):
                     break
             except:
                 logging.error("Mid recording failed to receive more data")
+                logging.debug("Sending FAI, failed to receive the whole recording")
+                send_nonblocking(connection, status_message(FAIL_MESSAGE, timestamp))
                 # once tested this file could be deleted instead
                 finished = True
                 break
@@ -405,6 +412,7 @@ def medium_power(connection, frame_queue, parse_recv):
                 byte_data = byte_data[:clear_index]
                 # clear is sent after the loop once frames from this last chunk are queued
                 finished = True
+                received_clear = True
                 writer.write(byte_data)
             elif byte_data.find(b"abort") > -1:
                 logging.info("Received abort signal")
@@ -429,7 +437,7 @@ def medium_power(connection, frame_queue, parse_recv):
                 # if this happens log it and then get the file from rp2040
                 logging.error("Error decompressing ", exc_info=True)
                 logging.debug("Sending FAI, decompress failed at frame %s", frame_i)
-                send_nonblocking(connection, FAIL_MESSAGE)
+                send_nonblocking(connection, status_message(FAIL_MESSAGE, timestamp))
                 # classifier needs to end this clip before the next header arrives
                 if frame_queue is not None:
                     frame_queue.put(ABORT_SIGNAL)
@@ -488,7 +496,9 @@ def medium_power(connection, frame_queue, parse_recv):
                         logging.debug(
                             "Sending FAI, frame parse failed at frame %s", frame_i
                         )
-                        send_nonblocking(connection, FAIL_MESSAGE)
+                        send_nonblocking(
+                            connection, status_message(FAIL_MESSAGE, timestamp)
+                        )
                         if frame_queue is not None:
                             frame_queue.put(ABORT_SIGNAL)
                         writer.remove()
@@ -503,10 +513,28 @@ def medium_power(connection, frame_queue, parse_recv):
             # the classifier takes those frames as the start of the next clip
             if frame_queue is not None:
                 frame_queue.put(CLEAR_SIGNAL)
-            writer.combine_file(
-                headers, config, timestamp, min_value, max_value, frame_i
-            )
+            try:
+                saved = writer.combine_file(
+                    headers, config, timestamp, min_value, max_value, frame_i
+                )
+            except:
+                logging.error("Failed to save cptv file", exc_info=True)
+                saved = False
             file_completed = True
+            # tc2-agent tells the rp2040 to erase its copy once we say we're done, so only say
+            # so if we got the whole recording and saved it. If we didn't get the whole
+            # recording, FAI has already been sent or the connection is gone.
+            if received_clear:
+                if saved:
+                    logging.info("Sending DON for %s", timestamp)
+                    send_nonblocking(
+                        connection, status_message(DONE_MESSAGE, timestamp)
+                    )
+                else:
+                    logging.info("Sending FAI for %s, failed to save it", timestamp)
+                    send_nonblocking(
+                        connection, status_message(FAIL_MESSAGE, timestamp)
+                    )
         logging.info(
             "Finished processing left over bytes are %s num frames %s",
             "None" if u8_data is None else len(u8_data),
@@ -561,6 +589,12 @@ def remove_file(file_name):
 ACK_EVERY_FRAMES = 10
 ACK_MESSAGE = b"ACK"
 FAIL_MESSAGE = b"FAI"
+DONE_MESSAGE = b"DON"
+
+
+def status_message(message, timestamp):
+    """FAI and DON are followed by the recording's timestamp (i64 LE), from its first packet"""
+    return message + struct.pack("<q", timestamp)
 
 
 def send_nonblocking(connection, message):
