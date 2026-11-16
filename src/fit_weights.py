@@ -2,13 +2,52 @@
 predictions into one label, using human tags as ground truth.
 
 With --calibrate also fit a per-prediction temperature that changes how
-confident each prediction is (works on single prediction tracks too).
+confident each prediction is (works on single prediction tracks too), and tune
+per label thresholds for short tracks (1 prediction, fewer than 25 frames).
 
 usage: python3 fit_weights.py <classified dir> [original dir with human tags]
            [-c config.toml] [--model-json saved_model.json] [--long 5] [--calibrate]
 
 classify keeps the original metadata (including human tags) when it writes to
 --output-dir, so the original dir is only needed if the tags were overwritten
+
+Reproducing the final results
+-----------------------------
+Classify the test and validation splits first, e.g.
+    python3 classify.py <cptv dir> --split-file <split.json> --split-dataset validation \\
+        --output-dir <validation metadata> --dont-round-predictions --workers 4
+and the same with --split-dataset test --output-dir <test metadata>.
+
+Long tracks (more than 1 prediction), fit on validation and scored on test:
+    python3 fit_weights.py <test metadata> --tune-dir <validation metadata> \\
+        -c classifier.yaml --model-json <saved_model.json> --csv-dir fit-results-long
+weighting.csv row "disp + mass power" is the weighting to use,
+w = (d+1)^0.66 * (m+1)^1.06 (d = max displacement of the segment in pixels,
+m = mean mass of its frames). On the test split: 11711 -> 11973 confident right
+and 1034 -> 984 confident wrong over 13666 tracks with more than 1 prediction,
+3862 -> 3995 right and 289 -> 260 wrong on tracks with 5+ predictions.
+
+Short tracks (1 prediction, fewer than 25 frames):
+1. tune on validation, scored on test
+    python3 fit_weights.py <test metadata> --tune-dir <validation metadata> \\
+        -c classifier.yaml --model-json <saved_model.json> --calibrate \\
+        --skip-weighting --wrong-cost 2 \\
+        --ignore-mistakes rodent:bird bird:rodent chicken:bird \\
+        --csv-dir fit-results-short --save-fit fit-short.json
+2. build short_thresholds.json from tuned_thresholds.csv: each label takes the
+   "none, wrong cost 2" column, except mustelid which takes "none" (keep 90%),
+   then each is kept between the label's model threshold and 0.96 (the
+   max_threshold of get_scaled_thresh). short_thresholds.json records the steps
+   in how_these_were_made.
+3. score those thresholds against the deployed scaled thresholds
+    python3 fit_weights.py <test metadata> -c classifier.yaml \\
+        --model-json <saved_model.json> --score-thresholds short_thresholds.json \\
+        --ignore-mistakes rodent:bird bird:rodent chicken:bird \\
+        --csv-dir fit-results-final
+   scored_thresholds.csv counts every mistake, scored_thresholds_ignoring.csv
+   leaves out the --ignore-mistakes pairs. Before the 0.96 cap, on 13815 test
+   short tracks: 9655 -> 9852 confident right and 1289 -> 1271 confident wrong,
+   or 990 -> 843 wrong not counting rodent <-> bird and chicken -> bird.
 """
 
 import argparse
@@ -677,7 +716,9 @@ if args.score_thresholds:
         sys.exit(f"{args.score_thresholds} has no short_thresholds for {missing}")
     fixed = np.array([saved[l] for l in labels], dtype=float)
     short_eval = np.flatnonzero((n_preds == 1) & (NUM_FRAMES < SEGMENT_FRAMES) & EVAL)
-    scaled_c = 1.0 if scale_thresholds else 0.0
+    # always against get_scaled_thresh, what is deployed, even if the model json has
+    # scale_thresholds off
+    scaled_c = 1.0
     ignored = IGNORED
 
     def short_counts(thresholds, c, ignore):
