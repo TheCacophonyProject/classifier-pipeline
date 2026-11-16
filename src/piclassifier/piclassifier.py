@@ -485,6 +485,9 @@ class PiClassifier(Processor):
                 model,
                 self.classifier.thresholds_per_label,
                 scale_thresholds=classifier.scale_thresholds,
+                short_thresholds_per_label=self.classifier.short_thresholds_per_label,
+                prediction_weighting=self.classifier.prediction_weighting,
+                weight_powers=self.classifier.weight_powers,
             )
             self.num_labels = len(self.classifier.labels)
             # if                 self.classifier.params.segment_types[0] != "ALL_RANDOM_SECTIONS":
@@ -512,6 +515,9 @@ class PiClassifier(Processor):
                 fp_config,
                 self.fp_model.thresholds_per_label,
                 scale_thresholds=self.fp_model.scale_thresholds,
+                short_thresholds_per_label=self.fp_model.short_thresholds_per_label,
+                prediction_weighting=self.fp_model.prediction_weighting,
+                weight_powers=self.fp_model.weight_powers,
             )
 
     def new_clip(self, preview_frames, received_at):
@@ -660,7 +666,9 @@ class PiClassifier(Processor):
                 if prediction is None:
                     track_prediction.last_frame_classified = self.clip.current_frame
                     continue
-                track_prediction.classified_frames(frames, prediction, mass)
+                track_prediction.classified_frames(
+                    frames, prediction, mass, regions=track.bounds_history
+                )
 
                 logging.debug(
                     "Track %s is predicted as %s took %s track frames %s",
@@ -710,7 +718,9 @@ class PiClassifier(Processor):
                     track_prediction.reset()
                     # track_prediction.scale_by_overlap(frames[0])
                 logging.info("Predicting with %s frames", len(frames[0]))
-                track_prediction.classified_frames(frames, prediction, mass)
+                track_prediction.classified_frames(
+                    frames, prediction, mass, regions=track.bounds_history
+                )
 
                 logging.info(
                     "Track %s is predicted as %s took %s track frames %s",

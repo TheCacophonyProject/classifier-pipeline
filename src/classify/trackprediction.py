@@ -10,6 +10,31 @@ import time
 UNIFORM_PRIOR = False
 DEFAULT_THRESHOLD = 0.8
 
+# default weighting of each prediction when pooling a track with more than 1 prediction,
+# models can set their own with weight_disp_power and weight_mass_power in the metadata
+# w = (d+1)^0.66 * (m+1)^1.06, d = max displacement of the segment in pixels,
+# m = mean mass of the frames it used. fit with fit_weights.py (classify-fit branch),
+# on the test split 11711 -> 11973 confident right and 1034 -> 984 confident wrong
+DISP_POWER = 0.66
+MASS_POWER = 1.06
+
+
+def prediction_weight(max_disp, mean_mass, disp_power=DISP_POWER, mass_power=MASS_POWER):
+    return (max_disp + 1) ** disp_power * (mean_mass + 1) ** mass_power
+
+
+def segment_displacement(regions_by_frame, frames):
+    """
+    max displacement (pixels) of a segment, same as fit_weights.py, the furthest any
+    non blank region in the segments frame range gets from the first one
+    """
+    lo, hi = int(np.amin(frames)), int(np.amax(frames))
+    pts = np.array(
+        [regions_by_frame[f].mid for f in range(lo, hi + 1) if f in regions_by_frame],
+        dtype=float,
+    )
+    return float(np.linalg.norm(pts - pts[0], axis=1).max())
+
 
 class Predictions:
     def __init__(
@@ -20,12 +45,19 @@ class Predictions:
         parent_mappings=None,
         scale_thresholds=False,
         multi_label=True,
+        short_thresholds_per_label=None,
+        prediction_weighting=False,
+        weight_powers=(DISP_POWER, MASS_POWER),
     ):
         self.labels = labels
+        self.prediction_weighting = prediction_weighting
+        # (disp power, mass power) for prediction_weight
+        self.weight_powers = weight_powers
         self.prediction_per_track = {}
         self.model = model
         self.model_load_time = None
         self.thresholds_per_label = thresholds_per_label
+        self.short_thresholds_per_label = short_thresholds_per_label
         self.parent_mappings = parent_mappings
         self.scale_thresholds = scale_thresholds
         self.multi_label = multi_label
@@ -41,7 +73,10 @@ class Predictions:
                 parent_mappings=self.parent_mappings,
                 scale_thresholds=self.scale_thresholds,
                 thresholds_per_label=self.thresholds_per_label,
+                short_thresholds_per_label=self.short_thresholds_per_label,
                 multi_label=self.multi_label,
+                prediction_weighting=self.prediction_weighting,
+                weight_powers=self.weight_powers,
             ),
         )
         return prediction
@@ -80,6 +115,8 @@ class Prediction:
     frames: Any
     predicted_at_frame: Any
     mass: Any
+    # weight used when pooling this into the track prediction, see prediction_weight
+    weight: Any = 1.0
     predicted_time: Any = field(init=False)
 
     def __post_init__(self):
@@ -88,6 +125,7 @@ class Prediction:
     def get_metadata(self):
         meta = asdict(self)
         meta["prediction"] = np.uint8(np.round(100 * self.prediction))
+        meta["weight"] = round(float(self.weight), 2)
         return meta
 
     def clarity(self):
@@ -115,8 +153,19 @@ class TrackPrediction:
         parent_mappings=None,
         scale_thresholds=False,
         thresholds_per_label=None,
+        short_thresholds_per_label=None,
+        prediction_weighting=False,
+        weight_powers=(DISP_POWER, MASS_POWER),
     ):
         self.thresholds_per_label = thresholds_per_label
+        # weight each prediction by movement and mass see prediction_weight, only used
+        # by classified_track when given the track regions
+        self.prediction_weighting = prediction_weighting
+        # (disp power, mass power) for prediction_weight
+        self.weight_powers = weight_powers
+        # used for short tracks (fewer than frames_per_prediction frames) instead of
+        # get_scaled_thresh, when scale_thresholds is False
+        self.short_thresholds_per_label = short_thresholds_per_label
         try:
             fp_index = labels.index("false-positive")
         except ValueError:
@@ -128,6 +177,9 @@ class TrackPrediction:
         self.class_best_score = np.zeros((len(labels)))
         self.start_frame = start_frame
         self.num_predictions = 0
+        # sum of the weights of every prediction, class_best_score is kept normalized
+        # so this turns it back into a weighted sum when new predictions come in
+        self.weight_total = 0.0
         self.last_frame_classified = None
         self.num_frames_classified = 0
         self.keep_all = keep_all
@@ -144,9 +196,13 @@ class TrackPrediction:
         predictions,
         prediction_frames,
         masses,
+        regions=None,
     ):
         self.num_predictions = len(predictions)
-        for prediction, frames, mass in zip(predictions, prediction_frames, masses):
+        weights = self.get_weights(prediction_frames, masses, regions)
+        for prediction, frames, mass, weight in zip(
+            predictions, prediction_frames, masses, weights
+        ):
             if isinstance(frames, int):
                 self.num_frames_classified += frames
             else:
@@ -156,13 +212,35 @@ class TrackPrediction:
                 frames,
                 np.amax(frames),
                 mass,
+                weight,
             )
             self.predictions.append(prediction)
 
         if self.num_frames_classified > 0:
-            self.class_best_score = np.sum(predictions, axis=0)
-            # normalize so it sums to 1
-            self.class_best_score = self.class_best_score / len(predictions)
+            self.weight_total = float(np.sum(weights))
+            # weighted mean, normalized so it sums to 1
+            self.class_best_score = (
+                np.sum(weights[:, None] * np.array(predictions), axis=0)
+                / self.weight_total
+            )
+
+    def get_weights(self, prediction_frames, masses, regions):
+        """
+        weight per prediction, see prediction_weight. all 1 if prediction_weighting is
+        off or there are no regions to measure displacement from
+        """
+        if not self.prediction_weighting or regions is None:
+            return np.ones(len(prediction_frames))
+        regions_by_frame = {r.frame_number: r for r in regions if not r.blank}
+        weights = []
+        for frames, mass in zip(prediction_frames, masses):
+            frames = np.atleast_1d(frames)
+            max_disp = segment_displacement(regions_by_frame, frames)
+            # segment mass is the sum over the (non blank) frames it used
+            mean_mass = float(mass) / len(frames)
+            w = prediction_weight(max_disp, mean_mass, *self.weight_powers)
+            weights.append(w)
+        return np.array(weights)
 
     def normalized_best_score(self):
         # class_best_score is always kept normalized, see classified_frames/classified_frame
@@ -172,15 +250,19 @@ class TrackPrediction:
         # class_best_score is always kept normalized, see classified_frames/classified_frame
         return self.class_best_score
 
-    def classified_frames(self, frame_numbers, predictions, masses):
-        total_pred = np.sum(predictions, axis=0)
-        # rescale the existing (already normalized) average back to a sum,
-        # add the new batch's sum, then renormalize - keeps class_best_score
-        # always normalized, so a reader never needs num_predictions too
-        previous_total = self.class_best_score * self.num_predictions
+    def classified_frames(self, frame_numbers, predictions, masses, regions=None):
+        # rescale the existing (already normalized) weighted average back to a
+        # weighted sum, add the new batch's weighted sum, then renormalize - keeps
+        # class_best_score always normalized, so a reader never needs the weights too
+        previous_total = self.class_best_score * self.weight_total
         self.num_predictions += len(predictions)
+        weights = self.get_weights(frame_numbers, masses, regions)
+        total_pred = np.sum(weights[:, None] * np.array(predictions), axis=0)
+        self.weight_total += float(np.sum(weights))
         last_frame_classified = 0
-        for frames, pred, mass in zip(frame_numbers, predictions, masses):
+        for frames, pred, mass, weight in zip(
+            frame_numbers, predictions, masses, weights
+        ):
             if isinstance(frames, (list, np.ndarray)):
                 self.num_frames_classified += len(frames)
             else:
@@ -193,6 +275,7 @@ class TrackPrediction:
                 frames,
                 last_frame_classified,
                 mass,
+                weight,
             )
             if self.keep_all:
                 self.predictions.append(prediction)
@@ -200,7 +283,7 @@ class TrackPrediction:
                 self.predictions = [prediction]
 
         combined = previous_total + total_pred
-        self.class_best_score = combined / self.num_predictions
+        self.class_best_score = combined / self.weight_total
         self.last_frame_classified = last_frame_classified
 
     def previous_prediction_was_short(self):
@@ -232,14 +315,17 @@ class TrackPrediction:
         self.predictions = []
         self.class_best_score = np.zeros(self.class_best_score.shape)
         self.num_predictions = 0
+        self.weight_total = 0.0
         self.last_frame_classified = None
         self.num_frames_classified = 0
 
     def classified_frame(self, frame_number, predictions, mass):
         self.last_frame_classified = frame_number
         self.num_frames_classified += 1
-        previous_total = self.class_best_score * self.num_predictions
+        # single frames aren't weighted, weight 1
+        previous_total = self.class_best_score * self.weight_total
         self.num_predictions += 1
+        self.weight_total += 1.0
         prediction = Prediction(
             predictions,
             frame_number,
@@ -252,7 +338,7 @@ class TrackPrediction:
             self.predictions = [prediction]
 
         combined = previous_total + predictions
-        self.class_best_score = combined / self.num_predictions
+        self.class_best_score = combined / self.weight_total
 
     def get_priority(self, frame_number):
         if self.tracking:
@@ -455,22 +541,42 @@ class TrackPrediction:
         ]
         return guesses
 
+    def is_short(self):
+        return self.num_frames_classified < self.frames_per_prediction
+
+    def _label_threshold(self, thresholds, tag):
+        # if old style list
+        if isinstance(thresholds, list):
+            return thresholds[self.best_label_index]
+        return thresholds.get(tag, DEFAULT_THRESHOLD)
+
+    def threshold_for(self, tag):
+        threshold = DEFAULT_THRESHOLD
+        if tag is None:
+            if self.scale_thresholds:
+                threshold = get_scaled_thresh(threshold, self.num_frames_classified)
+            return threshold
+
+        if (
+            not self.scale_thresholds
+            and self.short_thresholds_per_label is not None
+            and self.is_short()
+        ):
+            return self._label_threshold(self.short_thresholds_per_label, tag)
+
+        if self.thresholds_per_label is not None:
+            threshold = self._label_threshold(self.thresholds_per_label, tag)
+
+        if self.scale_thresholds:
+            threshold = get_scaled_thresh(threshold, self.num_frames_classified)
+        return threshold
+
     def prediction_with_confidence(self):
         score = self.get_normalized_score()
 
         tag = self.predicted_tags(group_by_parents=True)
         tag = tag[0] if len(tag) != 0 else None
-        threshold = DEFAULT_THRESHOLD
-
-        if self.thresholds_per_label is not None and tag is not None:
-            # if old style list
-            if isinstance(self.thresholds_per_label, list):
-                threshold = self.thresholds_per_label[self.best_label_index]
-            else:
-                threshold = self.thresholds_per_label.get(tag, DEFAULT_THRESHOLD)
-
-        if self.scale_thresholds:
-            threshold = get_scaled_thresh(threshold, self.num_frames_classified)
+        threshold = self.threshold_for(tag)
 
         confidence = None
         # not always the most confident label as thresholds differ per label
@@ -485,17 +591,7 @@ class TrackPrediction:
             prediction_meta["classify_time"] = round(self.classify_time, 1)
         tag = self.predicted_tags(group_by_parents=True)
         tag = tag[0] if len(tag) != 0 else None
-        threshold = DEFAULT_THRESHOLD
-
-        if self.thresholds_per_label is not None and tag is not None:
-            # if old style list
-            if isinstance(self.thresholds_per_label, list):
-                threshold = self.thresholds_per_label[self.best_label_index]
-            else:
-                threshold = self.thresholds_per_label.get(tag, DEFAULT_THRESHOLD)
-
-        if self.scale_thresholds:
-            threshold = get_scaled_thresh(threshold, self.num_frames_classified)
+        threshold = self.threshold_for(tag)
 
         confidence = None
         # not always the most confident label as thresholds differ per label

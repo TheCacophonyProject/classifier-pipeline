@@ -49,6 +49,15 @@ class Interpreter(ABC):
         self.mapped_labels = metadata.get("mapped_labels")
         self.label_probabilities = metadata.get("label_probabilities")
         self.thresholds_per_label = metadata.get("thresholds")
+        self.short_thresholds_per_label = metadata.get("short_thresholds")
+        self.prediction_weighting = metadata.get("prediction_weighting", False)
+        from classify.trackprediction import DISP_POWER, MASS_POWER
+
+        # powers of (d+1) and (m+1) when weighting predictions, see prediction_weight
+        self.weight_powers = (
+            metadata.get("weight_disp_power", DISP_POWER),
+            metadata.get("weight_mass_power", MASS_POWER),
+        )
         self.preprocess_fn = self.get_preprocess_fn()
         self.preprocess_v2 = metadata.get("v2_preprocess", False)
         self.multi_input = metadata.get("multi_input", False)
@@ -647,13 +656,15 @@ class Interpreter(ABC):
             logging.info("Skipping track %s", track.id)
             return None
         track_pred = self.track_prediction_from_raw(
-            track.id, prediction_frames, output, masses
+            track.id, prediction_frames, output, masses, regions=track.bounds_history
         )
         track_pred.classify_time = time.time() - start
 
         return track_pred
 
-    def track_prediction_from_raw(self, track_id, prediction_frames, output, masses):
+    def track_prediction_from_raw(
+        self, track_id, prediction_frames, output, masses, regions=None
+    ):
         from classify.trackprediction import TrackPrediction
 
         track_prediction = TrackPrediction(
@@ -663,11 +674,15 @@ class Interpreter(ABC):
             parent_mappings=self.parent_mappings,
             scale_thresholds=self.scale_thresholds,
             thresholds_per_label=self.thresholds_per_label,
+            short_thresholds_per_label=self.short_thresholds_per_label,
+            prediction_weighting=self.prediction_weighting,
+            weight_powers=self.weight_powers,
         )
         track_prediction.classified_track(
             output,
             prediction_frames,
             masses,
+            regions=regions,
         )
         # if (
         #     len(prediction_frames) == 1

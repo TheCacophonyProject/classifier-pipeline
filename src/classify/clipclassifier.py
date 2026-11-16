@@ -327,6 +327,9 @@ class ClipClassifier:
             model,
             classifier.thresholds_per_label,
             scale_thresholds=classifier.scale_thresholds,
+            short_thresholds_per_label=classifier.short_thresholds_per_label,
+            prediction_weighting=classifier.prediction_weighting,
+            weight_powers=classifier.weight_powers,
         )
         classifier.seed = int(
             clip.video_start_time.timestamp() * 1000000
@@ -551,6 +554,9 @@ class ClipClassifier:
             model,
             classifier.thresholds_per_label,
             scale_thresholds=classifier.scale_thresholds,
+            short_thresholds_per_label=classifier.short_thresholds_per_label,
+            prediction_weighting=classifier.prediction_weighting,
+            weight_powers=classifier.weight_powers,
         )
         predictions.model_load_time = time.time() - start
         if seed is None:
@@ -739,6 +745,7 @@ class ClipClassifier:
                 masses.append(segment.mass)
                 pred_frame_numbers.append(segment.frame_indices)
             last_frame_num = data["track"].bounds_history[-1].frame_number
+            track_regions = data["track"].bounds_history
 
             # free memory no longer needed
             segment_frames = None
@@ -801,7 +808,7 @@ class ClipClassifier:
                 "Finished predicting track %s memory %s", track_id, process_mem()
             )
             track_prediction = classifier.track_prediction_from_raw(
-                track_id, pred_frame_numbers, preds, masses
+                track_id, pred_frame_numbers, preds, masses, regions=track_regions
             )
             predictions.prediction_per_track[track_id] = track_prediction
 

@@ -829,7 +829,8 @@ class SegmentHeader(Sample):
         # relative weight of the segment (higher is sampled more often)
         self.weight = np.float16(weight) if weight is not None else None
 
-        self._mass = np.uint16(mass)
+        # sum over the segments frames, uint16 overflows for big animals
+        self._mass = np.uint32(mass)
         self.camera = camera
         self._source_file = source_file
         self._track_median_mass = track_median_mass

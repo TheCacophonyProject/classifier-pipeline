@@ -564,6 +564,9 @@ def submit_prediction(clip, monitored_tracks, tracking_events):
             parent_mappings=classifier.parent_mappings,
             scale_thresholds=classifier.scale_thresholds,
             thresholds_per_label=classifier.thresholds_per_label,
+            short_thresholds_per_label=classifier.short_thresholds_per_label,
+            prediction_weighting=classifier.prediction_weighting,
+            weight_powers=classifier.weight_powers,
             multi_label=classifier.params.multi_label,
         ),
     )
@@ -613,7 +616,9 @@ def _predict_and_apply(
     try:
         last_region = track.bounds_history[-1]
         prediction = classifier.predict(preprocessed)
-        track_pred.classified_frames(frames, prediction, mass)
+        track_pred.classified_frames(
+            frames, prediction, mass, regions=track.bounds_history
+        )
         logging.info(
             "Track %s is predicted as %s conf %s took %s track frames %s",
             track,
