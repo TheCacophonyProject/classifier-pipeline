@@ -52,6 +52,7 @@ class CPTVWriter:
     def combine_file(
         self, headers, config, timestamp_micros, min_value=0, max_value=0, num_frames=0
     ):
+        """Writes the header and combines it with the frames, returns True if the cptv was saved"""
         self.f.close()
         header_file = self.write_header(
             headers, config, timestamp_micros, min_value, max_value, num_frames
@@ -63,6 +64,7 @@ class CPTVWriter:
 
         import subprocess
 
+        saved = False
         try:
             command = (
                 f"cat {header_file} {self.filebase} > {combined_file}"
@@ -71,6 +73,7 @@ class CPTVWriter:
             result = subprocess.run(
                 ["sudo", "bash", "-c", command], capture_output=True, check=True
             )
+            saved = True
         except:
             logging.error(
                 "Failed to combine %s %s", header_file, self.filebase, exc_info=True
@@ -78,6 +81,7 @@ class CPTVWriter:
 
         remove_file(header_file)
         remove_file(self.filebase)
+        return saved
 
     def write_header(
         self, headers, config, timestamp_micros, min_value=0, max_value=0, num_frames=0
