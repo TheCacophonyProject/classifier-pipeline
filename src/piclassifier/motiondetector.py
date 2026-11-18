@@ -206,6 +206,13 @@ class WeightedBackground:
         self._background = background
         self.background_weight.fill(0)
 
+    def reset_weights(self, mask):
+        """
+        zero the weights where mask (full frame size) is set, so pixels of a detected
+        object that is staying still don't build up the weight needed to become background
+        """
+        self.background_weight[self.crop_rectangle.subimage(mask)] = 0
+
     def process_frame(self, frame):
         frame = np.uint16(self.crop_rectangle.subimage(frame))
         if self._background is None:

@@ -19,7 +19,9 @@ DISP_POWER = 0.66
 MASS_POWER = 1.06
 
 
-def prediction_weight(max_disp, mean_mass, disp_power=DISP_POWER, mass_power=MASS_POWER):
+def prediction_weight(
+    max_disp, mean_mass, disp_power=DISP_POWER, mass_power=MASS_POWER
+):
     return (max_disp + 1) ** disp_power * (mean_mass + 1) ** mass_power
 
 

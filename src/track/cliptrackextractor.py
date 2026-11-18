@@ -25,6 +25,9 @@ from datetime import datetime
 from track.cliptracker import ClipTracker
 import logging
 
+# show debug images of inpainting and tracking
+DEBUG = False
+
 
 class ClipTrackExtractor(ClipTracker):
     PREVIEW = "preview"
@@ -75,7 +78,7 @@ class ClipTrackExtractor(ClipTracker):
         self.update_background = update_background
         self.calculate_filtered = calculate_filtered
         self.weighting_percent = 1
-        self.inpaint_yolo = False
+        self.inpaint = True
         # self.cache_to_disk = cache_to_disk
         # self.max_tracks = config.max_tracks
         # # frame_padding < 3 causes problems when we get small areas...
@@ -132,7 +135,7 @@ class ClipTrackExtractor(ClipTracker):
 
         frame = reader.next_frame()
         background = frame.pix
-        if self.model and self.inpaint_yolo:
+        if self.model and self.inpaint:
             background = self.inpaint_yolo(clip, background)
         clip.update_background(background)
         clip._background_calculated()
@@ -182,8 +185,7 @@ class ClipTrackExtractor(ClipTracker):
         # grow the mask to cover the cooler edges of the object
         mask = cv2.dilate(mask, np.ones((3, 3), np.uint8))
         inpainted = cv2.inpaint(np.float32(thermal), mask, 3, cv2.INPAINT_TELEA)
-        debug = False
-        if debug:
+        if DEBUG:
             # original | mask | inpainted, original and inpainted on the same scale
             low = float(np.amin(thermal))
             high = float(np.amax(thermal))
@@ -238,11 +240,6 @@ class ClipTrackExtractor(ClipTracker):
                     [f.thermal for f in clip.frame_buffer.get_last_x(x=45)], axis=0
                 )
                 self.background_alg.process_frame(last_avg)
-            if self.inpaint_yolo and clip.current_frame % 100 == 0:
-                # GP TODO needs testing
-                self.background_alg.update_background(
-                    self.inpaint_yolo(clip, self.background_alg.background)
-                )
         if not clip.from_metadata and self.do_tracking:
             self.apply_track_filtering(clip)
 
@@ -314,18 +311,14 @@ class ClipTrackExtractor(ClipTracker):
                     # TODO keep confidence and class info
         clip_frame = clip.add_frame(thermal, filtered, mask, ffc_affected)
         if not self.do_tracking:
-            regions = []
-            for t in clip.tracks:
-                matches = [
-                    r
-                    for r in t.bounds_history
-                    if r.frame_number == clip_frame.frame_number
-                ]
-                if len(matches) == 1:
-                    regions.append(matches[0])
-            debug = False
-            if debug:
-                print(clip_frame.frame_number)
+            regions = self._track_regions(clip, clip_frame.frame_number)
+            if clip.from_metadata:
+                # still keep tracked objects out of the background so the
+                # filtered frames used for classifying stay good
+                self._keep_regions_out_of_background(
+                    clip, regions, mask, thermal, filtered
+                )
+            if DEBUG:
                 debug_frame(self.background_alg.background, clip_frame, regions)
             return [], []
 
@@ -349,11 +342,55 @@ class ClipTrackExtractor(ClipTracker):
                 # selection (classify.thumbnail.best_trackless_thumb); on the
                 # Pi it would just grow unbounded for the life of the clip
                 clip.region_history.append(regions)
-        debug = False
-        if debug:
-            print(clip_frame.frame_number)
+        if regions is None:
+            # from metadata, use the tracks' regions for this frame
+            self._keep_regions_out_of_background(
+                clip,
+                self._track_regions(clip, clip_frame.frame_number),
+                mask,
+                thermal,
+                filtered,
+            )
+        elif self.model:
+            # regions are already filtered for size so whole frame boxes are skipped
+            self._keep_regions_out_of_background(clip, regions, mask, thermal, filtered)
+        if DEBUG:
             debug_frame(self.background_alg.background, clip_frame, regions)
         return new_tracks, stale_tracks
+
+    def _keep_regions_out_of_background(self, clip, regions, mask, thermal, filtered):
+        """
+        zero the background weights of the object pixels in each region, so objects
+        staying still don't become part of the background.
+        Object pixels are the motion mask pixels, or if there is no mask
+        (not tracking) the filtered pixels above the clip's background threshold
+        """
+        if len(regions) == 0:
+            return
+        if mask is None:
+            logging.warning("Mask was none so claculating using rough method")
+            if filtered is None or clip.background_thresh is None:
+                return
+            avg_change = np.average(thermal) - self.background_alg.get_average()
+            mask = (filtered - avg_change) > clip.background_thresh
+        detected = np.zeros(mask.shape, dtype=bool)
+        for region in regions:
+            detected[
+                max(0, region.top) : region.bottom,
+                max(0, region.left) : region.right,
+            ] |= (
+                region.subimage(mask) > 0
+            )
+        self.background_alg.reset_weights(detected)
+
+    def _track_regions(self, clip, frame_number):
+        """regions of all tracks at frame_number"""
+        regions = []
+        for t in clip.tracks:
+            matches = [r for r in t.bounds_history if r.frame_number == frame_number]
+            if len(matches) == 1:
+                regions.append(matches[0])
+        return regions
 
 
 def debug_frame(background, frame, regions):
@@ -361,6 +398,7 @@ def debug_frame(background, frame, regions):
         return
     from ml_tools.imageprocessing import normalize
 
+    logging.info("Debugging frame %s", frame.frame_number)
     thermal, _ = normalize(frame.thermal, new_max=255)
     filtered, _ = normalize(frame.filtered, new_max=255)
     import cv2
