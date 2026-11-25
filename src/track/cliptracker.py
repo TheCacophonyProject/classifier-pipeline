@@ -97,26 +97,14 @@ class ClipTracker(ABC):
             reused to avoid redoing the subtraction
         :return: uint8 filtered frame and adjusted clip threshold for normalized frame
         """
-        from ml_tools.imageprocessing import normalize
-
-        if sub_change:
-            avg_change = int(
-                round(np.average(thermal) - self.background_alg.get_average())
-            )
-        else:
-            avg_change = 0
-        filtered = np.clip(filtered - avg_change, 0, None)
-
-        filtered, stats = normalize(filtered, new_max=255)
-        if denoise:
-            import cv2
-
-            filtered = cv2.fastNlMeansDenoising(np.uint8(filtered), None)
-        if stats[1] == stats[2]:
-            mapped_thresh = clip.background_thresh
-        else:
-            mapped_thresh = clip.background_thresh / (stats[1] - stats[2]) * 255
-        return filtered, mapped_thresh
+        return normalized_filtered_frame(
+            thermal,
+            filtered,
+            self.background_alg.get_average(),
+            clip.background_thresh,
+            sub_change=sub_change,
+            denoise=denoise,
+        )
 
     def _apply_region_matchings(self, clip, regions):
         """
@@ -701,3 +689,33 @@ def get_diff_back_filtered(background, frame, back_thresh):
     filtered[filtered < back_thresh] = 0
     filtered, stats = normalize(filtered, new_max=255)
     return filtered
+
+
+def normalized_filtered_frame(
+    thermal, filtered, background_average, background_thresh, sub_change=True, denoise=True
+):
+    """
+    uint8 filtered frame (thermal - background) normalized to 0-255 and the
+    background_thresh mapped onto that scale
+    :param filtered: thermal frame with background already subtracted
+    :param background_average: average of the background, with sub_change the
+        difference between it and the average of thermal is removed from filtered
+    """
+    from ml_tools.imageprocessing import normalize
+
+    if sub_change:
+        avg_change = int(round(np.average(thermal) - background_average))
+    else:
+        avg_change = 0
+    filtered = np.clip(filtered - avg_change, 0, None)
+
+    filtered, stats = normalize(filtered, new_max=255)
+    if denoise:
+        import cv2
+
+        filtered = cv2.fastNlMeansDenoising(np.uint8(filtered), None)
+    if stats[1] == stats[2]:
+        mapped_thresh = background_thresh
+    else:
+        mapped_thresh = background_thresh / (stats[1] - stats[2]) * 255
+    return filtered, mapped_thresh

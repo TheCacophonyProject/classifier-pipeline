@@ -191,6 +191,22 @@ def save_data(source_file, excluded_tags, writer, labels, extra_args):
     return (saved, border_data)
 
 
+# one yolo model per process, loaded on first use
+_yolo_model = None
+
+
+def get_yolo_model(model_file):
+    global _yolo_model
+    if _yolo_model is None:
+        if model_file is None:
+            raise ValueError("use_yolo needs the tracking yolo model set in the config")
+        from ml_tools.interpreter import Yolo
+
+        logging.info("Loading yolo model %s", model_file)
+        _yolo_model = Yolo(model_file)
+    return _yolo_model
+
+
 def get_data(source_file, excluded_tags, extra_args):
     from skimage import exposure
     import cv2
@@ -212,7 +228,14 @@ def get_data(source_file, excluded_tags, extra_args):
         # allow extra pixels for augmentation
         resize_dim = int(math.floor(mosaic_dim * 1.41))
     db = RawDatabase(source_file)
-    db.load_frames()
+    use_yolo = extra_args.get("use_yolo", False)
+    db.load_frames(
+        use_yolo=use_yolo,
+        yolo_model=get_yolo_model(extra_args.get("yolo_model")) if use_yolo else None,
+        tag_precedence=extra_args.get("tag_precedence"),
+        background_thresh=extra_args.get("background_thresh"),
+        denoise=extra_args.get("denoise", True),
+    )
     # going to redo segments to get rid of ffc segments
     rng = np.random.default_rng(seed=db.timestamp)
 

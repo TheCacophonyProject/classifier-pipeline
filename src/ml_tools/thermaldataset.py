@@ -700,7 +700,8 @@ def read_tfrecord(
             [], tf.float32, allow_missing=True
         ),
     }
-    if use_velocity:
+    # include_track also needs the centres for the max displacement of the segment
+    if use_velocity or include_track:
         tfrecord_format["image/centre_x"] = tf.io.FixedLenSequenceFeature(
             [], tf.float32, allow_missing=True
         )
@@ -730,7 +731,7 @@ def read_tfrecord(
                 )
     if include_track:
         tfrecord_format["image/track_id"] = tf.io.FixedLenFeature((), tf.int64, -1)
-        # tfrecord_format["image/avg_mass"] = tf.io.FixedLenFeature((), tf.int64, -1)
+        tfrecord_format["image/avg_mass"] = tf.io.FixedLenFeature((), tf.int64, 0)
         tfrecord_format["image/source_id"] = tf.io.FixedLenFeature([], tf.string)
 
     if include_features or only_features:
@@ -743,7 +744,7 @@ def read_tfrecord(
     means = example["image/means"]
     centre_x = None
     centre_y = None
-    if use_velocity:
+    if use_velocity or include_track:
         centre_x = example["image/centre_x"]
         centre_y = example["image/centre_y"]
     # centre_x = tf.reshape(centre_x, [record_frames])
@@ -946,9 +947,16 @@ def read_tfrecord(
     if include_track:
 
         track_id = tf.cast(example["image/track_id"], tf.int32)
-        # avg_mass = tf.cast(example["image/avg_mass"], tf.int32)
+        # mean mass of the segment frames, see prediction_weight
+        avg_mass = tf.cast(example["image/avg_mass"], tf.float32)
         source_id = example["image/source_id"]
-        label = (label, track_id, source_id)
+        # max displacement (pixels) of the segment, the furthest any frame centre gets
+        # from the first one. records without centres give 0
+        centres = tf.stack([centre_x, centre_y], axis=1)
+        max_disp = tf.maximum(
+            tf.reduce_max(tf.norm(centres - centres[:1], axis=1)), 0.0
+        )
+        label = (label, track_id, source_id, avg_mass, max_disp)
     if not include_features and not only_features:
         image_out = (
             {"input_image": rgb_image, "input_mask": mask} if multi_input else rgb_image

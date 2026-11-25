@@ -149,59 +149,8 @@ class ClipTrackExtractor(ClipTracker):
         self.background_alg.process_frame(background)
 
     def inpaint_yolo(self, clip, thermal):
-        """
-        Removes yolo detected objects from thermal by otsu thresholding each detection
-        box and inpainting the hot pixels, so they are not used as background
-        """
-        import cv2
-
-        detections = self.model.predict(thermal)
-        mask = np.zeros(thermal.shape, dtype=np.uint8)
-        res_y, res_x = thermal.shape
-        for det in detections:
-            x = int(round(det["x"]))
-            y = int(round(det["y"]))
-            w = max(1, int(round(det["width"])))
-            h = max(1, int(round(det["height"])))
-
-            if (
-                abs(w - clip.crop_rectangle.width) < 4
-                and abs(h - clip.crop_rectangle.height) < 4
-            ):
-                continue
-            x_end = min(res_x, x + w)
-            y_end = min(res_y, y + h)
-            x = max(0, x)
-            y = max(0, y)
-            if x_end - x < 2 or y_end - y < 2:
-                continue
-            box = np.float32(thermal[y:y_end, x:x_end])
-            box = cv2.normalize(box, None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)
-            # objects are hotter than their surroundings
-            _, box_mask = cv2.threshold(box, 0, 1, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-            mask[y:y_end, x:x_end] |= box_mask
-        if not np.any(mask):
-            return thermal
-        # grow the mask to cover the cooler edges of the object
-        mask = cv2.dilate(mask, np.ones((3, 3), np.uint8))
-        inpainted = cv2.inpaint(np.float32(thermal), mask, 3, cv2.INPAINT_TELEA)
-        if DEBUG:
-            # original | mask | inpainted, original and inpainted on the same scale
-            low = float(np.amin(thermal))
-            high = float(np.amax(thermal))
-            scale = 255 / max(1, high - low)
-            original_img = np.uint8((np.float32(thermal) - low) * scale)
-            inpainted_img = np.uint8(np.clip((inpainted - low) * scale, 0, 255))
-            comparison = np.hstack((original_img, mask * 255, inpainted_img))
-            comparison = cv2.resize(
-                comparison, None, fx=4, fy=4, interpolation=cv2.INTER_NEAREST
-            )
-            cv2.imshow("i", comparison)
-            cv2.moveWindow("i", 0, 300)
-
-            cv2.waitKey(0)
-            cv2.destroyAllWindows()
-        return inpainted.astype(thermal.dtype)
+        """see inpaint_yolo"""
+        return inpaint_yolo(self.model, thermal, clip.crop_rectangle)
 
     def parse_clip(self, clip, process_background=False):
         """
@@ -301,12 +250,7 @@ class ClipTrackExtractor(ClipTracker):
                     y = int(round(det["y"]))
                     w = max(1, int(round(det["width"])))
                     h = max(1, int(round(det["height"])))
-                    masked_region = mask[
-                        max(0, y) : max(0, y + h), max(0, x) : max(0, x + w)
-                    ]
-                    labels = masked_region[masked_region > 0]
-                    mass = len(labels)
-                    mask_id = int(np.bincount(labels).argmax()) if mass > 0 else None
+                    mass, mask_id = box_mass(mask, x, y, w, h)
                     component_details.append([x, y, w, h, mass, mask_id])
                     # TODO keep confidence and class info
         clip_frame = clip.add_frame(thermal, filtered, mask, ffc_affected)
@@ -373,15 +317,7 @@ class ClipTrackExtractor(ClipTracker):
                 return
             avg_change = np.average(thermal) - self.background_alg.get_average()
             mask = (filtered - avg_change) > clip.background_thresh
-        detected = np.zeros(mask.shape, dtype=bool)
-        for region in regions:
-            detected[
-                max(0, region.top) : region.bottom,
-                max(0, region.left) : region.right,
-            ] |= (
-                region.subimage(mask) > 0
-            )
-        self.background_alg.reset_weights(detected)
+        self.background_alg.reset_weights(regions_object_mask(regions, mask))
 
     def _track_regions(self, clip, frame_number):
         """regions of all tracks at frame_number"""
@@ -391,6 +327,89 @@ class ClipTrackExtractor(ClipTracker):
             if len(matches) == 1:
                 regions.append(matches[0])
         return regions
+
+
+def box_mass(mask, x, y, w, h):
+    """
+    mass of a box (x, y, w, h) as the number of motion mask pixels inside it, yolo gives
+    no mask so this is used as its mass. Also returns the most common mask label inside
+    the box (None if no mask pixels)
+    """
+    masked_region = mask[max(0, y) : max(0, y + h), max(0, x) : max(0, x + w)]
+    labels = masked_region[masked_region > 0]
+    mass = len(labels)
+    mask_id = int(np.bincount(labels).argmax()) if mass > 0 else None
+    return mass, mask_id
+
+
+def regions_object_mask(regions, mask):
+    """full frame bool mask of the motion mask pixels inside each region"""
+    detected = np.zeros(mask.shape, dtype=bool)
+    for region in regions:
+        detected[
+            max(0, region.top) : region.bottom,
+            max(0, region.left) : region.right,
+        ] |= (
+            region.subimage(mask) > 0
+        )
+    return detected
+
+
+def inpaint_yolo(model, thermal, crop_rectangle):
+    """
+    Removes yolo detected objects from thermal by otsu thresholding each detection
+    box and inpainting the hot pixels, so they are not used as background.
+    Detections the size of crop_rectangle (whole frame) are ignored
+    """
+    import cv2
+
+    detections = model.predict(thermal)
+    mask = np.zeros(thermal.shape, dtype=np.uint8)
+    res_y, res_x = thermal.shape
+    for det in detections:
+        x = int(round(det["x"]))
+        y = int(round(det["y"]))
+        w = max(1, int(round(det["width"])))
+        h = max(1, int(round(det["height"])))
+
+        if (
+            abs(w - crop_rectangle.width) < 4
+            and abs(h - crop_rectangle.height) < 4
+        ):
+            continue
+        x_end = min(res_x, x + w)
+        y_end = min(res_y, y + h)
+        x = max(0, x)
+        y = max(0, y)
+        if x_end - x < 2 or y_end - y < 2:
+            continue
+        box = np.float32(thermal[y:y_end, x:x_end])
+        box = cv2.normalize(box, None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)
+        # objects are hotter than their surroundings
+        _, box_mask = cv2.threshold(box, 0, 1, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+        mask[y:y_end, x:x_end] |= box_mask
+    if not np.any(mask):
+        return thermal
+    # grow the mask to cover the cooler edges of the object
+    mask = cv2.dilate(mask, np.ones((3, 3), np.uint8))
+    inpainted = cv2.inpaint(np.float32(thermal), mask, 3, cv2.INPAINT_TELEA)
+    if DEBUG:
+        # original | mask | inpainted, original and inpainted on the same scale
+        low = float(np.amin(thermal))
+        high = float(np.amax(thermal))
+        scale = 255 / max(1, high - low)
+        original_img = np.uint8((np.float32(thermal) - low) * scale)
+        inpainted_img = np.uint8(np.clip((inpainted - low) * scale, 0, 255))
+        comparison = np.hstack((original_img, mask * 255, inpainted_img))
+        comparison = cv2.resize(
+            comparison, None, fx=4, fy=4, interpolation=cv2.INTER_NEAREST
+        )
+        cv2.imshow("i", comparison)
+        cv2.moveWindow("i", 0, 300)
+
+        cv2.waitKey(0)
+        cv2.destroyAllWindows()
+    return inpainted.astype(thermal.dtype)
 
 
 def debug_frame(background, frame, regions):

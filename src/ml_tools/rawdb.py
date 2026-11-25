@@ -52,6 +52,9 @@ class RawDatabase:
         self.crop_rectangle = Rectangle(1, 1, 160 - 2, 120 - 2)
         self.clip_id = None
         self.timestamp = None
+        # (track id, frame number) -> mass of yolo track regions, set by
+        # load_frames(use_yolo=True) and used by get_clip_tracks
+        self.region_masses = {}
 
     @property
     def id(self):
@@ -97,7 +100,48 @@ class RawDatabase:
                 self.model = "lepton3"
             break
 
-    def load_frames(self):
+    def load_frames(
+        self,
+        use_yolo=False,
+        yolo_model=None,
+        tag_precedence=None,
+        background_thresh=None,
+        denoise=True,
+    ):
+        """
+        use_yolo processes the background like ClipTrackExtractor with a yolo model:
+        yolo_model (a Yolo interpreter) detections are inpainted out of the first
+        background frame, and the tracks' regions are kept out of the background.
+        It also calculates the mass of each yolo track region, the motion mask pixels
+        in its box (box_mass) as yolo_positions have no mass. get_clip_tracks uses these
+        :param tag_precedence: for get_clip_tracks, to load the tracks' regions
+        :param background_thresh: camera model -> background_thresh used for the
+            motion mask, defaults to the tracking config defaults
+        :param denoise: denoise the filtered frame before making the motion mask
+        """
+        self.region_masses = {}
+        regions_by_frame = {}
+        if use_yolo:
+            if yolo_model is None:
+                raise ValueError("use_yolo needs a yolo_model")
+            from track.cliptrackextractor import (
+                inpaint_yolo,
+                box_mass,
+                regions_object_mask,
+            )
+            from track.cliptracker import normalized_filtered_frame
+            from ml_tools.imageprocessing import detect_objects
+
+            if background_thresh is None:
+                background_thresh = {"lepton3": 20, "lepton3.5": 50}
+            # every track's regions, yolo_positions for the yolo tracks
+            clip_header = self.get_clip_tracks(tag_precedence, use_yolo=True)
+            if clip_header is not None:
+                for track in clip_header.tracks:
+                    for frame_number, region in track.regions_by_frame.items():
+                        regions_by_frame.setdefault(frame_number, []).append(
+                            (track.track_id, region)
+                        )
         ffc_frames = []
         cptv_frames = []
         background = None
@@ -131,7 +175,12 @@ class RawDatabase:
                     weight_add,
                     average,
                 )
-                background_alg.process_frame(frame.pix)
+                first_background = frame.pix
+                if use_yolo:
+                    first_background = inpaint_yolo(
+                        yolo_model, frame.pix, self.crop_rectangle
+                    )
+                background_alg.process_frame(first_background)
                 back_processed = True
                 background = background_alg.background
             if frame.background_frame:
@@ -142,13 +191,41 @@ class RawDatabase:
             ffc = is_affected_by_ffc(frame)
             if ffc:
                 ffc_frames.append(frame_i)
+            filtered = np.float32(frame.pix) - background_alg.background
             self.frames.append(
                 Frame(
                     frame.pix,
-                    np.float32(frame.pix) - background_alg.background,
+                    filtered,
                     frame_i,
                 )
             )
+            frame_regions = regions_by_frame.get(frame_i)
+            if frame_regions:
+                # same motion mask as ClipTrackExtractor.process_frame
+                obj_filtered, threshold = normalized_filtered_frame(
+                    frame.pix,
+                    filtered,
+                    background_alg.get_average(),
+                    background_thresh.get(self.model, background_thresh["lepton3"]),
+                    denoise=denoise,
+                )
+                _, mask, _, _ = detect_objects(
+                    obj_filtered, otsus=False, threshold=threshold, kernel=(5, 5)
+                )
+                for track_id, region in frame_regions:
+                    if isinstance(region, YoloRegion):
+                        mass, _ = box_mass(
+                            mask,
+                            int(round(region.x)),
+                            int(round(region.y)),
+                            max(1, int(round(region.width))),
+                            max(1, int(round(region.height))),
+                        )
+                        self.region_masses[(int(track_id), frame_i)] = mass
+                # keep tracked objects out of the background
+                background_alg.reset_weights(
+                    regions_object_mask([r for _, r in frame_regions], mask)
+                )
 
             if not back_processed:
                 last_avg = np.mean([f.thermal for f in self.frames[-45:]], axis=0)
@@ -295,6 +372,13 @@ class RawDatabase:
                                 region.frame_number = prev_frame + 1
                     prev_frame = region.frame_number
                     assert region.frame_number >= 0
+                    if yolo_track:
+                        # yolo_positions have no mass, see load_frames(use_yolo=True)
+                        mass = self.region_masses.get(
+                            (int(track_meta["id"]), int(region.frame_number))
+                        )
+                        if mass is not None:
+                            region.mass = mass
                     regions[region.frame_number] = region
                     if start is None:
                         start = region.frame_number

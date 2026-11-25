@@ -3,6 +3,12 @@
 # according to class. Some filtering occurs at this stage as well, for example
 # tracks with low confidence are excluded.
 
+import sys
+
+if "--use-yolo" in sys.argv:
+    # torch's triton segfaults if it is imported after tensorflow, so load it before
+    # anything imports tensorflow. --use-yolo runs the yolo model, see RawDatabase.load_frames
+    import torch._dynamo
 import argparse
 import os
 import random
@@ -1004,6 +1010,16 @@ def main():
         "skip_ffc": True,
         "tag_precedence": config.build.tag_precedence,
         "use_yolo": master_dataset.use_yolo,
+        # with use_yolo the background and yolo region masses are calculated like the
+        # tracker does with this yolo model, see RawDatabase.load_frames
+        "yolo_model": config.tracking.model,
+        "background_thresh": {
+            camera_model: config.tracking.motion.threshold_for_model(
+                camera_model
+            ).background_thresh
+            for camera_model in ("lepton3", "lepton3.5")
+        },
+        "denoise": config.tracking.denoise,
         "min_mass": master_dataset.min_frame_mass,
         "thermal_diff_norm": config.build.thermal_diff_norm,
         "filter_by_lq": master_dataset.filter_by_lq,

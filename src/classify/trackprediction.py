@@ -321,25 +321,26 @@ class TrackPrediction:
         self.last_frame_classified = None
         self.num_frames_classified = 0
 
-    def classified_frame(self, frame_number, predictions, mass):
+    def classified_frame(self, frame_number, predictions, mass, weight=1.0):
+        # weight defaults to 1 i.e. unweighted, see prediction_weight
         self.last_frame_classified = frame_number
         self.num_frames_classified += 1
-        # single frames aren't weighted, weight 1
         previous_total = self.class_best_score * self.weight_total
         self.num_predictions += 1
-        self.weight_total += 1.0
+        self.weight_total += float(weight)
         prediction = Prediction(
             predictions,
             frame_number,
             self.last_frame_classified,
             mass,
+            weight,
         )
         if self.keep_all:
             self.predictions.append(prediction)
         else:
             self.predictions = [prediction]
 
-        combined = previous_total + predictions
+        combined = previous_total + weight * np.asarray(predictions)
         self.class_best_score = combined / self.weight_total
 
     def get_priority(self, frame_number):

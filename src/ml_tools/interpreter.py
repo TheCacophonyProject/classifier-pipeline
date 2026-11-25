@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
 import time
+import itertools
 import json
 import logging
 import numpy as np
@@ -152,19 +153,35 @@ class Interpreter(ABC):
         )
 
     def confusion_tracks(
-        self, dataset, filename, threshold=0.8, thresholds_per_label=None
+        self,
+        dataset,
+        filename,
+        threshold=0.8,
+        thresholds_per_label=None,
+        weighted=True,
     ):
+        """
+        weighted also pools each track's predictions with prediction_weight using
+        self.weight_powers (the defaults unless the model metadata sets them), saved with
+        a -weighted suffix alongside the unweighted results
+        """
         from sklearn.metrics import confusion_matrix, f1_score
         import matplotlib.pyplot as plt
 
         import tensorflow as tf
-        from classify.trackprediction import TrackPrediction, most_specific_tag
+        from classify.trackprediction import (
+            TrackPrediction,
+            most_specific_tag,
+            prediction_weight,
+        )
 
         logging.info(
             "Calculating confusion with threshold %s saving to %s", threshold, filename
         )
         true_categories = []
         track_ids = []
+        masses = []
+        displacements = []
         for y in dataset.map(
             lambda _, y: y,
             num_parallel_calls=tf.data.AUTOTUNE,
@@ -172,6 +189,17 @@ class Interpreter(ABC):
             true_categories.extend(y[0].numpy())
             # dataset_y[0]
             track_ids.extend(y[1].numpy())
+            # mean mass and max displacement of each segment, see read_tfrecord
+            # (thermal only, other datasets don't have them)
+            if len(y) > 4:
+                masses.extend(y[3].numpy())
+                displacements.extend(y[4].numpy())
+        if len(masses) != len(track_ids):
+            if weighted:
+                logging.warning("Dataset has no mass / displacement, not weighting")
+            weighted = False
+            masses = np.zeros(len(track_ids))
+            displacements = np.zeros(len(track_ids))
         if len(true_categories) > 1:
             if self.params.multi_label:
                 # multi = []
@@ -198,30 +226,32 @@ class Interpreter(ABC):
                     num_parallel_calls=tf.data.AUTOTUNE,
                 )
             )
-        pred_per_track = {}
-        # if self.params.multi_label:
-        # predicted_categori/es = []
-        # for p in y_pred:
-        # predicted_categories.append(tf.where(p >= 0.8).numpy().ravel())
-        # predicted_categories = np.int64(predicted_categories)
-        for y, track_id, p in zip(true_categories, track_ids, y_pred):
-            # if self.params.multi_label:
-            #     y_max = np.argmax(y)
-            # else:
-            #     y_max = y
-            track_pred = pred_per_track.setdefault(
-                track_id,
-                (
-                    np.nonzero(y)[0],
-                    TrackPrediction(
-                        track_id,
-                        self.labels,
-                        multi_label=True,
-                        parent_mappings=self.parent_mappings,
+        # (file suffix, track id -> (true label indices, TrackPrediction))
+        poolings = [("", {})]
+        if weighted:
+            logging.info("Also weighting predictions with powers %s", self.weight_powers)
+            poolings.append(("-weighted", {}))
+        for y, track_id, p, mass, disp in zip(
+            true_categories, track_ids, y_pred, masses, displacements
+        ):
+            for suffix, pred_per_track in poolings:
+                track_pred = pred_per_track.setdefault(
+                    track_id,
+                    (
+                        np.nonzero(y)[0],
+                        TrackPrediction(
+                            track_id,
+                            self.labels,
+                            multi_label=True,
+                            parent_mappings=self.parent_mappings,
+                        ),
                     ),
-                ),
-            )
-            track_pred[1].classified_frame(None, p, 0)
+                )
+                weight = 1.0
+                if suffix == "-weighted":
+                    weight = prediction_weight(disp, mass, *self.weight_powers)
+                track_pred[1].classified_frame(None, p, mass, weight)
+        pred_per_track = poolings[0][1]
 
         to_run = []
         if thresholds_per_label is not None:
@@ -254,12 +284,16 @@ class Interpreter(ABC):
                 "true": true_tag if true_tag is not None else "None",
             }
 
-        for name, label_thresholds in to_run:
+        for (suffix, pooled), (name, label_thresholds) in itertools.product(
+            poolings, to_run
+        ):
+            name = f"{name}{suffix}"
             logging.info("Using %s thresholds %s", name, label_thresholds)
             flat_y = []
             tags = []
+            # every pooling holds the tracks in the same order as tracks_out
             for track_out, (y_true, track_pred) in zip(
-                tracks_out.values(), pred_per_track.values()
+                tracks_out.values(), pooled.values()
             ):
                 # predicted_tags only accepts a list or dict
                 track_pred.thresholds_per_label = label_thresholds.tolist()
